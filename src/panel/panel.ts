@@ -59,7 +59,8 @@ export function createPanel<S extends Schema>(
     })
   const body = el("div")
   const rows = Object.entries(controls.schema).map(([key, field]) => {
-    const set = (value: unknown) => controls.set({ [key]: value } as Partial<Values<S>>)
+    const set = (value: unknown, options?: { coalesce?: boolean }) =>
+      controls.set({ [key]: value } as Partial<Values<S>>, options)
     if (field.kind === "knob") {
       const slider = createSlider(doc, key, field, set)
       slider.element.dataset.field = key
@@ -142,6 +143,13 @@ export function createPanel<S extends Schema>(
   }
   const actions = el("div")
   actions.className = "knobs-actions"
+  const undoButton = button("UNDO", controls.undo)
+  const redoButton = button("REDO", controls.redo)
+  undoButton.setAttribute("aria-keyshortcuts", "u")
+  redoButton.setAttribute("aria-keyshortcuts", "Shift+u")
+  const history = el("div")
+  history.className = "knobs-actions"
+  history.append(undoButton, redoButton)
   actions.append(
     button("RND", controls.randomize),
     button("RESET", controls.reset),
@@ -175,12 +183,13 @@ export function createPanel<S extends Schema>(
     body,
     name,
     actions,
+    history,
     saved,
     transfer,
     text,
     apply,
     status,
-    el("small", "↑↓ rows · ←→ adjust · shift ×10 · enter edit · esc close"),
+    el("small", "↑↓/jk rows · ←→/hl adjust · ⇧ ×10 · s jump · r rnd · u undo · ⇧u redo · esc"),
   )
   doc.body.append(root)
   let signature = ""
@@ -198,6 +207,8 @@ export function createPanel<S extends Schema>(
           b.setAttribute("aria-checked", String(b.dataset.value === String(value)))
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
+    undoButton.disabled = !controls.canUndo
+    redoButton.disabled = !controls.canRedo
     if (controls.error) status.textContent = controls.error
     run(() => {
       const variants = controls.variants.list()
@@ -252,32 +263,110 @@ export function createPanel<S extends Schema>(
       }
     })
   }
+  // Hint mode (from @kitkit/dial): press `s`, type a label prefix, jump to the matching row.
+  let hint: { query: string } | undefined
+  const hintOff = () => {
+    hint = undefined
+    root.classList.remove("knobs-hinting")
+    for (const r of rows) {
+      r.row.classList.remove("knobs-hint-match", "knobs-hint-miss")
+      r.row.querySelector(".knobs-hint")?.remove()
+    }
+  }
+  const hintPaint = () => {
+    if (!hint) return
+    const q = hint.query
+    const matches = rows.filter((r) => r.key.toLowerCase().startsWith(q))
+    for (const r of rows) {
+      const match = matches.includes(r)
+      r.row.classList.toggle("knobs-hint-match", match)
+      r.row.classList.toggle("knobs-hint-miss", !match)
+      let tag = r.row.querySelector<HTMLElement>(".knobs-hint")
+      if (!tag) {
+        tag = el("kbd", "")
+        tag.className = "knobs-hint"
+        r.row.append(tag)
+      }
+      tag.textContent = r.key.slice(0, Math.max(1, q.length + 1))
+      tag.hidden = !match
+    }
+    if (matches.length === 1 && q.length > 0) {
+      matches[0].input.focus()
+      hintOff()
+    }
+  }
   root.onkeydown = (event) => {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    const target = event.target as HTMLElement
+    const typing =
+      target === name ||
+      target === text ||
+      target === picker ||
+      (target instanceof HTMLInputElement && target.type === "number")
+    if (hint) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === "Escape") hintOff()
+      else if (event.key === "Backspace") {
+        hint.query = hint.query.slice(0, -1)
+        hintPaint()
+      } else if (event.key === "Enter") {
+        const first = rows.find((r) => r.key.toLowerCase().startsWith(hint!.query))
+        first?.input.focus()
+        hintOff()
+      } else if (event.key.length === 1) {
+        hint.query += event.key.toLowerCase()
+        hintPaint()
+      }
+      return
+    }
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
       close()
       return
     }
-    const target = event.target as HTMLElement
-    if (target === name || target === text || target === picker) return
+    if (typing) return
+    const key = event.key
+    if (key === "u" || key === "U" || key === "z" || key === "Z") {
+      event.preventDefault()
+      if (event.shiftKey) controls.redo()
+      else controls.undo()
+      return
+    }
+    if (key === "f") {
+      event.preventDefault()
+      rows[0]?.input.focus()
+      return
+    }
+    if (key === "s") {
+      event.preventDefault()
+      hint = { query: "" }
+      root.classList.add("knobs-hinting")
+      hintPaint()
+      return
+    }
+    if (key === "r" || key === "R") {
+      event.preventDefault()
+      run(controls.randomize)
+      return
+    }
     const index = rows.findIndex((r) => r.row.contains(target))
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    const down = key === "ArrowDown" || key === "j"
+    const up = key === "ArrowUp" || key === "k"
+    const right = key === "ArrowRight" || key === "l"
+    const left = key === "ArrowLeft" || key === "h"
+    if (up || down) {
       event.preventDefault()
       event.stopPropagation()
-      rows[(index + (event.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length]?.input.focus()
-    } else if (
-      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
-      index >= 0 &&
-      target !== rows[index].number
-    ) {
+      rows[(index + (down ? 1 : rows.length - 1)) % rows.length]?.input.focus()
+    } else if ((left || right) && index >= 0 && target !== rows[index].number) {
       event.preventDefault()
       event.stopPropagation()
       const row = rows[index],
         field = row.field,
         value = controls.get()[row.key]
-      const direction = event.key === "ArrowRight" ? 1 : -1
+      const direction = right ? 1 : -1
       if (field.kind === "knob")
         row.set(Number(value) + direction * field.step * (event.shiftKey ? 10 : 1))
       else if (field.kind === "choice")
@@ -324,6 +413,7 @@ export function createPanel<S extends Schema>(
       ;(rows[0]?.input ?? dismiss).focus({ preventScroll: true })
     },
     dispose() {
+      hintOff()
       unsubscribe()
       unposition()
       root.remove()

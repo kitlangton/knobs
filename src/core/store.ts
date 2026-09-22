@@ -21,7 +21,12 @@ export interface Controls<S extends Schema = Schema> {
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
-  set(patch: Partial<Values<S>>): void
+  /** Apply a change. `coalesce` folds it into the previous history entry (used while dragging). */
+  set(patch: Partial<Values<S>>, options?: { coalesce?: boolean }): void
+  undo(): void
+  redo(): void
+  readonly canUndo: boolean
+  readonly canRedo: boolean
   subscribe(cb: () => void): () => void
   reset(): void
   randomize(): void
@@ -53,6 +58,9 @@ export function defineControls<const S extends Schema>(
   let current = locked
   let read = false
   let error: string | null = null
+  const past: Values<S>[] = []
+  const future: Values<S>[] = []
+  const HISTORY = 100
   const stateKey = storageKey(id, "state")
   const presets = Object.freeze(
     Object.fromEntries([
@@ -79,10 +87,7 @@ export function defineControls<const S extends Schema>(
     }
     return current
   }
-  function set(patch: Partial<Values<S>>) {
-    if (!enabled()) return
-    const next = normalize(schema, { ...get(), ...patch })
-    if (equal(current, next)) return
+  function commit(next: Values<S>) {
     current = next
     try {
       storage()?.setItem(stateKey, JSON.stringify({ version: 1, values: next }))
@@ -91,6 +96,18 @@ export function defineControls<const S extends Schema>(
       error = String(cause)
     }
     notify()
+  }
+  function set(patch: Partial<Values<S>>, options?: { coalesce?: boolean }) {
+    if (!enabled()) return
+    const previous = get()
+    const next = normalize(schema, { ...previous, ...patch })
+    if (equal(current, next)) return
+    if (!options?.coalesce || past.length === 0) {
+      past.push(previous)
+      if (past.length > HISTORY) past.shift()
+    }
+    future.length = 0
+    commit(next)
   }
   const controls: Controls<S> = {
     id,
@@ -107,6 +124,24 @@ export function defineControls<const S extends Schema>(
     },
     get error() {
       return error
+    },
+    get canUndo() {
+      return past.length > 0
+    },
+    get canRedo() {
+      return future.length > 0
+    },
+    undo() {
+      const previous = past.pop()
+      if (!previous) return
+      future.push(get())
+      commit(previous)
+    },
+    redo() {
+      const next = future.pop()
+      if (!next) return
+      past.push(get())
+      commit(next)
     },
     getServerSnapshot: () => locked,
     subscribe(cb) {

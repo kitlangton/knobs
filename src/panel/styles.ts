@@ -81,6 +81,13 @@ const css = `
 .knobs-toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .22s var(--k-ease),background .2s}
 .knobs-toggle[aria-checked=true] i{transform:translateX(14px);background:var(--k-bg)}
 
+/* Hint mode */
+.knobs-hinting .knobs-hint-miss{opacity:.35}
+.knobs-hint{position:absolute;left:8px;top:50%;transform:translateY(-50%);padding:1px 5px;border-radius:4px;background:var(--k-accent);color:var(--k-bg);
+  font:600 10.5px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.04em;text-transform:uppercase;pointer-events:none;z-index:1;animation:knobs-in .12s var(--k-ease)}
+.knobs-hinting .knobs-label,.knobs-hinting .knobs-row>span:first-child{padding-left:2.6em;transition:padding .12s var(--k-ease)}
+.knobs-panel .knobs-actions button[disabled]{opacity:.35;cursor:default}
+
 /* Actions */
 .knobs-panel .knobs-actions{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:var(--k-gap);margin-top:8px}
 .knobs-panel .knobs-actions button{height:30px;padding:0 8px;font-size:11.5px;font-weight:500;letter-spacing:.02em;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,transform .12s}

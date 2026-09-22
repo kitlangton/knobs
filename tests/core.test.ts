@@ -82,6 +82,27 @@ describe("schema", () => {
 })
 
 describe("store", () => {
+  it("undoes and redoes every change, coalescing drags into one entry", () => {
+    const c = make()
+    expect(c.canUndo).toBe(false)
+    c.set({ count: 10 })
+    c.set({ count: 20 }, { coalesce: true })
+    c.set({ count: 30 }, { coalesce: true })
+    c.set({ flavor: "clean" })
+    expect(c.get()).toMatchObject({ count: 30, flavor: "clean" })
+    c.undo()
+    expect(c.get()).toMatchObject({ count: 30, flavor: "inked" })
+    c.undo()
+    expect(c.get().count).toBe(98)
+    expect(c.canUndo).toBe(false)
+    expect(c.canRedo).toBe(true)
+    c.redo()
+    expect(c.get().count).toBe(30)
+    c.randomize()
+    expect(c.canRedo).toBe(false)
+    c.undo()
+    expect(c.get().count).toBe(30)
+  })
   it("has stable immutable snapshots, subscription cleanup and no-op suppression", () => {
     const c = make(),
       listener = vi.fn(),

@@ -271,3 +271,17 @@ scripts/    split development/production builds + panel-leak assertion
 - “Promote to locked” codemod
 
 MIT © 2026 Kit Langton.
+
+## Lineage
+
+knobs replaces two earlier takes: `@kitkit/dial` (a Solid, keyboard-first DialKit port in
+the lookbook experiments — hint-mode jumping, vim keys, undo/redo came from there) and the
+per-project tuning panels in kit-site, opentunnel, kit-wiki and opencode-architecture. Slider
+mechanics follow Josh Puckett's [DialKit](https://github.com/joshpuckett/dialkit): the row is
+the track, clicks snap, overshoot rubber-bands. Value readouts roll with
+[`@kitlangton/rolling-number`](https://github.com/kitlangton/rolling-number).
+
+### Keyboard
+
+`↑↓` / `jk` rows · `←→` / `hl` adjust (`⇧` ×10) · `Home`/`End` · digit or `Enter` edits the value ·
+`s` hint mode (type a key prefix to jump) · `f` first row · `r` randomize · `u` undo · `⇧u` redo · `Esc` close.

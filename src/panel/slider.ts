@@ -28,7 +28,7 @@ export function createSlider(
   doc: Document,
   key: string,
   field: KnobField,
-  set: (value: number) => void,
+  set: (value: number, options?: { coalesce?: boolean }) => void,
 ): Slider {
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
     const node = doc.createElement(tag)
@@ -149,8 +149,9 @@ export function createSlider(
   track.onpointermove = (event) => {
     if (!dragging) return
     if (!moved && Math.abs(event.clientX - startX) < 3) return
+    const first = !moved
     moved = true
-    set(quantize(valueAt(event.clientX)))
+    set(quantize(valueAt(event.clientX)), { coalesce: !first })
     stretch(event.clientX)
   }
   const release = (event: PointerEvent) => {
