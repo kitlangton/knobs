@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "types": ["bun", "vite/client"],
+    "paths": { "knobs": ["./src/index.ts"], "knobs/react": ["./src/react/index.ts"] }
+  },
+  "include": ["src", "tests", "examples", "scripts", "*.ts"]
+}

@@ -1,0 +1,169 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #ece9df;
+  color: #23241f;
+  font-family: Arial, Helvetica, sans-serif;
+}
+main {
+  max-width: 1500px;
+  margin: auto;
+  padding: 0 48px;
+}
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid #b8b6aa;
+  padding: 26px 0;
+  font:
+    11px / 1.4 ui-monospace,
+    monospace;
+}
+.masthead a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: bold;
+}
+.masthead a span {
+  font-weight: normal;
+  color: #77786e;
+}
+.intro {
+  position: relative;
+  padding: 54px 0 40px;
+}
+.eyebrow {
+  font:
+    10px ui-monospace,
+    monospace;
+  letter-spacing: 1.5px;
+  margin: 0 0 28px;
+}
+h1 {
+  font-size: clamp(56px, 7vw, 100px);
+  line-height: 0.91;
+  letter-spacing: -6px;
+  font-weight: 500;
+  margin: 0;
+}
+h1 em {
+  font-family: Georgia, serif;
+  font-weight: normal;
+}
+.lede {
+  position: absolute;
+  right: 0;
+  bottom: 36px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #66685b;
+}
+.studies {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+.study {
+  min-width: 0;
+  outline-offset: 5px;
+}
+.art {
+  aspect-ratio: 360 / 310;
+  position: relative;
+  overflow: hidden;
+}
+.splat {
+  background: #252720;
+}
+.art svg,
+.art canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.type {
+  background: #d47958;
+  display: flex;
+  align-items: center;
+  padding: 24px;
+}
+.type-specimen {
+  font-family: Arial, Helvetica, sans-serif;
+}
+.art-mark {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  font:
+    10px ui-monospace,
+    monospace;
+  opacity: 0.65;
+}
+.splat .art-mark {
+  color: #ece9df;
+}
+.caption {
+  padding: 16px 0;
+}
+.caption h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+.caption p {
+  font:
+    10px / 1.5 ui-monospace,
+    monospace;
+  color: #77786e;
+  margin: 0;
+}
+footer {
+  margin-top: 42px;
+  padding: 20px 0 30px;
+  border-top: 1px solid #b8b6aa;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font:
+    10px / 1.5 ui-monospace,
+    monospace;
+  color: #6b6d60;
+}
+a:focus-visible,
+[data-knobs-switcher]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  main {
+    padding: 0 20px;
+  }
+  .masthead a span {
+    display: none;
+  }
+  .intro {
+    padding-top: 36px;
+  }
+  h1 {
+    letter-spacing: -3px;
+  }
+  .lede {
+    position: static;
+    margin: 24px 0 0;
+  }
+  .studies {
+    grid-template-columns: 1fr;
+  }
+  .art {
+    max-height: 400px;
+  }
+  footer {
+    flex-direction: column;
+  }
+  .type {
+    min-height: 310px;
+  }
+}

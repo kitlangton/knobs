@@ -1,0 +1,112 @@
+import type { Controls } from "../core/store.js"
+import type { Schema } from "../core/schema.js"
+import type { Panel } from "./panel.js"
+import { injectStyles } from "./styles.js"
+
+export function attach<S extends Schema>(controls: Controls<S>, element: HTMLElement): () => void {
+  if (!controls.enabled) return () => {}
+  const doc = element.ownerDocument
+  const win = doc.defaultView!
+  injectStyles(doc)
+  const chip = doc.createElement("button")
+  chip.className = "knobs-chip"
+  chip.type = "button"
+  chip.textContent = "⚙ knobs"
+  chip.setAttribute("aria-label", `Tune ${controls.id}`)
+  chip.setAttribute("aria-expanded", "false")
+  chip.hidden = true
+  doc.body.append(chip)
+  const addedTabIndex =
+    !element.hasAttribute("tabindex") && !element.matches("a[href],button,input,select,textarea")
+  if (addedTabIndex) element.tabIndex = 0
+  let hovered = element.matches(":hover")
+  let disposed = false
+  let loading = false
+  let panel: Panel | undefined
+  const position = () => {
+    const box = element.getBoundingClientRect()
+    chip.style.left = `${Math.max(4, Math.min(win.innerWidth - chip.offsetWidth - 4, box.right - chip.offsetWidth - 6))}px`
+    chip.style.top = `${Math.max(4, box.top + 6)}px`
+  }
+  const update = () => {
+    chip.hidden =
+      !controls.enabled ||
+      !(hovered || element.contains(doc.activeElement) || doc.activeElement === chip)
+    if (!chip.hidden) position()
+    if (!controls.enabled) {
+      panel?.dispose()
+      panel = undefined
+    }
+  }
+  const enter = () => {
+    hovered = true
+    update()
+  }
+  const leave = (event: PointerEvent) => {
+    if (
+      event.relatedTarget instanceof Node &&
+      (element.contains(event.relatedTarget) || chip.contains(event.relatedTarget))
+    )
+      return
+    hovered = false
+    update()
+  }
+  const focusOut = () => {
+    queueMicrotask(update)
+  }
+  for (const node of [element, chip]) {
+    node.addEventListener("pointerenter", enter)
+    node.addEventListener("pointerleave", leave)
+    node.addEventListener("focusin", update)
+    node.addEventListener("focusout", focusOut)
+  }
+  chip.onclick = async () => {
+    if (panel) {
+      panel.focus()
+      return
+    }
+    if (loading) return
+    loading = true
+    try {
+      const { createPanel } = await import("./panel.js")
+      if (disposed || !controls.enabled) return
+      panel = createPanel(controls, element, () => {
+        panel?.dispose()
+        panel = undefined
+        chip.setAttribute("aria-expanded", "false")
+        chip.hidden = false
+        chip.focus({ preventScroll: true })
+      })
+      chip.setAttribute("aria-expanded", "true")
+      panel.focus()
+    } catch (cause) {
+      chip.title = String(cause)
+      chip.textContent = "Retry knobs"
+    } finally {
+      loading = false
+    }
+  }
+  const observer = new ResizeObserver(position)
+  observer.observe(element)
+  win.addEventListener("scroll", position, true)
+  win.addEventListener("resize", position)
+  const unsubscribe = controls.subscribe(update)
+  update()
+  return () => {
+    disposed = true
+    unsubscribe()
+    panel?.dispose()
+    observer.disconnect()
+    win.removeEventListener("scroll", position, true)
+    win.removeEventListener("resize", position)
+    for (const node of [element, chip]) {
+      node.removeEventListener("pointerenter", enter)
+      node.removeEventListener("pointerleave", leave)
+      node.removeEventListener("focusin", update)
+      node.removeEventListener("focusout", focusOut)
+    }
+    chip.remove()
+    if (addedTabIndex && element.getAttribute("tabindex") === "0")
+      element.removeAttribute("tabindex")
+  }
+}
