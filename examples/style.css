@@ -1,10 +1,48 @@
 * {
   box-sizing: border-box;
 }
+:root {
+  --bg: #ece9df;
+  --fg: #23241f;
+  --muted: #66685b;
+  --muted-2: #77786e;
+  --rule: #b8b6aa;
+  --ink-panel: #252720;
+  --ink-panel-fg: #ece9df;
+  --accent: #d47958;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #111112;
+  --fg: #ecebe6;
+  --muted: #8e8f88;
+  --muted-2: #6f706a;
+  --rule: #2a2a2c;
+  --ink-panel: #1c1c1e;
+  --ink-panel-fg: #ecebe6;
+  --accent: #d9603f;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111112;
+    --fg: #ecebe6;
+    --muted: #8e8f88;
+    --muted-2: #6f706a;
+    --rule: #2a2a2c;
+    --ink-panel: #1c1c1e;
+    --ink-panel-fg: #ecebe6;
+    --accent: #d9603f;
+    color-scheme: dark;
+  }
+}
 body {
   margin: 0;
-  background: #ece9df;
-  color: #23241f;
+  background: var(--bg);
+  color: var(--fg);
+  transition:
+    background 0.3s,
+    color 0.3s;
   font-family: Arial, Helvetica, sans-serif;
 }
 main {
@@ -16,7 +54,7 @@ main {
   display: flex;
   justify-content: space-between;
   gap: 20px;
-  border-bottom: 1px solid #b8b6aa;
+  border-bottom: 1px solid var(--rule);
   padding: 26px 0;
   font:
     11px / 1.4 ui-monospace,
@@ -29,7 +67,7 @@ main {
 }
 .masthead a span {
   font-weight: normal;
-  color: #77786e;
+  color: var(--muted-2);
 }
 .intro {
   position: relative;
@@ -59,7 +97,7 @@ h1 em {
   bottom: 36px;
   font-size: 16px;
   line-height: 1.5;
-  color: #66685b;
+  color: var(--muted);
 }
 .studies {
   display: grid;
@@ -76,7 +114,7 @@ h1 em {
   overflow: hidden;
 }
 .splat {
-  background: #252720;
+  background: var(--ink-panel);
 }
 .art svg,
 .art canvas {
@@ -85,7 +123,7 @@ h1 em {
   display: block;
 }
 .type {
-  background: #d47958;
+  background: var(--accent);
   display: flex;
   align-items: center;
   padding: 24px;
@@ -103,7 +141,7 @@ h1 em {
   opacity: 0.65;
 }
 .splat .art-mark {
-  color: #ece9df;
+  color: var(--ink-panel-fg);
 }
 .caption {
   padding: 16px 0;
@@ -117,20 +155,20 @@ h1 em {
   font:
     10px / 1.5 ui-monospace,
     monospace;
-  color: #77786e;
+  color: var(--muted-2);
   margin: 0;
 }
 footer {
   margin-top: 42px;
   padding: 20px 0 30px;
-  border-top: 1px solid #b8b6aa;
+  border-top: 1px solid var(--rule);
   display: flex;
   justify-content: space-between;
   gap: 16px;
   font:
     10px / 1.5 ui-monospace,
     monospace;
-  color: #6b6d60;
+  color: var(--muted);
 }
 a:focus-visible,
 [data-knobs-switcher]:focus-visible {
@@ -166,4 +204,15 @@ a:focus-visible,
   .type {
     min-height: 310px;
   }
+}
+
+.theme {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted-2);
+  margin-left: 16px;
+}
+.theme:hover {
+  color: var(--fg);
 }

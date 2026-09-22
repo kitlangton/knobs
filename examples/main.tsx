@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef } from "react"
+import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { defineControls, knob, choice, toggle } from "knobs"
 import { Knobs, useControls, VariantSwitcher } from "knobs/react"
@@ -76,7 +76,12 @@ function Splatter() {
             aria-label="Seeded ink splatter"
             data-render={JSON.stringify(v)}
           >
-            <g fill={v.flavor === "inked" ? "#d8d0bc" : "#e89772"}>{drops}</g>
+            <g
+              fill={v.flavor === "inked" ? "var(--ink-panel-fg)" : "var(--accent)"}
+              opacity={v.flavor === "inked" ? 0.85 : 1}
+            >
+              {drops}
+            </g>
           </svg>
           <span className="art-mark">01</span>
         </div>
@@ -95,9 +100,12 @@ function Halftone() {
     const ctx = canvas.current?.getContext("2d")
     if (!ctx) return
     ctx.clearRect(0, 0, 720, 620)
-    ctx.fillStyle = v.invert ? "#171715" : "#dcd5bf"
+    const css = getComputedStyle(document.documentElement)
+    const paper = css.getPropertyValue("--bg").trim() || "#dcd5bf"
+    const ink = css.getPropertyValue("--fg").trim() || "#272821"
+    ctx.fillStyle = v.invert ? ink : paper
     ctx.fillRect(0, 0, 720, 620)
-    ctx.fillStyle = v.invert ? "#dcd5bf" : "#272821"
+    ctx.fillStyle = v.invert ? paper : ink
     const step = 720 / v.cells
     for (let x = step / 2; x < 720; x += step)
       for (let y = step / 2; y < 620; y += step) {
@@ -163,14 +171,32 @@ function Typography() {
     </Knobs>
   )
 }
+function useTheme() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("knobs-example-theme")
+    if (saved === "light" || saved === "dark") return saved
+    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  })
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem("knobs-example-theme", theme)
+  }, [theme])
+  return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))] as const
+}
 function App() {
+  const [theme, toggleTheme] = useTheme()
   return (
     <main>
       <header className="masthead">
         <a href="#">
           knobs<span> / an instrument for the web</span>
         </a>
-        <span>Kit Langton · 2026</span>
+        <span>
+          Kit Langton · 2026
+          <button type="button" className="theme" onClick={toggleTheme} aria-label="Toggle theme">
+            {theme === "dark" ? "☾ dark" : "☼ light"}
+          </button>
+        </span>
       </header>
       <section className="intro">
         <p className="eyebrow">COMPONENT STUDIES / 001—003</p>

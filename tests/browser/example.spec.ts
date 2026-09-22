@@ -52,14 +52,14 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard an
   const count = panel.getByRole("slider", { name: "count", exact: true })
   await count.focus()
   await page.keyboard.press("Shift+ArrowRight")
-  await expect(count).toHaveValue("108")
+  await expect(count).toHaveAttribute("aria-valuenow", "108")
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "size", exact: true })).toBeFocused()
   await page.keyboard.press("c")
   await expect(count).toBeFocused()
   await page.keyboard.type("42")
   await page.keyboard.press("Enter")
-  await expect(count).toHaveValue("42")
+  await expect(count).toHaveAttribute("aria-valuenow", "42")
   await page.evaluate(() =>
     Object.defineProperty(navigator.clipboard, "writeText", {
       configurable: true,
@@ -95,6 +95,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard an
   const position = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("knobs:splat:position:v1")!),
   )
+  await panel.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
   const restored = (await panel.boundingBox())!
   expect(restored.x).toBeCloseTo(position.x)
   expect(restored.y).toBeCloseTo(position.y)

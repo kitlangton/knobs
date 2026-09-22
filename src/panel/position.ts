@@ -11,7 +11,7 @@ export function positionPanel(
   const bounds = anchor.getBoundingClientRect()
   let x = bounds.right + 8
   let y = bounds.top
-  if (x + 310 > win.innerWidth - 8) x = Math.max(8, bounds.left - 318)
+  if (x + 280 > win.innerWidth - 8) x = Math.max(8, bounds.left - 288)
   const key = storageKey(id, "position")
   try {
     const saved = JSON.parse(storage()?.getItem(key) ?? "null")

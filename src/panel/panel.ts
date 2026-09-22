@@ -2,6 +2,7 @@ import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { injectStyles } from "./styles.js"
 import { positionPanel } from "./position.js"
+import { createSlider } from "./slider.js"
 
 export interface Panel {
   element: HTMLElement
@@ -58,56 +59,55 @@ export function createPanel<S extends Schema>(
     })
   const body = el("div")
   const rows = Object.entries(controls.schema).map(([key, field]) => {
+    const set = (value: unknown) => controls.set({ [key]: value } as Partial<Values<S>>)
+    if (field.kind === "knob") {
+      const slider = createSlider(doc, key, field, set)
+      slider.element.dataset.field = key
+      if (field.shortcut) slider.track.setAttribute("aria-keyshortcuts", field.shortcut)
+      body.append(slider.element)
+      return {
+        key,
+        field,
+        row: slider.element,
+        input: slider.track,
+        number: slider.number,
+        slider,
+        set,
+      }
+    }
     const row = el("div")
     row.className = "knobs-row"
     row.dataset.field = key
-    row.append(
-      el("span", field.kind === "knob" && field.shortcut ? `${key} [${field.shortcut}]` : key),
-    )
-    const set = (value: unknown) => controls.set({ [key]: value } as Partial<Values<S>>)
-    const input = field.kind === "choice" ? el("select") : el("input")
-    input.setAttribute("aria-label", key)
-    input.name = key
-    let number: HTMLInputElement | undefined
-    if (field.kind === "knob" && input instanceof HTMLInputElement) {
-      number = el("input")
-      number.type = "number"
-      number.name = `${key}-value`
-      number.setAttribute("aria-label", `${key} value`)
-      input.type = "range"
-      for (const node of [input, number]) {
-        node.min = String(field.min)
-        node.max = String(field.max)
-        node.step = String(field.step)
-      }
-      input.oninput = () => set(input.valueAsNumber)
-      number.onchange = () => {
-        set(number!.valueAsNumber)
-        number!.value = String(controls.get()[key])
-      }
-      number.onkeydown = (event) => {
-        if (event.key === "Enter") {
-          set(number!.valueAsNumber)
-          input.focus()
-          event.preventDefault()
-        }
-      }
-      if (field.shortcut) input.setAttribute("aria-keyshortcuts", field.shortcut)
-      row.append(number, el("span", field.unit ?? ""))
-    } else if (field.kind === "choice" && input instanceof HTMLSelectElement) {
-      for (const value of field.options) {
-        const option = el("option", value)
-        option.value = value
-        input.append(option)
-      }
-      input.onchange = () => set(input.value)
-    } else if (input instanceof HTMLInputElement) {
-      input.type = "checkbox"
-      input.onchange = () => set(input.checked)
+    row.append(el("span", key))
+    if (field.kind === "choice") {
+      const seg = el("div")
+      seg.className = "knobs-seg"
+      seg.setAttribute("role", "radiogroup")
+      seg.setAttribute("aria-label", key)
+      const buttons = field.options.map((value) => {
+        const b = el("button", value)
+        b.type = "button"
+        b.dataset.value = value
+        b.setAttribute("role", "radio")
+        b.onclick = () => run(() => set(value))
+        seg.append(b)
+        return b
+      })
+      seg.tabIndex = 0
+      row.append(seg)
+      body.append(row)
+      return { key, field, row, input: seg, number: undefined, buttons, set }
     }
-    row.append(input)
+    const toggle = el("button")
+    toggle.type = "button"
+    toggle.className = "knobs-toggle"
+    toggle.setAttribute("role", "switch")
+    toggle.setAttribute("aria-label", key)
+    toggle.append(el("i"))
+    toggle.onclick = () => run(() => set(!controls.get()[key]))
+    row.append(toggle)
     body.append(row)
-    return { key, field, row, input, number, set }
+    return { key, field, row, input: toggle, number: undefined, set }
   })
   const name = el("input")
   name.className = "knobs-name"
@@ -180,7 +180,7 @@ export function createPanel<S extends Schema>(
     text,
     apply,
     status,
-    el("small", "↑↓ rows · ←→ adjust · Shift ×10 · Esc close"),
+    el("small", "↑↓ rows · ←→ adjust · shift ×10 · enter edit · esc close"),
   )
   doc.body.append(root)
   let signature = ""
@@ -191,10 +191,12 @@ export function createPanel<S extends Schema>(
     }
     const values = controls.get()
     for (const row of rows) {
-      if (row.input instanceof HTMLInputElement && row.field.kind === "toggle")
-        row.input.checked = Boolean(values[row.key])
-      else row.input.value = String(values[row.key])
-      if (row.number && doc.activeElement !== row.number) row.number.value = String(values[row.key])
+      const value = values[row.key]
+      if ("slider" in row && row.slider) row.slider.update(Number(value))
+      else if ("buttons" in row && row.buttons)
+        for (const b of row.buttons)
+          b.setAttribute("aria-checked", String(b.dataset.value === String(value)))
+      else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
     if (controls.error) status.textContent = controls.error
     run(() => {
@@ -289,13 +291,13 @@ export function createPanel<S extends Schema>(
     } else if (
       index >= 0 &&
       target === rows[index].input &&
-      rows[index].number &&
+      "slider" in rows[index] &&
       /^[0-9.\-]$/.test(event.key)
     ) {
       event.preventDefault()
-      const number = rows[index].number!
-      number.focus()
-      number.value = event.key
+      const row = rows[index] as { slider: { edit(): void }; number: HTMLInputElement }
+      row.slider.edit()
+      row.number.value = event.key
     } else if (!(target instanceof HTMLInputElement && target.type === "number")) {
       const row = rows.find(
         (r) =>
