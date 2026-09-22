@@ -1,3 +1,4 @@
+import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
 
 export interface Slider {
@@ -57,6 +58,13 @@ export function createSlider(
   value.type = "button"
   value.tabIndex = -1
   value.setAttribute("aria-label", `Edit ${key}`)
+  const digits = el("span", "knobs-digits")
+  value.append(digits)
+  if (field.unit) {
+    const unit = el("span", "knobs-unit")
+    unit.textContent = field.unit
+    value.append(unit)
+  }
   const number = el("input", "knobs-number")
   number.type = "number"
   number.name = `${key}-value`
@@ -70,6 +78,11 @@ export function createSlider(
 
   const places = decimals(field.step)
   const fmt = (v: number) => `${v.toFixed(places)}${field.unit ? ` ${field.unit}` : ""}`
+  const roller = createRollingNumber(digits, {
+    value: field.value,
+    format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
+    duration: 420,
+  })
   const pct = (v: number) => ((v - field.min) / (field.max - field.min)) * 100
   const quantize = (v: number) =>
     Math.min(
@@ -88,7 +101,8 @@ export function createSlider(
   }
   const update = (v: number) => {
     current = v
-    value.textContent = fmt(v)
+    // Dragging tracks the pointer; everything else (RND, presets, keys) rolls.
+    roller.update({ value: v, animated: !dragging })
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)
@@ -120,16 +134,34 @@ export function createSlider(
     root.classList.add("knobs-active")
     track.focus({ preventScroll: true })
   }
+  const MAX_STRETCH = 8
+  const stretch = (clientX: number) => {
+    const rect = track.getBoundingClientRect()
+    const over =
+      clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
+    const dead = Math.max(0, over - 24)
+    const amount = MAX_STRETCH * Math.sqrt(Math.min(dead / 200, 1))
+    root.style.transform = amount
+      ? `translateX(${clientX < rect.left ? -amount : 0}px) scaleX(${1 + amount / rect.width})`
+      : ""
+    root.style.transformOrigin = clientX < rect.left ? "right" : "left"
+  }
   track.onpointermove = (event) => {
     if (!dragging) return
     if (!moved && Math.abs(event.clientX - startX) < 3) return
     moved = true
     set(quantize(valueAt(event.clientX)))
+    stretch(event.clientX)
   }
   const release = (event: PointerEvent) => {
     if (!dragging) return
     dragging = false
     root.classList.remove("knobs-active")
+    root.classList.add("knobs-release")
+    root.style.transform = ""
+    root.addEventListener("transitionend", () => root.classList.remove("knobs-release"), {
+      once: true,
+    })
     if (!moved) set(snap(valueAt(event.clientX)))
   }
   track.onpointerup = release

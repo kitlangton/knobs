@@ -1,3 +1,5 @@
+import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" }
+
 const css = `
 .knobs-panel,.knobs-chip{
   --k-bg:#1c1c1e;--k-surface:rgba(255,255,255,.05);--k-surface-hi:rgba(255,255,255,.11);--k-line:rgba(255,255,255,.1);--k-line-hi:rgba(255,255,255,.18);
@@ -53,8 +55,11 @@ const css = `
 .knobs-slider:hover .knobs-marks i,.knobs-active .knobs-marks i{background:var(--k-line-hi)}
 .knobs-active .knobs-fill{background:var(--k-line-hi)}
 .knobs-slider:hover,.knobs-active{background:var(--k-surface)}
+.knobs-release{transition:transform .35s cubic-bezier(.2,1.4,.4,1)}
+.knobs-digits{display:inline-block;min-width:2.5ch;text-align:right;line-height:1.35;--rn-edge-fade:0px}
+.knobs-unit{margin-left:.35em;color:var(--k-dim)}
 .knobs-label{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--k-label);font-weight:500;pointer-events:none;white-space:nowrap}
-.knobs-value{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding:1px 0;background:transparent!important;border-radius:0!important;
+.knobs-value{position:absolute;right:10px;top:50%;transform:translateY(-50%);padding:1px 0 1px 6px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
   color:var(--k-label);font-family:ui-monospace,"Geist Mono",SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:12px;
   border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .5s}
 .knobs-value:hover{border-bottom-color:var(--k-label)}
@@ -96,6 +101,6 @@ export function injectStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-style]")) return
   const style = doc.createElement("style")
   style.dataset.knobsStyle = ""
-  style.textContent = css
+  style.textContent = rolling + css
   doc.head.append(style)
 }
