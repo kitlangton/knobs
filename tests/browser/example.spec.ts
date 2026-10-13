@@ -116,18 +116,31 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "size", exact: true })).toBeFocused()
 
-  // Hint mode (`s`): shows minimal unique prefixes ("se", "c", "si", "f", "g"), dims typed part, jumps on unique match
+  // Hint mode (`s`): every control gets its minimal unique prefix; the typed part dims; a unique match jumps.
   await page.keyboard.press("s")
   await expect(panel).toHaveClass(/knobs-hinting/)
-  await expect(panel.locator('[data-field="seed"] .knobs-hint')).toHaveText("se")
-  await expect(panel.locator('[data-field="size"] .knobs-hint')).toHaveText("si")
-  await expect(panel.locator('[data-field="count"] .knobs-hint')).toHaveText("c")
+  const badges = panel.locator(".knobs-hint-layer .knobs-hint")
+  await expect(badges).toHaveText([
+    "se",
+    "cou",
+    "si",
+    "fl",
+    "g",
+    "d",
+    "su",
+    "h",
+    "Fi",
+    "Ra",
+    "Re",
+    "Cop",
+    "V",
+  ])
   await page.keyboard.press("s")
-  await expect(panel.locator('[data-field="seed"] .knobs-hint-typed')).toHaveText("s")
-  await expect(panel.locator('[data-field="seed"] .knobs-hint-rest')).toHaveText("e")
+  await expect(badges.first().locator(".knobs-hint-typed")).toHaveText("s")
+  await expect(badges.first().locator(".knobs-hint-rest")).toHaveText("e")
   await expect(panel.locator('[data-field="count"]')).toHaveClass(/knobs-hint-miss/)
   await page.keyboard.press("Backspace")
-  await page.keyboard.press("c")
+  await page.keyboard.type("cou")
   await expect(panel).not.toHaveClass(/knobs-hinting/)
   await expect(count).toBeFocused()
 
@@ -369,4 +382,78 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   await fallbackContext.close()
 
   expect(errors).toEqual([])
+})
+
+test("keyboard reaches everything; drags and scrubs are single undo steps", async ({ page }) => {
+  await page.goto("/")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const study = page.locator('[data-study="splat"]')
+  const bounds = (await study.boundingBox())!
+  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
+  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  const strip = panel.getByRole("radiogroup", { name: "Preset or variant" })
+  const seed = panel.getByRole("slider", { name: "seed", exact: true })
+  const random = panel.getByRole("button", { name: "Random", exact: true })
+
+  // Phosphor icons in the header
+  await expect(panel.locator("header .knobs-icon")).toHaveCount(4)
+
+  // ↑/↓ walk presets → rows → action bar; ←/→ move along the action bar
+  await seed.focus()
+  await page.keyboard.press("ArrowUp")
+  await expect(strip).toBeFocused()
+  await page.keyboard.press("ArrowUp")
+  await expect(random).toBeFocused()
+  await page.keyboard.press("ArrowRight")
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeFocused()
+  await page.keyboard.press("ArrowUp")
+  await expect(panel.getByRole("switch", { name: "grain" })).toBeFocused()
+
+  // Tab wraps inside the floating panel
+  await panel.getByRole("button", { name: "Variants" }).focus()
+  await page.keyboard.press("Tab")
+  // Undo/Redo are disabled on a fresh panel, so the wrap lands on the first enabled control.
+  await expect(panel.getByRole("button", { name: "Keyboard shortcuts" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(panel.getByRole("button", { name: "Variants" })).toBeFocused()
+
+  // `s` jumps to presets (applying them) and buttons
+  await seed.focus()
+  await page.keyboard.type("sh")
+  await expect(strip).toHaveAttribute("data-active-preset", "p:heavy")
+  await page.keyboard.type("sra")
+  await expect(random).toBeFocused()
+  await page.keyboard.press("u")
+  await expect(strip).toHaveAttribute("data-active-preset", "p:default")
+
+  // Scrubbing across every chip is one undo step
+  const chips = strip.locator(".knobs-preset-chip")
+  const first = (await chips.first().boundingBox())!
+  const last = (await chips.last().boundingBox())!
+  await page.mouse.move(first.x + 4, first.y + first.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(last.x + last.width + 60, last.y + last.height / 2, { steps: 12 })
+  await page.mouse.up()
+  await expect(strip).toHaveAttribute("data-active-preset", "p:heavy")
+  await page.keyboard.press("u")
+  await expect(strip).toHaveAttribute("data-active-preset", "p:default")
+
+  // A drag that starts on the value readout scrubs; a plain click there edits
+  const count = panel.locator('[data-field="count"]')
+  const value = (await count.locator(".knobs-value").boundingBox())!
+  await page.mouse.move(value.x + value.width / 2, value.y + value.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(value.x - 120, value.y + value.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await expect(count.locator(".knobs-number")).toBeHidden()
+  await expect(panel.getByRole("slider", { name: "count" })).not.toHaveAttribute(
+    "aria-valuenow",
+    "98",
+  )
+  await page.keyboard.press("u")
+  await expect(panel.getByRole("slider", { name: "count" })).toHaveAttribute("aria-valuenow", "98")
+  await count.locator(".knobs-value").click()
+  await expect(count.locator(".knobs-number")).toBeVisible()
 })

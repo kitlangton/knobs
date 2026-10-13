@@ -65,6 +65,7 @@ export interface PresetStrip {
   readonly customBadge: HTMLElement
   readonly pillX: Spring
   readonly pillW: Spring
+  readonly pillY: Spring
   readonly pillAlpha: Spring
   getEntries(): readonly PresetEntry<any>[]
   getButtons(): readonly HTMLButtonElement[]
@@ -100,10 +101,11 @@ export function createPresetStrip<S extends Schema>(
   const customBadge = el("span", "knobs-preset-custom", "custom")
   customBadge.hidden = true
   track.append(pill)
-  root.append(track, customBadge)
+  root.append(track)
 
   const pillX = new Spring(0, 28, 0.82)
   const pillW = new Spring(48, 28, 0.86)
+  const pillY = new Spring(0, 28, 0.86)
   const pillAlpha = new Spring(1, 26, 0.9)
 
   let entries: PresetEntry<Values<S>>[] = []
@@ -137,19 +139,6 @@ export function createPresetStrip<S extends Schema>(
     return [...presetEntries, ...variantEntries]
   }
 
-  function scrollChipIntoView(btn: HTMLButtonElement) {
-    const trackWidth = track.clientWidth
-    if (trackWidth <= 0 || track.scrollWidth <= trackWidth) return
-    const left = btn.offsetLeft
-    const right = left + btn.offsetWidth
-    const pad = 12
-    if (left - pad < track.scrollLeft) {
-      track.scrollLeft = Math.max(0, left - pad)
-    } else if (right + pad > track.scrollLeft + trackWidth) {
-      track.scrollLeft = Math.min(track.scrollWidth - trackWidth, right - trackWidth + pad)
-    }
-  }
-
   function measurePill(snap = false) {
     const idx = activeState.activeIndex
     const btn = idx >= 0 ? buttons[idx] : undefined
@@ -161,20 +150,24 @@ export function createPresetStrip<S extends Schema>(
       return
     }
     const targetX = btn.offsetLeft
+    const targetY = btn.offsetTop
     const targetW = Math.max(20, btn.offsetWidth)
     if (snap || !initializedPill) {
       pillX.snap(targetX)
+      pillY.snap(targetY)
       pillW.snap(targetW)
       pillAlpha.snap(1)
       initializedPill = true
     } else {
       pillX.set(targetX)
+      pillY.set(targetY)
       pillW.set(targetW)
       pillAlpha.set(1)
     }
     pill.style.width = `${targetW}px`
+    pill.style.height = `${btn.offsetHeight}px`
     pill.style.opacity = "1"
-    pill.style.transform = `translate3d(${targetX}px, 0, 0) scale(1)`
+    pill.style.transform = `translate3d(${targetX}px, ${targetY}px, 0) scale(1)`
   }
 
   function syncSelection(snap = false) {
@@ -192,19 +185,17 @@ export function createPresetStrip<S extends Schema>(
       b.setAttribute("aria-checked", String(checked))
       b.classList.toggle("knobs-preset-active", checked)
     }
-    if (activeState.activeIndex >= 0 && buttons[activeState.activeIndex]) {
-      scrollChipIntoView(buttons[activeState.activeIndex]!)
-    }
-    root.classList.toggle("knobs-presets-overflow", track.scrollWidth > track.clientWidth + 2)
     measurePill(snap)
   }
 
-  function selectAt(index: number) {
+  function selectAt(index: number, coalesce = false) {
     const entry = entries[index]
     if (!entry) return
     lastAppliedId = entry.id
     run(() => {
-      entry.apply()
+      // A scrub is one gesture, so it lands in history as one step.
+      if (coalesce) controls.set(entry.values, { coalesce: true, source: entry.kind })
+      else entry.apply()
     })
     syncSelection(false)
     onAfterChange?.()
@@ -242,12 +233,12 @@ export function createPresetStrip<S extends Schema>(
           b.setAttribute("aria-label", entry.label)
           b.onclick = (e) => {
             e.preventDefault()
-            selectAt(idx)
+            if (idx !== activeState.activeIndex) selectAt(idx)
             root.focus({ preventScroll: true })
           }
           return b
         })
-        track.replaceChildren(pill, ...buttons)
+        track.replaceChildren(pill, ...buttons, customBadge)
         syncSelection(true)
       } else {
         entries = nextEntries
@@ -258,26 +249,44 @@ export function createPresetStrip<S extends Schema>(
 
   // Pointer scrubbing across chips
   let scrubbing = false
-  const chipIndexAt = (clientX: number): number => {
+  let scrubCommitted = false
+  // Nearest chip to the pointer, so scrubbing past either end (or a gap) still lands on one.
+  const chipIndexAt = (clientX: number, clientY: number): number => {
+    let best = -1
+    let bestDist = Infinity
     for (let i = 0; i < buttons.length; i++) {
       const rect = buttons[i]!.getBoundingClientRect()
-      if (clientX >= rect.left && clientX <= rect.right) return i
+      const dx =
+        clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
+      const dy =
+        clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0
+      const dist = dx + dy * 4
+      if (dist < bestDist) {
+        bestDist = dist
+        best = i
+      }
     }
-    return -1
+    return best
   }
   track.onpointerdown = (event) => {
     if (event.button !== 0 || buttons.length === 0) return
+    event.preventDefault()
     scrubbing = true
+    scrubCommitted = false
     track.setPointerCapture(event.pointerId)
-    const idx = chipIndexAt(event.clientX)
-    if (idx >= 0) selectAt(idx)
+    const idx = chipIndexAt(event.clientX, event.clientY)
+    if (idx >= 0 && idx !== activeState.activeIndex) {
+      selectAt(idx)
+      scrubCommitted = true
+    }
     root.focus({ preventScroll: true })
   }
   track.onpointermove = (event) => {
     if (!scrubbing) return
-    const idx = chipIndexAt(event.clientX)
+    const idx = chipIndexAt(event.clientX, event.clientY)
     if (idx >= 0 && idx !== activeState.activeIndex) {
-      selectAt(idx)
+      selectAt(idx, scrubCommitted)
+      scrubCommitted = true
     }
   }
   const endScrub = () => {
@@ -321,6 +330,7 @@ export function createPresetStrip<S extends Schema>(
     customBadge,
     pillX,
     pillW,
+    pillY,
     pillAlpha,
     getEntries: () => entries,
     getButtons: () => buttons,

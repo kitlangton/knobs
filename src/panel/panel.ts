@@ -8,6 +8,7 @@ import {
   type GpuRowBinding,
 } from "./gpu/renderer.js"
 import { computeHintPrefixes } from "./hints.js"
+import { iconSvg, type IconName } from "./icons.js"
 import { Spring } from "./motion.js"
 import { positionPanel } from "./position.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
@@ -91,15 +92,19 @@ function buildPanel<S extends Schema>(
 
   const header = el("header")
   let titleEl: HTMLElement | null = null
-  const headerButtons: { button: HTMLButtonElement; icon: string }[] = []
+  const headerButtons: { button: HTMLButtonElement; icon: IconName }[] = []
+  const iconButton = (icon: IconName, label: string, action: () => unknown) => {
+    const node = button("", action)
+    node.append(iconSvg(doc, icon))
+    node.setAttribute("aria-label", label)
+    return node
+  }
 
-  const undoButton = button("↶", controls.undo)
-  undoButton.setAttribute("aria-label", "Undo")
+  const undoButton = iconButton("undo", "Undo", controls.undo)
   undoButton.setAttribute("aria-keyshortcuts", "u")
   undoButton.title = "Undo (u)"
 
-  const redoButton = button("↷", controls.redo)
-  redoButton.setAttribute("aria-label", "Redo")
+  const redoButton = iconButton("redo", "Redo", controls.redo)
   redoButton.setAttribute("aria-keyshortcuts", "Shift+u")
   redoButton.title = "Redo (⇧u)"
 
@@ -112,11 +117,12 @@ function buildPanel<S extends Schema>(
   popGrid.className = "knobs-popover-grid"
   const shortcuts: [string, string][] = [
     ["↑↓ / j k", "Move between rows"],
+    ["Tab", "Next control"],
     ["←→ / h l", "Adjust value (⇧ ×10)"],
     ["[ / ]", "Cycle preset or variant"],
-    ["s", "Jump to row by prefix"],
+    ["s", "Jump to anything by name"],
     ["0–9 / Enter", "Edit number inline"],
-    ["⌫", "Reset focused row"],
+    ["⌫", "Reset focused row (or double-click)"],
     ["r", "Randomize all"],
     ["u / ⇧u", "Undo / Redo"],
     ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
@@ -143,23 +149,21 @@ function buildPanel<S extends Schema>(
     headActions.className = "knobs-head-actions"
     if (showHistory) {
       headActions.append(undoButton, redoButton)
-      headerButtons.push({ button: undoButton, icon: "↶" }, { button: redoButton, icon: "↷" })
+      headerButtons.push({ button: undoButton, icon: "undo" }, { button: redoButton, icon: "redo" })
     }
     if (showFooter) {
-      helpButton = button("?", () => togglePopover())
-      helpButton.setAttribute("aria-label", "Keyboard shortcuts")
+      helpButton = iconButton("help", "Keyboard shortcuts", () => togglePopover())
       helpButton.setAttribute("aria-keyshortcuts", "?")
       helpButton.setAttribute("aria-expanded", "false")
       helpButton.title = "Keyboard shortcuts (?)"
       headActions.append(helpButton)
-      headerButtons.push({ button: helpButton, icon: "?" })
+      headerButtons.push({ button: helpButton, icon: "help" })
     }
     if (close) {
-      dismiss = button("×", close)
-      dismiss.setAttribute("aria-label", `Close ${controls.id}`)
+      dismiss = iconButton("close", `Close ${controls.id}`, close)
       dismiss.title = "Close (Esc)"
       headActions.append(dismiss)
-      headerButtons.push({ button: dismiss, icon: "×" })
+      headerButtons.push({ button: dismiss, icon: "close" })
     }
     header.append(titleEl, headActions)
   }
@@ -194,6 +198,7 @@ function buildPanel<S extends Schema>(
       }
       const gReset = button("Reset", () => controls.resetGroup(groupName))
       gReset.setAttribute("aria-label", `Reset ${groupName}`)
+      gReset.dataset.hint = `${groupName} reset`
       groupResetButtons.set(groupName, gReset)
       gBtns.push(gReset)
       gRight.append(gReset)
@@ -493,49 +498,120 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  // Hint mode: press `s`, type a minimal unique prefix, jump directly to the matching row.
-  let hint: { query: string } | undefined
+  // Hint mode: press `s`, type the start of any control's name, jump straight to it.
+  type HintTarget = { key: string; display: string; el: HTMLElement; activate(): void }
+  const hintLayer = el("div")
+  hintLayer.className = "knobs-hint-layer"
+  hintLayer.setAttribute("aria-hidden", "true")
+  const visible = (node: HTMLElement) =>
+    node.isConnected && !node.closest("[hidden]") && node.getClientRects().length > 0
+  const hintTargets = (): HintTarget[] => {
+    const targets: HintTarget[] = []
+    const add = (el: HTMLElement, label: string, activate: () => void) => {
+      if (!label || !visible(el) || (el as HTMLButtonElement).disabled) return
+      targets.push({ key: label, display: label, el, activate })
+    }
+    for (const r of rows) add(r.row, r.display, () => r.input.focus())
+    presetStrip.getEntries().forEach((entry, i) => {
+      const chip = presetStrip.getButtons()[i]
+      if (chip)
+        add(chip, entry.label, () => {
+          presetStrip.selectById(entry.id)
+          presetStrip.element.focus({ preventScroll: true })
+        })
+    })
+    // Header icons have their own keys (u, ⇧u, ?, Esc), so they stay out of the way here.
+    const buttons = root.querySelectorAll<HTMLButtonElement>(
+      ".knobs-group-head button, .knobs-actions button, .knobs-custom-actions button, .knobs-variants-drawer button",
+    )
+    for (const b of buttons)
+      add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
+    if (visible(name)) add(name, "Variant name", () => name.focus())
+    return targets
+  }
+  let hintItems: HintTarget[] = []
   const hintOff = () => {
     hint = undefined
     root.classList.remove("knobs-hinting")
-    for (const r of rows) {
-      r.row.classList.remove("knobs-hint-match", "knobs-hint-miss")
-      r.row.querySelector(".knobs-hint")?.remove()
-    }
+    for (const t of hintItems) t.el.classList.remove("knobs-hint-match", "knobs-hint-miss")
+    hintItems = []
+    hintLayer.replaceChildren()
+    hintLayer.remove()
     wakeGpu()
   }
+  let hint: { query: string } | undefined
   const hintPaint = () => {
     if (!hint) return
-    const resolution = computeHintPrefixes(rows, hint.query)
+    const resolution = computeHintPrefixes(hintItems, hint.query)
     if (resolution.uniqueMatchIndex >= 0) {
-      rows[resolution.uniqueMatchIndex]?.input.focus()
+      const target = hintItems[resolution.uniqueMatchIndex]!
       hintOff()
+      target.activate()
       return
     }
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i]!
+    if (!hintLayer.isConnected) root.append(hintLayer)
+    const rootRect = root.getBoundingClientRect()
+    const badges: HTMLElement[] = []
+    hintItems.forEach((t, i) => {
       const badge = resolution.badges[i]!
-      r.row.classList.toggle("knobs-hint-match", badge.match)
-      r.row.classList.toggle("knobs-hint-miss", !badge.match)
-      let tag = r.row.querySelector<HTMLElement>(".knobs-hint")
-      if (!tag) {
-        tag = el("kbd")
-        tag.className = "knobs-hint"
-        r.row.append(tag)
-      }
-      if (badge.match) {
-        const typedSpan = el("span", badge.typed)
-        typedSpan.className = "knobs-hint-typed"
-        const restSpan = el("span", badge.rest)
-        restSpan.className = "knobs-hint-rest"
-        tag.replaceChildren(typedSpan, restSpan)
-        tag.hidden = false
-      } else {
-        tag.hidden = true
-      }
-    }
+      t.el.classList.toggle("knobs-hint-match", badge.match)
+      t.el.classList.toggle("knobs-hint-miss", !badge.match)
+      if (!badge.match) return
+      const rect = t.el.getBoundingClientRect()
+      const tag = el("kbd")
+      tag.className = "knobs-hint"
+      const typedSpan = el("span", badge.typed)
+      typedSpan.className = "knobs-hint-typed"
+      const restSpan = el("span", badge.rest)
+      restSpan.className = "knobs-hint-rest"
+      tag.append(typedSpan, restSpan)
+      // Rows: inline in the label gutter. Buttons and chips: tucked on the top-left corner so
+      // their own text stays readable.
+      const isRow = t.el.classList.contains("knobs-row") || t.el.classList.contains("knobs-slider")
+      const inset = isRow
+        ? parseFloat(getComputedStyle(root).getPropertyValue("--k-inset")) || 10
+        : -3
+      const y = isRow ? rect.height / 2 : 3
+      tag.style.left = `${rect.left - rootRect.left - root.clientLeft + root.scrollLeft + inset}px`
+      tag.style.top = `${rect.top - rootRect.top - root.clientTop + root.scrollTop + y}px`
+      badges.push(tag)
+    })
+    hintLayer.replaceChildren(...badges)
     wakeGpu()
   }
+
+  // Vertical navigation stops: preset strip → rows → action bar.
+  const actionBarButtons = () =>
+    [
+      ...root.querySelectorAll<HTMLButtonElement>(
+        ".knobs-actions button, .knobs-custom-actions button",
+      ),
+    ].filter((b) => visible(b) && !b.disabled)
+  let lastActionButton: HTMLButtonElement | undefined
+  const stops = (): { contains(node: Node): boolean; focus(): void }[] => {
+    const list: { contains(node: Node): boolean; focus(): void }[] = []
+    if (visible(presetStrip.element))
+      list.push({
+        contains: (n) => presetStrip.element.contains(n),
+        focus: () => presetStrip.element.focus(),
+      })
+    for (const r of rows)
+      list.push({ contains: (n) => r.row.contains(n), focus: () => r.input.focus() })
+    list.push({
+      contains: (n) => actionBarButtons().some((b) => b === n),
+      focus: () => {
+        const bar = actionBarButtons()
+        ;(lastActionButton && bar.includes(lastActionButton) ? lastActionButton : bar[0])?.focus()
+      },
+    })
+    return list
+  }
+  const focusables = () =>
+    [
+      ...root.querySelectorAll<HTMLElement>(
+        "button,input:not([type=hidden]),textarea,select,[tabindex]:not([tabindex='-1'])",
+      ),
+    ].filter((n) => n.tabIndex >= 0 && visible(n) && !(n as HTMLButtonElement).disabled)
 
   root.onkeydown = (event) => {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
@@ -552,10 +628,10 @@ function buildPanel<S extends Schema>(
         hint.query = hint.query.slice(0, -1)
         hintPaint()
       } else if (event.key === "Enter") {
-        const resolution = computeHintPrefixes(rows, hint.query)
-        const firstIdx = resolution.matchIndices[0]
-        if (firstIdx !== undefined) rows[firstIdx]?.input.focus()
+        const resolution = computeHintPrefixes(hintItems, hint.query)
+        const first = hintItems[resolution.matchIndices[0] ?? -1]
         hintOff()
+        first?.activate()
       } else if (event.key.length === 1) {
         hint.query += event.key.toLowerCase()
         hintPaint()
@@ -576,6 +652,15 @@ function buildPanel<S extends Schema>(
         close()
         return
       }
+    }
+    if (event.key === "Tab" && !inline) {
+      const list = focusables()
+      const at = list.indexOf(target)
+      if (list.length && (at < 0 || at === (event.shiftKey ? 0 : list.length - 1))) {
+        event.preventDefault()
+        list[event.shiftKey ? list.length - 1 : 0]!.focus()
+      }
+      return
     }
     if (typing) return
     const key = event.key
@@ -605,6 +690,7 @@ function buildPanel<S extends Schema>(
     if (key === "s") {
       event.preventDefault()
       hint = { query: "" }
+      hintItems = hintTargets()
       root.classList.add("knobs-hinting")
       hintPaint()
       return
@@ -624,10 +710,21 @@ function buildPanel<S extends Schema>(
     const up = key === "ArrowUp" || key === "k"
     const right = key === "ArrowRight" || key === "l"
     const left = key === "ArrowLeft" || key === "h"
+    const bar = actionBarButtons()
+    const barIndex = bar.indexOf(target as HTMLButtonElement)
+    if (barIndex >= 0) lastActionButton = bar[barIndex]
     if (up || down) {
       event.preventDefault()
       event.stopPropagation()
-      rows[(index + (down ? 1 : rows.length - 1)) % rows.length]?.input.focus()
+      const list = stops()
+      const at = list.findIndex((stop) => stop.contains(target))
+      const next =
+        at < 0 ? (down ? 0 : list.length - 1) : (at + (down ? 1 : -1) + list.length) % list.length
+      list[next]?.focus()
+    } else if ((left || right) && barIndex >= 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      bar[(barIndex + (right ? 1 : -1) + bar.length) % bar.length]?.focus()
     } else if ((left || right) && index >= 0 && target !== rows[index].number) {
       event.preventDefault()
       event.stopPropagation()

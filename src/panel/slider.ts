@@ -198,6 +198,7 @@ export function createSlider(
   let hovered = false
   let startX = 0
   let moved = false
+  let fromValue = false
 
   const syncHandleTarget = () => {
     const focused = track.ownerDocument.activeElement === track
@@ -217,8 +218,9 @@ export function createSlider(
 
   track.onpointerdown = (event) => {
     const target = event.target as Node | null
-    if (event.button !== 0 || (target && (value.contains(target) || number.contains(target))))
-      return
+    if (event.button !== 0 || (target && number.contains(target))) return
+    event.preventDefault()
+    fromValue = Boolean(target && value.contains(target))
     track.setPointerCapture(event.pointerId)
     dragging = true
     moved = false
@@ -261,7 +263,10 @@ export function createSlider(
     root.addEventListener("transitionend", () => root.classList.remove("knobs-release"), {
       once: true,
     })
-    if (!moved) set(snap(valueAt(event.clientX)))
+    if (!moved) {
+      if (fromValue) edit()
+      else set(snap(valueAt(event.clientX)))
+    }
     syncHandleTarget()
   }
   track.onpointerup = release
@@ -285,7 +290,10 @@ export function createSlider(
     track.focus({ preventScroll: true })
     onMotionWake?.()
   }
-  value.onclick = edit
+  value.onclick = (event) => {
+    // Pointer clicks are handled on release; this covers keyboard/AT activation.
+    if (event.detail === 0) edit()
+  }
   number.onblur = () => done(true)
   number.onkeydown = (event) => {
     if (event.key === "Enter") {

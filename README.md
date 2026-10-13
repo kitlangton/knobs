@@ -104,13 +104,14 @@ Panels and switchers are keyboard-first:
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` or `j` / `k` | Move between rows |
+| `↑` / `↓` or `j` / `k` | Move between presets, rows and the action bar (`←`/`→` move along the action bar) |
 | `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
-| `s` | Hint mode: shows minimal unique prefixes on each row; type to jump directly |
+| `s` | Jump: badges every row, preset and button with its shortest unique prefix; type it to jump (presets apply) |
+| `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
 | `r` | Randomize all fields |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |

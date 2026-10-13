@@ -2,6 +2,7 @@ import type { RendererMode } from "../../core/store.js"
 import { clamp, Spring } from "../motion.js"
 import type { PresetStrip } from "../presets.js"
 import type { Slider } from "../slider.js"
+import { ICONS, type IconName } from "../icons.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import { mixColor, readPanelTokens, withAlpha, type Rgba } from "./color.js"
 import { FLOATS_PER_PRIM, panelWgsl } from "./shader.wgsl.js"
@@ -56,7 +57,7 @@ export interface GpuPanelBinding {
   readonly inline: boolean
   readonly header: HTMLElement | null
   readonly titleEl: HTMLElement | null
-  readonly headerButtons: readonly { button: HTMLButtonElement; icon: string }[]
+  readonly headerButtons: readonly { button: HTMLButtonElement; icon: IconName }[]
   readonly presetStrip: PresetStrip
   readonly groups: readonly GpuGroupBinding[]
   readonly rows: readonly GpuRowBinding[]
@@ -81,6 +82,10 @@ declare global {
   interface Window {
     __knobsGpu?: KnobsGpuDiagnostics
   }
+}
+
+function padLeft(el: HTMLElement, hinting: boolean): number {
+  return hinting ? parseFloat(getComputedStyle(el).paddingLeft) || 0 : 0
 }
 
 export function resolveRendererMode(mode: RendererMode, doc: Document): "gpu" | "dom" {
@@ -667,7 +672,7 @@ class GpuOverlayManager {
           if (hb.button.hidden) continue
           const bRect = hb.button.getBoundingClientRect()
           const hovered = hb.button.matches(":hover")
-          const focused = activeEl === hb.button
+          const focused = activeEl === hb.button && hb.button.matches(":focus-visible")
           const disabled = hb.button.disabled
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
           if (hovered || focused || expanded) {
@@ -687,22 +692,22 @@ class GpuOverlayManager {
             })
           }
           const iconCol = disabled
-            ? withAlpha(tokens.dim, 0.45)
+            ? withAlpha(tokens.label, 0.3)
             : hovered || focused || expanded
               ? tokens.text
               : tokens.label
-          this.pushLabel(
-            hb.icon,
-            bRect.left + bRect.width * 0.5,
-            bRect.top + bRect.height * 0.5,
-            tokens.fontSize + 0.5,
-            600,
-            tokens.fontFamily,
-            iconCol,
-            panelClip,
-            scale,
-            "center",
-          )
+          const iconPx = 15
+          const entry = this.atlas.icon(ICONS[hb.icon], iconPx, scale)
+          this.pushPrim({
+            x: bRect.left + bRect.width * 0.5 - entry.w * 0.5,
+            y: bRect.top + bRect.height * 0.5 - entry.h * 0.5,
+            w: entry.w,
+            h: entry.h,
+            clip: panelClip,
+            uv: entry.uv,
+            color: iconCol,
+            kind: 5,
+          })
         }
       }
 
@@ -711,7 +716,7 @@ class GpuOverlayManager {
       if (!ps.element.hidden) {
         const psRect = ps.element.getBoundingClientRect()
         const trackRect = ps.track.getBoundingClientRect()
-        const psFocused = activeEl === ps.element || ps.element.contains(activeEl)
+        const psFocused = ps.element.matches(":focus-visible")
         this.pushPrim({
           x: psRect.left,
           y: psRect.top,
@@ -741,11 +746,14 @@ class GpuOverlayManager {
         if (activeBtn && !activeState.isCustom) {
           const tx = activeBtn.offsetLeft
           const tw = Math.max(18, activeBtn.offsetWidth)
+          const ty = activeBtn.offsetTop
           if (ps.pillW.x <= 1) {
             ps.pillX.snap(tx)
+            ps.pillY.snap(ty)
             ps.pillW.snap(tw)
           } else {
             ps.pillX.set(tx)
+            ps.pillY.set(ty)
             ps.pillW.set(tw)
           }
           ps.pillAlpha.set(1)
@@ -755,23 +763,30 @@ class GpuOverlayManager {
 
         if (reducedMotion) {
           ps.pillX.snap(ps.pillX.target)
+          ps.pillY.snap(ps.pillY.target)
           ps.pillW.snap(ps.pillW.target)
           ps.pillAlpha.snap(ps.pillAlpha.target)
         } else {
           ps.pillX.step(dt)
+          ps.pillY.step(dt)
           ps.pillW.step(dt)
           ps.pillAlpha.step(dt)
-          if (!ps.pillX.resting || !ps.pillW.resting || !ps.pillAlpha.resting) {
+          if (
+            !ps.pillX.resting ||
+            !ps.pillY.resting ||
+            !ps.pillW.resting ||
+            !ps.pillAlpha.resting
+          ) {
             anyMoving = true
           }
         }
 
         const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
         if (pillAlpha > 0.01) {
-          const pillScreenX = trackRect.left + ps.pillX.x - ps.track.scrollLeft
+          const pillScreenX = trackRect.left + ps.pillX.x
           const pillW = Math.max(18, ps.pillW.x)
-          const pillH = Math.max(16, trackRect.height - 4)
-          const pillY = trackRect.top + (trackRect.height - pillH) * 0.5
+          const pillH = Math.max(16, activeBtn?.offsetHeight ?? trackRect.height)
+          const pillY = trackRect.top + ps.pillY.x
           const blurX = clamp(ps.pillX.v * 0.018 * blurMul, -24, 24)
           const stretch = clamp(Math.abs(ps.pillX.v) * 0.008 * blurMul, 0, 8)
           this.pushPrim({
@@ -794,7 +809,13 @@ class GpuOverlayManager {
           if (br.right < stripClip[0] || br.left > stripClip[2]) continue
           const isActive = i === activeState.activeIndex
           const isHovered = btn.matches(":hover")
-          const col = isActive ? tokens.text : isHovered ? tokens.text : tokens.label
+          const missed =
+            btn.classList.contains("knobs-hint-miss") &&
+            panel.root.classList.contains("knobs-hinting")
+          const col = withAlpha(
+            isActive || isHovered ? tokens.text : tokens.label,
+            missed ? 0.32 : 1,
+          )
           this.pushLabel(
             btn.textContent ?? "",
             br.left + br.width * 0.5,
@@ -819,7 +840,7 @@ class GpuOverlayManager {
             h: 4,
             clip: bodyClip,
             color: tokens.modified,
-            glowOrBlur: 2.5,
+            glowOrBlur: 0.5,
             kind: 7,
           })
           this.pushLabel(
@@ -860,7 +881,7 @@ class GpuOverlayManager {
         for (const gb of g.buttons) {
           const br = gb.getBoundingClientRect()
           const hovered = gb.matches(":hover") && !gb.disabled
-          const focused = activeEl === gb
+          const focused = activeEl === gb && gb.matches(":focus-visible")
           if (hovered || focused) {
             this.pushPrim({
               x: br.left,
@@ -928,7 +949,7 @@ class GpuOverlayManager {
           }
 
           const hovered = row.row.matches(":hover")
-          const focused = activeEl === sl.track
+          const focused = activeEl === sl.track && sl.track.matches(":focus-visible")
           const dragging = sl.isDragging()
           const stretchX = sl.stretchSpring.x * blurMul
 
@@ -979,7 +1000,7 @@ class GpuOverlayManager {
           const lRect = sl.label.getBoundingClientRect()
           const labelW = this.pushLabel(
             row.display,
-            lRect.left + stretchX * 0.35,
+            lRect.left + padLeft(sl.label, hinting) + stretchX * 0.35,
             rRect.top + rRect.height * 0.5,
             tokens.fontSize,
             tokens.labelWeight,
@@ -997,7 +1018,7 @@ class GpuOverlayManager {
               h: 4,
               clip: bodyClip,
               color: withAlpha(tokens.modified, rowAlpha),
-              glowOrBlur: 2.5,
+              glowOrBlur: 0.5,
               kind: 7,
             })
           }
@@ -1114,7 +1135,7 @@ class GpuOverlayManager {
             }
           }
         } else if (row.kind === "choice") {
-          const focused = activeEl === row.segEl || row.segEl.contains(activeEl)
+          const focused = row.segEl.matches(":focus-visible")
           const hovered = row.row.matches(":hover")
           this.pushPrim({
             x: rRect.left,
@@ -1134,7 +1155,7 @@ class GpuOverlayManager {
           const lRect = row.labelEl.getBoundingClientRect()
           const labelW = this.pushLabel(
             row.display,
-            lRect.left,
+            lRect.left + padLeft(row.labelEl, hinting),
             rRect.top + rRect.height * 0.5,
             tokens.fontSize,
             tokens.labelWeight,
@@ -1152,7 +1173,7 @@ class GpuOverlayManager {
               h: 4,
               clip: bodyClip,
               color: withAlpha(tokens.modified, rowAlpha),
-              glowOrBlur: 2.5,
+              glowOrBlur: 0.5,
               kind: 7,
             })
           }
@@ -1218,7 +1239,7 @@ class GpuOverlayManager {
           }
         } else {
           // Toggle row
-          const focused = activeEl === row.toggleEl
+          const focused = row.toggleEl.matches(":focus-visible")
           const hovered = row.row.matches(":hover")
           const checked = row.toggleEl.getAttribute("aria-checked") === "true"
           const target = checked ? 1 : 0
@@ -1248,7 +1269,7 @@ class GpuOverlayManager {
           const lRect = row.labelEl.getBoundingClientRect()
           const labelW = this.pushLabel(
             row.display,
-            lRect.left,
+            lRect.left + padLeft(row.labelEl, hinting),
             rRect.top + rRect.height * 0.5,
             tokens.fontSize,
             tokens.labelWeight,
@@ -1266,7 +1287,7 @@ class GpuOverlayManager {
               h: 4,
               clip: bodyClip,
               color: withAlpha(tokens.modified, rowAlpha),
-              glowOrBlur: 2.5,
+              glowOrBlur: 0.5,
               kind: 7,
             })
           }
@@ -1289,59 +1310,6 @@ class GpuOverlayManager {
             p1: focused ? 1 : 0,
           })
         }
-
-        // Hint badge if active on this row
-        if (hinting) {
-          const hintEl = row.row.querySelector<HTMLElement>(".knobs-hint:not([hidden])")
-          if (hintEl) {
-            const hr = hintEl.getBoundingClientRect()
-            this.pushPrim({
-              x: hr.left,
-              y: hr.top,
-              w: hr.width,
-              h: hr.height,
-              clip: bodyClip,
-              color: tokens.accent,
-              radius: 4,
-              kind: 3,
-            })
-            const typedText =
-              hintEl.querySelector(".knobs-hint-typed")?.textContent?.toUpperCase() ?? ""
-            const restText =
-              hintEl.querySelector(".knobs-hint-rest")?.textContent?.toUpperCase() ??
-              (typedText ? "" : (hintEl.textContent ?? "").toUpperCase())
-            let hx = hr.left + 5
-            if (typedText) {
-              const tw = this.pushLabel(
-                typedText,
-                hx,
-                hr.top + hr.height * 0.5,
-                tokens.fontSize - 1.5,
-                700,
-                tokens.monoFamily,
-                withAlpha(tokens.bg, 0.45),
-                bodyClip,
-                scale,
-                "left",
-              )
-              hx += tw
-            }
-            if (restText) {
-              this.pushLabel(
-                restText,
-                hx,
-                hr.top + hr.height * 0.5,
-                tokens.fontSize - 1.5,
-                700,
-                tokens.monoFamily,
-                tokens.bg,
-                bodyClip,
-                scale,
-                "left",
-              )
-            }
-          }
-        }
       }
 
       // 6. Action buttons (primary footer bar + custom actions)
@@ -1351,9 +1319,11 @@ class GpuOverlayManager {
         if (br.width <= 0 || br.height <= 0) continue
         if (br.bottom < bodyClip[1] || br.top > bodyClip[3]) continue
         const hovered = btn.matches(":hover") && !btn.disabled
-        const focused = activeEl === btn
+        const focused = activeEl === btn && btn.matches(":focus-visible")
         const expanded = btn.getAttribute("aria-expanded") === "true"
-        const alpha = btn.disabled ? 0.38 : 1
+        const alpha =
+          (btn.disabled ? 0.38 : 1) *
+          (hinting && btn.classList.contains("knobs-hint-miss") ? 0.32 : 1)
         this.pushPrim({
           x: br.left,
           y: br.top,
@@ -1380,6 +1350,51 @@ class GpuOverlayManager {
           scale,
           "center",
         )
+      }
+
+      // 7. Hint badges, drawn last so they sit above every control they label
+      if (hinting) {
+        for (const hintEl of panel.root.querySelectorAll<HTMLElement>(
+          ".knobs-hint-layer .knobs-hint",
+        )) {
+          const hr = hintEl.getBoundingClientRect()
+          this.pushPrim({
+            x: hr.left,
+            y: hr.top,
+            w: hr.width,
+            h: hr.height,
+            clip: panelClip,
+            color: tokens.accent,
+            radius: 4,
+            kind: 3,
+          })
+          const typedText =
+            hintEl.querySelector(".knobs-hint-typed")?.textContent?.toUpperCase() ?? ""
+          const restText =
+            hintEl.querySelector(".knobs-hint-rest")?.textContent?.toUpperCase() ?? ""
+          let hx = hr.left + 5
+          for (const [text, color] of [
+            [typedText, withAlpha(tokens.bg, 0.45)],
+            [restText, tokens.bg],
+          ] as const) {
+            if (!text) continue
+            hx += this.pushLabel(
+              text,
+              hx,
+              hr.top + hr.height * 0.5,
+              tokens.fontSize - 1.5,
+              700,
+              tokens.monoFamily,
+              color,
+              panelClip,
+              scale,
+              "left",
+              0,
+              0,
+              0.04,
+            )
+          }
+        }
       }
     }
 

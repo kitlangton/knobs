@@ -116,6 +116,50 @@ export class LabelAtlas {
     return entry
   }
 
+  /** Rasterizes a 256×256 SVG path (Phosphor) at `px` CSS pixels into the atlas. */
+  icon(path: string, px: number, scaleFactor = 3): AtlasEntry {
+    const scale = this.ensureScale(scaleFactor)
+    const key = `icon|${path.length}|${path.slice(0, 24)}|${px}|${scale}`
+    const hit = this.map.get(key)
+    if (hit) return hit
+    const pad = Math.ceil(2 * scale)
+    const size = Math.ceil(px * scale)
+    const w = size + pad * 2
+    const h = w
+    if (this.lx + w > ATLAS_SIZE) {
+      this.lx = 0
+      this.ly += this.rowH + 2
+      this.rowH = 0
+    }
+    if (this.ly + h > ATLAS_SIZE) this.clear()
+    this.rowH = Math.max(this.rowH, h)
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(this.lx + pad, this.ly + pad)
+    ctx.scale(size / 256, size / 256)
+    ctx.fillStyle = "#ffffff"
+    ctx.fill(new Path2D(path))
+    ctx.restore()
+    const entry: AtlasEntry = {
+      uv: [
+        this.lx / ATLAS_SIZE,
+        this.ly / ATLAS_SIZE,
+        (this.lx + w) / ATLAS_SIZE,
+        (this.ly + h) / ATLAS_SIZE,
+      ],
+      w: w / scale,
+      h: h / scale,
+      pad: pad / scale,
+      textW: px,
+    }
+    this.dirtyY0 = Math.min(this.dirtyY0, this.ly)
+    this.dirtyY1 = Math.max(this.dirtyY1, this.ly + h)
+    this.lx += w + 2
+    this.map.set(key, entry)
+    this.dirty = true
+    return entry
+  }
+
   get isDirty() {
     return this.dirty
   }
