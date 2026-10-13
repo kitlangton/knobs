@@ -1,18 +1,24 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest"
+import { createRoot as createSolidRoot, type Accessor } from "solid-js"
 import {
   choice,
+  createRemoteControls,
   defineControls,
   formatCode,
+  formatSwift,
+  fromDescriptors,
   knob,
   memoryStorage,
   toggle,
   urlFlag,
+  type ControlDescriptor,
   type Values,
 } from "../src/index.js"
 import { normalize } from "../src/core/schema.js"
 import { randomValues } from "../src/core/random.js"
 import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
+import { useControls as useSolidControls } from "../src/solid/index.js"
 
 const schema = {
   count: knob(98, { min: 0, max: 300, step: 1 }),
@@ -288,5 +294,152 @@ describe("code", () => {
     const odd = { "font-size": 12, text: 'a"<&\n' }
     expect(formatCode(odd)).toContain('["font-size"]: 12')
     expect(formatCode(odd, "jsx")).toContain('text={"a\\\"<&\\n"}')
+  })
+})
+
+describe("metadata, per-key/group reset, sync, remote descriptors and Solid", () => {
+  it("preserves field metadata and resets single keys or groups", () => {
+    const grouped = defineControls(
+      "grouped",
+      {
+        duration: knob(0.4, {
+          min: 0.1,
+          max: 1,
+          step: 0.05,
+          unit: "s",
+          label: "Duration",
+          group: "Spring",
+        }),
+        bounce: knob(0.3, { min: 0, max: 0.7, step: 0.05, label: "Bounce", group: "Spring" }),
+        mode: choice("split", ["split", "flip"], {
+          label: "View mode",
+          group: "Stage",
+          shortcut: "m",
+        }),
+        muted: toggle(true, { label: "Muted", group: "Stage", shortcut: "t" }),
+      },
+      { enabled: true, storage: null },
+    )
+    expect(grouped.schema.duration.label).toBe("Duration")
+    expect(grouped.schema.mode.group).toBe("Stage")
+    expect(grouped.isModified()).toBe(false)
+    grouped.set({ duration: 0.6, bounce: 0.5, mode: "flip" })
+    expect(grouped.isModified()).toBe(true)
+    expect(grouped.isModified("duration")).toBe(true)
+    expect(grouped.isModified("muted")).toBe(false)
+    expect(grouped.modified()).toEqual({ duration: 0.6, bounce: 0.5, mode: "flip" })
+    grouped.resetKey("mode")
+    expect(grouped.get().mode).toBe("split")
+    expect(grouped.isModified("mode")).toBe(false)
+    grouped.resetGroup("Spring")
+    expect(grouped.get()).toEqual(grouped.locked)
+    expect(grouped.isModified()).toBe(false)
+  })
+
+  it("syncs remote values without polluting local undo history or echoing local onChange", () => {
+    const changes: { patch: unknown; source: string }[] = []
+    const c = defineControls("remote-sync", schema, {
+      enabled: true,
+      storage: null,
+      onChange: (patch, _values, meta) => changes.push({ patch, source: meta.source }),
+    })
+    c.sync({ count: 120, flavor: "clean" })
+    expect(c.get()).toMatchObject({ count: 120, flavor: "clean" })
+    expect(c.canUndo).toBe(false)
+    expect(changes).toEqual([{ patch: { count: 120, flavor: "clean" }, source: "remote" }])
+    // replace: true restores omitted keys back to locked defaults
+    c.sync({ count: 55 }, { replace: true })
+    expect(c.get()).toEqual({ ...c.locked, count: 55 })
+  })
+
+  it("builds remote controls from socket descriptors and formats Swift declarations", () => {
+    const descriptors: ControlDescriptor[] = [
+      {
+        key: "drawer.edge.fade",
+        label: "Edge fade",
+        kind: "number",
+        swiftType: "Double",
+        default: 16,
+        min: 0,
+        max: 40,
+        step: 1,
+        group: "drawer",
+      },
+      {
+        key: "drawer.spring.duration",
+        label: "Drawer spring duration",
+        kind: "number",
+        swiftType: "Double",
+        default: 0.35,
+        min: 0.1,
+        max: 1,
+        step: 0.05,
+        group: "drawer",
+      },
+      {
+        key: "drawer.spring.bounce",
+        label: "Drawer spring bounce",
+        kind: "number",
+        swiftType: "Double",
+        default: 0.15,
+        min: 0,
+        max: 0.6,
+        step: 0.05,
+        group: "drawer",
+      },
+      {
+        key: "composer.chrome",
+        label: "Chrome",
+        kind: "choice",
+        swiftType: "ChromeStyle",
+        default: "glass",
+        choices: ["glass", "solid"],
+        group: "composer",
+      },
+    ]
+    const sent: [string, number | string | boolean | null][] = []
+    const resets: { key?: string; group?: string }[] = []
+    const remote = createRemoteControls("iphone", descriptors, {
+      values: { "drawer.edge.fade": 24 },
+      onSet: (key, value) => sent.push([key, value]),
+      onReset: (target) => resets.push(target),
+    })
+    expect(remote.get()["drawer.edge.fade"]).toBe(24)
+    expect(sent).toEqual([])
+    remote.set({ "drawer.spring.duration": 0.45, "composer.chrome": "solid" })
+    expect(sent).toEqual([
+      ["drawer.spring.duration", 0.45],
+      ["composer.chrome", "solid"],
+    ])
+    const swiftAll = remote.swift()
+    expect(swiftAll).toContain(
+      'Tunable<Double>("drawer.edge.fade", "Edge fade", default: 24, in: 0...40, step: 1)  // was 16',
+    )
+    expect(swiftAll).toContain(
+      'TunableSpring("drawer.spring", "Drawer spring", duration: 0.45, bounce: 0.15)  // was duration: 0.35, bounce: 0.15',
+    )
+    expect(remote.swift("composer")).toBe(
+      'Tunable<ChromeStyle>("composer.chrome", "Chrome", default: .solid)  // was .glass',
+    )
+    remote.resetKey("composer.chrome")
+    expect(sent.at(-1)).toEqual(["composer.chrome", null])
+    remote.resetGroup("drawer")
+    expect(resets.at(-1)).toEqual({ group: "drawer" })
+    expect(fromDescriptors(descriptors)["composer.chrome"].kind).toBe("choice")
+    expect(formatSwift(descriptors, {})).toBe("")
+  })
+
+  it("drives Solid reactive accessors and cleans up on dispose", () => {
+    const c = make()
+    expectTypeOf<ReturnType<typeof useSolidControls<typeof schema>>>().toEqualTypeOf<
+      Accessor<Values<typeof schema>>
+    >()
+    createSolidRoot((dispose) => {
+      const values = useSolidControls(c)
+      expect(values().count).toBe(98)
+      c.set({ count: 140 })
+      expect(values().count).toBe(140)
+      dispose()
+    })
   })
 })

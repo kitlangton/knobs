@@ -1,7 +1,15 @@
 import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { defineControls, knob, choice, toggle } from "knobs"
-import { Knobs, useControls, VariantSwitcher } from "knobs/react"
+import {
+  createRemoteControls,
+  defineControls,
+  knob,
+  choice,
+  toggle,
+  type DensityMode,
+  type ThemeMode,
+} from "knobs"
+import { Knobs, KnobsPanel, useControls, VariantSwitcher } from "knobs/react"
 import "./style.css"
 
 const splat = defineControls(
@@ -171,6 +179,170 @@ function Typography() {
     </Knobs>
   )
 }
+const remoteTune = createRemoteControls(
+  "remote-tune",
+  [
+    {
+      key: "drawer.spring.duration",
+      label: "Duration",
+      kind: "number",
+      swiftType: "Double",
+      default: 0.4,
+      min: 0.1,
+      max: 1.0,
+      step: 0.05,
+      unit: "s",
+      group: "Spring",
+      shortcut: "d",
+    },
+    {
+      key: "drawer.spring.bounce",
+      label: "Bounce",
+      kind: "number",
+      swiftType: "Double",
+      default: 0.25,
+      min: 0,
+      max: 0.65,
+      step: 0.05,
+      group: "Spring",
+      shortcut: "b",
+    },
+    {
+      key: "drawer.edge.fade",
+      label: "Edge fade",
+      kind: "number",
+      swiftType: "Double",
+      default: 16,
+      min: 0,
+      max: 40,
+      step: 1,
+      unit: "pt",
+      group: "Surface",
+    },
+    {
+      key: "composer.chrome",
+      label: "Chrome",
+      kind: "choice",
+      swiftType: "ChromeStyle",
+      default: "glass",
+      choices: ["glass", "solid", "matte"],
+      group: "Surface",
+    },
+    {
+      key: "composer.haptics",
+      label: "Haptics",
+      kind: "bool",
+      swiftType: "Bool",
+      default: true,
+      group: "Surface",
+    },
+  ],
+  {
+    enabled: import.meta.env.DEV,
+    values: { "drawer.spring.duration": 0.45, "drawer.edge.fade": 24 },
+    presets: {
+      snappy: { "drawer.spring.duration": 0.25, "drawer.spring.bounce": 0.35 },
+      gentle: { "drawer.spring.duration": 0.65, "drawer.spring.bounce": 0.1 },
+    },
+    actions: [
+      {
+        label: "Copy as Swift",
+        run: async () => {
+          const code = remoteTune.swift() || "// All values at default"
+          try {
+            await navigator.clipboard.writeText(code)
+            return "Copied Swift."
+          } catch {
+            return "Updated Swift preview."
+          }
+        },
+      },
+    ],
+  },
+)
+
+function springCurvePath(duration: number, bounce: number, w = 320, h = 110): string {
+  const omega = (2 * Math.PI) / Math.max(0.1, duration)
+  const zeta = Math.max(0.05, 1 - bounce * 0.9)
+  const pts: string[] = []
+  const steps = 80
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * 1.1
+    let y = 1
+    if (zeta < 1) {
+      const wd = omega * Math.sqrt(1 - zeta * zeta)
+      y =
+        1 -
+        Math.exp(-zeta * omega * t) * (Math.cos(wd * t) + ((zeta * omega) / wd) * Math.sin(wd * t))
+    } else {
+      y = 1 - (1 + omega * t) * Math.exp(-omega * t)
+    }
+    const px = (i / steps) * w
+    const py = h - 22 - y * (h - 48)
+    pts.push(`${i === 0 ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`)
+  }
+  return pts.join(" ")
+}
+
+function Workbench() {
+  const v = useControls(remoteTune)
+  const [panelTheme, setPanelTheme] = useState<ThemeMode>("dark")
+  const [density, setDensity] = useState<DensityMode>("default")
+  const dur = Number(v["drawer.spring.duration"] ?? 0.4)
+  const bounce = Number(v["drawer.spring.bounce"] ?? 0.25)
+  const swiftOut = remoteTune.swift() || "// Default constants"
+
+  return (
+    <section className="workbench">
+      <div className="workbench-controls">
+        <div className="workbench-pills">
+          {(["dark", "light", "auto"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={panelTheme === t}
+              onClick={() => setPanelTheme(t)}
+            >
+              {t}
+            </button>
+          ))}
+          <span className="sep">·</span>
+          {(["compact", "default", "comfortable"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={density === d}
+              onClick={() => setDensity(d)}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+        <KnobsPanel controls={remoteTune} theme={panelTheme} density={density} variants={false} />
+      </div>
+      <div className="workbench-stage">
+        <svg viewBox="0 0 320 110" className="spring-viz" aria-label="Spring response">
+          <line
+            x1="0"
+            y1="40"
+            x2="320"
+            y2="40"
+            stroke="currentColor"
+            strokeOpacity="0.2"
+            strokeDasharray="3 3"
+          />
+          <path
+            d={springCurvePath(dur, bounce)}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+          />
+        </svg>
+        <pre className="swift-out">{swiftOut}</pre>
+      </div>
+    </section>
+  )
+}
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = localStorage.getItem("knobs-example-theme")
@@ -216,6 +388,7 @@ function App() {
         <Halftone />
         <Typography />
       </div>
+      {import.meta.env.DEV && <Workbench />}
       <footer>
         <span>RANDOMIZE · RESET · SAVE · SWITCH · COPY</span>
         <span>Explore in development. Ship constants.</span>

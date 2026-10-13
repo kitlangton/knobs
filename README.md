@@ -1,28 +1,28 @@
 # knobs
 
-Embeddable tuning controls, attached to the thing you're making.
+Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
-Give a component a few knobs. Hover it to reveal a tiny affordance; click to open
-its panel. Explore a seed, a spacing, a texture. Save the good variations. Copy
-one back into your source and ship a constant.
+Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel includes **Randomize · Reset · Save variant · Switch variants · Copy**.
-These are the baseline, not plugins. Shipped presets and locally saved variants
-live together, with JSON export/import for moving a collection between machines.
+Each panel includes **Randomize · Reset · Save variant · Switch variants · Copy · Undo/Redo**. Shipped presets and locally saved variants live together, with JSON export/import for moving a collection between machines.
 
-Zero runtime dependencies in core. Pure DOM panels. A thin React adapter.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
 
-This repository is local-only and not yet published. For local development, run
-`bun install && bun run build`, then use a `file:` dependency pointing here.
+```sh
+bun install
+bun run build
+```
+
+### Plain DOM
 
 ```ts
 import { defineControls, knob, choice, toggle } from "knobs"
 
 const splat = defineControls("splat", {
   seed: knob(22, { min: 1, max: 99, step: 1, shortcut: "s" }),
-  count: knob(98, { min: 0, max: 300, step: 1 }),
+  count: knob(98, { min: 0, max: 300, step: 1, shortcut: "c" }),
   size: knob(7, { min: 1, max: 30, step: 0.5, unit: "px" }),
   flavor: choice("inked", ["inked", "clean"]),
   grain: toggle(true),
@@ -31,18 +31,26 @@ const splat = defineControls("splat", {
   presets: { subtle: { count: 40, size: 4 } },
 })
 
+// Floating hover chip + anchored panel:
 const detach = splat.attach(document.querySelector<HTMLElement>("#splat")!)
+
+// Or mount an inline panel inside a container:
+const unmount = splat.mount(document.querySelector<HTMLElement>("#sidebar")!, {
+  theme: "auto",
+  density: "compact",
+})
+
 const unsubscribe = splat.subscribe(() => render(splat.get()))
 render(splat.get())
-// On teardown: detach(); unsubscribe()
+// On teardown: detach(); unmount(); unsubscribe()
 ```
 
-### React
+### React (`knobs/react`)
 
-Define controls at module scope so a render does not recreate the store.
+Define controls at module scope so renders do not recreate the store.
 
 ```tsx
-import { Knobs, useControls, VariantSwitcher } from "knobs/react"
+import { Knobs, KnobsPanel, useControls, VariantSwitcher } from "knobs/react"
 
 function Splatter() {
   const values = useControls(splat)
@@ -58,33 +66,134 @@ function Splatter() {
     </Knobs>
   )
 }
+
+// Or mount an inline panel anywhere in the tree:
+function Sidebar() {
+  return <KnobsPanel controls={splat} theme="light" density="compact" variants={false} />
+}
 ```
 
-`Knobs` adds no wrapper DOM: its single child must be a native HTML element or a
-component that forwards its ref to one. Existing refs are composed. For explicit
-attachment, use `const ref = useKnobs(splat)` and put `ref` on your element.
+`Knobs` adds no wrapper DOM: its single child must be a native HTML element or a component that forwards its ref to one. Existing refs are composed. For explicit attachment, use `const ref = useKnobs(splat)` and put `ref` on your element.
 
-`VariantSwitcher` compares a choice field in place. Omit `field` to compare
-shipped presets and saved variants. Hover or focus, then use **1–9**, **←/→**;
-Enter/Space cycles when focused. Nested switchers share a single hover owner.
-Text entry and other interactive elements keep their own keyboard events.
+### Solid (`knobs/solid`)
 
-## Attached, not a dashboard
+```tsx
+import { Knobs, KnobsPanel, useControls, useKnobs, VariantSwitcher } from "knobs/solid"
 
-- Each controls instance has its own attachment and panel. Open several at once.
-- The chip appears on hover or focus-within. Plain containers become tabbable
-  while attached; their original tabindex is restored on detach.
-- Panels anchor beside their element, clamp to the viewport, and can be dragged
-  by the header. Drag positions are remembered per controls id.
-- **↑/↓** moves between rows. **←/→** adjusts; Shift multiplies numeric steps by
-  ten. A knob's optional letter shortcut focuses its range. Typing a digit while
-  on a range starts number entry; Enter commits. Escape closes and returns focus.
-- Field and saved-variant rows retain their DOM identity during updates.
-- A single scoped stylesheet supplies a small, square, dark monospace panel.
+function Splatter() {
+  const values = useControls(splat)
+  // values() is a reactive Accessor<Values<typeof splat.schema>>
+  return (
+    <Knobs controls={splat}>
+      <section>
+        <MySplatter count={values().count} flavor={values().flavor} />
+        <VariantSwitcher controls={splat} field="flavor">
+          <span>{values().flavor}</span>
+        </VariantSwitcher>
+      </section>
+    </Knobs>
+  )
+}
+```
 
-Use a unique, stable id for each independent store. Multiple definitions with the
-same id share storage keys but do not share in-memory state. Use one controls
-object when multiple components intentionally share a setting.
+`useKnobs(splat)` works as a Solid `ref={useKnobs(splat)}` callback, and `knobs` works as a `use:knobs={splat}` directive.
+
+## Keyboard
+
+Panels and switchers are keyboard-first:
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `j` / `k` | Move between rows |
+| `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`) |
+| `Home` / `End` | Jump slider to `min` or `max` |
+| `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
+| `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
+| `s` | Hint mode: type a key or label prefix to jump directly to a row |
+| `f` | Focus first row |
+| `<letter>` | Focus the row with that `shortcut` |
+| `r` | Randomize all fields |
+| `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
+| `Esc` | Close floating panel and restore focus to its chip |
+
+In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
+
+## Groups, Labels, Actions & Remote Mode
+
+Fields accept optional `label`, `group`, and `shortcut` metadata:
+
+```ts
+const motion = defineControls("motion", {
+  duration: knob(0.4, { min: 0.1, max: 1, step: 0.05, unit: "s", label: "Duration", group: "Spring", shortcut: "d" }),
+  bounce: knob(0.25, { min: 0, max: 0.7, step: 0.05, label: "Bounce", group: "Spring", shortcut: "b" }),
+  chrome: choice("glass", ["glass", "solid"], { label: "Chrome", group: "Surface" }),
+}, {
+  actions: [
+    { label: "Copy JSON", run: (v, ctl) => navigator.clipboard.writeText(ctl.code("json")).then(() => "Copied JSON.") },
+  ],
+})
+```
+
+When fields specify `group`, the panel renders section headers with per-group **RESET** buttons (enabled whenever a field in that group is modified). Rows modified from their locked default show a subtle indicator dot.
+
+### Remote / Socket-Driven Controls (`createRemoteControls`)
+
+When values live on another device or process (such as the OpenCode iOS app paired with a Mac over WebSocket), build controls from runtime descriptors with `createRemoteControls`:
+
+```ts
+import { createRemoteControls, type ControlDescriptor } from "knobs"
+import { mountPanel } from "knobs/panel"
+
+const descriptors: ControlDescriptor[] = [
+  { key: "drawer.spring.duration", label: "Duration", kind: "number", swiftType: "Double", default: 0.35, min: 0.1, max: 1, step: 0.05, unit: "s", group: "Spring" },
+  { key: "drawer.spring.bounce", label: "Bounce", kind: "number", swiftType: "Double", default: 0.15, min: 0, max: 0.6, step: 0.05, group: "Spring" },
+]
+
+const remote = createRemoteControls("iphone", descriptors, {
+  values: phone.values,
+  onSet: (key, value) => ws.send(JSON.stringify({ type: "set", key, value })),
+  onReset: ({ key, group }) =>
+    ws.send(JSON.stringify(key ? { type: "set", key, value: null } : { type: "resetAll", group: group ?? null })),
+  actions: [
+    {
+      label: "Copy as Swift",
+      run: () => navigator.clipboard.writeText(remote.swift()).then(() => "Copied Swift."),
+    },
+  ],
+})
+
+// Apply incoming socket updates without echoing them back to onSet or polluting undo history:
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data)
+  if (msg.type === "state") remote.sync(msg.state.phones[0].values, { replace: true })
+}
+
+mountPanel(remote, document.querySelector("#groups")!, { variants: false })
+```
+
+See [`docs/migration.md`](./docs/migration.md) for full migration sketches for the OpenCode iOS Tune Page and Problems board config panels.
+
+## Theming & Density
+
+Panels support `theme: "dark" | "light" | "auto"` and `density: "compact" | "default" | "comfortable"`, configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`.
+
+Override CSS variables on `:root` or `.knobs-panel`:
+
+```css
+:root {
+  --k-bg: #1c1c1e;
+  --k-surface: rgba(255, 255, 255, 0.05);
+  --k-surface-hi: rgba(255, 255, 255, 0.11);
+  --k-line: rgba(255, 255, 255, 0.1);
+  --k-text: rgba(255, 255, 255, 0.92);
+  --k-label: rgba(255, 255, 255, 0.62);
+  --k-accent: #fff;
+  --k-modified: #ff9f0a;
+  --k-width: 280px;
+  --k-row: 34px;
+  --k-radius: 8px;
+}
+```
 
 ## Explore in development. Ship constants.
 
@@ -93,146 +202,33 @@ splat.locked // frozen schema defaults
 splat.get()  // live while enabled; the exact locked object otherwise
 ```
 
-The package has two core exports selected through the standard `development`
-condition. Vite selects it automatically in dev. For other bundlers, add
-`development` to development-only resolve conditions. Node scripts can use
-`node --conditions=development`. The default export is production-safe:
-**disabled unconditionally, even if `enabled: true` is passed**. `attach()` is a
-no-op, and its panel import is erased from that entry.
+The package has two core exports selected through the standard `development` condition. Vite selects it automatically in dev. The default export is production-safe: **disabled unconditionally, even if `enabled: true` is passed**. `attach()` and `mount()` are no-ops, and their panel imports are erased from that entry.
 
-In development, `enabled` accepts a boolean or a function. The default heuristic
-enables on localhost/loopback only. For an explicit URL gate:
+## API Summary
 
-```ts
-import { urlFlag } from "knobs"
-// In defineControls options:
-const options = { enabled: urlFlag("knobs") } // ?knobs
-```
-
-Gate functions are checked at operation time, not observed reactively; set the
-gate before mounting. `useControls` uses `useSyncExternalStore`; the server
-snapshot is always `locked`. Default browser storage is resolved lazily, so
-creating controls on a server never accesses `window`.
-
-The development core lazy-imports the attachment module when attached; clicking
-the chip lazy-imports the panel. Importing `knobs` alone does not load DOM code.
-`knobs/panel` is an explicit escape hatch for custom tooling: it contains DOM
-code, so import it only from development code. Production core does not reference
-that export. Production builds retain the small core API and React adapter, not
-the tuning interface.
-
-### Promote a variation
-
-Keep defaults as a plain object when you want a one-line promotion:
-
-```ts
-const defaults = { seed: 22, count: 98, size: 7, flavor: "inked", grain: true }
-
-const splat = defineControls("splat", {
-  seed: knob(defaults.seed, { min: 1, max: 99, step: 1 }),
-  count: knob(defaults.count, { min: 0, max: 300, step: 1 }),
-  size: knob(defaults.size, { min: 1, max: 30, step: 0.5 }),
-  // Continue with the other fields.
-})
-```
-
-1. Tune or load a saved variant.
-2. Hit **COPY**. It copies a TypeScript object expression.
-3. Replace the `defaults` initializer with that expression.
-4. The next production build uses those values. No caller branch, runtime panel,
-   or dependency on somebody's localStorage.
-
-When defaults are inline, paste the copied values into the corresponding
-`knob(...)`, `choice(...)`, and `toggle(...)` defaults. A schema-aware promotion
-codemod is on the roadmap.
-
-## API
-
-### Fields
+### Fields & Descriptors
 
 | Function | Behavior |
 | --- | --- |
-| `knob(value, { min, max, step?, unit?, shortcut? })` | Numeric control. Step defaults to range / 100 (1 for a zero-width range). |
-| `choice(value, ["a", "b"])` | Nonempty string choices with literal union inference. |
-| `toggle(value)` | Boolean control. |
-| `Values<typeof schema>` | Inferred readonly value object. |
+| `knob(value, { min, max, step?, unit?, shortcut?, label?, group? })` | Numeric slider control with rolling readout and inline editor. |
+| `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
+| `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
+| `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
+| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen. |
 
-Values are normalized on schema creation, persisted-state reads, and writes.
-Numbers are clamped and snapped to a lattice relative to `min`; when `max` is
-off-lattice, the last valid step below it is used. Invalid types and non-finite
-numbers fall back to defaults. Unknown state keys are discarded. Randomize
-samples the valid numeric steps, choice options, and both boolean values.
+### Store (`Controls<S>`)
 
-### Store
-
-```ts
-const controls = defineControls(id, schema, {
-  enabled: true,                 // development condition only
-  storage: null,                 // memory only; omit for lazy localStorage
-  presets: { quiet: { count: 40 } },
-})
-
-controls.id
-controls.schema
-controls.locked
-controls.enabled
-controls.error                   // current-state read/write or attachment error
-controls.get()                   // cached, frozen snapshot
-controls.getServerSnapshot()     // locked
-controls.set({ count: 80 })
-const unsubscribe = controls.subscribe(() => {})
-controls.reset()
-controls.randomize()
-controls.presets                 // includes "default" = locked
-controls.preset("quiet")
-controls.matchingPreset()        // id, or "custom"
-controls.code()                  // TypeScript object expression
-controls.code("json")            // formatted JSON object
-controls.code("jsx")             // seed={22} flavor={"inked"} ...
-controls.code("ts", variant.values)
-const detach = controls.attach(element)
-```
-
-Preset patches merge with locked defaults, not the current state. `default` and
-`custom` are reserved preset names. Unknown preset/variant ids throw. Subscribe
-notifies on value changes and variant collection changes; no-op value updates
-do not notify. `get()` keeps its identity until values change.
-
-`StoragePort` needs only `getItem(key)` and `setItem(key, value)`.
-`memoryStorage()` provides an injectable in-memory implementation. Current state
-uses `knobs:<encoded-id>:state:v1`, variants use `:variants:v1`, and panel
-coordinates use `:position:v1`. Changes to current values still work if storage
-fails; `controls.error` and the panel status explain the failure. Variant writes
-throw and leave the collection unchanged on persistence failure.
-
-### Variants
-
-```ts
-controls.variants.list()          // reads storage; throws if unreadable/invalid
-controls.variants.ready           // successful initial read
-const variant = controls.variants.save("Optional name")
-controls.variants.load(variant.id)
-controls.variants.remove(variant.id)
-const json = controls.variants.export()
-controls.variants.import(json)    // call list() successfully BEFORE import
-```
-
-Variants are frozen `{ id, name?, values }` objects. Save captures the current
-snapshot. Unnamed variants get a generated id. The panel offers LOAD/COPY/DELETE
-for every saved variant; the select includes shipped presets and saved variants,
-with `custom` shown when neither matches. To copy a preset, select it and COPY.
-
-Exports are `{ version: 1, controls: id, variants: [...] }`. Imports validate the
-version, controls id, every field, bounds, step, names, and unique ids before any
-write. They merge new ids and preserve existing ids. Imports refuse to proceed
-until storage has been successfully read; a corrupt collection is never silently
-replaced. Back it up and repair/remove its key, then call `list()` again.
-Schema changes that invalidate saved variants require an explicit migration or
-a new controls id. Cross-tab live synchronization is not implemented.
-
-Clipboard uses `navigator.clipboard.writeText`; if unavailable, the panel opens
-and selects the code in a text area for manual copying. EXPORT uses the same
-fallback. IMPORT accepts JSON in the panel, without blocking browser prompts.
+- `controls.get()` / `controls.getServerSnapshot()` / `controls.locked`
+- `controls.set(patch, { coalesce? })`
+- `controls.sync(values, { replace? })` — apply external state without recording undo or emitting a local change
+- `controls.reset()` / `controls.resetKey(key)` / `controls.resetGroup(group)`
+- `controls.isModified(key?)` / `controls.modified()`
+- `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
+- `controls.randomize()` / `controls.preset(id)` / `controls.matchingPreset()`
+- `controls.code("ts" | "json" | "jsx", values?)`
+- `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
+- `controls.attach(element)` — floating chip + anchored panel
+- `controls.mount(container, options?)` — inline panel
 
 ## Develop
 
@@ -240,48 +236,10 @@ fallback. IMPORT accepts JSON in the panel, without blocking browser prompts.
 bun install
 bun run build
 bun run typecheck
-bun run test                  # Vitest, not Bun's test runner
-bun run example               # http://127.0.0.1:5178
-bun run example:build         # production demo; all controls locked
-bunx playwright install chromium   # once, if Chromium is not installed
-bun run test:browser
+bun run test                  # Vitest unit suite
+bun run example               # Vite dev server with live HMR against src/
+bun run test:browser          # Production leak check + Playwright browser suite
 bun run format
 ```
 
-The example consumes the built package through its real export conditions.
-After library edits, run `bun run build` again. The three independent studies are
-a seeded SVG splatter, a canvas halftone field, and a typographic block with an
-in-place choice switcher. Each demonstrates the full panel baseline. Browser
-checks write a screenshot to `test-results/example-panel.png`.
-
-```text
-src/core/   schema · store · variants · code · storage · random
-src/panel/  lazy attach · DOM panel · position · scoped styles
-src/react/  useControls · useKnobs/Knobs · VariantSwitcher
-examples/   Vite + React, three independent studies
-tests/      core contracts + Chromium workflows
-scripts/    split development/production builds + panel-leak assertion
-```
-
-## Roadmap
-
-- Solid adapter (same `get` / `subscribe` / `attach` contract)
-- Color, vector, and text fields
-- URL-shareable variants
-- “Promote to locked” codemod
-
 MIT © 2026 Kit Langton.
-
-## Lineage
-
-knobs replaces two earlier takes: `@kitkit/dial` (a Solid, keyboard-first DialKit port in
-the lookbook experiments — hint-mode jumping, vim keys, undo/redo came from there) and the
-per-project tuning panels in kit-site, opentunnel, kit-wiki and opencode-architecture. Slider
-mechanics follow Josh Puckett's [DialKit](https://github.com/joshpuckett/dialkit): the row is
-the track, clicks snap, overshoot rubber-bands. Value readouts roll with
-[`@kitlangton/rolling-number`](https://github.com/kitlangton/rolling-number).
-
-### Keyboard
-
-`↑↓` / `jk` rows · `←→` / `hl` adjust (`⇧` ×10) · `Home`/`End` · digit or `Enter` edits the value ·
-`s` hint mode (type a key prefix to jump) · `f` first row · `r` randomize · `u` undo · `⇧u` redo · `Esc` close.

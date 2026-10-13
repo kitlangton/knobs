@@ -216,3 +216,82 @@ a:focus-visible,
 .theme:hover {
   color: var(--fg);
 }
+
+.workbench {
+  margin-top: 150px;
+  padding-top: 32px;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.workbench-controls {
+  display: grid;
+  gap: 10px;
+}
+.workbench-controls .knobs-panel.knobs-inline {
+  width: 100%;
+}
+.workbench-pills {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  font:
+    11px / 1.4 ui-monospace,
+    monospace;
+}
+.workbench-pills .sep {
+  color: var(--muted-2);
+  padding: 0 2px;
+}
+.workbench-pills button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.workbench-pills button:hover {
+  color: var(--fg);
+}
+.workbench-pills button[aria-pressed="true"] {
+  color: var(--fg);
+  border-color: var(--rule);
+}
+.workbench-stage {
+  display: grid;
+  gap: 14px;
+  background: var(--ink-panel);
+  color: var(--ink-panel-fg);
+  padding: 20px 24px;
+  border-radius: 14px;
+}
+.spring-viz {
+  width: 100%;
+  max-width: 460px;
+  height: 110px;
+  display: block;
+}
+.swift-out {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font:
+    11.5px / 1.55 ui-monospace,
+    "Geist Mono",
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+@media (max-width: 760px) {
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+}
