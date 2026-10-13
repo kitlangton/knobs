@@ -94,6 +94,7 @@ export function KnobsPanel<S extends Schema>(
       title: props.title,
       theme: props.theme,
       density: props.density,
+      renderer: props.renderer,
       variants: props.variants,
       history: props.history,
       footer: props.footer,

@@ -20,6 +20,7 @@ export {
   type ControlsOptions,
   type DensityMode,
   type MountPanelOptions,
+  type RendererMode,
   type ThemeMode,
 } from "./core/store.js"
 export {

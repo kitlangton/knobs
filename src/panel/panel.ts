@@ -1,11 +1,22 @@
-import { equal, type Schema, type Values } from "../core/schema.js"
+import type { Schema, Values } from "../core/schema.js"
 import type { ControlAction, Controls, MountPanelOptions } from "../core/store.js"
-import { injectStyles } from "./styles.js"
+import {
+  getGpuOverlayManager,
+  resolveRendererMode,
+  type GpuGroupBinding,
+  type GpuPanelBinding,
+  type GpuRowBinding,
+} from "./gpu/renderer.js"
+import { computeHintPrefixes } from "./hints.js"
+import { Spring } from "./motion.js"
 import { positionPanel } from "./position.js"
+import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { createSlider } from "./slider.js"
+import { injectStyles } from "./styles.js"
 
 export interface Panel {
   element: HTMLElement
+  presetStrip: PresetStrip
   focus(): void
   dispose(): void
 }
@@ -43,6 +54,8 @@ function buildPanel<S extends Schema>(
   // Append to host before building sliders so rolling numbers measure in-DOM immediately.
   host.append(root)
 
+  let wakeGpu = () => {}
+
   const status = el("p")
   status.className = "knobs-status"
   status.setAttribute("role", "status")
@@ -54,13 +67,16 @@ function buildPanel<S extends Schema>(
         void result
           .then((msg) => {
             if (typeof msg === "string") status.textContent = msg
+            wakeGpu()
           })
           .catch((cause) => {
             status.textContent = cause instanceof Error ? cause.message : String(cause)
+            wakeGpu()
           })
     } catch (cause) {
       status.textContent = cause instanceof Error ? cause.message : String(cause)
     }
+    wakeGpu()
   }
   const button = (label: string, action: () => unknown) => {
     const node = el("button", label)
@@ -68,29 +84,87 @@ function buildPanel<S extends Schema>(
     node.onclick = () => run(action)
     return node
   }
-  const header = el("header")
-  let dismiss: HTMLButtonElement | undefined
-  if (titleText !== false) {
-    header.append(el("strong", titleText))
-    if (close) {
-      dismiss = button("×", close)
-      dismiss.setAttribute("aria-label", `Close ${controls.id}`)
-      header.append(dismiss)
-    }
-  }
+
   const showVariants = options.variants !== false
   const showHistory = options.history !== false
   const showFooter = options.footer !== false
 
-  const picker = el("select")
-  picker.className = "knobs-picker"
-  picker.name = "preset"
-  picker.setAttribute("aria-label", "Preset or variant")
-  picker.onchange = () =>
-    run(() => {
-      if (picker.value.startsWith("p:")) controls.preset(picker.value.slice(2))
-      else if (picker.value.startsWith("v:")) controls.variants.load(picker.value.slice(2))
-    })
+  const header = el("header")
+  let titleEl: HTMLElement | null = null
+  const headerButtons: { button: HTMLButtonElement; icon: string }[] = []
+
+  const undoButton = button("↶", controls.undo)
+  undoButton.setAttribute("aria-label", "Undo")
+  undoButton.setAttribute("aria-keyshortcuts", "u")
+  undoButton.title = "Undo (u)"
+
+  const redoButton = button("↷", controls.redo)
+  redoButton.setAttribute("aria-label", "Redo")
+  redoButton.setAttribute("aria-keyshortcuts", "Shift+u")
+  redoButton.title = "Redo (⇧u)"
+
+  const popover = el("div")
+  popover.className = "knobs-popover"
+  popover.hidden = true
+  popover.setAttribute("role", "note")
+  popover.setAttribute("aria-label", "Keyboard shortcuts")
+  const popGrid = el("div")
+  popGrid.className = "knobs-popover-grid"
+  const shortcuts: [string, string][] = [
+    ["↑↓ / j k", "Move between rows"],
+    ["←→ / h l", "Adjust value (⇧ ×10)"],
+    ["[ / ]", "Cycle preset or variant"],
+    ["s", "Jump to row by prefix"],
+    ["0–9 / Enter", "Edit number inline"],
+    ["⌫", "Reset focused row"],
+    ["r", "Randomize all"],
+    ["u / ⇧u", "Undo / Redo"],
+    ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
+  ]
+  for (const [k, desc] of shortcuts) {
+    popGrid.append(el("kbd", k), el("span", desc))
+  }
+  popover.append(popGrid)
+
+  let positioned: { constrain(): void; dispose(): void } | undefined
+  let helpButton: HTMLButtonElement | undefined
+  const togglePopover = (open?: boolean) => {
+    const next = open ?? popover.hidden
+    popover.hidden = !next
+    helpButton?.setAttribute("aria-expanded", String(next))
+    positioned?.constrain()
+    wakeGpu()
+  }
+
+  let dismiss: HTMLButtonElement | undefined
+  if (titleText !== false) {
+    titleEl = el("strong", titleText)
+    const headActions = el("div")
+    headActions.className = "knobs-head-actions"
+    if (showHistory) {
+      headActions.append(undoButton, redoButton)
+      headerButtons.push({ button: undoButton, icon: "↶" }, { button: redoButton, icon: "↷" })
+    }
+    if (showFooter) {
+      helpButton = button("?", () => togglePopover())
+      helpButton.setAttribute("aria-label", "Keyboard shortcuts")
+      helpButton.setAttribute("aria-keyshortcuts", "?")
+      helpButton.setAttribute("aria-expanded", "false")
+      helpButton.title = "Keyboard shortcuts (?)"
+      headActions.append(helpButton)
+      headerButtons.push({ button: helpButton, icon: "?" })
+    }
+    if (close) {
+      dismiss = button("×", close)
+      dismiss.setAttribute("aria-label", `Close ${controls.id}`)
+      dismiss.title = "Close (Esc)"
+      headActions.append(dismiss)
+      headerButtons.push({ button: dismiss, icon: "×" })
+    }
+    header.append(titleEl, headActions)
+  }
+
+  const presetStrip = createPresetStrip(doc, controls, showVariants, run, () => wakeGpu())
 
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
@@ -99,6 +173,9 @@ function buildPanel<S extends Schema>(
   const body = el("div")
   let currentGroup: string | undefined
   const groupResetButtons = new Map<string, HTMLButtonElement>()
+  const gpuGroups: GpuGroupBinding[] = []
+  const gpuRows: GpuRowBinding[] = []
+
   const rows = Object.entries(controls.schema).map(([key, field]) => {
     if (field.group && field.group !== currentGroup) {
       currentGroup = field.group
@@ -106,23 +183,30 @@ function buildPanel<S extends Schema>(
       const gHead = el("div")
       gHead.className = "knobs-group-head"
       gHead.dataset.group = groupName
-      gHead.append(el("span", groupName))
+      const gLabel = el("span", groupName)
+      gHead.append(gLabel)
       const gRight = el("span")
+      const gBtns: HTMLButtonElement[] = []
       for (const act of allActions.filter((a) => a.group === groupName)) {
-        gRight.append(button(act.label, () => act.run(controls.get(), controls)))
+        const b = button(act.label, () => act.run(controls.get(), controls))
+        gBtns.push(b)
+        gRight.append(b)
       }
-      const gReset = button("RESET", () => controls.resetGroup(groupName))
+      const gReset = button("Reset", () => controls.resetGroup(groupName))
       gReset.setAttribute("aria-label", `Reset ${groupName}`)
       groupResetButtons.set(groupName, gReset)
+      gBtns.push(gReset)
       gRight.append(gReset)
       gHead.append(gRight)
       body.append(gHead)
+      gpuGroups.push({ element: gHead, labelEl: gLabel, buttons: gBtns })
     }
     const display = field.label ?? key
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
+    const isModified = () => controls.get()[key] !== controls.locked[key]
     if (field.kind === "knob") {
-      const slider = createSlider(doc, key, field, set)
+      const slider = createSlider(doc, key, field, set, () => wakeGpu())
       slider.element.dataset.field = key
       if (field.shortcut) slider.track.setAttribute("aria-keyshortcuts", field.shortcut)
       slider.element.ondblclick = (event) => {
@@ -130,6 +214,14 @@ function buildPanel<S extends Schema>(
         run(() => controls.resetKey(key))
       }
       body.append(slider.element)
+      gpuRows.push({
+        kind: "knob",
+        key,
+        display,
+        row: slider.element,
+        slider,
+        isModified,
+      })
       return {
         key,
         display,
@@ -144,7 +236,7 @@ function buildPanel<S extends Schema>(
     const row = el("div")
     row.className = "knobs-row"
     row.dataset.field = key
-    const rowLabel = el("span", field.shortcut ? `${display} · ${field.shortcut}` : display)
+    const rowLabel = el("span", display)
     rowLabel.ondblclick = () => run(() => controls.resetKey(key))
     row.append(rowLabel)
     if (field.kind === "choice") {
@@ -170,6 +262,18 @@ function buildPanel<S extends Schema>(
       seg.tabIndex = 0
       row.append(seg)
       body.append(row)
+      gpuRows.push({
+        kind: "choice",
+        key,
+        display,
+        row,
+        labelEl: rowLabel,
+        segEl: seg,
+        buttons,
+        pillX: new Spring(0, 28, 0.84),
+        pillW: new Spring(0, 28, 0.86),
+        isModified,
+      })
       return { key, display, field, row, input: seg, number: undefined, buttons, set }
     }
     const toggle = el("button")
@@ -182,29 +286,43 @@ function buildPanel<S extends Schema>(
     toggle.onclick = () => run(() => set(!controls.get()[key]))
     row.append(toggle)
     body.append(row)
+    gpuRows.push({
+      kind: "toggle",
+      key,
+      display,
+      row,
+      labelEl: rowLabel,
+      toggleEl: toggle,
+      toggleSpring: new Spring(controls.get()[key] ? 1 : 0, 28, 0.82),
+      isModified,
+    })
     return { key, display, field, row, input: toggle, number: undefined, set }
   })
 
   const name = el("input")
   name.className = "knobs-name"
   name.name = "variant-name"
-  name.placeholder = "Variant name (optional)"
+  name.placeholder = "Variant name"
   name.maxLength = 100
   name.setAttribute("aria-label", "Variant name")
+
   const text = el("textarea")
   text.hidden = true
   text.name = "variant-json"
   text.spellcheck = false
   text.setAttribute("aria-label", "Import or copy text")
-  let positioned: { constrain(): void; dispose(): void } | undefined
-  const apply = button("IMPORT JSON", () => {
+
+  const apply = button("Apply import", () => {
     controls.variants.import(text.value)
-    status.textContent = "Variants imported. Existing IDs kept."
+    status.textContent = "Variants imported."
     text.hidden = true
     apply.hidden = true
     positioned?.constrain()
   })
+  apply.className = "knobs-apply-btn"
+  apply.setAttribute("aria-label", "Import JSON")
   apply.hidden = true
+
   const copy = async (value: string) => {
     try {
       await doc.defaultView!.navigator.clipboard.writeText(value)
@@ -218,32 +336,57 @@ function buildPanel<S extends Schema>(
       text.select()
       status.textContent = "Clipboard unavailable. Copy the selected text."
     }
+    wakeGpu()
   }
+
+  const saveVariant = () => {
+    controls.variants.save(name.value)
+    name.value = ""
+    status.textContent = "Variant saved."
+  }
+  name.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault()
+      event.stopPropagation()
+      run(saveVariant)
+    }
+  }
+
+  const variantsDrawer = el("div")
+  variantsDrawer.className = "knobs-variants-drawer"
+  variantsDrawer.hidden = true
+
+  let variantsOpen = false
+  let variantsToggle: HTMLButtonElement | undefined
+  const setVariantsOpen = (open: boolean, focusInput = false) => {
+    variantsOpen = open
+    variantsDrawer.hidden = !open
+    variantsToggle?.setAttribute("aria-expanded", String(open))
+    positioned?.constrain()
+    if (open && focusInput) name.focus({ preventScroll: true })
+    wakeGpu()
+  }
+
   const actions = el("div")
   actions.className = "knobs-actions"
-  const undoButton = button("UNDO", controls.undo)
-  const redoButton = button("REDO", controls.redo)
-  undoButton.setAttribute("aria-keyshortcuts", "u")
-  redoButton.setAttribute("aria-keyshortcuts", "Shift+u")
-  const history = el("div")
-  history.className = "knobs-actions"
-  history.append(undoButton, redoButton)
-  actions.append(
-    button("RND", controls.randomize),
-    button("RESET", controls.reset),
-    ...(showVariants
-      ? [
-          button("SAVE", () => {
-            controls.variants.save(name.value)
-            name.value = ""
-            status.textContent = "Variant saved."
-          }),
-        ]
-      : []),
-    button("COPY", () => {
-      void copy(controls.code())
-    }),
-  )
+  const randomBtn = button("Random", controls.randomize)
+  const resetBtn = button("Reset", controls.reset)
+  const copyBtn = button("Copy", () => {
+    void copy(controls.code())
+  })
+  const gpuActionButtons: HTMLButtonElement[] = [randomBtn, resetBtn, copyBtn]
+
+  if (showVariants) {
+    variantsToggle = button("Variants", () => setVariantsOpen(!variantsOpen, !variantsOpen))
+    variantsToggle.className = "knobs-variants-toggle"
+    variantsToggle.setAttribute("aria-label", "Variants")
+    variantsToggle.setAttribute("aria-expanded", "false")
+    gpuActionButtons.push(variantsToggle)
+    actions.append(randomBtn, resetBtn, copyBtn, variantsToggle)
+  } else {
+    actions.append(randomBtn, resetBtn, copyBtn)
+  }
+
   const panelActions = allActions.filter((a) => !a.group)
   const customActions = el("div")
   customActions.className = "knobs-custom-actions"
@@ -251,17 +394,24 @@ function buildPanel<S extends Schema>(
     const b = button(act.label, () => act.run(controls.get(), controls))
     if (act.shortcut) b.setAttribute("aria-keyshortcuts", act.shortcut)
     customActions.append(b)
+    gpuActionButtons.push(b)
   }
 
+  const variantForm = el("div")
+  variantForm.className = "knobs-variant-form"
+  const saveBtn = button("Save", saveVariant)
+  variantForm.append(name, saveBtn)
+
   const saved = el("div")
+  saved.className = "knobs-saved-list"
   const savedRows = new Map<string, HTMLElement>()
   const transfer = el("div")
-  transfer.className = "knobs-actions"
+  transfer.className = "knobs-transfer"
   transfer.append(
-    button("EXPORT", () => {
+    button("Export", () => {
       void copy(controls.variants.export())
     }),
-    button("IMPORT", () => {
+    button("Import", () => {
       text.hidden = false
       apply.hidden = false
       text.value = ""
@@ -269,25 +419,17 @@ function buildPanel<S extends Schema>(
       text.focus()
     }),
   )
+  variantsDrawer.append(variantForm, saved, transfer)
+
   if (titleText !== false) root.append(header)
-  if (showVariants || Object.keys(controls.presets).length > 1) root.append(picker)
+  if (showFooter) root.append(popover)
+  root.append(presetStrip.element)
   root.append(body)
-  if (showVariants) root.append(name)
   root.append(actions)
   if (panelActions.length > 0) root.append(customActions)
-  if (showHistory) root.append(history)
-  if (showVariants) root.append(saved, transfer)
+  if (showVariants) root.append(variantsDrawer)
   root.append(text, apply, status)
-  if (showFooter) {
-    root.append(
-      el(
-        "small",
-        `↑↓/jk rows · ←→/hl adjust · ⇧ ×10 · s jump · r rnd · u undo · ⇧u redo${close ? " · esc" : ""}`,
-      ),
-    )
-  }
 
-  let signature = ""
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -313,38 +455,16 @@ function buildPanel<S extends Schema>(
     undoButton.disabled = !controls.canUndo
     redoButton.disabled = !controls.canRedo
     if (controls.error) status.textContent = controls.error
-    run(() => {
-      const variants = showVariants ? controls.variants.list() : []
-      const nextSignature = JSON.stringify(variants.map((v) => [v.id, v.name]))
-      if (signature !== nextSignature || !picker.options.length) {
-        signature = nextSignature
-        const custom = el("option", "custom")
-        custom.value = "custom"
-        custom.disabled = true
-        const presets = el("optgroup")
-        presets.label = "Presets"
-        for (const id of Object.keys(controls.presets)) {
-          const option = el("option", id)
-          option.value = `p:${id}`
-          presets.append(option)
+
+    presetStrip.update()
+
+    if (showVariants) {
+      run(() => {
+        const variants = controls.variants.list()
+        if (variantsToggle) {
+          variantsToggle.textContent =
+            variants.length > 0 ? `Variants · ${variants.length}` : "Variants"
         }
-        if (showVariants) {
-          const group = el("optgroup")
-          group.label = "Saved variants"
-          for (const variant of variants) {
-            const option = el("option", variant.name ?? variant.id.slice(0, 8))
-            option.value = `v:${variant.id}`
-            group.append(option)
-          }
-          picker.replaceChildren(custom, presets, group)
-        } else {
-          picker.replaceChildren(custom, presets)
-        }
-      }
-      const match = variants.find((v) => equal(v.values, values))
-      const preset = controls.matchingPreset()
-      picker.value = match ? `v:${match.id}` : preset === "custom" ? "custom" : `p:${preset}`
-      if (showVariants) {
         for (const [id, node] of savedRows)
           if (!variants.some((v) => v.id === id)) {
             node.remove()
@@ -357,11 +477,11 @@ function buildPanel<S extends Schema>(
           row.dataset.variant = variant.id
           row.append(
             el("span", variant.name ?? `Variant ${variant.id.slice(0, 8)}`),
-            button("LOAD", () => controls.variants.load(variant.id)),
-            button("COPY", () => {
+            button("Load", () => controls.variants.load(variant.id)),
+            button("Copy", () => {
               void copy(controls.code("ts", variant.values))
             }),
-            button("DELETE", () => {
+            button("Delete", () => {
               controls.variants.remove(variant.id)
               name.focus()
             }),
@@ -369,13 +489,13 @@ function buildPanel<S extends Schema>(
           savedRows.set(variant.id, row)
           saved.append(row)
         }
-      }
-    })
+      })
+    }
+    wakeGpu()
   }
-  // Hint mode (from @kitkit/dial): press `s`, type a label prefix, jump to the matching row.
+
+  // Hint mode: press `s`, type a minimal unique prefix, jump directly to the matching row.
   let hint: { query: string } | undefined
-  const matchesHint = (r: (typeof rows)[number], q: string) =>
-    r.key.toLowerCase().startsWith(q) || r.display.toLowerCase().startsWith(q)
   const hintOff = () => {
     hint = undefined
     root.classList.remove("knobs-hinting")
@@ -383,37 +503,47 @@ function buildPanel<S extends Schema>(
       r.row.classList.remove("knobs-hint-match", "knobs-hint-miss")
       r.row.querySelector(".knobs-hint")?.remove()
     }
+    wakeGpu()
   }
   const hintPaint = () => {
     if (!hint) return
-    const q = hint.query
-    const matches = rows.filter((r) => matchesHint(r, q))
-    for (const r of rows) {
-      const match = matches.includes(r)
-      r.row.classList.toggle("knobs-hint-match", match)
-      r.row.classList.toggle("knobs-hint-miss", !match)
+    const resolution = computeHintPrefixes(rows, hint.query)
+    if (resolution.uniqueMatchIndex >= 0) {
+      rows[resolution.uniqueMatchIndex]?.input.focus()
+      hintOff()
+      return
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]!
+      const badge = resolution.badges[i]!
+      r.row.classList.toggle("knobs-hint-match", badge.match)
+      r.row.classList.toggle("knobs-hint-miss", !badge.match)
       let tag = r.row.querySelector<HTMLElement>(".knobs-hint")
       if (!tag) {
-        tag = el("kbd", "")
+        tag = el("kbd")
         tag.className = "knobs-hint"
         r.row.append(tag)
       }
-      const source = r.display.toLowerCase().startsWith(q) ? r.display : r.key
-      tag.textContent = source.slice(0, Math.max(1, q.length + 1))
-      tag.hidden = !match
+      if (badge.match) {
+        const typedSpan = el("span", badge.typed)
+        typedSpan.className = "knobs-hint-typed"
+        const restSpan = el("span", badge.rest)
+        restSpan.className = "knobs-hint-rest"
+        tag.replaceChildren(typedSpan, restSpan)
+        tag.hidden = false
+      } else {
+        tag.hidden = true
+      }
     }
-    if (matches.length === 1 && q.length > 0) {
-      matches[0].input.focus()
-      hintOff()
-    }
+    wakeGpu()
   }
+
   root.onkeydown = (event) => {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
     const target = event.target as HTMLElement
     const typing =
       target === name ||
       target === text ||
-      target === picker ||
       (target instanceof HTMLInputElement && target.type === "number")
     if (hint) {
       event.preventDefault()
@@ -423,8 +553,9 @@ function buildPanel<S extends Schema>(
         hint.query = hint.query.slice(0, -1)
         hintPaint()
       } else if (event.key === "Enter") {
-        const first = rows.find((r) => matchesHint(r, hint!.query))
-        first?.input.focus()
+        const resolution = computeHintPrefixes(rows, hint.query)
+        const firstIdx = resolution.matchIndices[0]
+        if (firstIdx !== undefined) rows[firstIdx]?.input.focus()
         hintOff()
       } else if (event.key.length === 1) {
         hint.query += event.key.toLowerCase()
@@ -432,14 +563,35 @@ function buildPanel<S extends Schema>(
       }
       return
     }
-    if (event.key === "Escape" && close) {
-      event.preventDefault()
-      event.stopPropagation()
-      close()
-      return
+    if (event.key === "Escape") {
+      if (!popover.hidden) {
+        event.preventDefault()
+        event.stopPropagation()
+        togglePopover(false)
+        helpButton?.focus({ preventScroll: true })
+        return
+      }
+      if (close) {
+        event.preventDefault()
+        event.stopPropagation()
+        close()
+        return
+      }
     }
     if (typing) return
     const key = event.key
+    if (key === "?" && showFooter) {
+      event.preventDefault()
+      event.stopPropagation()
+      togglePopover()
+      return
+    }
+    if (key === "[" || key === "]") {
+      event.preventDefault()
+      event.stopPropagation()
+      presetStrip.cycle(key === "[" ? -1 : 1)
+      return
+    }
     if (key === "u" || key === "U" || key === "z" || key === "Z") {
       event.preventDefault()
       if (event.shiftKey) controls.redo()
@@ -504,16 +656,14 @@ function buildPanel<S extends Schema>(
       const row = rows[index] as { slider: { edit(): void }; number: HTMLInputElement }
       row.slider.edit()
       row.number.value = event.key
-    } else if (!(target instanceof HTMLInputElement && target.type === "number")) {
-      const row = rows.find((r) => r.field.shortcut?.toLowerCase() === event.key.toLowerCase())
-      if (row) {
-        event.preventDefault()
-        row.input.focus()
-      }
     }
   }
+
   const raise = () => {
-    if (!inline) root.style.zIndex = String(++layer)
+    if (!inline) {
+      root.style.zIndex = String(++layer)
+      wakeGpu()
+    }
   }
   root.onpointerdown = raise
   root.addEventListener("focusin", raise)
@@ -523,14 +673,60 @@ function buildPanel<S extends Schema>(
     !inline && options.anchor
       ? positionPanel(root, header, options.anchor, controls.id, () => controls.storage)
       : undefined
+
+  // WebGPU overlay binding & live mode switching
+  const gpuBinding: GpuPanelBinding = {
+    id: controls.id,
+    root,
+    body,
+    inline,
+    header: titleText !== false ? header : null,
+    titleEl,
+    headerButtons,
+    presetStrip,
+    groups: gpuGroups,
+    rows: gpuRows,
+    actionButtons: gpuActionButtons,
+    isPopoverOpen: () => !popover.hidden,
+  }
+  let unregisterGpu: (() => void) | undefined
+  const requestedMode = options.renderer ?? controls.renderer ?? "auto"
+  const syncRendererMode = () => {
+    const mode = resolveRendererMode(requestedMode, doc)
+    if (mode === "gpu") {
+      if (!unregisterGpu) {
+        const manager = getGpuOverlayManager(doc)
+        wakeGpu = manager.wake
+        unregisterGpu = manager.register(gpuBinding)
+      }
+    } else if (unregisterGpu) {
+      unregisterGpu()
+      unregisterGpu = undefined
+      wakeGpu = () => {}
+      root.dataset.renderer = "dom"
+    } else {
+      root.dataset.renderer = "dom"
+    }
+  }
+  syncRendererMode()
+
+  const modeObserver = new MutationObserver(syncRendererMode)
+  modeObserver.observe(doc.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-knobs-renderer", "data-theme", "style"],
+  })
+
   return {
     element: root,
+    presetStrip,
     focus() {
       raise()
       ;(rows[0]?.input ?? dismiss ?? root).focus({ preventScroll: true })
     },
     dispose() {
       hintOff()
+      modeObserver.disconnect()
+      unregisterGpu?.()
       unsubscribe()
       positioned?.dispose()
       root.remove()

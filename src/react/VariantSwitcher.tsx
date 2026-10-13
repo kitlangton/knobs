@@ -41,6 +41,7 @@ export function VariantSwitcher<S extends Schema>({
     () => empty,
   )
   const ref = useRef<HTMLDivElement>(null)
+  const lastAppliedRef = useRef<string | null>(null)
   const definition = field ? controls.schema[field] : undefined
   const options: { id: string; name: string; values?: Values<S>; choose(): void }[] =
     definition?.kind === "choice"
@@ -54,18 +55,36 @@ export function VariantSwitcher<S extends Schema>({
             id: `p:${id}`,
             name: id,
             values: preset,
-            choose: () => controls.preset(id),
+            choose: () => {
+              lastAppliedRef.current = `p:${id}`
+              controls.preset(id)
+            },
           })),
           ...variants.map((v) => ({
             id: `v:${v.id}`,
             name: v.name ?? v.id.slice(0, 8),
             values: v.values,
-            choose: () => controls.variants.load(v.id),
+            choose: () => {
+              lastAppliedRef.current = `v:${v.id}`
+              controls.variants.load(v.id)
+            },
           })),
         ]
-  const index = field
-    ? options.findIndex((o) => o.id === values[field])
-    : options.findIndex((o) => o.values !== undefined && equal(o.values, values))
+  let index = -1
+  if (field) {
+    index = options.findIndex((o) => o.id === values[field])
+  } else {
+    if (lastAppliedRef.current) {
+      const pinnedIdx = options.findIndex(
+        (o) =>
+          o.id === lastAppliedRef.current && o.values !== undefined && equal(o.values, values),
+      )
+      if (pinnedIdx >= 0) index = pinnedIdx
+    }
+    if (index < 0) {
+      index = options.findIndex((o) => o.values !== undefined && equal(o.values, values))
+    }
+  }
   const cycle = (direction: number) =>
     options[(index + direction + options.length) % options.length]?.choose()
   useEffect(() => {

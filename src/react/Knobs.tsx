@@ -46,6 +46,7 @@ export function KnobsPanel<S extends Schema>({
   title,
   theme,
   density,
+  renderer,
   variants,
   history,
   footer,
@@ -66,13 +67,26 @@ export function KnobsPanel<S extends Schema>({
       title,
       theme,
       density,
+      renderer,
       variants,
       history,
       footer,
       actions,
       onClose,
     })
-  }, [enabled, controls, title, theme, density, variants, history, footer, actions, onClose])
+  }, [
+    enabled,
+    controls,
+    title,
+    theme,
+    density,
+    renderer,
+    variants,
+    history,
+    footer,
+    actions,
+    onClose,
+  ])
   if (!enabled) return null
   return <div ref={ref} data-knobs-mount={controls.id} />
 }

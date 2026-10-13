@@ -1,12 +1,39 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
+import { Spring, VelocityTracker } from "./motion.js"
 
 export interface Slider {
   element: HTMLElement
   /** The focusable, keyboard-driven surface. */
   track: HTMLElement
+  /** The visible label element. */
+  label: HTMLElement
+  /** The value button element. */
+  valueButton: HTMLButtonElement
   /** The inline number editor (hidden until the value is clicked). */
   number: HTMLInputElement
+  /** Spring driving normalized fill ratio [0..1]. */
+  fillSpring: Spring
+  /** Spring driving rubber-band stretch in px (-MAX..+MAX). */
+  stretchSpring: Spring
+  /** Spring driving handle visibility/scale [0..1]. */
+  handleSpring: Spring
+  /** Per-character springs for GPU rolling number digits. */
+  digitSprings: Spring[]
+  /** Velocity tracker on normalized fill ratio for drag motion blur. */
+  velocity: VelocityTracker
+  /** Number of tick marks along the track. */
+  tickCount: number
+  /** Current numeric value. */
+  getValue(): number
+  /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
+  getDigitsText(): string
+  /** Optional unit string (e.g. "px", "s"). */
+  getUnitText(): string
+  /** Whether pointer drag is currently active. */
+  isDragging(): boolean
+  /** Whether the inline number input is open. */
+  isEditing(): boolean
   update(value: number): void
   /** Open the inline editor (used when a digit is typed on the track). */
   edit(): void
@@ -29,6 +56,7 @@ export function createSlider(
   key: string,
   field: KnobField,
   set: (value: number, options?: { coalesce?: boolean }) => void,
+  onMotionWake?: () => void,
 ): Slider {
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
     const node = doc.createElement(tag)
@@ -54,7 +82,7 @@ export function createSlider(
   const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
-  label.textContent = field.shortcut ? `${display} · ${field.shortcut}` : display
+  label.textContent = display
   const value = el("button", "knobs-value")
   value.type = "button"
   value.tabIndex = -1
@@ -78,20 +106,47 @@ export function createSlider(
   root.append(track)
 
   const places = decimals(field.step)
-  const fmt = (v: number) => `${v.toFixed(places)}${field.unit ? ` ${field.unit}` : ""}`
+  const fmtDigits = (v: number) => v.toFixed(places)
+  const fmt = (v: number) => `${fmtDigits(v)}${field.unit ? ` ${field.unit}` : ""}`
   const roller = createRollingNumber(digits, {
     value: field.value,
     format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
     duration: 420,
   })
-  const pct = (v: number) => ((v - field.min) / (field.max - field.min)) * 100
+  const ratioOf = (v: number) =>
+    field.max === field.min ? 0 : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
+  const pct = (v: number) => ratioOf(v) * 100
   const quantize = (v: number) =>
     Math.min(
       field.max,
       Math.max(field.min, field.min + Math.round((v - field.min) / field.step) * field.step),
     )
 
-  let current = field.min
+  const fillSpring = new Spring(ratioOf(field.value), 26, 0.84)
+  const stretchSpring = new Spring(0, 32, 0.78)
+  const handleSpring = new Spring(0, 28, 0.88)
+  const digitSprings: Spring[] = []
+  const velocity = new VelocityTracker()
+  let initialized = false
+
+  function syncDigitSprings(text: string, snap: boolean) {
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]!
+      const num = ch >= "0" && ch <= "9" ? Number(ch) : ch === "-" ? -1 : -2
+      let sp = digitSprings[i]
+      if (!sp) {
+        sp = new Spring(num, 24, 0.86)
+        digitSprings[i] = sp
+      } else if (snap || num < 0 || sp.target < 0) {
+        sp.snap(num)
+      } else {
+        sp.set(num)
+      }
+    }
+    digitSprings.length = text.length
+  }
+
+  let current = field.value
   const paint = (v: number, animate: boolean) => {
     root.classList.toggle("knobs-animate", animate)
     const p = pct(v)
@@ -102,11 +157,25 @@ export function createSlider(
   }
   const update = (v: number) => {
     current = v
-    // Dragging tracks the pointer; everything else (RND, presets, keys) rolls.
+    const r = ratioOf(v)
+    velocity.add(r, 0)
+    if (!initialized) {
+      fillSpring.snap(r)
+      syncDigitSprings(fmtDigits(v), true)
+      initialized = true
+    } else if (dragging) {
+      fillSpring.snap(r)
+      syncDigitSprings(fmtDigits(v), true)
+    } else {
+      fillSpring.set(r)
+      syncDigitSprings(fmtDigits(v), false)
+    }
+    // Dragging tracks the pointer; everything else (Random, presets, keys) rolls.
     roller.update({ value: v, animated: !dragging })
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)
+    onMotionWake?.()
   }
 
   const valueAt = (clientX: number) => {
@@ -124,8 +193,26 @@ export function createSlider(
   }
 
   let dragging = false
+  let hovered = false
   let startX = 0
   let moved = false
+
+  const syncHandleTarget = () => {
+    const focused = track.ownerDocument.activeElement === track
+    handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
+    onMotionWake?.()
+  }
+  root.addEventListener("pointerenter", () => {
+    hovered = true
+    syncHandleTarget()
+  })
+  root.addEventListener("pointerleave", () => {
+    hovered = false
+    syncHandleTarget()
+  })
+  track.addEventListener("focus", syncHandleTarget)
+  track.addEventListener("blur", syncHandleTarget)
+
   track.onpointerdown = (event) => {
     const target = event.target as Node | null
     if (event.button !== 0 || (target && (value.contains(target) || number.contains(target))))
@@ -134,8 +221,10 @@ export function createSlider(
     dragging = true
     moved = false
     startX = event.clientX
+    velocity.reset()
     root.classList.add("knobs-active")
     track.focus({ preventScroll: true })
+    syncHandleTarget()
   }
   const MAX_STRETCH = 8
   const stretch = (clientX: number) => {
@@ -144,10 +233,13 @@ export function createSlider(
       clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
     const dead = Math.max(0, over - 24)
     const amount = MAX_STRETCH * Math.sqrt(Math.min(dead / 200, 1))
+    const signed = clientX < rect.left ? -amount : amount
+    stretchSpring.snap(signed)
     root.style.transform = amount
       ? `translateX(${clientX < rect.left ? -amount : 0}px) scaleX(${1 + amount / rect.width})`
       : ""
     root.style.transformOrigin = clientX < rect.left ? "right" : "left"
+    onMotionWake?.()
   }
   track.onpointermove = (event) => {
     if (!dragging) return
@@ -160,6 +252,7 @@ export function createSlider(
   const release = (event: PointerEvent) => {
     if (!dragging) return
     dragging = false
+    stretchSpring.set(0)
     root.classList.remove("knobs-active")
     root.classList.add("knobs-release")
     root.style.transform = ""
@@ -167,6 +260,7 @@ export function createSlider(
       once: true,
     })
     if (!moved) set(snap(valueAt(event.clientX)))
+    syncHandleTarget()
   }
   track.onpointerup = release
   track.onpointercancel = release
@@ -177,6 +271,7 @@ export function createSlider(
     value.hidden = true
     number.focus()
     number.select()
+    onMotionWake?.()
   }
   const done = (commit: boolean) => {
     if (number.hidden) return
@@ -186,6 +281,7 @@ export function createSlider(
     if (commit && Number.isFinite(next)) set(quantize(next))
     paint(current, false)
     track.focus({ preventScroll: true })
+    onMotionWake?.()
   }
   value.onclick = edit
   number.onblur = () => done(true)
@@ -213,7 +309,20 @@ export function createSlider(
   return {
     element: root,
     track,
+    label,
+    valueButton: value,
     number,
+    fillSpring,
+    stretchSpring,
+    handleSpring,
+    digitSprings,
+    velocity,
+    tickCount: count,
+    getValue: () => current,
+    getDigitsText: () => fmtDigits(current),
+    getUnitText: () => field.unit ?? "",
+    isDragging: () => dragging,
+    isEditing: () => !number.hidden,
     update,
     edit,
   }

@@ -13,6 +13,7 @@ export interface SwitcherOptions<S extends Schema> {
 }
 
 let hoveredPreview: { element: HTMLElement; target: Element } | null = null
+const lastAppliedByControls = new WeakMap<Controls<any>, string>()
 const interactive = "a[href],button,input,select,textarea,[contenteditable=true]"
 
 export function getSwitcherOptions<S extends Schema>(
@@ -45,18 +46,36 @@ export function getSwitcherOptions<S extends Schema>(
             id: `p:${id}`,
             name: id,
             values: preset,
-            choose: () => controls.preset(id),
+            choose: () => {
+              lastAppliedByControls.set(controls, `p:${id}`)
+              controls.preset(id)
+            },
           })),
           ...variants.map((v) => ({
             id: `v:${v.id}`,
             name: v.name ?? v.id.slice(0, 8),
             values: v.values,
-            choose: () => controls.variants.load(v.id),
+            choose: () => {
+              lastAppliedByControls.set(controls, `v:${v.id}`)
+              controls.variants.load(v.id)
+            },
           })),
         ]
-  const index = field
-    ? options.findIndex((o) => o.id === values[field])
-    : options.findIndex((o) => o.values !== undefined && equal(o.values, values))
+  let index = -1
+  if (field) {
+    index = options.findIndex((o) => o.id === values[field])
+  } else {
+    const pinnedId = lastAppliedByControls.get(controls)
+    if (pinnedId) {
+      const pinnedIdx = options.findIndex(
+        (o) => o.id === pinnedId && o.values !== undefined && equal(o.values, values),
+      )
+      if (pinnedIdx >= 0) index = pinnedIdx
+    }
+    if (index < 0) {
+      index = options.findIndex((o) => o.values !== undefined && equal(o.values, values))
+    }
+  }
   return {
     options,
     index,

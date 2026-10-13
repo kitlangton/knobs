@@ -7,6 +7,7 @@ import { createVariants, type Variants } from "./variants.js"
 declare const __KNOBS_DEV__: boolean
 export type ThemeMode = "dark" | "light" | "auto"
 export type DensityMode = "compact" | "default" | "comfortable"
+export type RendererMode = "gpu" | "dom" | "auto"
 export type ChangeSource =
   | "local"
   | "remote"
@@ -33,6 +34,7 @@ export interface MountPanelOptions {
   readonly title?: string | false
   readonly theme?: ThemeMode
   readonly density?: DensityMode
+  readonly renderer?: RendererMode
   readonly variants?: boolean
   readonly history?: boolean
   readonly footer?: boolean
@@ -46,6 +48,7 @@ export interface ControlsOptions<S extends Schema> {
   actions?: readonly ControlAction<Values<S>>[]
   theme?: ThemeMode
   density?: DensityMode
+  renderer?: RendererMode
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   onReset?: (target: { key?: keyof S & string; group?: string }) => void
 }
@@ -60,6 +63,7 @@ export interface Controls<S extends Schema = Schema> {
   readonly actions: readonly ControlAction<Values<S>>[]
   readonly theme: ThemeMode
   readonly density: DensityMode
+  readonly renderer: RendererMode
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -98,6 +102,7 @@ export function defineControls<const S extends Schema>(
   const actions = Object.freeze([...(options.actions ?? [])])
   const theme: ThemeMode = options.theme ?? "dark"
   const density: DensityMode = options.density ?? "default"
+  const renderer: RendererMode = options.renderer ?? "auto"
   const enabled = () =>
     (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__) &&
     (typeof options.enabled === "function"
@@ -194,6 +199,7 @@ export function defineControls<const S extends Schema>(
     actions,
     theme,
     density,
+    renderer,
     get,
     set,
     sync,

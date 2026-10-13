@@ -19,6 +19,8 @@ import { randomValues } from "../src/core/random.js"
 import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
+import { computeHintPrefixes } from "../src/panel/hints.js"
+import { nextPresetIndex, resolveActivePresetEntry, type PresetEntry } from "../src/panel/presets.js"
 
 const schema = {
   count: knob(98, { min: 0, max: 300, step: 1 }),
@@ -441,5 +443,80 @@ describe("metadata, per-key/group reset, sync, remote descriptors and Solid", ()
       expect(values().count).toBe(140)
       dispose()
     })
+  })
+
+  it("computes minimal unique hint prefixes, dims typed chars, and detects single match", () => {
+    const items = [
+      { key: "seed", display: "seed" },
+      { key: "count", display: "count" },
+      { key: "size", display: "size" },
+      { key: "flavor", display: "flavor" },
+      { key: "grain", display: "grain" },
+    ]
+    const initial = computeHintPrefixes(items, "")
+    expect(initial.uniqueMatchIndex).toBe(-1)
+    expect(initial.badges.map((b) => b.prefix)).toEqual(["se", "c", "si", "f", "g"])
+    expect(initial.badges[0]).toEqual({ match: true, prefix: "se", typed: "", rest: "se" })
+
+    const afterS = computeHintPrefixes(items, "s")
+    expect(afterS.uniqueMatchIndex).toBe(-1)
+    expect(afterS.matchIndices).toEqual([0, 2])
+    expect(afterS.badges[0]).toEqual({ match: true, prefix: "se", typed: "s", rest: "e" })
+    expect(afterS.badges[2]).toEqual({ match: true, prefix: "si", typed: "s", rest: "i" })
+    expect(afterS.badges[1]?.match).toBe(false)
+
+    const afterSe = computeHintPrefixes(items, "se")
+    expect(afterSe.uniqueMatchIndex).toBe(0)
+
+    const afterC = computeHintPrefixes(items, "c")
+    expect(afterC.uniqueMatchIndex).toBe(1)
+  })
+
+  it("never gets stuck when cycling presets and a saved variant equals a preset", () => {
+    const c = make()
+    // Save a variant whose values equal the "default" preset
+    const vDefault = c.variants.save("Saved default")
+    const entries: PresetEntry<Values<typeof schema>>[] = [
+      ...Object.entries(c.presets).map(([id, values]) => ({
+        id: `p:${id}`,
+        kind: "preset" as const,
+        rawId: id,
+        label: id,
+        values,
+        apply: () => c.preset(id),
+      })),
+      {
+        id: `v:${vDefault.id}`,
+        kind: "variant" as const,
+        rawId: vDefault.id,
+        label: vDefault.name ?? vDefault.id,
+        values: vDefault.values,
+        apply: () => c.variants.load(vDefault.id),
+      },
+    ]
+    // entries: [p:default, p:subtle, v:<id>] where p:default and v:<id> have identical values
+    let lastAppliedId: string | null = null
+    const visited: string[] = []
+    for (let step = 0; step < entries.length; step++) {
+      const state = resolveActivePresetEntry(entries, c.get(), lastAppliedId)
+      const nextIdx = nextPresetIndex(entries.length, state.activeIndex, 1)
+      const entry = entries[nextIdx]!
+      lastAppliedId = entry.id
+      entry.apply()
+      const after = resolveActivePresetEntry(entries, c.get(), lastAppliedId)
+      visited.push(after.activeId)
+    }
+    expect(visited).toEqual(["p:subtle", `v:${vDefault.id}`, "p:default"])
+  })
+
+  it("exposes renderer mode option on controls and remote controls", () => {
+    const gpuCtl = defineControls("gpu-test", schema, { renderer: "gpu", storage: null })
+    expect(gpuCtl.renderer).toBe("gpu")
+    const remote = createRemoteControls(
+      "remote-gpu",
+      [{ key: "x", kind: "number", default: 1, min: 0, max: 10 }],
+      { renderer: "dom" },
+    )
+    expect(remote.renderer).toBe("dom")
   })
 })

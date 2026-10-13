@@ -6,6 +6,7 @@ import {
   type ControlAction,
   type Controls,
   type DensityMode,
+  type RendererMode,
   type ThemeMode,
 } from "./store.js"
 
@@ -33,6 +34,7 @@ export interface RemoteControlsOptions {
   readonly storage?: StoragePort | null
   readonly theme?: ThemeMode
   readonly density?: DensityMode
+  readonly renderer?: RendererMode
   readonly onSet?: (key: string, value: number | string | boolean | null, meta: ChangeMeta) => void
   readonly onReset?: (target: { key?: string; group?: string }) => void
 }
@@ -132,6 +134,7 @@ export function createRemoteControls(
     actions: options.actions,
     theme: options.theme,
     density: options.density,
+    renderer: options.renderer,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       for (const [key, val] of Object.entries(patch)) {
