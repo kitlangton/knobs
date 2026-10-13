@@ -7,12 +7,22 @@ const rollingCss = readFileSync(
   resolve(rootDir, "node_modules/@kitlangton/rolling-number/dist/styles.css"),
   "utf8",
 )
+const port = Number(process.env.PORT) || 5178
 
 export default defineConfig(({ command }) => ({
   root: "examples",
-  optimizeDeps: { entries: ["index.html", "contracts.html"] },
-  server: { host: "127.0.0.1", port: 5178, strictPort: true },
-  build: { outDir: "dist" },
+  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html"] },
+  server: { host: "127.0.0.1", port, strictPort: true },
+  build: {
+    outDir: "dist",
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, "index.html"),
+        contracts: resolve(import.meta.dirname, "contracts.html"),
+        meta: resolve(import.meta.dirname, "meta.html"),
+      },
+    },
+  },
   ...(command === "serve"
     ? {
         resolve: {

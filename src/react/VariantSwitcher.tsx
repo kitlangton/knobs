@@ -76,8 +76,7 @@ export function VariantSwitcher<S extends Schema>({
   } else {
     if (lastAppliedRef.current) {
       const pinnedIdx = options.findIndex(
-        (o) =>
-          o.id === lastAppliedRef.current && o.values !== undefined && equal(o.values, values),
+        (o) => o.id === lastAppliedRef.current && o.values !== undefined && equal(o.values, values),
       )
       if (pinnedIdx >= 0) index = pinnedIdx
     }

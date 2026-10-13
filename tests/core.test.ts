@@ -20,7 +20,11 @@ import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
 import { computeHintPrefixes } from "../src/panel/hints.js"
-import { nextPresetIndex, resolveActivePresetEntry, type PresetEntry } from "../src/panel/presets.js"
+import {
+  nextPresetIndex,
+  resolveActivePresetEntry,
+  type PresetEntry,
+} from "../src/panel/presets.js"
 
 const schema = {
   count: knob(98, { min: 0, max: 300, step: 1 }),

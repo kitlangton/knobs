@@ -92,7 +92,12 @@ export function resolveRendererMode(mode: RendererMode, doc: Document): "gpu" | 
   if (search) {
     const params = new URLSearchParams(search)
     const r = params.get("renderer")
-    if (r === "dom" || params.has("dom") || params.get("gpu") === "0" || params.get("gpu") === "false") {
+    if (
+      r === "dom" ||
+      params.has("dom") ||
+      params.get("gpu") === "0" ||
+      params.get("gpu") === "false"
+    ) {
       return "dom"
     }
     if (r === "gpu" || params.has("gpu")) {
@@ -603,12 +608,7 @@ class GpuOverlayManager {
         ? getEffectiveClipRect(panel.root, win)
         : ([0, 0, win.innerWidth, win.innerHeight] as [number, number, number, number])
 
-      const panelClip = intersectClip(outerClip, [
-        pRect.left,
-        pRect.top,
-        pRect.right,
-        pRect.bottom,
-      ])
+      const panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
 
       // 1. Panel card background + border + drop shadow
       this.pushPrim({
@@ -734,6 +734,25 @@ class GpuOverlayManager {
           trackRect.bottom - 1,
         ])
 
+        const activeState = ps.getActiveState()
+        const chipButtons = ps.getButtons()
+        const activeBtn =
+          activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
+        if (activeBtn && !activeState.isCustom) {
+          const tx = activeBtn.offsetLeft
+          const tw = Math.max(18, activeBtn.offsetWidth)
+          if (ps.pillW.x <= 1) {
+            ps.pillX.snap(tx)
+            ps.pillW.snap(tw)
+          } else {
+            ps.pillX.set(tx)
+            ps.pillW.set(tw)
+          }
+          ps.pillAlpha.set(1)
+        } else {
+          ps.pillAlpha.set(0)
+        }
+
         if (reducedMotion) {
           ps.pillX.snap(ps.pillX.target)
           ps.pillW.snap(ps.pillW.target)
@@ -769,8 +788,6 @@ class GpuOverlayManager {
           })
         }
 
-        const activeState = ps.getActiveState()
-        const chipButtons = ps.getButtons()
         for (let i = 0; i < chipButtons.length; i++) {
           const btn = chipButtons[i]!
           const br = btn.getBoundingClientRect()
@@ -935,7 +952,8 @@ class GpuOverlayManager {
           // Slider fill + ticks + handle with directional motion blur
           const dragVel = sl.velocity.velocity[0]
           const springVel = sl.fillSpring.v
-          const rawVelPx = (Math.abs(springVel) > Math.abs(dragVel) ? springVel : dragVel) * rRect.width
+          const rawVelPx =
+            (Math.abs(springVel) > Math.abs(dragVel) ? springVel : dragVel) * rRect.width
           const blurX = clamp(rawVelPx * 0.022 * blurMul, -28, 28)
 
           this.pushPrim({
@@ -989,10 +1007,7 @@ class GpuOverlayManager {
             const vRect = sl.valueButton.getBoundingClientRect()
             const unitText = sl.getUnitText()
             const digitsText = sl.getDigitsText()
-            const valCol = withAlpha(
-              dragging || focused ? tokens.text : tokens.label,
-              rowAlpha,
-            )
+            const valCol = withAlpha(dragging || focused ? tokens.text : tokens.label, rowAlpha)
             let rightEdge = vRect.right - 2 + stretchX * 0.35
             if (unitText) {
               const uw = this.pushLabel(
@@ -1011,8 +1026,7 @@ class GpuOverlayManager {
             }
 
             // Render per-digit columns so rolling digits blur vertically
-            const anyDigitRolling =
-              !reducedMotion && sl.digitSprings.some((ds) => !ds.resting)
+            const anyDigitRolling = !reducedMotion && sl.digitSprings.some((ds) => !ds.resting)
             if (!anyDigitRolling) {
               this.pushLabel(
                 digitsText,
@@ -1260,11 +1274,7 @@ class GpuOverlayManager {
           const tRect = row.toggleEl.getBoundingClientRect()
           const prog = clamp(row.toggleSpring.x, 0, 1)
           const trackColor = mixColor(tokens.toggleTrack, tokens.accent, prog)
-          const thumbColor = mixColor(
-            [1, 1, 1, 1],
-            tokens.isLight ? [1, 1, 1, 1] : tokens.bg,
-            prog,
-          )
+          const thumbColor = mixColor([1, 1, 1, 1], tokens.isLight ? [1, 1, 1, 1] : tokens.bg, prog)
           this.pushPrim({
             x: tRect.left,
             y: tRect.top,

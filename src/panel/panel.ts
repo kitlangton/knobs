@@ -462,8 +462,7 @@ function buildPanel<S extends Schema>(
       run(() => {
         const variants = controls.variants.list()
         if (variantsToggle) {
-          variantsToggle.textContent =
-            variants.length > 0 ? `Variants · ${variants.length}` : "Variants"
+          variantsToggle.dataset.count = String(variants.length)
         }
         for (const [id, node] of savedRows)
           if (!variants.some((v) => v.id === id)) {

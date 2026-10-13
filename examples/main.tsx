@@ -6,7 +6,9 @@ import {
   knob,
   choice,
   toggle,
+  urlFlag,
   type DensityMode,
+  type RendererMode,
   type ThemeMode,
 } from "knobs"
 import { Knobs, KnobsPanel, useControls, VariantSwitcher } from "knobs/react"
@@ -284,7 +286,7 @@ function springCurvePath(duration: number, bounce: number, w = 320, h = 110): st
   return pts.join(" ")
 }
 
-function Workbench() {
+function Workbench({ renderer }: { renderer: RendererMode }) {
   const v = useControls(remoteTune)
   const [panelTheme, setPanelTheme] = useState<ThemeMode>("dark")
   const [density, setDensity] = useState<DensityMode>("default")
@@ -318,7 +320,13 @@ function Workbench() {
             </button>
           ))}
         </div>
-        <KnobsPanel controls={remoteTune} theme={panelTheme} density={density} variants={false} />
+        <KnobsPanel
+          controls={remoteTune}
+          theme={panelTheme}
+          density={density}
+          renderer={renderer}
+          variants={false}
+        />
       </div>
       <div className="workbench-stage">
         <svg viewBox="0 0 320 110" className="spring-viz" aria-label="Spring response">
@@ -357,14 +365,34 @@ function useTheme() {
 }
 function App() {
   const [theme, toggleTheme] = useTheme()
+  const [renderer, setRenderer] = useState<RendererMode>(() => (urlFlag("gpu")() ? "gpu" : "auto"))
+  useEffect(() => {
+    if (renderer === "gpu") {
+      document.documentElement.dataset.knobsRenderer = "gpu"
+    } else if (renderer === "dom") {
+      document.documentElement.dataset.knobsRenderer = "dom"
+    } else {
+      delete document.documentElement.dataset.knobsRenderer
+    }
+  }, [renderer])
+  const isGpu = renderer === "gpu" || (renderer === "auto" && urlFlag("gpu")())
   return (
     <main>
       <header className="masthead">
         <a href="#">
           knobs<span> / an instrument for the web</span>
         </a>
-        <span>
-          Kit Langton · 2026
+        <span className="masthead-links">
+          <a href="/meta.html">meta</a>
+          <button
+            type="button"
+            className="theme"
+            aria-pressed={isGpu}
+            onClick={() => setRenderer(isGpu ? "dom" : "gpu")}
+            aria-label="Toggle GPU renderer"
+          >
+            {isGpu ? "◆ gpu" : "◇ dom"}
+          </button>
           <button type="button" className="theme" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === "dark" ? "☾ dark" : "☼ light"}
           </button>
@@ -388,7 +416,7 @@ function App() {
         <Halftone />
         <Typography />
       </div>
-      {import.meta.env.DEV && <Workbench />}
+      {import.meta.env.DEV && <Workbench renderer={renderer} />}
       <footer>
         <span>RANDOMIZE · RESET · SAVE · SWITCH · COPY</span>
         <span>Explore in development. Ship constants.</span>

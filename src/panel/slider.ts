@@ -114,7 +114,9 @@ export function createSlider(
     duration: 420,
   })
   const ratioOf = (v: number) =>
-    field.max === field.min ? 0 : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
+    field.max === field.min
+      ? 0
+      : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
   const pct = (v: number) => ratioOf(v) * 100
   const quantize = (v: number) =>
     Math.min(

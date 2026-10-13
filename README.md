@@ -106,15 +106,16 @@ Panels and switchers are keyboard-first:
 | --- | --- |
 | `↑` / `↓` or `j` / `k` | Move between rows |
 | `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`) |
+| `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
-| `s` | Hint mode: type a key or label prefix to jump directly to a row |
+| `s` | Hint mode: shows minimal unique prefixes on each row; type to jump directly |
 | `f` | Focus first row |
-| `<letter>` | Focus the row with that `shortcut` |
 | `r` | Randomize all fields |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
-| `Esc` | Close floating panel and restore focus to its chip |
+| `?` | Toggle keyboard shortcuts popover |
+| `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |
 
 In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
 
@@ -173,25 +174,35 @@ mountPanel(remote, document.querySelector("#groups")!, { variants: false })
 
 See [`docs/migration.md`](./docs/migration.md) for full migration sketches for the OpenCode iOS Tune Page and Problems board config panels.
 
-## Theming & Density
+## Theming, Density & WebGPU Renderer
 
-Panels support `theme: "dark" | "light" | "auto"` and `density: "compact" | "default" | "comfortable"`, configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`.
+Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`.
+
+When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels share a single page-level WebGPU overlay canvas and `GPUDevice` with 480 Hz spring physics, velocity-driven directional motion blur, native-rasterized glyph atlas text, and per-column rolling digit smear, while keeping an invisible semantic DOM mirror for keyboard navigation and screen readers. When WebGPU is unavailable, panels fall back to the DOM/CSS renderer automatically.
 
 Override CSS variables on `:root` or `.knobs-panel`:
 
 ```css
 :root {
   --k-bg: #1c1c1e;
-  --k-surface: rgba(255, 255, 255, 0.05);
+  --k-surface: rgba(255, 255, 255, 0.055);
   --k-surface-hi: rgba(255, 255, 255, 0.11);
   --k-line: rgba(255, 255, 255, 0.1);
   --k-text: rgba(255, 255, 255, 0.92);
-  --k-label: rgba(255, 255, 255, 0.62);
+  --k-label: rgba(255, 255, 255, 0.64);
   --k-accent: #fff;
   --k-modified: #ff9f0a;
-  --k-width: 280px;
-  --k-row: 34px;
+  --k-width: 288px;
+  --k-pad: 10px;
+  --k-inset: 10px;
+  --k-row: 32px;
+  --k-gap: 4px;
   --k-radius: 8px;
+  --k-panel-radius: 12px;
+  --k-font-size: 12px;
+  --k-label-weight: 500;
+  --k-blur: 1;
+  --k-glow: 0.5;
 }
 ```
 

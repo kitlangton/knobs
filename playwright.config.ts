@@ -5,6 +5,9 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5178",
     viewport: { width: 1440, height: 1000 },
     browserName: "chromium",
+    launchOptions: {
+      args: ["--enable-gpu"],
+    },
   },
   webServer: [
     { command: "bun run example", url: "http://127.0.0.1:5178", reuseExistingServer: true },

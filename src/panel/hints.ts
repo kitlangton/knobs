@@ -54,7 +54,9 @@ export function computeHintPrefixes(
     let chosenLen = maxLen
     for (let len = minLen; len <= maxLen; len++) {
       const sub = m.norm.slice(0, len)
-      const collision = matched.some((other) => other.index !== m.index && other.norm.slice(0, len) === sub)
+      const collision = matched.some(
+        (other) => other.index !== m.index && other.norm.slice(0, len) === sub,
+      )
       if (!collision) {
         chosenLen = len
         break

@@ -52,11 +52,7 @@ export function resolveActivePresetEntry<V extends Record<string, any>>(
   }
 }
 
-export function nextPresetIndex(
-  count: number,
-  activeIndex: number,
-  direction: number,
-): number {
+export function nextPresetIndex(count: number, activeIndex: number, direction: number): number {
   if (count <= 0) return -1
   if (activeIndex < 0) return direction > 0 ? 0 : count - 1
   return (((activeIndex + direction) % count) + count) % count
@@ -199,10 +195,7 @@ export function createPresetStrip<S extends Schema>(
     if (activeState.activeIndex >= 0 && buttons[activeState.activeIndex]) {
       scrollChipIntoView(buttons[activeState.activeIndex]!)
     }
-    root.classList.toggle(
-      "knobs-presets-overflow",
-      track.scrollWidth > track.clientWidth + 2,
-    )
+    root.classList.toggle("knobs-presets-overflow", track.scrollWidth > track.clientWidth + 2)
     measurePill(snap)
   }
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-test("three hover chips, independent panels, persistence, clipboard, keyboard and drag", async ({
+test("three hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
   page,
   context,
 }) => {
@@ -26,37 +26,111 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard an
   await page.getByRole("button", { name: "Close typography" }).click()
   await page.getByRole("button", { name: "Close halftone" }).click()
   const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
-  await panel.getByRole("button", { name: "RND", exact: true }).click()
+
+  // Verify no per-field shortcut suffixes are rendered in labels
+  await expect(panel.locator(".knobs-label").first()).toHaveText("seed")
+
+  // Verify ? shortcuts popover in header replaces permanent footer
+  const helpBtn = panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })
+  await helpBtn.click()
+  await expect(panel.locator(".knobs-popover")).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(panel.locator(".knobs-popover")).toBeHidden()
+  await expect(panel).toBeVisible()
+
+  // Custom preset strip: cycle with ] and [ from anywhere in the panel
+  const presetStrip = panel.getByRole("radiogroup", { name: "Preset or variant" })
+  await expect(presetStrip).toBeVisible()
+  await expect(presetStrip.getByRole("radio", { name: "default" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await page.keyboard.press("]")
+  await expect(presetStrip.getByRole("radio", { name: "subtle" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await page.keyboard.press("[")
+  await expect(presetStrip.getByRole("radio", { name: "default" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+
+  await panel.getByRole("button", { name: "Random", exact: true }).click()
   await expect(rendered("splat")).not.toHaveAttribute("data-render", beforeSplat!)
   await expect(rendered("halftone")).toHaveAttribute("data-render", beforeDots!)
+  await expect(presetStrip.locator(".knobs-preset-custom")).toBeVisible()
   const randomized = await rendered("splat").getAttribute("data-render")
+
+  // Open Variants disclosure drawer, save a named variant
+  await panel.getByRole("button", { name: "Variants" }).click()
   await panel.getByRole("textbox", { name: "Variant name", exact: true }).fill("First impression")
-  await panel.getByRole("button", { name: "SAVE", exact: true }).click()
+  await panel.getByRole("button", { name: "Save", exact: true }).click()
   await expect(panel.locator(".knobs-saved")).toHaveCount(1)
+  // Saved variant also appears in the top preset strip
+  await expect(presetStrip.getByRole("radio", { name: "First impression" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+
   await panel
     .locator(".knobs-actions")
     .first()
-    .getByRole("button", { name: "COPY", exact: true })
+    .getByRole("button", { name: "Copy", exact: true })
     .click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("count:")
   await page.reload()
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
   await page.locator('[data-study="splat"]').focus()
   await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+  await panel.getByRole("button", { name: /Variants/ }).click()
   await expect(panel.locator(".knobs-saved")).toContainText("First impression")
-  await panel.getByRole("button", { name: "RESET", exact: true }).click()
+  await panel.getByRole("button", { name: "Reset", exact: true }).click()
   await expect(rendered("splat")).toHaveAttribute("data-render", beforeSplat!)
-  await panel.getByRole("button", { name: "LOAD", exact: true }).click()
+  await panel.locator(".knobs-saved").getByRole("button", { name: "Load", exact: true }).click()
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
-  await panel.getByRole("button", { name: "RESET", exact: true }).click()
+  await panel.getByRole("button", { name: "Reset", exact: true }).click()
+
+  // Verify cycling never gets stuck when a saved variant equals a preset ("default")
+  await panel.getByRole("textbox", { name: "Variant name", exact: true }).fill("Default clone")
+  await panel.getByRole("button", { name: "Save", exact: true }).click()
+  await presetStrip.getByRole("radio", { name: "default", exact: true }).click()
+  const visitedPresets: string[] = []
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press("]")
+    visitedPresets.push((await presetStrip.getAttribute("data-active-preset")) ?? "")
+  }
+  expect(new Set(visitedPresets).size).toBe(5)
+  // Clean up the duplicate variant and close disclosure drawer
+  await panel
+    .locator(".knobs-saved", { hasText: "Default clone" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click()
+  await panel.getByRole("button", { name: /Variants/ }).click()
+  await panel.getByRole("button", { name: "Reset", exact: true }).click()
+
   const count = panel.getByRole("slider", { name: "count", exact: true })
   await count.focus()
   await page.keyboard.press("Shift+ArrowRight")
   await expect(count).toHaveAttribute("aria-valuenow", "108")
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "size", exact: true })).toBeFocused()
+
+  // Hint mode (`s`): shows minimal unique prefixes ("se", "c", "si", "f", "g"), dims typed part, jumps on unique match
+  await page.keyboard.press("s")
+  await expect(panel).toHaveClass(/knobs-hinting/)
+  await expect(panel.locator('[data-field="seed"] .knobs-hint')).toHaveText("se")
+  await expect(panel.locator('[data-field="size"] .knobs-hint')).toHaveText("si")
+  await expect(panel.locator('[data-field="count"] .knobs-hint')).toHaveText("c")
+  await page.keyboard.press("s")
+  await expect(panel.locator('[data-field="seed"] .knobs-hint-typed')).toHaveText("s")
+  await expect(panel.locator('[data-field="seed"] .knobs-hint-rest')).toHaveText("e")
+  await expect(panel.locator('[data-field="count"]')).toHaveClass(/knobs-hint-miss/)
+  await page.keyboard.press("Backspace")
   await page.keyboard.press("c")
+  await expect(panel).not.toHaveClass(/knobs-hinting/)
   await expect(count).toBeFocused()
+
   await page.keyboard.type("42")
   await page.keyboard.press("Enter")
   await expect(count).toHaveAttribute("aria-valuenow", "42")
@@ -87,7 +161,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard an
   await panel
     .locator(".knobs-actions")
     .first()
-    .getByRole("button", { name: "COPY", exact: true })
+    .getByRole("button", { name: "Copy", exact: true })
     .click()
   await expect(panel.getByRole("textbox", { name: "Import or copy text" })).toHaveValue(/count: 42/)
   await expect(panel.getByRole("status")).toContainText("Copy the selected text")
@@ -121,7 +195,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard an
   const captureHeader = (await panel.locator("header").boundingBox())!
   await page.mouse.move(captureHeader.x + 30, captureHeader.y + 10)
   await page.mouse.down()
-  await page.mouse.move(1780, 120)
+  await page.mouse.move(1740, 120)
   await page.mouse.up()
   await page.screenshot({ path: "test-results/example-panel.png", fullPage: true })
   expect(errors).toEqual([])
@@ -202,5 +276,97 @@ test("React hydration, nested switcher ownership, saved variants and teardown", 
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.5:solid")
   await remotePanel.getByRole("button", { name: "Reset Spring" }).click()
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.35:solid")
+  expect(errors).toEqual([])
+})
+
+test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and supports ?gpu mode", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+
+  await page.goto("/meta.html")
+  const tokensPanel = page.getByRole("region", { name: "knobs-tokens controls" })
+  const synthPanel = page.getByRole("region", { name: "synth-voice controls" })
+  await expect(tokensPanel).toBeVisible()
+  await expect(synthPanel).toBeVisible()
+
+  // Switch preset to "compact" and verify CSS variables update on :root and affect both panels
+  const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })
+  await presetStrip.getByRole("radio", { name: "compact", exact: true }).click()
+  await expect(page.locator("[data-css-output]")).toContainText("--k-width: 260px;")
+  await expect(page.locator("[data-css-output]")).toContainText("--k-row: 26px;")
+
+  // Switch to "terminal" preset
+  await presetStrip.getByRole("radio", { name: "terminal", exact: true }).click()
+  await expect(page.locator("[data-css-output]")).toContainText("--k-radius: 2px;")
+
+  // Copy CSS custom action
+  await tokensPanel.getByRole("button", { name: "Copy CSS", exact: true }).click()
+  await expect(tokensPanel.getByRole("status")).toContainText("Copied CSS tokens.")
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain("--k-radius: 2px;")
+
+  // Reset back to default and switch to cobalt preset for screenshot
+  await presetStrip.getByRole("radio", { name: "cobalt", exact: true }).click()
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await tokensPanel.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+  )
+  await page.screenshot({
+    path: "test-results/meta-panel.png",
+    fullPage: true,
+    animations: "disabled",
+  })
+
+  // Navigate to /?gpu and verify WebGPU hardware renderer & diagnostics
+  await page.setViewportSize({ width: 2048, height: 1480 })
+  await page.goto("/?gpu")
+  const study = page.locator('[data-study="splat"]')
+  const bounds = (await study.boundingBox())!
+  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
+  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+  const splatDialog = page.getByRole("dialog", { name: "splat controls", exact: true })
+  await expect(splatDialog).toBeVisible()
+  await expect(splatDialog).toHaveAttribute("data-renderer", "gpu")
+  await expect(splatDialog).toHaveAttribute("data-gpu-active", "true")
+  await expect(page.locator("canvas.knobs-gpu-canvas")).toHaveCount(1)
+
+  const captureHeader = (await splatDialog.locator("header").boundingBox())!
+  await page.mouse.move(captureHeader.x + 30, captureHeader.y + 10)
+  await page.mouse.down()
+  await page.mouse.move(1740, 120)
+  await page.mouse.up()
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const g = window.__knobsGpu
+        return g ? g.frameCount > 0 && g.lastInstanceCount > 20 : false
+      }),
+    )
+    .toBe(true)
+
+  await page.screenshot({ path: "test-results/example-gpu.png" })
+
+  // Verify idle frame skipping (RAF loop goes to sleep once springs settle)
+  await expect.poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false)).toBe(true)
+
+  // Verify graceful fallback when WebGPU is unavailable
+  const fallbackContext = await page.context().browser()!.newContext()
+  await fallbackContext.addInitScript(() => {
+    Object.defineProperty(navigator, "gpu", { value: undefined, configurable: true })
+  })
+  const fallbackPage = await fallbackContext.newPage()
+  await fallbackPage.goto("/?gpu")
+  const fallbackRemote = fallbackPage.getByRole("region", { name: "remote-tune controls" })
+  await expect(fallbackRemote).toBeVisible()
+  await expect(fallbackRemote).toHaveAttribute("data-gpu-active", "false")
+  expect(await fallbackPage.evaluate(() => window.__knobsGpu?.backend)).toBe("dom")
+  await fallbackContext.close()
+
   expect(errors).toEqual([])
 })
