@@ -225,7 +225,9 @@ export function createSlider(
     syncDigits(fmtDigits(v), Math.sign(v - previous), ms)
     initialized = true
     // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
-    roller.update({ value: v, animated: ms > 0, ...(ms > 0 ? { duration: ms } : {}) })
+    // Never take rolling-number's unanimated path: its finish() resets the reels, so the next
+    // change would jump instead of rolling. A 1 ms roll is a snap that keeps it warm.
+    roller.update({ value: v, animated: true, duration: ms > 0 ? ms : 1 })
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)

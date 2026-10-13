@@ -38,9 +38,11 @@ const css = `
 .knobs-chip{position:fixed;z-index:2147480000;padding:4px 9px;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid var(--k-line);
   color:var(--k-label);font-size:11.5px;letter-spacing:.01em;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s;}
 .knobs-chip:hover{color:var(--k-text);border-color:var(--k-line-hi)}
+.knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),visibility 0s}
+.knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s}
 .knobs-chip:focus-visible{outline:2px solid var(--k-accent);outline-offset:2px}
 
-.knobs-panel{position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
+.knobs-panel{transition:background-color .25s,border-color .25s,color .25s;position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
   background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow);scrollbar-width:thin;
   animation:knobs-in .2s var(--k-ease);}
 .knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:none;animation:none}
@@ -63,7 +65,7 @@ const css = `
 .knobs-panel header button[disabled]{opacity:.3;cursor:default}
 
 /* Shortcuts Popover */
-.knobs-popover{margin:0 0 8px;padding:8px var(--k-inset);background:var(--k-surface-hi);border:1px solid var(--k-line);border-radius:var(--k-radius);font-size:calc(var(--k-font-size) - 1px);animation:knobs-in .14s var(--k-ease)}
+.knobs-popover{margin:0 0 8px;padding:8px var(--k-inset);background:var(--k-surface-hi);border:1px solid var(--k-line);border-radius:var(--k-radius);font-size:calc(var(--k-font-size) - 1px)}
 .knobs-popover-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:baseline}
 .knobs-popover-grid kbd{font-family:var(--k-mono);font-size:calc(var(--k-font-size) - 1.5px);color:var(--k-text);background:var(--k-seg-bg);padding:1px 5px;border-radius:4px;justify-self:start;white-space:nowrap}
 .knobs-popover-grid span{color:var(--k-label)}
@@ -77,8 +79,6 @@ const css = `
 .knobs-preset-chip[aria-checked="true"]{color:var(--k-text);font-weight:600}
 .knobs-preset-save{flex:none;width:calc(var(--k-row) - 8px);padding:0!important;color:var(--k-dim)!important;font-weight:400!important;font-size:calc(var(--k-font-size) + 2px)!important}
 .knobs-preset-save:hover{color:var(--k-text)!important}
-.knobs-preset-custom{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 6px;height:calc(var(--k-row) - 8px);min-height:20px;font:500 calc(var(--k-font-size) - 1.5px)/1 var(--k-mono);color:var(--k-label);white-space:nowrap}
-.knobs-preset-custom::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--k-modified)}
 
 /* Group headers */
 .knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 4px;padding:0 2px;color:var(--k-dim);font-size:calc(var(--k-font-size) - 2px);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
@@ -87,6 +87,7 @@ const css = `
 .knobs-group-head button{height:20px;padding:0 6px;font-size:calc(var(--k-font-size) - 1.5px);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:4px;cursor:pointer}
 .knobs-group-head button:hover:not([disabled]){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-group-head button[disabled]{opacity:.32;cursor:default}
+.knobs-panel :where(header button,.knobs-group-head button,.knobs-actions button){transition:background .15s,color .15s,opacity .2s,transform .12s}
 
 /* Rows */
 .knobs-panel .knobs-row,.knobs-panel .knobs-slider{position:relative;min-height:var(--k-row);margin-bottom:var(--k-gap);border-radius:var(--k-radius);background:var(--k-surface);transition:background .15s}
@@ -94,7 +95,8 @@ const css = `
 .knobs-panel .knobs-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px var(--k-inset)}
 .knobs-panel .knobs-row:has(:focus-visible){background:var(--k-surface-hi)}
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.knobs-modified .knobs-label::after,.knobs-modified.knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:.95}
+.knobs-label::after,.knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
+.knobs-modified .knobs-label::after,.knobs-modified.knobs-row>span:first-child::after{opacity:.95;transform:none}
 
 /* Slider */
 .knobs-track{position:absolute;inset:0;border-radius:var(--k-radius);overflow:hidden;cursor:ew-resize;user-select:none;touch-action:none}
@@ -125,9 +127,11 @@ const css = `
 
 /* Segmented choice */
 .knobs-seg{position:relative;display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:2px;padding:2px;max-width:76%;background:var(--k-seg-bg);border-radius:calc(var(--k-radius) - 2px)}
-.knobs-seg button{padding:3px 7px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:calc(var(--k-radius) - 3px);transition:background .15s,color .15s}
+.knobs-seg-pill{position:absolute;top:2px;bottom:2px;left:0;width:0;border-radius:calc(var(--k-radius) - 3px);background:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));box-shadow:0 1px 2px rgba(0,0,0,.12);pointer-events:none;
+  transition:transform calc(.26s * clamp(var(--k-blur),.1,2)) cubic-bezier(.3,1.15,.4,1),width calc(.26s * clamp(var(--k-blur),.1,2)) cubic-bezier(.3,1.15,.4,1)}
+.knobs-seg button{position:relative;z-index:1;padding:3px 7px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:calc(var(--k-radius) - 3px);transition:background .15s,color .15s}
 .knobs-seg button:hover{color:var(--k-text)}
-.knobs-seg button[aria-checked=true]{background:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));color:var(--k-text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.knobs-seg button[aria-checked=true]{color:var(--k-text)}
 
 /* Switch */
 .knobs-toggle{position:relative;flex:none;width:32px;height:18px;padding:0;background:var(--k-toggle-track);border-radius:999px;cursor:pointer;transition:background .2s,box-shadow .2s}
@@ -158,20 +162,19 @@ const css = `
 
 /* Status & Transfer Textarea */
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 2px;color:var(--k-label);font-size:calc(var(--k-font-size) - 1px);overflow-wrap:anywhere}
-.knobs-panel .knobs-status:empty{display:none;margin:0}
+
 .knobs-panel textarea{width:100%;min-height:84px;margin-top:6px;padding:6px var(--k-inset);resize:vertical;font:calc(var(--k-font-size) - 1px)/1.4 var(--k-mono)}
 .knobs-panel .knobs-apply-btn{width:100%;height:26px;margin-top:var(--k-gap);font-size:calc(var(--k-font-size) - 0.5px);font-weight:500;color:var(--k-text);background:var(--k-surface-hi);cursor:pointer}
 
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
 .knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-presets,.knobs-preset-chip,.knobs-preset-custom,.knobs-group-head,.knobs-group-head button,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-actions button,.knobs-custom-actions button){
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-actions button,.knobs-custom-actions button){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
-.knobs-panel[data-gpu-active="true"] :where(.knobs-presets-pill,.knobs-fill,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon),
+.knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon),
 .knobs-panel[data-gpu-active="true"] .knobs-label::after,
-.knobs-panel[data-gpu-active="true"] .knobs-row>span:first-child::after,
-.knobs-panel[data-gpu-active="true"] .knobs-preset-custom::before{opacity:0!important}
+.knobs-panel[data-gpu-active="true"] .knobs-row>span:first-child::after{opacity:0!important}
 `
 export function injectStyles(doc: Document) {
   const content = rolling + css

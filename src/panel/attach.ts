@@ -15,7 +15,12 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
   chip.textContent = "⚙ knobs"
   chip.setAttribute("aria-label", `Tune ${controls.id}`)
   chip.setAttribute("aria-expanded", "false")
-  chip.hidden = true
+  // The chip fades and scales in/out (CSS), so it stays in the DOM and toggles data-shown.
+  chip.dataset.shown = "false"
+  const setShown = (shown: boolean) => {
+    chip.dataset.shown = String(shown)
+    chip.tabIndex = shown ? 0 : -1
+  }
   doc.body.append(chip)
   const addedTabIndex =
     !element.hasAttribute("tabindex") && !element.matches("a[href],button,input,select,textarea")
@@ -30,10 +35,11 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
     chip.style.top = `${Math.max(4, box.top + 6)}px`
   }
   const update = () => {
-    chip.hidden =
-      !controls.enabled ||
-      !(hovered || element.contains(doc.activeElement) || doc.activeElement === chip)
-    if (!chip.hidden) position()
+    const shown =
+      controls.enabled &&
+      (hovered || element.contains(doc.activeElement) || doc.activeElement === chip)
+    if (shown) position()
+    setShown(shown)
     if (!controls.enabled) {
       panel?.dispose()
       panel = undefined
@@ -72,10 +78,10 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
       const { createPanel } = await import("./panel.js")
       if (disposed || !controls.enabled) return
       panel = createPanel(controls, element, () => {
-        panel?.dispose()
+        panel?.dismiss()
         panel = undefined
         chip.setAttribute("aria-expanded", "false")
-        chip.hidden = false
+        setShown(true)
         chip.focus({ preventScroll: true })
       })
       chip.setAttribute("aria-expanded", "true")

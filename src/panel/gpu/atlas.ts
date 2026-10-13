@@ -116,6 +116,21 @@ export class LabelAtlas {
     return entry
   }
 
+  private readonly widths = new Map<string, number>()
+  /** Advance width (CSS px) of `text`, measured with the browser's shaping, without rasterizing. */
+  measure(text: string, px: number, weight: number, family: string): number {
+    const key = `${text}|${px}|${weight}|${family}`
+    const hit = this.widths.get(key)
+    if (hit !== undefined) return hit
+    const ctx = this.ctx
+    ctx.font = `${weight} ${px * 4}px ${family}`
+    if ("letterSpacing" in ctx) (ctx as any).letterSpacing = "0px"
+    const w = ctx.measureText(text).width / 4
+    if (this.widths.size > 4096) this.widths.clear()
+    this.widths.set(key, w)
+    return w
+  }
+
   /** Rasterizes a 256×256 SVG path (Phosphor) at `px` CSS pixels into the atlas. */
   icon(path: string, px: number, scaleFactor = 3): AtlasEntry {
     const scale = this.ensureScale(scaleFactor)

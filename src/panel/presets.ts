@@ -62,7 +62,6 @@ export interface PresetStrip {
   readonly element: HTMLElement
   readonly track: HTMLElement
   readonly pill: HTMLElement
-  readonly customBadge: HTMLElement
   /** Trailing "+" chip that saves the current values as a new variant (absent when variants are off). */
   readonly saveButton: HTMLButtonElement | null
   readonly pillX: Spring
@@ -103,8 +102,6 @@ export function createPresetStrip<S extends Schema>(
   const track = el("div", "knobs-presets-track")
   const pill = el("div", "knobs-presets-pill")
   pill.setAttribute("aria-hidden", "true")
-  const customBadge = el("span", "knobs-preset-custom", "custom")
-  customBadge.hidden = true
   const saveButton = showVariants ? el("button", "knobs-preset-chip knobs-preset-save", "+") : null
   if (saveButton) {
     saveButton.type = "button"
@@ -193,7 +190,6 @@ export function createPresetStrip<S extends Schema>(
     }
     root.dataset.activePreset = activeState.activeId
     root.dataset.value = activeState.activeId
-    customBadge.hidden = !activeState.isCustom
     for (let i = 0; i < buttons.length; i++) {
       const b = buttons[i]!
       const checked = i === activeState.activeIndex
@@ -253,7 +249,7 @@ export function createPresetStrip<S extends Schema>(
           }
           return b
         })
-        track.replaceChildren(pill, ...buttons, customBadge)
+        track.replaceChildren(pill, ...buttons)
         fitColumns()
         syncSelection(true)
       } else {
@@ -273,7 +269,7 @@ export function createPresetStrip<S extends Schema>(
   function fitColumns() {
     let widest = 0
     const range = doc.createRange()
-    for (const b of [...buttons, customBadge]) {
+    for (const b of buttons) {
       if (b.hidden || !b.firstChild) continue
       range.selectNodeContents(b)
       widest = Math.max(widest, range.getBoundingClientRect().width)
@@ -392,7 +388,6 @@ export function createPresetStrip<S extends Schema>(
     element: root,
     track,
     pill,
-    customBadge,
     saveButton,
     pillX,
     pillW,

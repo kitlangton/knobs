@@ -164,7 +164,7 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
   )
 
-  const monoSample = panel.querySelector<HTMLElement>(".knobs-value,.knobs-preset-custom")
+  const monoSample = panel.querySelector<HTMLElement>(".knobs-value")
   const monoComputed = monoSample ? getComputedStyle(monoSample).fontFamily : ""
 
   return {

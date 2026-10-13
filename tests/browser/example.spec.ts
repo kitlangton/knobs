@@ -59,7 +59,8 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await panel.getByRole("button", { name: "Random", exact: true }).click()
   await expect(rendered("splat")).not.toHaveAttribute("data-render", beforeSplat!)
   await expect(rendered("halftone")).toHaveAttribute("data-render", beforeDots!)
-  await expect(presetStrip.locator(".knobs-preset-custom")).toBeVisible()
+  // No chip is selected once the values no longer match a preset.
+  await expect(presetStrip).toHaveAttribute("data-active-preset", "custom")
   const randomized = await rendered("splat").getAttribute("data-render")
 
   // "+" at the end of the preset strip saves the current values as a new chip

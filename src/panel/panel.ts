@@ -11,6 +11,7 @@ import { createHintController, type HintTarget } from "./hints.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Spring } from "./motion.js"
 import { positionPanel } from "./position.js"
+import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { createSlider } from "./slider.js"
 import { injectStyles } from "./styles.js"
@@ -19,6 +20,8 @@ export interface Panel {
   element: HTMLElement
   presetStrip: PresetStrip
   focus(): void
+  /** Fades the panel out, then disposes it. */
+  dismiss(): void
   dispose(): void
 }
 let layer = 2147480001
@@ -59,22 +62,31 @@ function buildPanel<S extends Schema>(
   const status = el("p")
   status.className = "knobs-status"
   status.setAttribute("role", "status")
+  status.hidden = true
+  // Messages glide in, linger, then fold away so the panel returns to its resting height.
+  let statusTimer: ReturnType<typeof setTimeout> | undefined
+  const say = (message: string, linger = 3200) => {
+    clearTimeout(statusTimer)
+    status.textContent = message
+    reveal(status, true)
+    statusTimer = setTimeout(() => reveal(status, false), linger)
+  }
   const run = (action: () => unknown) => {
     try {
       const result = action()
-      if (typeof result === "string") status.textContent = result
+      if (typeof result === "string") say(result)
       else if (result instanceof Promise)
         void result
           .then((msg) => {
-            if (typeof msg === "string") status.textContent = msg
+            if (typeof msg === "string") say(msg)
             wakeGpu()
           })
           .catch((cause) => {
-            status.textContent = cause instanceof Error ? cause.message : String(cause)
+            say(cause instanceof Error ? cause.message : String(cause), 6000)
             wakeGpu()
           })
     } catch (cause) {
-      status.textContent = cause instanceof Error ? cause.message : String(cause)
+      say(cause instanceof Error ? cause.message : String(cause), 6000)
     }
     wakeGpu()
   }
@@ -130,8 +142,8 @@ function buildPanel<S extends Schema>(
   let positioned: { constrain(): void; dispose(): void } | undefined
   let helpButton: HTMLButtonElement | undefined
   const togglePopover = (open?: boolean) => {
-    const next = open ?? popover.hidden
-    popover.hidden = !next
+    const next = open ?? (popover.hidden || popover.dataset.leaving === "true")
+    reveal(popover, next)
     helpButton?.setAttribute("aria-expanded", String(next))
     positioned?.constrain()
     wakeGpu()
@@ -231,6 +243,10 @@ function buildPanel<S extends Schema>(
     if (field.kind === "choice") {
       const seg = el("div")
       seg.className = "knobs-seg"
+      const segPill = el("span")
+      segPill.className = "knobs-seg-pill"
+      segPill.setAttribute("aria-hidden", "true")
+      seg.append(segPill)
       seg.setAttribute("role", "radiogroup")
       seg.setAttribute("aria-label", display)
       if (field.shortcut) seg.setAttribute("aria-keyshortcuts", field.shortcut)
@@ -243,12 +259,13 @@ function buildPanel<S extends Schema>(
         b.onclick = () =>
           run(() => {
             set(value)
-            seg.focus({ preventScroll: true })
+            seg.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
           })
         seg.append(b)
         return b
       })
       seg.tabIndex = 0
+      new ResizeObserver(() => placeSegPill(seg, buttons, String(controls.get()[key]))).observe(seg)
       row.append(seg)
       body.append(row)
       gpuRows.push({
@@ -306,9 +323,9 @@ function buildPanel<S extends Schema>(
 
   const apply = button("Apply import", () => {
     controls.variants.import(text.value)
-    status.textContent = "Variants imported."
-    text.hidden = true
-    apply.hidden = true
+    say("Presets imported.")
+    reveal(text, false)
+    reveal(apply, false)
     positioned?.constrain()
   })
   apply.className = "knobs-apply-btn"
@@ -318,15 +335,15 @@ function buildPanel<S extends Schema>(
   const copy = async (value: string) => {
     try {
       await doc.defaultView!.navigator.clipboard.writeText(value)
-      status.textContent = "Copied."
+      say("Copied.")
     } catch {
       text.value = value
-      text.hidden = false
+      reveal(text, true)
       apply.hidden = true
       positioned?.constrain()
       text.focus()
       text.select()
-      status.textContent = "Clipboard unavailable. Copy the selected text."
+      say("Clipboard unavailable. Copy the selected text.", 6000)
     }
     wakeGpu()
   }
@@ -358,8 +375,8 @@ function buildPanel<S extends Schema>(
     transfer.append(
       button("Export presets", () => void copy(controls.variants.export())),
       button("Import presets", () => {
-        text.hidden = false
-        apply.hidden = false
+        reveal(text, true)
+        reveal(apply, true)
         text.value = ""
         positioned?.constrain()
         text.focus()
@@ -374,6 +391,28 @@ function buildPanel<S extends Schema>(
   if (panelActions.length > 0) root.append(customActions)
   root.append(text, apply, status)
 
+  // The selected choice's background is one pill that slides between options (the GPU renderer
+  // springs its own copy). The first placement doesn't animate.
+  function placeSegPill(seg: HTMLElement, buttons: readonly HTMLButtonElement[], value: string) {
+    let active: HTMLButtonElement | undefined
+    for (const b of buttons) {
+      const on = b.dataset.value === value
+      b.setAttribute("aria-checked", String(on))
+      if (on) active = b
+    }
+    const pill = seg.querySelector<HTMLElement>(".knobs-seg-pill")
+    if (!pill || !active) return
+    const first = !pill.dataset.placed
+    if (first) pill.style.transition = "none"
+    pill.style.width = `${active.offsetWidth}px`
+    pill.style.transform = `translateX(${active.offsetLeft}px)`
+    if (first) {
+      pill.dataset.placed = "true"
+      void pill.offsetWidth
+      pill.style.transition = ""
+    }
+  }
+
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -384,9 +423,7 @@ function buildPanel<S extends Schema>(
       const value = values[row.key]
       row.row.classList.toggle("knobs-modified", value !== controls.locked[row.key])
       if ("slider" in row && row.slider) row.slider.update(Number(value))
-      else if ("buttons" in row && row.buttons)
-        for (const b of row.buttons)
-          b.setAttribute("aria-checked", String(b.dataset.value === String(value)))
+      else if ("buttons" in row && row.buttons) placeSegPill(row.input, row.buttons, String(value))
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
     for (const [groupName, gReset] of groupResetButtons) {
@@ -396,7 +433,7 @@ function buildPanel<S extends Schema>(
     }
     undoButton.disabled = !controls.canUndo
     redoButton.disabled = !controls.canRedo
-    if (controls.error) status.textContent = controls.error
+    if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     presetStrip.update()
 
     wakeGpu()
@@ -649,7 +686,27 @@ function buildPanel<S extends Schema>(
       raise()
       ;(rows[0]?.input ?? dismiss ?? root).focus({ preventScroll: true })
     },
+    dismiss() {
+      if (root.dataset.leaving) return
+      root.dataset.leaving = "true"
+      root.style.pointerEvents = "none"
+      const reduced = doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches
+      if (reduced) return this.dispose()
+      root
+        .animate(
+          [
+            { opacity: 1, transform: "none" },
+            { opacity: 0, transform: "translateY(3px) scale(.985)" },
+          ],
+          { duration: 150, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
+        )
+        .finished.then(
+          () => this.dispose(),
+          () => this.dispose(),
+        )
+    },
     dispose() {
+      clearTimeout(statusTimer)
       hintCtrl.stop()
       modeObserver.disconnect()
       unregisterGpu?.()

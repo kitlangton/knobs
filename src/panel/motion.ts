@@ -116,6 +116,11 @@ export class Roll {
   resting(now: number) {
     return this.duration <= 0 || now - this.start >= this.duration
   }
+  /** Positions the current motion covers, like rolling-number's reel: faces outside never show. */
+  span(now: number): [number, number] {
+    if (this.resting(now)) return [this.to, this.to]
+    return [Math.min(this.from, this.to), Math.max(this.from, this.to)]
+  }
 }
 
 /** Nearest wheel position showing `digit`, honoring the trend (from rolling-number). */

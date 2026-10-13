@@ -170,6 +170,16 @@ class GpuOverlayManager {
   private curClip: Clip = [0, 0, 0, 0]
   private curScale = 2
   private curTokens!: PanelThemeTokens
+  /** Panel opacity (CSS open/close fades), applied to every primitive of the current panel. */
+  private curAlpha = 1
+  private curDt = 0
+  /** Colors ease toward new token values so theme and meta-page changes cross-fade. */
+  private readonly shownTokens = new WeakMap<GpuPanelBinding, PanelThemeTokens>()
+  /** Small eased scalars keyed by any object (e.g. a row's changed-dot visibility). */
+  private readonly eased = new WeakMap<object, Spring>()
+  private easeMoving = false
+  /** Last on-screen position of each readout character, measured from the right edge. */
+  private readonly placeOffsets = new WeakMap<object, number>()
 
   constructor(private readonly doc: Document) {
     this.publishDiagnostics()
@@ -445,8 +455,14 @@ class GpuOverlayManager {
         o.h,
         ...clip,
         ...uv,
-        ...o.color,
-        ...c2,
+        o.color[0],
+        o.color[1],
+        o.color[2],
+        o.color[3] * this.curAlpha,
+        c2[0],
+        c2[1],
+        c2[2],
+        c2[3] * this.curAlpha,
         o.radius ?? 0,
         o.strokeWidth ?? 0,
         o.glowOrBlur ?? 0,
@@ -493,6 +509,47 @@ class GpuOverlayManager {
     return entry.textW
   }
 
+  /** Springs a per-object scalar toward `target`; keeps the frame loop awake until it settles. */
+  private ease(key: object, target: number, omega = 26): number {
+    let sp = this.eased.get(key)
+    if (!sp) {
+      sp = new Spring(target, omega, 1)
+      this.eased.set(key, sp)
+    }
+    sp.set(target).step(this.curDt)
+    if (!sp.resting) this.easeMoving = true
+    return sp.x
+  }
+
+  private smoothTokens(
+    panel: GpuPanelBinding,
+    next: PanelThemeTokens,
+    dt: number,
+  ): PanelThemeTokens {
+    const prev = this.shownTokens.get(panel)
+    if (!prev || dt <= 0) {
+      this.shownTokens.set(panel, next)
+      return next
+    }
+    const k = 1 - Math.exp(-dt * 16)
+    let moving = false
+    const out: Record<string, unknown> = { ...next }
+    for (const [key, value] of Object.entries(next)) {
+      const from = (prev as unknown as Record<string, unknown>)[key]
+      if (!Array.isArray(value) || !Array.isArray(from)) continue
+      const mixed = value.map((v: number, i: number) => {
+        const f = from[i] as number
+        if (Math.abs(v - f) > 0.002) moving = true
+        return f + (v - f) * k
+      })
+      out[key] = mixed
+    }
+    if (moving) this.easeMoving = true
+    const shown = out as unknown as PanelThemeTokens
+    this.shownTokens.set(panel, moving ? shown : next)
+    return moving ? shown : next
+  }
+
   private drawRowLabel(
     labelEl: HTMLElement,
     text: string,
@@ -509,13 +566,15 @@ class GpuOverlayManager {
       rowCenterY,
       withAlpha(t.label, rowAlpha),
     )
-    if (modified) {
+    const dot = this.ease(labelEl, modified ? 1 : 0)
+    if (dot > 0.01) {
+      const size = 4 * (0.4 + 0.6 * dot)
       this.pushPrim({
-        x: lRect.left + w + 5 + stretchOffset,
-        y: rowCenterY - 2,
-        w: 4,
-        h: 4,
-        color: withAlpha(t.modified, rowAlpha),
+        x: lRect.left + w + 7 + stretchOffset - size / 2,
+        y: rowCenterY - size / 2,
+        w: size,
+        h: size,
+        color: withAlpha(t.modified, rowAlpha * dot),
         glowOrBlur: 0.5,
         kind: 7,
       })
@@ -607,8 +666,12 @@ class GpuOverlayManager {
       const pRect = panel.root.getBoundingClientRect()
       if (pRect.width <= 0 || pRect.height <= 0) continue
 
-      const tokens = readPanelTokens(panel.root)
+      const tokens = this.smoothTokens(panel, readPanelTokens(panel.root), reducedMotion ? 0 : dt)
       this.curTokens = tokens
+      this.curDt = reducedMotion ? 1 : dt
+      // Follow CSS open/close and reveal animations: fade with the panel, and keep drawing while they run.
+      this.curAlpha = Number(getComputedStyle(panel.root).opacity) || 0
+      if (panel.root.getAnimations({ subtree: true }).length > 0) anyMoving = true
       const blurMul = reducedMotion ? 0 : tokens.blurStrength
       const outerClip = panel.inline
         ? getEffectiveClipRect(panel.root, win)
@@ -816,26 +879,6 @@ class GpuOverlayManager {
             },
           )
         }
-
-        if (!ps.customBadge.hidden) {
-          const cr = ps.customBadge.getBoundingClientRect()
-          const textW = this.drawText(
-            "custom",
-            cr.left + cr.width * 0.5 + 4,
-            cr.top + cr.height * 0.5,
-            tokens.label,
-            { px: tokens.fontSize - 1.5, weight: 500, mono: true, align: "center" },
-          )
-          this.pushPrim({
-            x: cr.left + cr.width * 0.5 - textW * 0.5 - 5,
-            y: cr.top + cr.height * 0.5 - 2,
-            w: 4,
-            h: 4,
-            color: tokens.modified,
-            glowOrBlur: 0.5,
-            kind: 7,
-          })
-        }
       }
 
       // 4. Group headers
@@ -951,15 +994,16 @@ class GpuOverlayManager {
             } else {
               // A reel per place, read through a feathered slot: every face between the old and
               // new digit passes by, blurring with speed the way rolling-number's envelope does.
-              const charAdvance = this.atlas.get("0", valPx, 400, tokens.fontFamily, scale).textW
-              const faceH = valPx * 1.5
+              // Same reel as the DOM readout: faces 2.1em apart, seen through a 2.1em window
+              // whose top and bottom 0.5em feather out (.knobs-digits line-height / --rn-edge-fade).
+              const faceH = valPx * 2.1
               const slotClip = intersectClip(bodyClip, [
                 rRect.left,
-                rRect.top + 1,
+                rowCenterY - faceH / 2,
                 rRect.right,
-                rRect.bottom - 1,
+                rowCenterY + faceH / 2,
               ])
-              const feather = (rRect.height - 2) * 0.34
+              const feather = valPx * 0.5
               const text = {
                 px: valPx,
                 weight: 400,
@@ -971,23 +1015,33 @@ class GpuOverlayManager {
               sl.digitPlaces.forEach((place, j) => {
                 const presence = clamp(place.presence.sample(clock).position, 0, 1)
                 if (presence <= 0.005) return
-                const cx = rightEdge - j * charAdvance
+                // Centre of this character within the final string (canvas has no tabular figures,
+                // so measure real advances); characters on their way out keep their last spot.
+                const measure = (t: string) => this.atlas.measure(t, valPx, 400, tokens.fontFamily)
+                let offset = this.placeOffsets.get(place)
+                if (j < digitsText.length) {
+                  const i = digitsText.length - 1 - j
+                  const after = measure(digitsText.slice(i + 1))
+                  offset = after + (measure(digitsText.slice(i)) - after) / 2
+                  this.placeOffsets.set(place, offset)
+                }
+                const cx = rightEdge - (offset ?? 0)
                 const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
                 const col = withAlpha(valCol, presence)
                 const isDigit = place.ch >= "0" && place.ch <= "9"
                 if (!isDigit) {
-                  this.drawText(place.ch, cx, rowCenterY + rise, col, text)
+                  this.drawText(place.ch, cx, rowCenterY + rise, col, { ...text, align: "center" })
                   return
                 }
                 const { position, velocity } = place.wheel.sample(clock)
                 // 4 faces/s starts the smear; 24 faces/s is full strength.
                 const speed = Math.abs(velocity)
                 const blurY = clamp((speed - 4) / 20, 0, 1) * maxBlur
-                const base = Math.floor(position)
-                for (let k = base - 1; k <= base + 2; k++) {
+                const [low, high] = place.wheel.span(clock)
+                for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
                   const y = rowCenterY + rise + (k - position) * faceH
-                  if (Math.abs(y - rowCenterY) > rRect.height * 0.5 + faceH * 0.5) continue
-                  this.drawText(numeral(k), cx, y, col, { ...text, blurY })
+                  if (Math.abs(y - rowCenterY) >= faceH) continue
+                  this.drawText(numeral(k), cx, y, col, { ...text, align: "center", blurY })
                 }
               })
             }
@@ -1132,7 +1186,10 @@ class GpuOverlayManager {
       }
     }
 
-    return anyMoving
+    this.curAlpha = 1
+    const easing = this.easeMoving
+    this.easeMoving = false
+    return anyMoving || easing
   }
 
   private isDataUnchanged(canvasW: number, canvasH: number): boolean {
