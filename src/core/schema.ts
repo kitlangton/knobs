@@ -1,27 +1,52 @@
-export interface Knob {
+export interface FieldMeta {
+  readonly label?: string
+  readonly group?: string
+  readonly shortcut?: string
+}
+export interface Knob extends FieldMeta {
   readonly kind: "knob"
   readonly value: number
   readonly min: number
   readonly max: number
   readonly step: number
   readonly unit?: string
-  readonly shortcut?: string
 }
-export interface Choice<T extends string = string> {
+export interface Choice<T extends string = string> extends FieldMeta {
   readonly kind: "choice"
   readonly value: T
   readonly options: readonly T[]
 }
-export interface Toggle {
+export interface Toggle extends FieldMeta {
   readonly kind: "toggle"
   readonly value: boolean
 }
 export type Field = Knob | Choice | Toggle
 export type Schema = Readonly<Record<string, Field>>
+export type FieldValue<F extends Field> = F extends Knob
+  ? number
+  : F extends Choice<infer T>
+    ? T
+    : F extends Toggle
+      ? boolean
+      : never
 export type Values<S extends Schema> = {
-  readonly [K in keyof S]: S[K] extends Knob ? number : S[K] extends Choice<infer T> ? T : boolean
+  readonly [K in keyof S]: FieldValue<S[K]>
 }
 export type State = Readonly<Record<string, number | string | boolean>>
+
+function checkShortcut(shortcut?: string) {
+  if (shortcut !== undefined && !/^[a-z]$/i.test(shortcut))
+    throw new Error("Shortcut must be a letter.")
+}
+function withMeta<T extends object>(base: T, meta?: FieldMeta): T {
+  checkShortcut(meta?.shortcut)
+  return Object.freeze({
+    ...base,
+    ...(meta?.label !== undefined ? { label: meta.label } : {}),
+    ...(meta?.group !== undefined ? { group: meta.group } : {}),
+    ...(meta?.shortcut !== undefined ? { shortcut: meta.shortcut } : {}),
+  })
+}
 
 export function knob(
   value: number,
@@ -34,21 +59,21 @@ export function knob(
     step <= 0
   )
     throw new Error("A knob needs finite bounds and a positive step.")
-  if (options.shortcut && !/^[a-z]$/i.test(options.shortcut))
-    throw new Error("Shortcut must be a letter.")
+  checkShortcut(options.shortcut)
   const field: Knob = { ...options, kind: "knob", value, step }
   return Object.freeze({ ...field, value: normalizeField(field, value) as number })
 }
 export function choice<const T extends readonly [string, ...string[]]>(
   value: T[number],
   options: T,
+  meta?: FieldMeta,
 ): Choice<T[number]> {
   if (!options.includes(value) || new Set(options).size !== options.length)
     throw new Error("Invalid choice options/default.")
-  return Object.freeze({ kind: "choice", value, options: Object.freeze([...options]) })
+  return withMeta({ kind: "choice" as const, value, options: Object.freeze([...options]) }, meta)
 }
-export function toggle(value: boolean): Toggle {
-  return Object.freeze({ kind: "toggle", value })
+export function toggle(value: boolean, meta?: FieldMeta): Toggle {
+  return withMeta({ kind: "toggle" as const, value }, meta)
 }
 export function normalizeField(field: Field, input: unknown): number | string | boolean {
   if (field.kind === "knob") {
