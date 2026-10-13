@@ -7,20 +7,48 @@ export function positionPanel(
   id: string,
   storage: () => StoragePort | null,
 ) {
-  const win = panel.ownerDocument.defaultView!
+  const doc = panel.ownerDocument
+  const win = doc.defaultView!
   const bounds = anchor.getBoundingClientRect()
-  let x = bounds.right + 8
-  let y = bounds.top
-  if (x + 280 > win.innerWidth - 8) x = Math.max(8, bounds.left - 288)
+  const w = panel.offsetWidth || 280
+  const clampX = (v: number) => Math.max(8, Math.min(v, win.innerWidth - w - 8))
+  let x = bounds.right + w <= win.innerWidth - 8 ? bounds.right + 8 : clampX(bounds.left - w - 8)
+  let y = Math.max(8, bounds.top)
   const key = storageKey(id, "position")
+  let hasSaved = false
   try {
     const saved = JSON.parse(storage()?.getItem(key) ?? "null")
     if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
       x = saved.x
       y = saved.y
+      hasSaved = true
     }
   } catch {
     /* Position is optional; tuning and variant storage report their own errors. */
+  }
+  if (!hasSaved) {
+    const others = [...doc.querySelectorAll<HTMLElement>(".knobs-panel:not(.knobs-inline)")]
+      .filter((el) => el !== panel)
+      .map((el) => el.getBoundingClientRect())
+    if (others.length > 0) {
+      const overlaps = (cx: number, cy: number) =>
+        others.some((r) => Math.abs(cx - r.left) < w - 24 && Math.abs(cy - r.top) < 120)
+      if (overlaps(x, y)) {
+        const candidates = [
+          bounds.right + 8,
+          bounds.left - w - 8,
+          bounds.left + 8,
+          bounds.right - w - 8,
+          ...others.flatMap((r) => [r.right + 12, r.left - w - 12]),
+        ].map(clampX)
+        const free = candidates.find((cx) => !overlaps(cx, y))
+        if (free !== undefined) x = free
+        else {
+          x = clampX(x + others.length * 24)
+          y = Math.max(8, y + others.length * 32)
+        }
+      }
+    }
   }
   const constrain = () => {
     x = Math.max(8, Math.min(x, win.innerWidth - panel.offsetWidth - 8))
@@ -53,8 +81,11 @@ export function positionPanel(
   observer.observe(panel)
   win.addEventListener("resize", constrain)
   constrain()
-  return () => {
-    observer.disconnect()
-    win.removeEventListener("resize", constrain)
+  return {
+    constrain,
+    dispose() {
+      observer.disconnect()
+      win.removeEventListener("resize", constrain)
+    },
   }
 }

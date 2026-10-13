@@ -35,11 +35,12 @@ export function createSlider(
     if (cls) node.className = cls
     return node
   }
+  const display = field.label ?? key
   const root = el("div", "knobs-slider")
   const track = el("div", "knobs-track")
   track.tabIndex = 0
   track.setAttribute("role", "slider")
-  track.setAttribute("aria-label", key)
+  track.setAttribute("aria-label", display)
   track.setAttribute("aria-valuemin", String(field.min))
   track.setAttribute("aria-valuemax", String(field.max))
   const marks = el("div", "knobs-marks")
@@ -53,11 +54,11 @@ export function createSlider(
   const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
-  label.textContent = field.shortcut ? `${key} · ${field.shortcut}` : key
+  label.textContent = field.shortcut ? `${display} · ${field.shortcut}` : display
   const value = el("button", "knobs-value")
   value.type = "button"
   value.tabIndex = -1
-  value.setAttribute("aria-label", `Edit ${key}`)
+  value.setAttribute("aria-label", `Edit ${display}`)
   const digits = el("span", "knobs-digits")
   value.append(digits)
   if (field.unit) {
@@ -72,7 +73,7 @@ export function createSlider(
   number.max = String(field.max)
   number.step = String(field.step)
   number.hidden = true
-  number.setAttribute("aria-label", `${key} value`)
+  number.setAttribute("aria-label", `${display} value`)
   track.append(marks, fill, handle, label, value, number)
   root.append(track)
 
@@ -126,7 +127,9 @@ export function createSlider(
   let startX = 0
   let moved = false
   track.onpointerdown = (event) => {
-    if (event.button !== 0 || event.target === value || event.target === number) return
+    const target = event.target as Node | null
+    if (event.button !== 0 || (target && (value.contains(target) || number.contains(target))))
+      return
     track.setPointerCapture(event.pointerId)
     dragging = true
     moved = false
@@ -172,16 +175,15 @@ export function createSlider(
     number.value = String(current)
     number.hidden = false
     value.hidden = true
-    label.hidden = true
     number.focus()
     number.select()
   }
   const done = (commit: boolean) => {
     if (number.hidden) return
-    if (commit && Number.isFinite(number.valueAsNumber)) set(quantize(number.valueAsNumber))
+    const next = number.valueAsNumber
     number.hidden = true
     value.hidden = false
-    label.hidden = false
+    if (commit && Number.isFinite(next)) set(quantize(next))
     paint(current, false)
     track.focus({ preventScroll: true })
   }
@@ -190,6 +192,7 @@ export function createSlider(
   number.onkeydown = (event) => {
     if (event.key === "Enter") {
       event.preventDefault()
+      event.stopPropagation()
       done(true)
     } else if (event.key === "Escape") {
       event.preventDefault()
@@ -198,6 +201,7 @@ export function createSlider(
     }
   }
   track.onkeydown = (event) => {
+    if (event.target !== track) return
     if (event.key === "Enter" && number.hidden) {
       event.preventDefault()
       edit()
