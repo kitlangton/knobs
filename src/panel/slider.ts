@@ -1,13 +1,17 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
-import { Spring, VelocityTracker } from "./motion.js"
+import { Roll, rollTarget, Spring, VelocityTracker } from "./motion.js"
 
 export interface DigitPlace {
   ch: string
-  /** Wheel position for digits (0–9); unused for "." or "-". */
-  readonly roll: Spring
-  /** 1 when the character is shown, 0 once it has left; entering/leaving characters fade and blur. */
-  readonly presence: Spring
+  /** Unbounded wheel position for digits (… 9, 10, 11 …); face = position mod 10. */
+  readonly wheel: Roll
+  /** 1 while shown, 0 once gone: new places fade in and rise, leaving places fade out. */
+  readonly presence: Roll
+  /** When this place started entering, and how long the entrance lasts (ms). */
+  enterAt: number
+  enterMs: number
+  exiting: boolean
 }
 
 export interface Slider {
@@ -146,38 +150,58 @@ export function createSlider(
   const velocity = new VelocityTracker()
   let initialized = false
 
-  function syncDigits(text: string, ms: number) {
-    // A spring with omega ≈ 10/duration settles in about the given duration.
-    const omega = ms > 0 ? 10000 / ms : 0
-    const move = (sp: Spring, to: number) => {
-      if (omega) {
-        sp.omega = omega
-        sp.set(to)
-      } else sp.snap(to)
-    }
+  // Mirrors @kitlangton/rolling-number: each place is a wheel that rolls through every face in
+  // the value's direction (98 → 108 rolls the tens 9 → 0 forwards), new places rise in after a
+  // short hold, cascading outward, and leaving places fade over ~65% of the duration.
+  function syncDigits(text: string, trend: number, ms: number) {
+    const now = performance.now()
+    const live = digitPlaces.filter((p) => !p.exiting).length
+    const step = Math.min(ms * 0.045, (ms * 0.3) / Math.max(1, text.length - live))
     for (let j = 0; j < Math.max(text.length, digitPlaces.length); j++) {
       const ch = j < text.length ? text[text.length - 1 - j]! : undefined
-      let place = digitPlaces[j]
+      const place = digitPlaces[j]
       if (ch === undefined) {
-        if (place) move(place.presence, 0)
+        if (place && !place.exiting) {
+          place.exiting = true
+          place.presence.set(0, ms * 0.65, now)
+        }
         continue
       }
-      const num = ch >= "0" && ch <= "9" ? Number(ch) : Number.NaN
+      const digit = ch >= "0" && ch <= "9" ? Number(ch) : Number.NaN
       if (!place) {
-        place = {
+        const delay = ms > 0 ? Math.max(0, j - live) * step : 0
+        const presence = new Roll(ms > 0 && initialized ? 0 : 1)
+        if (ms > 0 && initialized) presence.set(1, ms, now, delay)
+        digitPlaces[j] = {
           ch,
-          roll: new Spring(Number.isNaN(num) ? 0 : num, 24, 0.86),
-          presence: new Spring(initialized && omega ? 0 : 1, 24, 0.9),
+          wheel: new Roll(Number.isNaN(digit) ? 0 : digit),
+          presence,
+          enterAt: now + delay,
+          enterMs: ms > 0 && initialized ? ms : 0,
+          exiting: false,
         }
-        digitPlaces[j] = place
-      } else if (!Number.isNaN(num)) {
-        if (place.presence.target === 0 || Number.isNaN(Number(place.ch))) place.roll.snap(num)
-        else move(place.roll, num)
+        continue
+      }
+      if (place.exiting) {
+        place.exiting = false
+        place.presence.set(1, ms, now)
+      }
+      const wasDigit = place.ch >= "0" && place.ch <= "9"
+      if (!Number.isNaN(digit)) {
+        if (!wasDigit || ms <= 0) place.wheel.snap(digit)
+        else {
+          const at = place.wheel.sample(now).position
+          if (((Math.round(at) % 10) + 10) % 10 !== digit || !place.wheel.resting(now))
+            place.wheel.set(rollTarget(at, digit, trend), ms, now)
+        }
       }
       place.ch = ch
-      move(place.presence, 1)
     }
-    while (digitPlaces.length > text.length && digitPlaces.at(-1)!.presence.x <= 0.001)
+    while (
+      digitPlaces.length > text.length &&
+      digitPlaces.at(-1)!.exiting &&
+      digitPlaces.at(-1)!.presence.resting(now)
+    )
       digitPlaces.pop()
   }
 
@@ -191,13 +215,14 @@ export function createSlider(
     handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
   }
   const update = (v: number) => {
+    const previous = current
     current = v
     const r = ratioOf(v)
     velocity.add(r, 0)
     const ms = !initialized ? 0 : rollMs(dragging)
     if (!initialized || dragging) fillSpring.snap(r)
     else fillSpring.set(r)
-    syncDigits(fmtDigits(v), ms)
+    syncDigits(fmtDigits(v), Math.sign(v - previous), ms)
     initialized = true
     // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
     roller.update({ value: v, animated: ms > 0, ...(ms > 0 ? { duration: ms } : {}) })

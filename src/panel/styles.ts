@@ -69,13 +69,13 @@ const css = `
 .knobs-popover-grid span{color:var(--k-label)}
 
 /* Custom Preset Strip */
-.knobs-presets{position:relative;margin:0 0 var(--k-gap);padding:2px;background:var(--k-seg-bg);border-radius:var(--k-radius);user-select:none;touch-action:none}
-.knobs-presets-track{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));align-items:stretch;gap:2px}
+.knobs-presets{position:relative;display:flex;align-items:flex-start;gap:2px;margin:0 0 var(--k-gap);padding:2px;background:var(--k-seg-bg);border-radius:var(--k-radius);user-select:none;touch-action:none}
+.knobs-presets-track{position:relative;flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--k-preset-min,58px)),1fr));align-items:stretch;gap:2px}
 .knobs-presets-pill{position:absolute;top:0;left:0;background:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));border:1px solid color-mix(in srgb,var(--k-accent) 32%,transparent);border-radius:calc(var(--k-radius) - 2px);box-shadow:0 1px 2px rgba(0,0,0,.16),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 24%,transparent);pointer-events:none;transition:transform calc(.22s * clamp(var(--k-blur),.1,2)) cubic-bezier(.22,1.1,.36,1),width calc(.22s * clamp(var(--k-blur),.1,2)) cubic-bezier(.22,1.1,.36,1),opacity .15s}
 .knobs-preset-chip{position:relative;z-index:1;height:calc(var(--k-row) - 8px);min-height:20px;padding:0 6px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent!important;border-radius:calc(var(--k-radius) - 2px);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
 .knobs-preset-chip:hover{color:var(--k-text)}
 .knobs-preset-chip[aria-checked="true"]{color:var(--k-text);font-weight:600}
-.knobs-preset-save{color:var(--k-dim)!important;font-weight:400!important;font-size:calc(var(--k-font-size) + 2px)!important}
+.knobs-preset-save{flex:none;width:calc(var(--k-row) - 8px);padding:0!important;color:var(--k-dim)!important;font-weight:400!important;font-size:calc(var(--k-font-size) + 2px)!important}
 .knobs-preset-save:hover{color:var(--k-text)!important}
 .knobs-preset-custom{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 6px;height:calc(var(--k-row) - 8px);min-height:20px;font:500 calc(var(--k-font-size) - 1.5px)/1 var(--k-mono);color:var(--k-label);white-space:nowrap}
 .knobs-preset-custom::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--k-modified)}

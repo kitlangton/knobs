@@ -1,6 +1,6 @@
 import type { RendererMode } from "../../core/store.js"
 import { ICONS, type IconName } from "../icons.js"
-import { clamp, Spring } from "../motion.js"
+import { clamp, entranceOffset, numeral, Spring } from "../motion.js"
 import type { PresetStrip } from "../presets.js"
 import type { Slider } from "../slider.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
@@ -865,8 +865,17 @@ class GpuOverlayManager {
 
         if (row.kind === "knob") {
           const sl = row.slider
-          const placeSprings = sl.digitPlaces.flatMap((d) => [d.roll, d.presence])
-          for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring, ...placeSprings]) {
+          const clock = performance.now()
+          const rolling =
+            !reducedMotion &&
+            sl.digitPlaces.some(
+              (d) =>
+                !d.wheel.resting(clock) ||
+                !d.presence.resting(clock) ||
+                clock - d.enterAt < d.enterMs,
+            )
+          if (rolling) anyMoving = true
+          for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring]) {
             if (reducedMotion) sp.snap(sp.target)
             else {
               sp.step(dt)
@@ -933,26 +942,24 @@ class GpuOverlayManager {
                 }) + 3.5
             }
 
-            if (reducedMotion || placeSprings.every((sp) => sp.resting)) {
+            if (!rolling) {
               this.drawText(digitsText, rightEdge, rowCenterY, valCol, {
                 px: valPx,
                 weight: 400,
                 align: "right",
               })
             } else {
-              // Each place rolls on its own wheel behind a feathered slot; characters that
-              // appear or disappear (99 → 100, a minus sign) fade and blur in or out.
+              // A reel per place, read through a feathered slot: every face between the old and
+              // new digit passes by, blurring with speed the way rolling-number's envelope does.
               const charAdvance = this.atlas.get("0", valPx, 400, tokens.fontFamily, scale).textW
-              const slotH = rRect.height - 2
-              const travel = slotH * 0.55
-              const slotTop = rRect.top + 1
+              const faceH = valPx * 1.5
               const slotClip = intersectClip(bodyClip, [
                 rRect.left,
-                slotTop,
+                rRect.top + 1,
                 rRect.right,
-                slotTop + slotH,
+                rRect.bottom - 1,
               ])
-              const feather = slotH * 0.32
+              const feather = (rRect.height - 2) * 0.34
               const text = {
                 px: valPx,
                 weight: 400,
@@ -960,40 +967,28 @@ class GpuOverlayManager {
                 clip: slotClip,
                 feather,
               }
+              const maxBlur = faceH * 0.45 * blurMul
               sl.digitPlaces.forEach((place, j) => {
-                const presence = clamp(place.presence.x, 0, 1)
-                if (presence <= 0.01) return
+                const presence = clamp(place.presence.sample(clock).position, 0, 1)
+                if (presence <= 0.005) return
                 const cx = rightEdge - j * charAdvance
-                const enterY = (1 - presence) * travel * 0.6
-                const enterBlur = (1 - presence) * 5 * blurMul
+                const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
                 const col = withAlpha(valCol, presence)
                 const isDigit = place.ch >= "0" && place.ch <= "9"
-                if (!isDigit || place.roll.resting) {
-                  this.drawText(place.ch, cx, rowCenterY + enterY, col, {
-                    ...text,
-                    blurY: enterBlur,
-                  })
+                if (!isDigit) {
+                  this.drawText(place.ch, cx, rowCenterY + rise, col, text)
                   return
                 }
-                const base = Math.floor(place.roll.x)
-                const frac = place.roll.x - base
-                const blurY = clamp(place.roll.v * 0.45 * blurMul, -12, 12) + enterBlur
-                const digit = (n: number) => String(((n % 10) + 10) % 10)
-                this.drawText(digit(base), cx, rowCenterY + enterY - frac * travel, col, {
-                  ...text,
-                  blurY,
-                })
-                if (frac > 0.01)
-                  this.drawText(
-                    digit(base + 1),
-                    cx,
-                    rowCenterY + enterY + (1 - frac) * travel,
-                    col,
-                    {
-                      ...text,
-                      blurY,
-                    },
-                  )
+                const { position, velocity } = place.wheel.sample(clock)
+                // 4 faces/s starts the smear; 24 faces/s is full strength.
+                const speed = Math.abs(velocity)
+                const blurY = clamp((speed - 4) / 20, 0, 1) * maxBlur
+                const base = Math.floor(position)
+                for (let k = base - 1; k <= base + 2; k++) {
+                  const y = rowCenterY + rise + (k - position) * faceH
+                  if (Math.abs(y - rowCenterY) > rRect.height * 0.5 + faceH * 0.5) continue
+                  this.drawText(numeral(k), cx, y, col, { ...text, blurY })
+                }
               })
             }
           }

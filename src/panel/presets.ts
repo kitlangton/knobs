@@ -116,6 +116,7 @@ export function createPresetStrip<S extends Schema>(
   }
   track.append(pill)
   root.append(track)
+  if (saveButton) root.append(saveButton)
 
   const pillX = new Spring(0, 28, 0.82)
   const pillW = new Spring(48, 28, 0.86)
@@ -248,17 +249,37 @@ export function createPresetStrip<S extends Schema>(
           b.onclick = (e) => {
             e.preventDefault()
             if (idx !== activeState.activeIndex) selectAt(idx)
-            root.focus({ preventScroll: true })
+            focusQuietly()
           }
           return b
         })
-        track.replaceChildren(pill, ...buttons, customBadge, ...(saveButton ? [saveButton] : []))
+        track.replaceChildren(pill, ...buttons, customBadge)
+        fitColumns()
         syncSelection(true)
       } else {
         entries = nextEntries
         syncSelection(false)
       }
     })
+  }
+
+  // Pointer selections keep keyboard focus in the strip without drawing a keyboard focus ring.
+  function focusQuietly() {
+    root.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+  }
+
+  // Columns are as wide as the longest name, so a label never spills into its neighbour;
+  // narrower panels wrap to more rows instead.
+  function fitColumns() {
+    let widest = 0
+    const range = doc.createRange()
+    for (const b of [...buttons, customBadge]) {
+      if (b.hidden || !b.firstChild) continue
+      range.selectNodeContents(b)
+      widest = Math.max(widest, range.getBoundingClientRect().width)
+    }
+    // Room for the bolder selected weight plus the chip's side padding.
+    if (widest > 0) track.style.setProperty("--k-preset-min", `${Math.ceil(widest * 1.06 + 14)}px`)
   }
 
   function save() {
@@ -315,7 +336,7 @@ export function createPresetStrip<S extends Schema>(
       selectAt(idx)
       scrubCommitted = true
     }
-    root.focus({ preventScroll: true })
+    focusQuietly()
   }
   track.onpointermove = (event) => {
     if (!scrubbing) return
@@ -363,6 +384,7 @@ export function createPresetStrip<S extends Schema>(
     }
   }
 
+  void doc.fonts?.ready.then(fitColumns)
   const ro = new ResizeObserver(() => measurePill(true))
   ro.observe(track)
 

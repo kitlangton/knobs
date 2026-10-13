@@ -62,3 +62,76 @@ export class VelocityTracker {
 }
 
 export const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x))
+
+/**
+ * Time-based critically damped motion, the same curve @kitlangton/rolling-number samples for
+ * its reels: settles in `duration`, carries velocity across retargets, and never overshoots.
+ */
+export class Roll {
+  private from: number
+  private to = 0
+  private inherited = 0
+  private start = 0
+  private duration = 0
+  constructor(position: number) {
+    this.from = this.to = position
+  }
+  get target() {
+    return this.to
+  }
+  sample(now: number): { position: number; velocity: number } {
+    const t = now - this.start
+    if (this.duration <= 0 || t >= this.duration) return { position: this.to, velocity: 0 }
+    if (t <= 0) return { position: this.from, velocity: 0 }
+    const seconds = this.duration / 1000
+    const tau = t / this.duration
+    const d = this.from - this.to
+    const e = Math.exp(-10 * tau)
+    return {
+      position: this.to + (d + (this.inherited + 10 * d) * tau) * e,
+      velocity: (e * (this.inherited - 10 * (this.inherited + 10 * d) * tau)) / seconds,
+    }
+  }
+  /** Retarget from wherever the motion is now; `delay` holds the current position first. */
+  set(target: number, duration: number, now: number, delay = 0) {
+    const { position, velocity } = this.sample(now)
+    if (duration <= 0) return this.snap(target)
+    const seconds = duration / 1000
+    const distance = position - target
+    // Bound inherited energy after huge updates, as the library does.
+    const limit = (Math.max(Math.abs(distance), 1) * 12) / seconds
+    this.inherited = clamp(delay > 0 ? 0 : velocity, -limit, limit) * seconds
+    this.from = position
+    this.to = target
+    this.start = now + delay
+    this.duration = duration
+    return this
+  }
+  snap(position: number) {
+    this.from = this.to = position
+    this.duration = 0
+    this.inherited = 0
+    return this
+  }
+  resting(now: number) {
+    return this.duration <= 0 || now - this.start >= this.duration
+  }
+}
+
+/** Nearest wheel position showing `digit`, honoring the trend (from rolling-number). */
+export function rollTarget(position: number, digit: number, trend: number): number {
+  let target = Math.floor(position / 10) * 10 + digit
+  if (trend > 0 && target < position - 0.001) target += 10
+  else if (trend < 0 && target > position + 0.001) target -= 10
+  else if (trend === 0) target += Math.round((position - target) / 10) * 10
+  return target
+}
+
+export const numeral = (position: number) => String(((position % 10) + 10) % 10)
+
+/** New glyphs hold briefly, then rise into their slot (rolling-number's `entrance`). Returns 0..1 of a face height. */
+export function entranceOffset(elapsed: number, duration: number, hold = 0.14): number {
+  if (duration <= 0 || elapsed >= duration) return 0
+  const p = clamp((elapsed / duration - hold) / (1 - hold), 0, 1)
+  return (1 + 10 * p) * Math.exp(-10 * p)
+}
