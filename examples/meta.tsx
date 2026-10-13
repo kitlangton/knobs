@@ -17,7 +17,7 @@ const metaSchema = {
     label: "Theme",
     group: "Appearance",
   }),
-  accentHue: knob(210, {
+  accentHue: knob(215, {
     min: 0,
     max: 360,
     step: 1,
@@ -25,7 +25,7 @@ const metaSchema = {
     label: "Accent hue",
     group: "Appearance",
   }),
-  accentChroma: knob(0, {
+  accentChroma: knob(72, {
     min: 0,
     max: 100,
     step: 2,
@@ -107,7 +107,7 @@ const metaSchema = {
   labelWeight: knob(500, {
     min: 400,
     max: 700,
-    step: 100,
+    step: 50,
     label: "Label weight",
     group: "Typography & Motion",
   }),
@@ -232,6 +232,11 @@ function applyTokensToDocument(v: MetaValues) {
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {
   enabled: true,
+  onChange(patch, values, meta) {
+    if (meta.source === "local" && "accentHue" in patch && values.accentChroma === 0) {
+      knobsMeta.set({ accentChroma: 72 }, { coalesce: true })
+    }
+  },
   presets: {
     compact: {
       width: 260,

@@ -239,14 +239,19 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
 fn samplePillAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let r = p.look.x;
   let dist = roundedBox(local, size, r);
+  var out = vec4f(0.0);
+  if (p.look.z > 0.05 && dist > -1.0 && dist < 14.0) {
+    let glow = exp(-max(dist, 0.0) / 4.5) * 0.16 * clamp(p.look.z, 0.0, 1.5) * p.color.a;
+    out = vec4f(p.color2.rgb * glow, glow);
+  }
   let cov = covSd(dist);
-  if (cov <= 0.0) { return vec4f(0.0); }
+  if (cov <= 0.0) { return out; }
   let top = 1.0 - smoothstep(0.0, size.y * 0.6, local.y);
-  let rgb = clamp(p.color.rgb + vec3f(top * 0.04), vec3f(0.0), vec3f(1.0));
-  var out = vec4f(rgb * p.color.a, p.color.a) * cov;
-  let rimCov = hairline(dist, 1.0) * top * 0.35;
-  out = over(out, vec4f(p.color2.rgb * p.color2.a * rimCov, p.color2.a * rimCov));
-  return out;
+  let rgb = clamp(p.color.rgb + vec3f(top * 0.035), vec3f(0.0), vec3f(1.0));
+  var pill = vec4f(rgb * p.color.a, p.color.a) * cov;
+  let rimCov = hairline(dist, 1.0) * (0.35 + top * 0.35);
+  pill = over(pill, vec4f(p.color2.rgb * p.color2.a * rimCov, p.color2.a * rimCov));
+  return over(out, pill);
 }
 
 // kind 3: Morphing pill indicator (preset selector pill, segmented control active pill)
@@ -272,6 +277,12 @@ fn shadeToggle(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let trackDist = roundedBox(local, size, r);
   var out = vec4f(0.0);
 
+  let prog = clamp(p.extra.x, 0.0, 1.0);
+  if (prog > 0.05 && p.look.z > 0.05 && trackDist > -1.0 && trackDist < 14.0) {
+    let glow = exp(-max(trackDist, 0.0) / 4.2) * 0.22 * prog * clamp(p.look.z, 0.0, 1.5);
+    out = over(out, vec4f(p.color.rgb * glow, glow));
+  }
+
   let focus = clamp(p.extra.y, 0.0, 1.0);
   if (focus > 0.005) {
     let ringCov = clamp(0.5 - (abs(trackDist + 0.5) - 0.85) * view.dpr, 0.0, 1.0) * focus;
@@ -284,7 +295,6 @@ fn shadeToggle(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   out = over(out, premul(p.color) * trackCov);
 
   // Thumb capsule inside track
-  let prog = clamp(p.extra.x, 0.0, 1.0);
   let stretch = clamp(abs(p.motion.x) * 0.25, 0.0, 5.5);
   let pad = 2.0;
   let baseD = max(8.0, size.y - pad * 2.0);

@@ -73,7 +73,6 @@ export interface PresetStrip {
   cycle(direction: -1 | 1): void
   selectById(id: string): void
   update(): void
-  measurePill(snap?: boolean): void
 }
 
 export function createPresetStrip<S extends Schema>(
@@ -323,6 +322,9 @@ export function createPresetStrip<S extends Schema>(
     }
   }
 
+  const ro = new ResizeObserver(() => measurePill(true))
+  ro.observe(track)
+
   return {
     element: root,
     track,
@@ -338,6 +340,5 @@ export function createPresetStrip<S extends Schema>(
     cycle,
     selectById,
     update,
-    measurePill,
   }
 }

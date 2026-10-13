@@ -7,7 +7,7 @@ import {
   type GpuPanelBinding,
   type GpuRowBinding,
 } from "./gpu/renderer.js"
-import { computeHintPrefixes } from "./hints.js"
+import { createHintController, type HintTarget } from "./hints.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Spring } from "./motion.js"
 import { positionPanel } from "./position.js"
@@ -52,7 +52,6 @@ function buildPanel<S extends Schema>(
   const titleText = options.title === undefined ? controls.id : options.title
   root.setAttribute("role", inline ? "region" : "dialog")
   root.setAttribute("aria-label", `${titleText || controls.id} controls`)
-  // Append to host before building sliders so rolling numbers measure in-DOM immediately.
   host.append(root)
 
   let wakeGpu = () => {}
@@ -93,20 +92,16 @@ function buildPanel<S extends Schema>(
   const header = el("header")
   let titleEl: HTMLElement | null = null
   const headerButtons: { button: HTMLButtonElement; icon: IconName }[] = []
-  const iconButton = (icon: IconName, label: string, action: () => unknown) => {
+  const iconButton = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
     const node = button("", action)
     node.append(iconSvg(doc, icon))
     node.setAttribute("aria-label", label)
+    if (shortcut) node.setAttribute("aria-keyshortcuts", shortcut)
     return node
   }
 
-  const undoButton = iconButton("undo", "Undo", controls.undo)
-  undoButton.setAttribute("aria-keyshortcuts", "u")
-  undoButton.title = "Undo (u)"
-
-  const redoButton = iconButton("redo", "Redo", controls.redo)
-  redoButton.setAttribute("aria-keyshortcuts", "Shift+u")
-  redoButton.title = "Redo (⇧u)"
+  const undoButton = iconButton("undo", "Undo", "u", controls.undo)
+  const redoButton = iconButton("redo", "Redo", "Shift+u", controls.redo)
 
   const popover = el("div")
   popover.className = "knobs-popover"
@@ -115,19 +110,18 @@ function buildPanel<S extends Schema>(
   popover.setAttribute("aria-label", "Keyboard shortcuts")
   const popGrid = el("div")
   popGrid.className = "knobs-popover-grid"
-  const shortcuts: [string, string][] = [
+  for (const [k, desc] of [
     ["↑↓ / j k", "Move between rows"],
     ["Tab", "Next control"],
     ["←→ / h l", "Adjust value (⇧ ×10)"],
     ["[ / ]", "Cycle preset or variant"],
-    ["s", "Jump to anything by name"],
+    ["s", "Jump to anything by code"],
     ["0–9 / Enter", "Edit number inline"],
-    ["⌫", "Reset focused row (or double-click)"],
+    ["⌫", "Reset focused row"],
     ["r", "Randomize all"],
     ["u / ⇧u", "Undo / Redo"],
     ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
-  ]
-  for (const [k, desc] of shortcuts) {
+  ]) {
     popGrid.append(el("kbd", k), el("span", desc))
   }
   popover.append(popGrid)
@@ -152,16 +146,13 @@ function buildPanel<S extends Schema>(
       headerButtons.push({ button: undoButton, icon: "undo" }, { button: redoButton, icon: "redo" })
     }
     if (showFooter) {
-      helpButton = iconButton("help", "Keyboard shortcuts", () => togglePopover())
-      helpButton.setAttribute("aria-keyshortcuts", "?")
+      helpButton = iconButton("help", "Keyboard shortcuts", "?", () => togglePopover())
       helpButton.setAttribute("aria-expanded", "false")
-      helpButton.title = "Keyboard shortcuts (?)"
       headActions.append(helpButton)
       headerButtons.push({ button: helpButton, icon: "help" })
     }
     if (close) {
-      dismiss = iconButton("close", `Close ${controls.id}`, close)
-      dismiss.title = "Close (Esc)"
+      dismiss = iconButton("close", `Close ${controls.id}`, "", close)
       headActions.append(dismiss)
       headerButtons.push({ button: dismiss, icon: "close" })
     }
@@ -169,7 +160,6 @@ function buildPanel<S extends Schema>(
   }
 
   const presetStrip = createPresetStrip(doc, controls, showVariants, run, () => wakeGpu())
-
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
@@ -188,7 +178,6 @@ function buildPanel<S extends Schema>(
       gHead.className = "knobs-group-head"
       gHead.dataset.group = groupName
       const gLabel = el("span", groupName)
-      gHead.append(gLabel)
       const gRight = el("span")
       const gBtns: HTMLButtonElement[] = []
       for (const act of allActions.filter((a) => a.group === groupName)) {
@@ -202,7 +191,7 @@ function buildPanel<S extends Schema>(
       groupResetButtons.set(groupName, gReset)
       gBtns.push(gReset)
       gRight.append(gReset)
-      gHead.append(gRight)
+      gHead.append(gLabel, gRight)
       body.append(gHead)
       gpuGroups.push({ element: gHead, labelEl: gLabel, buttons: gBtns })
     }
@@ -219,19 +208,13 @@ function buildPanel<S extends Schema>(
         run(() => controls.resetKey(key))
       }
       body.append(slider.element)
-      gpuRows.push({
-        kind: "knob",
-        key,
-        display,
-        row: slider.element,
-        slider,
-        isModified,
-      })
+      gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, isModified })
       return {
         key,
         display,
         field,
         row: slider.element,
+        labelEl: slider.label,
         input: slider.track,
         number: slider.number,
         slider,
@@ -279,7 +262,17 @@ function buildPanel<S extends Schema>(
         pillW: new Spring(0, 28, 0.86),
         isModified,
       })
-      return { key, display, field, row, input: seg, number: undefined, buttons, set }
+      return {
+        key,
+        display,
+        field,
+        row,
+        labelEl: rowLabel,
+        input: seg,
+        number: undefined,
+        buttons,
+        set,
+      }
     }
     const toggle = el("button")
     toggle.type = "button"
@@ -301,7 +294,7 @@ function buildPanel<S extends Schema>(
       toggleSpring: new Spring(controls.get()[key] ? 1 : 0, 28, 0.82),
       isModified,
     })
-    return { key, display, field, row, input: toggle, number: undefined, set }
+    return { key, display, field, row, labelEl: rowLabel, input: toggle, number: undefined, set }
   })
 
   const name = el("input")
@@ -376,9 +369,7 @@ function buildPanel<S extends Schema>(
   actions.className = "knobs-actions"
   const randomBtn = button("Random", controls.randomize)
   const resetBtn = button("Reset", controls.reset)
-  const copyBtn = button("Copy", () => {
-    void copy(controls.code())
-  })
+  const copyBtn = button("Copy", () => void copy(controls.code()))
   const gpuActionButtons: HTMLButtonElement[] = [randomBtn, resetBtn, copyBtn]
 
   if (showVariants) {
@@ -404,8 +395,7 @@ function buildPanel<S extends Schema>(
 
   const variantForm = el("div")
   variantForm.className = "knobs-variant-form"
-  const saveBtn = button("Save", saveVariant)
-  variantForm.append(name, saveBtn)
+  variantForm.append(name, button("Save", saveVariant))
 
   const saved = el("div")
   saved.className = "knobs-saved-list"
@@ -413,9 +403,7 @@ function buildPanel<S extends Schema>(
   const transfer = el("div")
   transfer.className = "knobs-transfer"
   transfer.append(
-    button("Export", () => {
-      void copy(controls.variants.export())
-    }),
+    button("Export", () => void copy(controls.variants.export())),
     button("Import", () => {
       text.hidden = false
       apply.hidden = false
@@ -428,9 +416,7 @@ function buildPanel<S extends Schema>(
 
   if (titleText !== false) root.append(header)
   if (showFooter) root.append(popover)
-  root.append(presetStrip.element)
-  root.append(body)
-  root.append(actions)
+  root.append(presetStrip.element, body, actions)
   if (panelActions.length > 0) root.append(customActions)
   if (showVariants) root.append(variantsDrawer)
   root.append(text, apply, status)
@@ -443,8 +429,7 @@ function buildPanel<S extends Schema>(
     const values = controls.get()
     for (const row of rows) {
       const value = values[row.key]
-      const modified = value !== controls.locked[row.key]
-      row.row.classList.toggle("knobs-modified", modified)
+      row.row.classList.toggle("knobs-modified", value !== controls.locked[row.key])
       if ("slider" in row && row.slider) row.slider.update(Number(value))
       else if ("buttons" in row && row.buttons)
         for (const b of row.buttons)
@@ -452,23 +437,19 @@ function buildPanel<S extends Schema>(
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
     for (const [groupName, gReset] of groupResetButtons) {
-      const hasModified = rows.some(
+      gReset.disabled = !rows.some(
         (r) => r.field.group === groupName && values[r.key] !== controls.locked[r.key],
       )
-      gReset.disabled = !hasModified
     }
     undoButton.disabled = !controls.canUndo
     redoButton.disabled = !controls.canRedo
     if (controls.error) status.textContent = controls.error
-
     presetStrip.update()
 
     if (showVariants) {
       run(() => {
         const variants = controls.variants.list()
-        if (variantsToggle) {
-          variantsToggle.dataset.count = String(variants.length)
-        }
+        if (variantsToggle) variantsToggle.dataset.count = String(variants.length)
         for (const [id, node] of savedRows)
           if (!variants.some((v) => v.id === id)) {
             node.remove()
@@ -482,9 +463,7 @@ function buildPanel<S extends Schema>(
           row.append(
             el("span", variant.name ?? `Variant ${variant.id.slice(0, 8)}`),
             button("Load", () => controls.variants.load(variant.id)),
-            button("Copy", () => {
-              void copy(controls.code("ts", variant.values))
-            }),
+            button("Copy", () => void copy(controls.code("ts", variant.values))),
             button("Delete", () => {
               controls.variants.remove(variant.id)
               name.focus()
@@ -498,20 +477,17 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  // Hint mode: press `s`, type the start of any control's name, jump straight to it.
-  type HintTarget = { key: string; display: string; el: HTMLElement; activate(): void }
-  const hintLayer = el("div")
-  hintLayer.className = "knobs-hint-layer"
-  hintLayer.setAttribute("aria-hidden", "true")
   const visible = (node: HTMLElement) =>
     node.isConnected && !node.closest("[hidden]") && node.getClientRects().length > 0
-  const hintTargets = (): HintTarget[] => {
+  const hintCtrl = createHintController(doc, root, () => wakeGpu())
+
+  const collectHintTargets = (): HintTarget[] => {
     const targets: HintTarget[] = []
-    const add = (el: HTMLElement, label: string, activate: () => void) => {
-      if (!label || !visible(el) || (el as HTMLButtonElement).disabled) return
-      targets.push({ key: label, display: label, el, activate })
+    const add = (node: HTMLElement, label: string, activate: () => void, labelEl?: HTMLElement) => {
+      if (!label || !visible(node) || (node as HTMLButtonElement).disabled) return
+      targets.push({ key: label, display: label, el: node, labelEl, activate })
     }
-    for (const r of rows) add(r.row, r.display, () => r.input.focus())
+    for (const r of rows) add(r.row, r.display, () => r.input.focus(), r.labelEl)
     presetStrip.getEntries().forEach((entry, i) => {
       const chip = presetStrip.getButtons()[i]
       if (chip)
@@ -520,67 +496,15 @@ function buildPanel<S extends Schema>(
           presetStrip.element.focus({ preventScroll: true })
         })
     })
-    // Header icons have their own keys (u, ⇧u, ?, Esc), so they stay out of the way here.
-    const buttons = root.querySelectorAll<HTMLButtonElement>(
+    for (const b of root.querySelectorAll<HTMLButtonElement>(
       ".knobs-group-head button, .knobs-actions button, .knobs-custom-actions button, .knobs-variants-drawer button",
-    )
-    for (const b of buttons)
+    )) {
       add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
+    }
     if (visible(name)) add(name, "Variant name", () => name.focus())
     return targets
   }
-  let hintItems: HintTarget[] = []
-  const hintOff = () => {
-    hint = undefined
-    root.classList.remove("knobs-hinting")
-    for (const t of hintItems) t.el.classList.remove("knobs-hint-match", "knobs-hint-miss")
-    hintItems = []
-    hintLayer.replaceChildren()
-    hintLayer.remove()
-    wakeGpu()
-  }
-  let hint: { query: string } | undefined
-  const hintPaint = () => {
-    if (!hint) return
-    const resolution = computeHintPrefixes(hintItems, hint.query)
-    if (resolution.uniqueMatchIndex >= 0) {
-      const target = hintItems[resolution.uniqueMatchIndex]!
-      hintOff()
-      target.activate()
-      return
-    }
-    if (!hintLayer.isConnected) root.append(hintLayer)
-    const rootRect = root.getBoundingClientRect()
-    const badges: HTMLElement[] = []
-    hintItems.forEach((t, i) => {
-      const badge = resolution.badges[i]!
-      t.el.classList.toggle("knobs-hint-match", badge.match)
-      t.el.classList.toggle("knobs-hint-miss", !badge.match)
-      if (!badge.match) return
-      const rect = t.el.getBoundingClientRect()
-      const tag = el("kbd")
-      tag.className = "knobs-hint"
-      const typedSpan = el("span", badge.typed)
-      typedSpan.className = "knobs-hint-typed"
-      const restSpan = el("span", badge.rest)
-      restSpan.className = "knobs-hint-rest"
-      tag.append(typedSpan, restSpan)
-      // Rows: inline in the label gutter. Buttons and chips: tucked on the top-left corner so
-      // their own text stays readable.
-      const isRow = t.el.classList.contains("knobs-row") || t.el.classList.contains("knobs-slider")
-      const inset = isRow
-        ? parseFloat(getComputedStyle(root).getPropertyValue("--k-inset")) || 10
-        : -3
-      const y = isRow ? rect.height / 2 : 3
-      tag.style.left = `${rect.left - rootRect.left - root.clientLeft + root.scrollLeft + inset}px`
-      tag.style.top = `${rect.top - rootRect.top - root.clientTop + root.scrollTop + y}px`
-      badges.push(tag)
-    })
-    hintLayer.replaceChildren(...badges)
-    wakeGpu()
-  }
 
-  // Vertical navigation stops: preset strip → rows → action bar.
   const actionBarButtons = () =>
     [
       ...root.querySelectorAll<HTMLButtonElement>(
@@ -588,7 +512,7 @@ function buildPanel<S extends Schema>(
       ),
     ].filter((b) => visible(b) && !b.disabled)
   let lastActionButton: HTMLButtonElement | undefined
-  const stops = (): { contains(node: Node): boolean; focus(): void }[] => {
+  const stops = () => {
     const list: { contains(node: Node): boolean; focus(): void }[] = []
     if (visible(presetStrip.element))
       list.push({
@@ -615,29 +539,12 @@ function buildPanel<S extends Schema>(
 
   root.onkeydown = (event) => {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
+    if (hintCtrl.handleKey(event)) return
     const target = event.target as HTMLElement
     const typing =
       target === name ||
       target === text ||
       (target instanceof HTMLInputElement && target.type === "number")
-    if (hint) {
-      event.preventDefault()
-      event.stopPropagation()
-      if (event.key === "Escape") hintOff()
-      else if (event.key === "Backspace") {
-        hint.query = hint.query.slice(0, -1)
-        hintPaint()
-      } else if (event.key === "Enter") {
-        const resolution = computeHintPrefixes(hintItems, hint.query)
-        const first = hintItems[resolution.matchIndices[0] ?? -1]
-        hintOff()
-        first?.activate()
-      } else if (event.key.length === 1) {
-        hint.query += event.key.toLowerCase()
-        hintPaint()
-      }
-      return
-    }
     if (event.key === "Escape") {
       if (!popover.hidden) {
         event.preventDefault()
@@ -689,10 +596,7 @@ function buildPanel<S extends Schema>(
     }
     if (key === "s") {
       event.preventDefault()
-      hint = { query: "" }
-      hintItems = hintTargets()
-      root.classList.add("knobs-hinting")
-      hintPaint()
+      hintCtrl.start(collectHintTargets())
       return
     }
     if (key === "r" || key === "R") {
@@ -770,7 +674,6 @@ function buildPanel<S extends Schema>(
       ? positionPanel(root, header, options.anchor, controls.id, () => controls.storage)
       : undefined
 
-  // WebGPU overlay binding & live mode switching
   const gpuBinding: GpuPanelBinding = {
     id: controls.id,
     root,
@@ -820,7 +723,7 @@ function buildPanel<S extends Schema>(
       ;(rows[0]?.input ?? dismiss ?? root).focus({ preventScroll: true })
     },
     dispose() {
-      hintOff()
+      hintCtrl.stop()
       modeObserver.disconnect()
       unregisterGpu?.()
       unsubscribe()

@@ -24,8 +24,6 @@ export interface Slider {
   velocity: VelocityTracker
   /** Number of tick marks along the track. */
   tickCount: number
-  /** Current numeric value. */
-  getValue(): number
   /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
   getDigitsText(): string
   /** Optional unit string (e.g. "px", "s"). */
@@ -201,7 +199,7 @@ export function createSlider(
   let fromValue = false
 
   const syncHandleTarget = () => {
-    const focused = track.ownerDocument.activeElement === track
+    const focused = track.matches(":focus-visible")
     handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
     onMotionWake?.()
   }
@@ -328,7 +326,6 @@ export function createSlider(
     digitSprings,
     velocity,
     tickCount: count,
-    getValue: () => current,
     getDigitsText: () => fmtDigits(current),
     getUnitText: () => field.unit ?? "",
     isDragging: () => dragging,

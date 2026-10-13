@@ -1,8 +1,9 @@
 "use client"
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react"
-import { equal, type Choice, type Schema, type Values } from "../core/schema.js"
+import type { Choice, Schema } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import type { Variant } from "../core/variants.js"
+import { getSwitcherOptions } from "../panel/switcher.js"
 import { useControls } from "./useControls.js"
 
 type ChoiceKey<S extends Schema> = { [K in keyof S]: S[K] extends Choice ? K : never }[keyof S] &
@@ -28,7 +29,7 @@ export function VariantSwitcher<S extends Schema>({
     () => controls.enabled,
     () => false,
   )
-  const variants = useSyncExternalStore(
+  useSyncExternalStore(
     controls.subscribe,
     () => {
       if (field || !controls.enabled) return empty
@@ -41,49 +42,7 @@ export function VariantSwitcher<S extends Schema>({
     () => empty,
   )
   const ref = useRef<HTMLDivElement>(null)
-  const lastAppliedRef = useRef<string | null>(null)
-  const definition = field ? controls.schema[field] : undefined
-  const options: { id: string; name: string; values?: Values<S>; choose(): void }[] =
-    definition?.kind === "choice"
-      ? definition.options.map((value) => ({
-          id: value,
-          name: value,
-          choose: () => controls.set({ [field!]: value } as Partial<typeof values>),
-        }))
-      : [
-          ...Object.entries(controls.presets).map(([id, preset]) => ({
-            id: `p:${id}`,
-            name: id,
-            values: preset,
-            choose: () => {
-              lastAppliedRef.current = `p:${id}`
-              controls.preset(id)
-            },
-          })),
-          ...variants.map((v) => ({
-            id: `v:${v.id}`,
-            name: v.name ?? v.id.slice(0, 8),
-            values: v.values,
-            choose: () => {
-              lastAppliedRef.current = `v:${v.id}`
-              controls.variants.load(v.id)
-            },
-          })),
-        ]
-  let index = -1
-  if (field) {
-    index = options.findIndex((o) => o.id === values[field])
-  } else {
-    if (lastAppliedRef.current) {
-      const pinnedIdx = options.findIndex(
-        (o) => o.id === lastAppliedRef.current && o.values !== undefined && equal(o.values, values),
-      )
-      if (pinnedIdx >= 0) index = pinnedIdx
-    }
-    if (index < 0) {
-      index = options.findIndex((o) => o.values !== undefined && equal(o.values, values))
-    }
-  }
+  const { options, index, activeName } = getSwitcherOptions(controls, field)
   const cycle = (direction: number) =>
     options[(index + direction + options.length) % options.length]?.choose()
   useEffect(() => {
@@ -118,9 +77,7 @@ export function VariantSwitcher<S extends Schema>({
       }
     }
     window.addEventListener("keydown", keydown)
-    return () => {
-      window.removeEventListener("keydown", keydown)
-    }
+    return () => window.removeEventListener("keydown", keydown)
   })
   useEffect(() => {
     const node = ref.current
@@ -137,7 +94,7 @@ export function VariantSwitcher<S extends Schema>({
       tabIndex={0}
       aria-label={
         label ??
-        `${controls.id} ${field ?? "variant"}: ${options[index]?.name ?? "custom"}. Use 1–9 or left/right arrows.`
+        `${controls.id} ${field ?? "variant"}: ${activeName}. Use 1–9 or left/right arrows.`
       }
       onPointerOver={(event) => {
         if (
@@ -159,7 +116,7 @@ export function VariantSwitcher<S extends Schema>({
         }
       }}
     >
-      {children ?? options[index]?.name ?? "custom"}
+      {children ?? activeName}
     </div>
   )
 }

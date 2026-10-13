@@ -116,31 +116,38 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "size", exact: true })).toBeFocused()
 
-  // Hint mode (`s`): every control gets its minimal unique prefix; the typed part dims; a unique match jumps.
+  // Hint mode (`s`): every control gets its short stable code; the typed part dims; a unique match jumps.
+  const seedLabelXBefore = await panel
+    .locator('[data-field="seed"] .knobs-label')
+    .evaluate((el) => el.getBoundingClientRect().left)
   await page.keyboard.press("s")
   await expect(panel).toHaveClass(/knobs-hinting/)
+  const seedLabelXDuring = await panel
+    .locator('[data-field="seed"] .knobs-label')
+    .evaluate((el) => el.getBoundingClientRect().left)
+  expect(seedLabelXDuring).toBe(seedLabelXBefore)
   const badges = panel.locator(".knobs-hint-layer .knobs-hint")
   await expect(badges).toHaveText([
     "se",
-    "cou",
+    "co",
     "si",
     "fl",
     "g",
     "d",
     "su",
     "h",
-    "Fi",
-    "Ra",
-    "Re",
-    "Cop",
-    "V",
+    "fi",
+    "ra",
+    "re",
+    "cp",
+    "v",
   ])
   await page.keyboard.press("s")
   await expect(badges.first().locator(".knobs-hint-typed")).toHaveText("s")
   await expect(badges.first().locator(".knobs-hint-rest")).toHaveText("e")
   await expect(panel.locator('[data-field="count"]')).toHaveClass(/knobs-hint-miss/)
   await page.keyboard.press("Backspace")
-  await page.keyboard.type("cou")
+  await page.keyboard.type("co")
   await expect(panel).not.toHaveClass(/knobs-hinting/)
   await expect(count).toBeFocused()
 
@@ -305,6 +312,20 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   const synthPanel = page.getByRole("region", { name: "synth-voice controls" })
   await expect(tokensPanel).toBeVisible()
   await expect(synthPanel).toBeVisible()
+
+  // Hint mode on meta page: "Accent hue" -> "ah", "Accent chroma" -> "ac"; typing "ah" jumps to Accent hue
+  await tokensPanel.getByRole("slider", { name: "Panel width", exact: true }).focus()
+  await page.keyboard.press("s")
+  const metaBadges = await tokensPanel.locator(".knobs-hint-layer .knobs-hint").allTextContents()
+  expect(metaBadges).toContain("ah")
+  expect(metaBadges).toContain("ac")
+  expect(metaBadges).toContain("pw")
+  await page.keyboard.type("ah")
+  await expect(tokensPanel.getByRole("slider", { name: "Accent hue", exact: true })).toBeFocused()
+
+  // Adjusting Accent hue on default preset immediately changes --k-accent
+  await page.keyboard.press("Shift+ArrowRight")
+  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: hsl(225 ")
 
   // Switch preset to "compact" and verify CSS variables update on :root and affect both panels
   const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })

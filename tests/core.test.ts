@@ -474,6 +474,28 @@ describe("metadata, per-key/group reset, sync, remote descriptors and Solid", ()
 
     const afterC = computeHintPrefixes(items, "c")
     expect(afterC.uniqueMatchIndex).toBe(1)
+
+    // Multi-word labels use short word-initial codes ("ah", "ac", "pw") with no spaces and stay stable while typing
+    const metaItems = [
+      { key: "theme", display: "Theme" },
+      { key: "accentHue", display: "Accent hue" },
+      { key: "accentChroma", display: "Accent chroma" },
+      { key: "contrast", display: "Contrast" },
+      { key: "width", display: "Panel width" },
+      { key: "pad", display: "Panel padding" },
+      { key: "panelRadius", display: "Panel radius" },
+    ]
+    const metaInit = computeHintPrefixes(metaItems, "")
+    expect(metaInit.badges.map((b) => b.prefix)).toEqual(["t", "ah", "ac", "c", "pw", "pp", "pr"])
+    for (const b of metaInit.badges) {
+      expect(b.prefix).toMatch(/^[a-z]{1,3}$/)
+    }
+    const metaAfterA = computeHintPrefixes(metaItems, "a")
+    expect(metaAfterA.matchIndices).toEqual([1, 2])
+    expect(metaAfterA.badges[1]).toEqual({ match: true, prefix: "ah", typed: "a", rest: "h" })
+    expect(metaAfterA.badges[2]).toEqual({ match: true, prefix: "ac", typed: "a", rest: "c" })
+    expect(computeHintPrefixes(metaItems, "ah").uniqueMatchIndex).toBe(1)
+    expect(computeHintPrefixes(metaItems, "ac").uniqueMatchIndex).toBe(2)
   })
 
   it("never gets stuck when cycling presets and a saved variant equals a preset", () => {

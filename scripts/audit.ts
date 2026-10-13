@@ -223,6 +223,12 @@ try {
     await page.goto(`http://127.0.0.1:${port}/meta.html${mode === "gpu" ? "?gpu" : ""}`)
     await sleep(800)
     await page.screenshot({ path: `test-results/audit-${mode}-meta.png` })
+    const metaPanel = page.getByRole("region", { name: "knobs-tokens controls" })
+    await metaPanel.getByRole("slider", { name: "Accent hue" }).focus()
+    await page.keyboard.press("s")
+    await sleep(250)
+    log("meta hint badges:", await metaPanel.locator(".knobs-hint").allTextContents())
+    await metaPanel.screenshot({ path: `test-results/audit-${mode}-meta-hint.png` })
     await page.close()
   }
   await browser.close()
