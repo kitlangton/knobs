@@ -227,7 +227,9 @@ export function createSlider(
     // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
     // Never take rolling-number's unanimated path: its finish() resets the reels, so the next
     // change would jump instead of rolling. A 1 ms roll is a snap that keeps it warm.
-    roller.update({ value: v, animated: true, duration: ms > 0 ? ms : 1 })
+    // In GPU mode the canvas draws the readout, so the hidden DOM reel just snaps.
+    const gpu = root.closest('[data-gpu-active="true"]') !== null
+    roller.update({ value: v, animated: true, duration: ms > 0 && !gpu ? ms : 1 })
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)

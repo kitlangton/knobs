@@ -25,6 +25,8 @@ try {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.evaluate(() => document.documentElement.style.setProperty("--k-roll", "2400"))
+    if (process.env.HIDE_DOM)
+      await page.addStyleTag({ content: ".knobs-value{visibility:hidden!important}" })
     const study = page.locator('[data-study="splat"]')
     const b = (await study.boundingBox())!
     await study.hover({ position: { x: b.width - 20, y: 60 } })

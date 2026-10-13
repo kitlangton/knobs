@@ -985,13 +985,7 @@ class GpuOverlayManager {
                 }) + 3.5
             }
 
-            if (!rolling) {
-              this.drawText(digitsText, rightEdge, rowCenterY, valCol, {
-                px: valPx,
-                weight: 400,
-                align: "right",
-              })
-            } else {
+            {
               // A reel per place, read through a feathered slot: every face between the old and
               // new digit passes by, blurring with speed the way rolling-number's envelope does.
               // Same reel as the DOM readout: faces 2.1em apart, seen through a 2.1em window
@@ -1012,17 +1006,22 @@ class GpuOverlayManager {
                 feather,
               }
               const maxBlur = faceH * 0.45 * blurMul
+              const measure = (t: string) => this.atlas.measure(t, valPx, 400, tokens.fontFamily)
+              let cell = 0
+              for (let d = 0; d <= 9; d++) cell = Math.max(cell, measure(String(d)))
+              const advance = (ch: string) => (ch >= "0" && ch <= "9" ? cell : measure(ch))
               sl.digitPlaces.forEach((place, j) => {
                 const presence = clamp(place.presence.sample(clock).position, 0, 1)
                 if (presence <= 0.005) return
-                // Centre of this character within the final string (canvas has no tabular figures,
-                // so measure real advances); characters on their way out keep their last spot.
-                const measure = (t: string) => this.atlas.measure(t, valPx, 400, tokens.fontFamily)
+                // Tabular figures: canvas can't turn on "tnum", so every digit gets the same cell
+                // (the widest digit) with its glyph centred, at rest and mid-roll alike. Punctuation
+                // keeps its own advance. Characters on their way out keep their last spot.
                 let offset = this.placeOffsets.get(place)
                 if (j < digitsText.length) {
-                  const i = digitsText.length - 1 - j
-                  const after = measure(digitsText.slice(i + 1))
-                  offset = after + (measure(digitsText.slice(i)) - after) / 2
+                  let after = 0
+                  for (let r = digitsText.length - 1; r > digitsText.length - 1 - j; r--)
+                    after += advance(digitsText[r]!)
+                  offset = after + advance(digitsText[digitsText.length - 1 - j]!) / 2
                   this.placeOffsets.set(place, offset)
                 }
                 const cx = rightEdge - (offset ?? 0)
