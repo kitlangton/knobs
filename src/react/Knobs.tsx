@@ -1,7 +1,16 @@
 "use client"
-import { cloneElement, useCallback, useEffect, useState, type ReactElement, type Ref } from "react"
+import {
+  cloneElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactElement,
+  type Ref,
+} from "react"
 import type { Schema } from "../core/schema.js"
-import type { Controls } from "../core/store.js"
+import type { Controls, MountPanelOptions } from "../core/store.js"
 
 export function useKnobs<S extends Schema, E extends HTMLElement = HTMLElement>(
   controls: Controls<S>,
@@ -31,4 +40,39 @@ export function Knobs<S extends Schema>({
     [attach, childRef],
   )
   return cloneElement(children, { ref })
+}
+export function KnobsPanel<S extends Schema>({
+  controls,
+  title,
+  theme,
+  density,
+  variants,
+  history,
+  footer,
+  actions,
+  onClose,
+}: MountPanelOptions & {
+  controls: Controls<S>
+}) {
+  const enabled = useSyncExternalStore(
+    controls.subscribe,
+    () => controls.enabled,
+    () => false,
+  )
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!enabled || !ref.current) return
+    return controls.mount(ref.current, {
+      title,
+      theme,
+      density,
+      variants,
+      history,
+      footer,
+      actions,
+      onClose,
+    })
+  }, [enabled, controls, title, theme, density, variants, history, footer, actions, onClose])
+  if (!enabled) return null
+  return <div ref={ref} data-knobs-mount={controls.id} />
 }

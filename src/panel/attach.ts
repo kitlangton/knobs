@@ -10,6 +10,7 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
   injectStyles(doc)
   const chip = doc.createElement("button")
   chip.className = "knobs-chip"
+  chip.dataset.theme = controls.theme
   chip.type = "button"
   chip.textContent = "⚙ knobs"
   chip.setAttribute("aria-label", `Tune ${controls.id}`)

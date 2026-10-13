@@ -9,7 +9,12 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "types": ["bun", "vite/client"],
-    "paths": { "knobs": ["./src/index.ts"], "knobs/react": ["./src/react/index.ts"] }
+    "paths": {
+      "knobs": ["./src/index.ts"],
+      "knobs/react": ["./src/react/index.ts"],
+      "knobs/solid": ["./src/solid/index.ts"],
+      "knobs/panel": ["./src/panel/index.ts"]
+    }
   },
   "include": ["src", "tests", "examples", "scripts", "*.ts"]
 }
