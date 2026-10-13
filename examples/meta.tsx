@@ -125,6 +125,23 @@ const metaSchema = {
     label: "Focus glow",
     group: "Typography & Motion",
   }),
+  roll: knob(420, {
+    min: 0,
+    max: 1000,
+    step: 20,
+    unit: "ms",
+    label: "Roll speed",
+    group: "Typography & Motion",
+  }),
+  dragRoll: toggle(false, { label: "Roll while dragging", group: "Typography & Motion" }),
+  dragRollSpeed: knob(100, {
+    min: 40,
+    max: 400,
+    step: 10,
+    unit: "ms",
+    label: "Drag roll speed",
+    group: "Typography & Motion",
+  }),
 }
 
 type MetaValues = Values<typeof metaSchema>
@@ -135,99 +152,56 @@ function resolveThemeIsLight(theme: MetaValues["theme"]): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: light)").matches
 }
 
-export function formatTokensCss(v: MetaValues): string {
+/** Every token the meta panel controls, computed once for both live application and Copy CSS. */
+function tokensFor(v: MetaValues): [string, string][] {
   const isLight = resolveThemeIsLight(v.theme)
   const c = v.contrast
-  const bg = isLight ? "#f5f5f7" : "#1c1c1e"
-  const surfAlpha = Number(((isLight ? 0.05 : 0.055) * c).toFixed(3))
-  const surfHiAlpha = Number(((isLight ? 0.095 : 0.11) * c).toFixed(3))
-  const lineAlpha = Number((0.1 * c).toFixed(3))
-  const lineHiAlpha = Number(((isLight ? 0.2 : 0.18) * c).toFixed(3))
-  const baseRgb = isLight ? "0, 0, 0" : "255, 255, 255"
+  const rgb = isLight ? "0, 0, 0" : "255, 255, 255"
+  const alpha = (light: number, dark: number) => ((isLight ? light : dark) * c).toFixed(3)
   const accent =
     v.accentChroma === 0
       ? isLight
         ? "#1c1c1e"
         : "#ffffff"
       : `hsl(${v.accentHue} ${Math.min(95, Math.round(v.accentChroma * 0.9))}% ${isLight ? 44 : 64}%)`
-
   return [
-    ":root {",
-    `  --k-bg: ${bg};`,
-    `  --k-surface: rgba(${baseRgb}, ${surfAlpha});`,
-    `  --k-surface-hi: rgba(${baseRgb}, ${surfHiAlpha});`,
-    `  --k-line: rgba(${baseRgb}, ${lineAlpha});`,
-    `  --k-line-hi: rgba(${baseRgb}, ${lineHiAlpha});`,
-    `  --k-accent: ${accent};`,
-    `  --k-width: ${v.width}px;`,
-    `  --k-pad: ${v.pad}px;`,
-    `  --k-inset: ${v.inset}px;`,
-    `  --k-row: ${v.rowHeight}px;`,
-    `  --k-gap: ${v.rowGap}px;`,
-    `  --k-radius: ${v.radius}px;`,
-    `  --k-panel-radius: ${v.panelRadius}px;`,
-    `  --k-font-size: ${v.fontSize}px;`,
-    `  --k-label-weight: ${v.labelWeight};`,
-    `  --k-blur: ${v.motionBlur};`,
-    `  --k-glow: ${v.glow};`,
-    "}",
-  ].join("\n")
+    ["--k-bg", isLight ? "#f5f5f7" : "#1c1c1e"],
+    ["--k-surface", `rgba(${rgb}, ${alpha(0.05, 0.055)})`],
+    ["--k-surface-hi", `rgba(${rgb}, ${alpha(0.095, 0.11)})`],
+    ["--k-line", `rgba(${rgb}, ${alpha(0.1, 0.1)})`],
+    ["--k-line-hi", `rgba(${rgb}, ${alpha(0.2, 0.18)})`],
+    ["--k-text", isLight ? "rgba(0, 0, 0, 0.88)" : "rgba(255, 255, 255, 0.92)"],
+    ["--k-label", isLight ? "rgba(60, 60, 67, 0.68)" : "rgba(255, 255, 255, 0.64)"],
+    ["--k-dim", isLight ? "rgba(60, 60, 67, 0.44)" : "rgba(255, 255, 255, 0.42)"],
+    ["--k-modified", isLight ? "rgba(0, 0, 0, 0.42)" : "rgba(255, 255, 255, 0.5)"],
+    ["--k-seg-bg", isLight ? "rgba(0, 0, 0, 0.065)" : "rgba(0, 0, 0, 0.26)"],
+    ["--k-seg-active", isLight ? "#ffffff" : `rgba(255, 255, 255, ${(0.11 * c).toFixed(3)})`],
+    ["--k-toggle-track", `rgba(${rgb}, 0.14)`],
+    ["--k-accent", accent],
+    ["--k-width", `${v.width}px`],
+    ["--k-pad", `${v.pad}px`],
+    ["--k-inset", `${v.inset}px`],
+    ["--k-row", `${v.rowHeight}px`],
+    ["--k-gap", `${v.rowGap}px`],
+    ["--k-radius", `${v.radius}px`],
+    ["--k-panel-radius", `${v.panelRadius}px`],
+    ["--k-font-size", `${v.fontSize}px`],
+    ["--k-label-weight", String(v.labelWeight)],
+    ["--k-blur", String(v.motionBlur)],
+    ["--k-glow", String(v.glow)],
+    ["--k-roll", String(v.roll)],
+    ["--k-drag-roll", String(v.dragRoll ? v.dragRollSpeed : 0)],
+  ]
+}
+
+export function formatTokensCss(v: MetaValues): string {
+  return [":root {", ...tokensFor(v).map(([k, val]) => `  ${k}: ${val};`), "}"].join("\n")
 }
 
 function applyTokensToDocument(v: MetaValues) {
   const root = document.documentElement
-  const isLight = resolveThemeIsLight(v.theme)
-  const c = v.contrast
-  const baseRgb = isLight ? "0, 0, 0" : "255, 255, 255"
-  const accent =
-    v.accentChroma === 0
-      ? isLight
-        ? "#1c1c1e"
-        : "#ffffff"
-      : `hsl(${v.accentHue} ${Math.min(95, Math.round(v.accentChroma * 0.9))}% ${isLight ? 44 : 64}%)`
-
-  root.dataset.knobsTheme = isLight ? "light" : "dark"
-  root.style.setProperty("--k-bg", isLight ? "#f5f5f7" : "#1c1c1e")
-  root.style.setProperty(
-    "--k-surface",
-    `rgba(${baseRgb}, ${((isLight ? 0.05 : 0.055) * c).toFixed(3)})`,
-  )
-  root.style.setProperty(
-    "--k-surface-hi",
-    `rgba(${baseRgb}, ${((isLight ? 0.095 : 0.11) * c).toFixed(3)})`,
-  )
-  root.style.setProperty("--k-line", `rgba(${baseRgb}, ${(0.1 * c).toFixed(3)})`)
-  root.style.setProperty(
-    "--k-line-hi",
-    `rgba(${baseRgb}, ${((isLight ? 0.2 : 0.18) * c).toFixed(3)})`,
-  )
-  root.style.setProperty("--k-text", isLight ? "rgba(0, 0, 0, 0.88)" : "rgba(255, 255, 255, 0.92)")
-  root.style.setProperty(
-    "--k-label",
-    isLight ? "rgba(60, 60, 67, 0.68)" : "rgba(255, 255, 255, 0.64)",
-  )
-  root.style.setProperty(
-    "--k-dim",
-    isLight ? "rgba(60, 60, 67, 0.44)" : "rgba(255, 255, 255, 0.42)",
-  )
-  root.style.setProperty("--k-seg-bg", isLight ? "rgba(0, 0, 0, 0.065)" : "rgba(0, 0, 0, 0.26)")
-  root.style.setProperty(
-    "--k-seg-active",
-    isLight ? "#ffffff" : `rgba(255, 255, 255, ${(0.11 * c).toFixed(3)})`,
-  )
-  root.style.setProperty("--k-toggle-track", `rgba(${baseRgb}, 0.14)`)
-  root.style.setProperty("--k-accent", accent)
-  root.style.setProperty("--k-width", `${v.width}px`)
-  root.style.setProperty("--k-pad", `${v.pad}px`)
-  root.style.setProperty("--k-inset", `${v.inset}px`)
-  root.style.setProperty("--k-row", `${v.rowHeight}px`)
-  root.style.setProperty("--k-gap", `${v.rowGap}px`)
-  root.style.setProperty("--k-radius", `${v.radius}px`)
-  root.style.setProperty("--k-panel-radius", `${v.panelRadius}px`)
-  root.style.setProperty("--k-font-size", `${v.fontSize}px`)
-  root.style.setProperty("--k-label-weight", String(v.labelWeight))
-  root.style.setProperty("--k-blur", String(v.motionBlur))
-  root.style.setProperty("--k-glow", String(v.glow))
+  root.dataset.knobsTheme = resolveThemeIsLight(v.theme) ? "light" : "dark"
+  for (const [k, val] of tokensFor(v)) root.style.setProperty(k, val)
 }
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {

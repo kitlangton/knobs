@@ -131,6 +131,8 @@ interface TextOpts {
   clip?: Clip
   blurY?: number
   track?: number
+  /** Vertical feather (px) from the clip's top and bottom edges, for rolling digits. */
+  feather?: number
 }
 
 class GpuOverlayManager {
@@ -486,6 +488,7 @@ class GpuOverlayManager {
       color,
       kind: 5,
       blurY: opts.blurY ?? 0,
+      p0: opts.feather ?? 0,
     })
     return entry.textW
   }
@@ -798,6 +801,22 @@ class GpuOverlayManager {
           )
         }
 
+        if (ps.saveButton && !ps.saveButton.hidden) {
+          const sr = ps.saveButton.getBoundingClientRect()
+          const hot = ps.saveButton.matches(":hover")
+          this.drawText(
+            "+",
+            sr.left + sr.width * 0.5,
+            sr.top + sr.height * 0.5,
+            hot ? tokens.text : tokens.dim,
+            {
+              px: tokens.fontSize + 2,
+              weight: 400,
+              align: "center",
+            },
+          )
+        }
+
         if (!ps.customBadge.hidden) {
           const cr = ps.customBadge.getBoundingClientRect()
           const textW = this.drawText(
@@ -846,7 +865,8 @@ class GpuOverlayManager {
 
         if (row.kind === "knob") {
           const sl = row.slider
-          for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring, ...sl.digitSprings]) {
+          const placeSprings = sl.digitPlaces.flatMap((d) => [d.roll, d.presence])
+          for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring, ...placeSprings]) {
             if (reducedMotion) sp.snap(sp.target)
             else {
               sp.step(dt)
@@ -913,57 +933,68 @@ class GpuOverlayManager {
                 }) + 3.5
             }
 
-            if (reducedMotion || !sl.digitSprings.some((ds) => !ds.resting)) {
+            if (reducedMotion || placeSprings.every((sp) => sp.resting)) {
               this.drawText(digitsText, rightEdge, rowCenterY, valCol, {
                 px: valPx,
                 weight: 400,
                 align: "right",
               })
             } else {
+              // Each place rolls on its own wheel behind a feathered slot; characters that
+              // appear or disappear (99 → 100, a minus sign) fade and blur in or out.
               const charAdvance = this.atlas.get("0", valPx, 400, tokens.fontFamily, scale).textW
-              const slotH = Math.min(rRect.height - 6, tokens.fontSize * 1.35)
-              const slotTop = rRect.top + (rRect.height - slotH) * 0.5
+              const slotH = rRect.height - 2
+              const travel = slotH * 0.55
+              const slotTop = rRect.top + 1
               const slotClip = intersectClip(bodyClip, [
                 rRect.left,
                 slotTop,
                 rRect.right,
                 slotTop + slotH,
               ])
-              for (let ci = digitsText.length - 1; ci >= 0; ci--) {
-                const ch = digitsText[ci]!
-                const sp = sl.digitSprings[ci]
-                const cx = rightEdge - (digitsText.length - 1 - ci) * charAdvance
-                if (!sp || ch < "0" || ch > "9" || sp.resting) {
-                  this.drawText(ch, cx, rowCenterY, valCol, {
-                    px: valPx,
-                    weight: 400,
-                    align: "right",
-                    clip: slotClip,
-                  })
-                } else {
-                  const baseDigit = Math.floor(sp.x)
-                  const frac = sp.x - baseDigit
-                  const blurY = clamp(sp.v * 0.45 * blurMul, -12, 12)
-                  const d0 = String(((baseDigit % 10) + 10) % 10)
-                  const d1 = String((((baseDigit + 1) % 10) + 10) % 10)
-                  this.drawText(
-                    d0,
-                    cx,
-                    rowCenterY - frac * slotH * 0.85,
-                    withAlpha(valCol, 1 - frac * 0.6),
-                    { px: valPx, weight: 400, align: "right", clip: slotClip, blurY },
-                  )
-                  if (frac > 0.02) {
-                    this.drawText(
-                      d1,
-                      cx,
-                      rowCenterY + (1 - frac) * slotH * 0.85,
-                      withAlpha(valCol, 0.4 + frac * 0.6),
-                      { px: valPx, weight: 400, align: "right", clip: slotClip, blurY },
-                    )
-                  }
-                }
+              const feather = slotH * 0.32
+              const text = {
+                px: valPx,
+                weight: 400,
+                align: "right" as const,
+                clip: slotClip,
+                feather,
               }
+              sl.digitPlaces.forEach((place, j) => {
+                const presence = clamp(place.presence.x, 0, 1)
+                if (presence <= 0.01) return
+                const cx = rightEdge - j * charAdvance
+                const enterY = (1 - presence) * travel * 0.6
+                const enterBlur = (1 - presence) * 5 * blurMul
+                const col = withAlpha(valCol, presence)
+                const isDigit = place.ch >= "0" && place.ch <= "9"
+                if (!isDigit || place.roll.resting) {
+                  this.drawText(place.ch, cx, rowCenterY + enterY, col, {
+                    ...text,
+                    blurY: enterBlur,
+                  })
+                  return
+                }
+                const base = Math.floor(place.roll.x)
+                const frac = place.roll.x - base
+                const blurY = clamp(place.roll.v * 0.45 * blurMul, -12, 12) + enterBlur
+                const digit = (n: number) => String(((n % 10) + 10) % 10)
+                this.drawText(digit(base), cx, rowCenterY + enterY - frac * travel, col, {
+                  ...text,
+                  blurY,
+                })
+                if (frac > 0.01)
+                  this.drawText(
+                    digit(base + 1),
+                    cx,
+                    rowCenterY + enterY + (1 - frac) * travel,
+                    col,
+                    {
+                      ...text,
+                      blurY,
+                    },
+                  )
+              })
             }
           }
         } else if (row.kind === "choice") {

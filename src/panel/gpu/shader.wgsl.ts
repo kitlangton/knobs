@@ -373,7 +373,14 @@ fn shadeDot(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     case 2: { out = shadeSlider(p, local, size, in.pos.xy); }
     case 3: { out = shadePill(p, local, size, in.pos.xy); }
     case 4: { out = shadeToggle(p, local, size); }
-    case 5: { out = shadeText(p, local, size, in.pos.xy); }
+    case 5: {
+      out = shadeText(p, local, size, in.pos.xy);
+      // Feathered slot for rolling digits: fade toward the clip's top and bottom edges.
+      if (p.extra.x > 0.0) {
+        let edge = min(in.screenPx.y - p.clip.y, p.clip.w - in.screenPx.y);
+        out = out * smoothstep(0.0, p.extra.x, edge);
+      }
+    }
     default: { out = shadeDot(p, local, size); }
   }
   return out * clipCov;

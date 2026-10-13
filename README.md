@@ -4,7 +4,7 @@ Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
 Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel includes **Randomize · Reset · Save variant · Switch variants · Copy · Undo/Redo**. Shipped presets and locally saved variants live together, with JSON export/import for moving a collection between machines.
+Each panel includes **Random · Reset · Copy · Undo/Redo** and a preset strip. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
 Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
@@ -113,7 +113,8 @@ Panels and switchers are keyboard-first:
 | `s` | Jump: badges every row, preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
-| `r` | Randomize all fields |
+| `r` / `⇧R` | Randomize all fields / reset all fields to defaults |
+| `⇧S` | Save the current values as a new preset chip |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover |
 | `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |

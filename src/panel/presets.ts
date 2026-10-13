@@ -63,6 +63,8 @@ export interface PresetStrip {
   readonly track: HTMLElement
   readonly pill: HTMLElement
   readonly customBadge: HTMLElement
+  /** Trailing "+" chip that saves the current values as a new variant (absent when variants are off). */
+  readonly saveButton: HTMLButtonElement | null
   readonly pillX: Spring
   readonly pillW: Spring
   readonly pillY: Spring
@@ -72,6 +74,10 @@ export interface PresetStrip {
   getActiveState(): ActivePresetState
   cycle(direction: -1 | 1): void
   selectById(id: string): void
+  /** Saves the current values as "Variant N"; returns a status message. */
+  save(): string
+  /** Deletes the selected chip when it's a saved variant; returns a status message. */
+  deleteActive(): string | undefined
   update(): void
 }
 
@@ -99,6 +105,15 @@ export function createPresetStrip<S extends Schema>(
   pill.setAttribute("aria-hidden", "true")
   const customBadge = el("span", "knobs-preset-custom", "custom")
   customBadge.hidden = true
+  const saveButton = showVariants ? el("button", "knobs-preset-chip knobs-preset-save", "+") : null
+  if (saveButton) {
+    saveButton.type = "button"
+    saveButton.tabIndex = -1
+    saveButton.setAttribute("aria-label", "Save as variant")
+    saveButton.setAttribute("aria-keyshortcuts", "Shift+S")
+    saveButton.dataset.hint = "Save"
+    saveButton.onclick = () => run(save)
+  }
   track.append(pill)
   root.append(track)
 
@@ -216,7 +231,7 @@ export function createPresetStrip<S extends Schema>(
     run(() => {
       const nextEntries = buildEntries()
       const nextSig = JSON.stringify(nextEntries.map((e) => [e.id, e.label]))
-      const shouldShow = nextEntries.length > 1
+      const shouldShow = nextEntries.length > 1 || showVariants
       root.hidden = !shouldShow
       if (nextSig !== signature) {
         signature = nextSig
@@ -237,13 +252,34 @@ export function createPresetStrip<S extends Schema>(
           }
           return b
         })
-        track.replaceChildren(pill, ...buttons, customBadge)
+        track.replaceChildren(pill, ...buttons, customBadge, ...(saveButton ? [saveButton] : []))
         syncSelection(true)
       } else {
         entries = nextEntries
         syncSelection(false)
       }
     })
+  }
+
+  function save() {
+    const used = new Set(controls.variants.list().map((v) => v.name))
+    let n = 1
+    while (used.has(`Variant ${n}`)) n++
+    const variant = controls.variants.save(`Variant ${n}`)
+    lastAppliedId = `v:${variant.id}`
+    update()
+    onAfterChange?.()
+    return `Saved “Variant ${n}”.`
+  }
+
+  function deleteActive() {
+    const entry = entries[activeState.activeIndex]
+    if (!entry || entry.kind !== "variant") return undefined
+    controls.variants.remove(entry.rawId)
+    lastAppliedId = null
+    update()
+    onAfterChange?.()
+    return `Deleted “${entry.label}”.`
   }
 
   // Pointer scrubbing across chips
@@ -269,6 +305,7 @@ export function createPresetStrip<S extends Schema>(
   }
   track.onpointerdown = (event) => {
     if (event.button !== 0 || buttons.length === 0) return
+    if (saveButton && saveButton.contains(event.target as Node)) return
     event.preventDefault()
     scrubbing = true
     scrubCommitted = false
@@ -312,6 +349,10 @@ export function createPresetStrip<S extends Schema>(
       event.preventDefault()
       event.stopPropagation()
       selectAt(entries.length - 1)
+    } else if ((event.key === "Backspace" || event.key === "Delete") && showVariants) {
+      event.preventDefault()
+      event.stopPropagation()
+      run(() => deleteActive() ?? "Only saved variants can be deleted.")
     } else if (/^[1-9]$/.test(event.key)) {
       const idx = Number(event.key) - 1
       if (idx < entries.length) {
@@ -330,6 +371,7 @@ export function createPresetStrip<S extends Schema>(
     track,
     pill,
     customBadge,
+    saveButton,
     pillX,
     pillW,
     pillY,
@@ -339,6 +381,12 @@ export function createPresetStrip<S extends Schema>(
     getActiveState: () => activeState,
     cycle,
     selectById,
+    save: () => {
+      let message = ""
+      run(() => (message = save()))
+      return message
+    },
+    deleteActive,
     update,
   }
 }

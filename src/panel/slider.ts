@@ -2,6 +2,14 @@ import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
 import { Spring, VelocityTracker } from "./motion.js"
 
+export interface DigitPlace {
+  ch: string
+  /** Wheel position for digits (0–9); unused for "." or "-". */
+  readonly roll: Spring
+  /** 1 when the character is shown, 0 once it has left; entering/leaving characters fade and blur. */
+  readonly presence: Spring
+}
+
 export interface Slider {
   element: HTMLElement
   /** The focusable, keyboard-driven surface. */
@@ -19,7 +27,8 @@ export interface Slider {
   /** Spring driving handle visibility/scale [0..1]. */
   handleSpring: Spring
   /** Per-character springs for GPU rolling number digits. */
-  digitSprings: Spring[]
+  /** Readout characters keyed by place from the right, so 99 → 100 keeps the 9s in place. */
+  digitPlaces: DigitPlace[]
   /** Velocity tracker on normalized fill ratio for drag motion blur. */
   velocity: VelocityTracker
   /** Number of tick marks along the track. */
@@ -110,7 +119,15 @@ export function createSlider(
     value: field.value,
     format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
     duration: 420,
+    motionBlur: true,
   })
+  // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
+  const rollMs = (drag: boolean) => {
+    const raw = parseFloat(
+      getComputedStyle(root).getPropertyValue(drag ? "--k-drag-roll" : "--k-roll"),
+    )
+    return Number.isFinite(raw) ? Math.max(0, raw) : drag ? 0 : 420
+  }
   const ratioOf = (v: number) =>
     field.max === field.min
       ? 0
@@ -125,25 +142,43 @@ export function createSlider(
   const fillSpring = new Spring(ratioOf(field.value), 26, 0.84)
   const stretchSpring = new Spring(0, 32, 0.78)
   const handleSpring = new Spring(0, 28, 0.88)
-  const digitSprings: Spring[] = []
+  const digitPlaces: DigitPlace[] = []
   const velocity = new VelocityTracker()
   let initialized = false
 
-  function syncDigitSprings(text: string, snap: boolean) {
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i]!
-      const num = ch >= "0" && ch <= "9" ? Number(ch) : ch === "-" ? -1 : -2
-      let sp = digitSprings[i]
-      if (!sp) {
-        sp = new Spring(num, 24, 0.86)
-        digitSprings[i] = sp
-      } else if (snap || num < 0 || sp.target < 0) {
-        sp.snap(num)
-      } else {
-        sp.set(num)
-      }
+  function syncDigits(text: string, ms: number) {
+    // A spring with omega ≈ 10/duration settles in about the given duration.
+    const omega = ms > 0 ? 10000 / ms : 0
+    const move = (sp: Spring, to: number) => {
+      if (omega) {
+        sp.omega = omega
+        sp.set(to)
+      } else sp.snap(to)
     }
-    digitSprings.length = text.length
+    for (let j = 0; j < Math.max(text.length, digitPlaces.length); j++) {
+      const ch = j < text.length ? text[text.length - 1 - j]! : undefined
+      let place = digitPlaces[j]
+      if (ch === undefined) {
+        if (place) move(place.presence, 0)
+        continue
+      }
+      const num = ch >= "0" && ch <= "9" ? Number(ch) : Number.NaN
+      if (!place) {
+        place = {
+          ch,
+          roll: new Spring(Number.isNaN(num) ? 0 : num, 24, 0.86),
+          presence: new Spring(initialized && omega ? 0 : 1, 24, 0.9),
+        }
+        digitPlaces[j] = place
+      } else if (!Number.isNaN(num)) {
+        if (place.presence.target === 0 || Number.isNaN(Number(place.ch))) place.roll.snap(num)
+        else move(place.roll, num)
+      }
+      place.ch = ch
+      move(place.presence, 1)
+    }
+    while (digitPlaces.length > text.length && digitPlaces.at(-1)!.presence.x <= 0.001)
+      digitPlaces.pop()
   }
 
   let current = field.value
@@ -159,19 +194,13 @@ export function createSlider(
     current = v
     const r = ratioOf(v)
     velocity.add(r, 0)
-    if (!initialized) {
-      fillSpring.snap(r)
-      syncDigitSprings(fmtDigits(v), true)
-      initialized = true
-    } else if (dragging) {
-      fillSpring.snap(r)
-      syncDigitSprings(fmtDigits(v), true)
-    } else {
-      fillSpring.set(r)
-      syncDigitSprings(fmtDigits(v), false)
-    }
-    // Dragging tracks the pointer; everything else (Random, presets, keys) rolls.
-    roller.update({ value: v, animated: !dragging })
+    const ms = !initialized ? 0 : rollMs(dragging)
+    if (!initialized || dragging) fillSpring.snap(r)
+    else fillSpring.set(r)
+    syncDigits(fmtDigits(v), ms)
+    initialized = true
+    // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
+    roller.update({ value: v, animated: ms > 0, ...(ms > 0 ? { duration: ms } : {}) })
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)
@@ -323,7 +352,7 @@ export function createSlider(
     fillSpring,
     stretchSpring,
     handleSpring,
-    digitSprings,
+    digitPlaces,
     velocity,
     tickCount: count,
     getDigitsText: () => fmtDigits(current),

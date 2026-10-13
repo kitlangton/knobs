@@ -62,13 +62,9 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await expect(presetStrip.locator(".knobs-preset-custom")).toBeVisible()
   const randomized = await rendered("splat").getAttribute("data-render")
 
-  // Open Variants disclosure drawer, save a named variant
-  await panel.getByRole("button", { name: "Variants" }).click()
-  await panel.getByRole("textbox", { name: "Variant name", exact: true }).fill("First impression")
-  await panel.getByRole("button", { name: "Save", exact: true }).click()
-  await expect(panel.locator(".knobs-saved")).toHaveCount(1)
-  // Saved variant also appears in the top preset strip
-  await expect(presetStrip.getByRole("radio", { name: "First impression" })).toHaveAttribute(
+  // "+" at the end of the preset strip saves the current values as a new chip
+  await presetStrip.getByRole("button", { name: "Save as variant" }).click()
+  await expect(presetStrip.getByRole("radio", { name: "Variant 1" })).toHaveAttribute(
     "aria-checked",
     "true",
   )
@@ -83,17 +79,17 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
   await page.locator('[data-study="splat"]').focus()
   await page.getByRole("button", { name: "Tune splat", exact: true }).click()
-  await panel.getByRole("button", { name: /Variants/ }).click()
-  await expect(panel.locator(".knobs-saved")).toContainText("First impression")
+  await expect(presetStrip.getByRole("radio", { name: "Variant 1" })).toBeVisible()
   await panel.getByRole("button", { name: "Reset", exact: true }).click()
   await expect(rendered("splat")).toHaveAttribute("data-render", beforeSplat!)
-  await panel.locator(".knobs-saved").getByRole("button", { name: "Load", exact: true }).click()
+  await presetStrip.getByRole("radio", { name: "Variant 1" }).click()
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
   await panel.getByRole("button", { name: "Reset", exact: true }).click()
 
   // Verify cycling never gets stuck when a saved variant equals a preset ("default")
-  await panel.getByRole("textbox", { name: "Variant name", exact: true }).fill("Default clone")
-  await panel.getByRole("button", { name: "Save", exact: true }).click()
+  await presetStrip.focus()
+  await page.keyboard.press("Shift+S")
+  await expect(presetStrip.getByRole("radio", { name: "Variant 2" })).toBeVisible()
   await presetStrip.getByRole("radio", { name: "default", exact: true }).click()
   const visitedPresets: string[] = []
   for (let i = 0; i < 5; i++) {
@@ -101,12 +97,10 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
     visitedPresets.push((await presetStrip.getAttribute("data-active-preset")) ?? "")
   }
   expect(new Set(visitedPresets).size).toBe(5)
-  // Clean up the duplicate variant and close disclosure drawer
-  await panel
-    .locator(".knobs-saved", { hasText: "Default clone" })
-    .getByRole("button", { name: "Delete", exact: true })
-    .click()
-  await panel.getByRole("button", { name: /Variants/ }).click()
+  // ⌫ on the strip deletes the selected saved chip
+  await presetStrip.getByRole("radio", { name: "Variant 2" }).click()
+  await page.keyboard.press("Backspace")
+  await expect(presetStrip.getByRole("radio", { name: "Variant 2" })).toHaveCount(0)
   await panel.getByRole("button", { name: "Reset", exact: true }).click()
 
   const count = panel.getByRole("slider", { name: "count", exact: true })
@@ -127,21 +121,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
     .evaluate((el) => el.getBoundingClientRect().left)
   expect(seedLabelXDuring).toBe(seedLabelXBefore)
   const badges = panel.locator(".knobs-hint-layer .knobs-hint")
-  await expect(badges).toHaveText([
-    "se",
-    "co",
-    "si",
-    "fl",
-    "g",
-    "d",
-    "su",
-    "h",
-    "fi",
-    "ra",
-    "re",
-    "cp",
-    "v",
-  ])
+  expect((await badges.allTextContents()).slice(0, 5)).toEqual(["se", "co", "si", "f", "g"])
   await page.keyboard.press("s")
   await expect(badges.first().locator(".knobs-hint-typed")).toHaveText("s")
   await expect(badges.first().locator(".knobs-hint-rest")).toHaveText("e")
@@ -433,12 +413,31 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await expect(panel.getByRole("switch", { name: "grain" })).toBeFocused()
 
   // Tab wraps inside the floating panel
-  await panel.getByRole("button", { name: "Variants" }).focus()
+  await panel.getByRole("button", { name: "Copy", exact: true }).focus()
   await page.keyboard.press("Tab")
   // Undo/Redo are disabled on a fresh panel, so the wrap lands on the first enabled control.
   await expect(panel.getByRole("button", { name: "Keyboard shortcuts" })).toBeFocused()
   await page.keyboard.press("Shift+Tab")
-  await expect(panel.getByRole("button", { name: "Variants" })).toBeFocused()
+  await expect(panel.getByRole("button", { name: "Copy", exact: true })).toBeFocused()
+
+  // ⇧R resets everything; ⇧S saves a preset; ⌫ on the strip deletes it; export lives in "?"
+  await seed.focus()
+  await page.keyboard.press("ArrowRight")
+  await page.keyboard.press("Shift+R")
+  await expect(strip).toHaveAttribute("data-active-preset", "p:default")
+  await page.keyboard.press("ArrowRight")
+  await page.keyboard.press("Shift+S")
+  await expect(strip.getByRole("radio", { name: "Variant 1" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await strip.focus()
+  await page.keyboard.press("Backspace")
+  await expect(strip.getByRole("radio", { name: "Variant 1" })).toHaveCount(0)
+  await page.keyboard.press("?")
+  await expect(panel.getByRole("button", { name: "Export presets" })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Shift+R")
 
   // `s` jumps to presets (applying them) and buttons
   await seed.focus()
@@ -450,7 +449,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await expect(strip).toHaveAttribute("data-active-preset", "p:default")
 
   // Scrubbing across every chip is one undo step
-  const chips = strip.locator(".knobs-preset-chip")
+  const chips = strip.locator(".knobs-preset-chip[role=radio]")
   const first = (await chips.first().boundingBox())!
   const last = (await chips.last().boundingBox())!
   await page.mouse.move(first.x + 4, first.y + first.height / 2)

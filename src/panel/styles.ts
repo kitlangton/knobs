@@ -2,17 +2,17 @@ import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" 
 
 const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,.05);--k-surface-hi:rgba(0,0,0,.095);--k-line:rgba(0,0,0,.1);--k-line-hi:rgba(0,0,0,.2);
-  --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.44);--k-accent:#1c1c1e;--k-modified:#d97706;
+  --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.44);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
   --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
   color-scheme:light;`
 
 const css = `
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-surface:rgba(255,255,255,.055);--k-surface-hi:rgba(255,255,255,.11);--k-line:rgba(255,255,255,.1);--k-line-hi:rgba(255,255,255,.18);
-  --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:#ff9f0a;
+  --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
   --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
   --k-width:288px;--k-pad:10px;--k-inset:10px;--k-row:32px;--k-gap:4px;--k-radius:8px;--k-panel-radius:12px;
-  --k-font-size:12px;--k-label-weight:500;--k-blur:1;--k-glow:0.5;
+  --k-font-size:12px;--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:420;--k-drag-roll:0;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-ease:cubic-bezier(.2,.8,.2,1);
@@ -75,6 +75,8 @@ const css = `
 .knobs-preset-chip{position:relative;z-index:1;height:calc(var(--k-row) - 8px);min-height:20px;padding:0 6px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent!important;border-radius:calc(var(--k-radius) - 2px);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
 .knobs-preset-chip:hover{color:var(--k-text)}
 .knobs-preset-chip[aria-checked="true"]{color:var(--k-text);font-weight:600}
+.knobs-preset-save{color:var(--k-dim)!important;font-weight:400!important;font-size:calc(var(--k-font-size) + 2px)!important}
+.knobs-preset-save:hover{color:var(--k-text)!important}
 .knobs-preset-custom{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 6px;height:calc(var(--k-row) - 8px);min-height:20px;font:500 calc(var(--k-font-size) - 1.5px)/1 var(--k-mono);color:var(--k-label);white-space:nowrap}
 .knobs-preset-custom::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--k-modified)}
 
@@ -108,7 +110,7 @@ const css = `
 .knobs-slider:hover .knobs-marks i,.knobs-active .knobs-marks i{background:var(--k-line-hi)}
 .knobs-active .knobs-fill{background:color-mix(in srgb,var(--k-accent) 26%,var(--k-line-hi))}
 .knobs-release{transition:transform .32s cubic-bezier(.2,1.2,.4,1)}
-.knobs-digits{display:inline-block;line-height:1.35;--rn-edge-fade:0px}
+.knobs-digits{display:inline-block;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-unit{color:var(--k-dim)}
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - 92px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
 .knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);display:inline-flex;align-items:baseline;justify-content:flex-end;gap:.28em;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
@@ -150,21 +152,8 @@ const css = `
 .knobs-panel .knobs-actions button[disabled]{opacity:.35;cursor:default}
 
 /* Variants Disclosure Drawer */
-.knobs-variants-drawer{margin-top:6px;padding-top:6px;border-top:1px solid var(--k-line);display:grid;gap:var(--k-gap)}
-.knobs-variant-form{display:grid;grid-template-columns:1fr auto;gap:var(--k-gap)}
-.knobs-panel .knobs-name{display:block;width:100%;height:calc(var(--k-row) - 4px);min-height:24px;padding:0 var(--k-inset);font-size:calc(var(--k-font-size) - 0.5px);transition:background .15s}
-.knobs-panel .knobs-name::placeholder{color:var(--k-dim)}
-.knobs-panel .knobs-name:hover{background:var(--k-surface-hi)}
-.knobs-variant-form button{height:calc(var(--k-row) - 4px);min-height:24px;padding:0 10px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:500;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s}
-.knobs-variant-form button:hover{background:var(--k-surface-hi);color:var(--k-text)}
-.knobs-saved-list{display:grid;gap:var(--k-gap)}
-.knobs-saved-list:empty{display:none}
-.knobs-panel .knobs-saved{display:grid;grid-template-columns:1fr auto auto auto;gap:2px;align-items:center;min-height:calc(var(--k-row) - 4px);padding:2px 4px 2px var(--k-inset);background:var(--k-surface);border-radius:var(--k-radius)}
-.knobs-panel .knobs-saved span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-size:calc(var(--k-font-size) - 0.5px)}
-.knobs-panel .knobs-saved button{height:22px;padding:0 6px;font-size:calc(var(--k-font-size) - 1.5px);color:var(--k-label);background:transparent;cursor:pointer;border-radius:4px;transition:background .15s,color .15s}
-.knobs-panel .knobs-saved button:hover{background:var(--k-surface-hi);color:var(--k-text)}
-.knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap)}
-.knobs-transfer button{height:24px;padding:0 8px;font-size:calc(var(--k-font-size) - 1px);color:var(--k-label);cursor:pointer;transition:background .15s,color .15s}
+.knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
+.knobs-transfer button{height:24px;padding:0 8px;background:var(--k-surface);font-size:calc(var(--k-font-size) - 1px);color:var(--k-label);cursor:pointer;transition:background .15s,color .15s}
 .knobs-transfer button:hover{background:var(--k-surface-hi);color:var(--k-text)}
 
 /* Status & Transfer Textarea */

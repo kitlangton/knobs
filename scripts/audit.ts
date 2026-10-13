@@ -163,7 +163,7 @@ try {
     log("panel still open after hint Esc:", await panel.isVisible())
 
     // Tab wraps inside the floating panel
-    await panel.getByRole("button", { name: "Variants" }).focus()
+    await panel.getByRole("button", { name: "Copy", exact: true }).focus()
     await page.keyboard.press("Tab")
     log(
       "Tab from last ->",

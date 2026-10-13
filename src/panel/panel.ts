@@ -114,11 +114,12 @@ function buildPanel<S extends Schema>(
     ["↑↓ / j k", "Move between rows"],
     ["Tab", "Next control"],
     ["←→ / h l", "Adjust value (⇧ ×10)"],
-    ["[ / ]", "Cycle preset or variant"],
+    ["[ / ]", "Cycle presets"],
     ["s", "Jump to anything by code"],
     ["0–9 / Enter", "Edit number inline"],
-    ["⌫", "Reset focused row"],
-    ["r", "Randomize all"],
+    ["⌫", "Reset row · delete saved preset"],
+    ["r / ⇧R", "Random / Reset all"],
+    ...(showVariants ? ([["⇧S", "Save as preset"]] as [string, string][]) : []),
     ["u / ⇧u", "Undo / Redo"],
     ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
   ]) {
@@ -297,13 +298,6 @@ function buildPanel<S extends Schema>(
     return { key, display, field, row, labelEl: rowLabel, input: toggle, number: undefined, set }
   })
 
-  const name = el("input")
-  name.className = "knobs-name"
-  name.name = "variant-name"
-  name.placeholder = "Variant name"
-  name.maxLength = 100
-  name.setAttribute("aria-label", "Variant name")
-
   const text = el("textarea")
   text.hidden = true
   text.name = "variant-json"
@@ -337,51 +331,15 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  const saveVariant = () => {
-    controls.variants.save(name.value)
-    name.value = ""
-    status.textContent = "Variant saved."
-  }
-  name.onkeydown = (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault()
-      event.stopPropagation()
-      run(saveVariant)
-    }
-  }
-
-  const variantsDrawer = el("div")
-  variantsDrawer.className = "knobs-variants-drawer"
-  variantsDrawer.hidden = true
-
-  let variantsOpen = false
-  let variantsToggle: HTMLButtonElement | undefined
-  const setVariantsOpen = (open: boolean, focusInput = false) => {
-    variantsOpen = open
-    variantsDrawer.hidden = !open
-    variantsToggle?.setAttribute("aria-expanded", String(open))
-    positioned?.constrain()
-    if (open && focusInput) name.focus({ preventScroll: true })
-    wakeGpu()
-  }
-
   const actions = el("div")
   actions.className = "knobs-actions"
   const randomBtn = button("Random", controls.randomize)
   const resetBtn = button("Reset", controls.reset)
   const copyBtn = button("Copy", () => void copy(controls.code()))
+  randomBtn.setAttribute("aria-keyshortcuts", "r")
+  resetBtn.setAttribute("aria-keyshortcuts", "Shift+R")
   const gpuActionButtons: HTMLButtonElement[] = [randomBtn, resetBtn, copyBtn]
-
-  if (showVariants) {
-    variantsToggle = button("Variants", () => setVariantsOpen(!variantsOpen, !variantsOpen))
-    variantsToggle.className = "knobs-variants-toggle"
-    variantsToggle.setAttribute("aria-label", "Variants")
-    variantsToggle.setAttribute("aria-expanded", "false")
-    gpuActionButtons.push(variantsToggle)
-    actions.append(randomBtn, resetBtn, copyBtn, variantsToggle)
-  } else {
-    actions.append(randomBtn, resetBtn, copyBtn)
-  }
+  actions.append(randomBtn, resetBtn, copyBtn)
 
   const panelActions = allActions.filter((a) => !a.group)
   const customActions = el("div")
@@ -393,32 +351,27 @@ function buildPanel<S extends Schema>(
     gpuActionButtons.push(b)
   }
 
-  const variantForm = el("div")
-  variantForm.className = "knobs-variant-form"
-  variantForm.append(name, button("Save", saveVariant))
-
-  const saved = el("div")
-  saved.className = "knobs-saved-list"
-  const savedRows = new Map<string, HTMLElement>()
-  const transfer = el("div")
-  transfer.className = "knobs-transfer"
-  transfer.append(
-    button("Export", () => void copy(controls.variants.export())),
-    button("Import", () => {
-      text.hidden = false
-      apply.hidden = false
-      text.value = ""
-      positioned?.constrain()
-      text.focus()
-    }),
-  )
-  variantsDrawer.append(variantForm, saved, transfer)
+  // Saved presets live in the strip; moving them between machines lives with the shortcuts.
+  if (showVariants && showFooter) {
+    const transfer = el("div")
+    transfer.className = "knobs-transfer"
+    transfer.append(
+      button("Export presets", () => void copy(controls.variants.export())),
+      button("Import presets", () => {
+        text.hidden = false
+        apply.hidden = false
+        text.value = ""
+        positioned?.constrain()
+        text.focus()
+      }),
+    )
+    popover.append(transfer)
+  }
 
   if (titleText !== false) root.append(header)
   if (showFooter) root.append(popover)
   root.append(presetStrip.element, body, actions)
   if (panelActions.length > 0) root.append(customActions)
-  if (showVariants) root.append(variantsDrawer)
   root.append(text, apply, status)
 
   function update() {
@@ -446,34 +399,6 @@ function buildPanel<S extends Schema>(
     if (controls.error) status.textContent = controls.error
     presetStrip.update()
 
-    if (showVariants) {
-      run(() => {
-        const variants = controls.variants.list()
-        if (variantsToggle) variantsToggle.dataset.count = String(variants.length)
-        for (const [id, node] of savedRows)
-          if (!variants.some((v) => v.id === id)) {
-            node.remove()
-            savedRows.delete(id)
-          }
-        for (const variant of variants) {
-          if (savedRows.has(variant.id)) continue
-          const row = el("div")
-          row.className = "knobs-saved"
-          row.dataset.variant = variant.id
-          row.append(
-            el("span", variant.name ?? `Variant ${variant.id.slice(0, 8)}`),
-            button("Load", () => controls.variants.load(variant.id)),
-            button("Copy", () => void copy(controls.code("ts", variant.values))),
-            button("Delete", () => {
-              controls.variants.remove(variant.id)
-              name.focus()
-            }),
-          )
-          savedRows.set(variant.id, row)
-          saved.append(row)
-        }
-      })
-    }
     wakeGpu()
   }
 
@@ -497,11 +422,10 @@ function buildPanel<S extends Schema>(
         })
     })
     for (const b of root.querySelectorAll<HTMLButtonElement>(
-      ".knobs-group-head button, .knobs-actions button, .knobs-custom-actions button, .knobs-variants-drawer button",
+      ".knobs-group-head button, .knobs-actions button, .knobs-custom-actions button, .knobs-preset-save, .knobs-popover button",
     )) {
       add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
     }
-    if (visible(name)) add(name, "Variant name", () => name.focus())
     return targets
   }
 
@@ -542,9 +466,7 @@ function buildPanel<S extends Schema>(
     if (hintCtrl.handleKey(event)) return
     const target = event.target as HTMLElement
     const typing =
-      target === name ||
-      target === text ||
-      (target instanceof HTMLInputElement && target.type === "number")
+      target === text || (target instanceof HTMLInputElement && target.type === "number")
     if (event.key === "Escape") {
       if (!popover.hidden) {
         event.preventDefault()
@@ -601,7 +523,12 @@ function buildPanel<S extends Schema>(
     }
     if (key === "r" || key === "R") {
       event.preventDefault()
-      run(controls.randomize)
+      run(key === "R" ? controls.reset : controls.randomize)
+      return
+    }
+    if (key === "S" && showVariants) {
+      event.preventDefault()
+      presetStrip.save()
       return
     }
     const index = rows.findIndex((r) => r.row.contains(target))
