@@ -22,9 +22,11 @@
       },
       "peerDependencies": {
         "react": ">=18",
+        "solid-js": ">=1.8",
       },
       "optionalPeers": [
         "react",
+        "solid-js",
       ],
     },
   },
