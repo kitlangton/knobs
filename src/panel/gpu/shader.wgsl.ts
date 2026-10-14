@@ -17,14 +17,20 @@ fn shadeDie(p: Prim, rect: vec4f, frag: vec2f) -> vec4f {
 struct Prim {
   rect: vec4f,    // x, y, w, h in viewport CSS px
   clip: vec4f,    // minX, minY, maxX, maxY in viewport CSS px
-  uv: vec4f,      // u0, v0, u1, v1 (atlas UVs), or corner radii tl, tr, br, bl when motion.w = 1
+  uv: vec4f,      // u0, v0, u1, v1 (atlas UVs), or corner radii tl, tr, br, bl when motion.w is odd
   color: vec4f,   // primary r, g, b, a
   color2: vec4f,  // secondary r, g, b, a (border / handle / thumb / glow)
   look: vec4f,    // radius, strokeWidth, glowOrBlur, kind
-  motion: vec4f,  // blurX, blurY, stretchX, cornersInUv
+  motion: vec4f,  // blurX, blurY, stretchX, cornersInUv + 2 * (mask index + 1)
   extra: vec4f,   // kind-specific params
   aux: vec4f,     // kind-specific params
   aux2: vec4f,    // kind-specific color
+}
+
+// A panel morphing out of its chip clips its content to the shape and reveals it top first.
+struct Mask {
+  rect: vec4f,    // x, y, w, h in viewport CSS px
+  look: vec4f,    // radius, fully shown above y, hidden below y, unused
 }
 
 struct View {
@@ -38,6 +44,7 @@ struct View {
 @group(0) @binding(2) var labels: texture_2d<f32>;
 @group(0) @binding(3) var smp: sampler;
 @group(0) @binding(4) var<storage, read> pts: array<vec2f>;
+@group(0) @binding(5) var<storage, read> masks: array<Mask>;
 
 struct Out {
   @builtin(position) pos: vec4f,
@@ -94,7 +101,7 @@ fn roundedBox4(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
 
 fn radiiOf(p: Prim) -> vec4f {
   // Shapes with per-corner radii may reuse look.x (the slider's drag speed).
-  return select(vec4f(p.look.x), p.uv, p.motion.w > 0.5);
+  return select(vec4f(p.look.x), p.uv, (u32(p.motion.w) & 1u) == 1u);
 }
 
 fn covSd(dist: f32) -> f32 {
@@ -517,6 +524,16 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   );
   let clipCov = clamp(clipDist * view.dpr + 0.5, 0.0, 1.0);
   if (clipCov <= 0.0) { return vec4f(0.0); }
+  var maskCov = 1.0;
+  let mi = u32(p.motion.w) >> 1u;
+  if (mi > 0u) {
+    let m = masks[mi - 1u];
+    maskCov = covSd(roundedBox(in.screenPx - m.rect.xy, m.rect.zw, m.look.x));
+    if (m.look.z > m.look.y) {
+      maskCov *= clamp((m.look.z - in.screenPx.y) / (m.look.z - m.look.y), 0.0, 1.0);
+    }
+    if (maskCov <= 0.0) { return vec4f(0.0); }
+  }
 
   let local = in.screenPx - in.rect.xy;
   let size = max(in.rect.zw, vec2f(1.0));
@@ -543,6 +560,6 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     case 11: { out = shadeDie(p, in.rect, in.pos.xy); }
     default: { out = shadeDot(p, local, size); }
   }
-  return out * clipCov;
+  return out * (clipCov * maskCov);
 }
 `

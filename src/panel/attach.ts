@@ -30,20 +30,25 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
   let disposed = false
   let loading = false
   let panel: Panel | undefined
+  /** A panel collapsing into the chip: clicking the chip again reverses it. */
+  let leaving: Panel | undefined
   const position = () => {
     const box = element.getBoundingClientRect()
     chip.style.left = `${Math.max(4, Math.min(win.innerWidth - chip.offsetWidth - 4, box.right - chip.offsetWidth - 6))}px`
     chip.style.top = `${Math.max(4, box.top + 6)}px`
   }
   const update = () => {
+    // While its panel is open the chip has become the panel, so it stays hidden.
     const shown =
       controls.enabled &&
+      !panel &&
       (hovered || element.contains(doc.activeElement) || doc.activeElement === chip)
     if (shown) position()
     setShown(shown)
     if (!controls.enabled) {
       panel?.dispose()
-      panel = undefined
+      leaving?.dispose()
+      panel = leaving = undefined
     }
   }
   const enter = () => {
@@ -70,31 +75,42 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
   }
   // Which panels are open survives a reload in this tab, so editing the library doesn't close them.
   const remember = controls.storage !== null
+  const close = () => {
+    const closing = panel
+    if (!closing) return
+    panel = undefined
+    leaving = closing
+    position()
+    closing.dismiss()
+    if (remember) writeSession(controls.id, { open: false })
+    chip.setAttribute("aria-expanded", "false")
+    setShown(true)
+    chip.focus({ preventScroll: true })
+  }
   const open = async (restored = false) => {
     if (panel) {
       panel.focus()
       return
     }
+    if (leaving?.reopen()) {
+      panel = leaving
+      leaving = undefined
+      if (remember) writeSession(controls.id, { open: true })
+      chip.setAttribute("aria-expanded", "true")
+      update()
+      panel.focus()
+      return
+    }
+    leaving = undefined
     if (loading) return
     loading = true
     try {
       const { createPanel } = await import("./panel.js")
       if (disposed || !controls.enabled || panel) return
-      panel = createPanel(
-        controls,
-        element,
-        () => {
-          panel?.dismiss()
-          panel = undefined
-          if (remember) writeSession(controls.id, { open: false })
-          chip.setAttribute("aria-expanded", "false")
-          setShown(true)
-          chip.focus({ preventScroll: true })
-        },
-        { restored },
-      )
+      panel = createPanel(controls, element, close, { restored, chip })
       if (remember) writeSession(controls.id, { open: true })
       chip.setAttribute("aria-expanded", "true")
+      update()
       if (!restored) panel.focus()
     } catch (cause) {
       chip.title = String(cause)
@@ -103,7 +119,8 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
       loading = false
     }
   }
-  chip.onclick = () => void open()
+  // The chip toggles: mid-morph it reverses the shape from wherever it is.
+  chip.onclick = () => (panel ? close() : void open())
   if (remember && readSession(controls.id).open) void open(true)
   const observer = new ResizeObserver(position)
   observer.observe(element)
@@ -115,6 +132,7 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
     disposed = true
     unsubscribe()
     panel?.dispose()
+    leaving?.dispose()
     observer.disconnect()
     win.removeEventListener("scroll", position, true)
     win.removeEventListener("resize", position)

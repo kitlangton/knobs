@@ -19,6 +19,7 @@ import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Edges } from "./motion.js"
+import { morphFromChip, type PanelMorph } from "./morph.js"
 import { openMenu, type Menu } from "./menu.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
@@ -32,8 +33,10 @@ export interface Panel {
   element: HTMLElement
   presetStrip: PresetStrip
   focus(): void
-  /** Fades the panel out, then disposes it. */
+  /** Collapses the panel into its chip (or fades it out), then disposes it. */
   dismiss(): void
+  /** Reverses a collapse still in flight; false once there's none to reverse. */
+  reopen(): boolean
   dispose(): void
 }
 let layer = 2147480001
@@ -57,6 +60,8 @@ interface InternalPanelOptions extends MountPanelOptions {
   readonly close?: () => void
   /** Reopened after a reload: no entrance, and focus returns where it was. */
   readonly restored?: boolean
+  /** The chip a floating panel grows out of and collapses back into. */
+  readonly chip?: HTMLElement
 }
 
 function buildPanel<S extends Schema>(
@@ -1174,6 +1179,19 @@ function buildPanel<S extends Schema>(
   }
   if (inline || options.restored) restoreFocus()
 
+  const reducedMotion = () =>
+    doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
+  let morph: PanelMorph | undefined
+  if (!inline && options.chip) {
+    const reduced = reducedMotion()
+    morph = morphFromChip(options.chip, root, () => wakeGpu(), Boolean(options.restored || reduced))
+    if (!options.restored) {
+      if (reduced)
+        root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: "ease-out" })
+      else morph.open()
+    }
+  }
+
   const gpuBinding: GpuPanelBinding = {
     id: controls.id,
     root,
@@ -1190,6 +1208,7 @@ function buildPanel<S extends Schema>(
     rows: gpuRows,
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,
+    morph: morph?.frame,
   }
   let unregisterGpu: (() => void) | undefined
   const requestedMode = options.renderer ?? controls.renderer ?? "auto"
@@ -1223,7 +1242,7 @@ function buildPanel<S extends Schema>(
     attributeFilter: ["data-knobs-renderer", "data-theme", "style"],
   })
 
-  return {
+  const panel: Panel = {
     element: root,
     presetStrip,
     focus() {
@@ -1231,23 +1250,35 @@ function buildPanel<S extends Schema>(
       ;(rows[0]?.input ?? dismiss ?? root).focus({ preventScroll: true })
     },
     dismiss() {
-      if (root.dataset.leaving) return
-      root.dataset.leaving = "true"
+      if (root.dataset.leaving || morph?.closing) return
       root.style.pointerEvents = "none"
-      const reduced = doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches
-      if (reduced) return this.dispose()
+      const reduced = reducedMotion()
+      if (morph && !reduced) {
+        menu?.close(false)
+        morph.close(() => panel.dispose())
+        return
+      }
+      root.dataset.leaving = "true"
       root
         .animate(
-          [
-            { opacity: 1, transform: "none" },
-            { opacity: 0, transform: "translateY(3px) scale(.985)" },
-          ],
+          reduced
+            ? [{ opacity: 1 }, { opacity: 0 }]
+            : [
+                { opacity: 1, transform: "none" },
+                { opacity: 0, transform: "translateY(3px) scale(.985)" },
+              ],
           { duration: 120, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
         )
         .finished.then(
-          () => this.dispose(),
-          () => this.dispose(),
+          () => panel.dispose(),
+          () => panel.dispose(),
         )
+    },
+    reopen() {
+      if (!morph?.closing || !root.isConnected) return false
+      root.style.pointerEvents = ""
+      morph.open()
+      return true
     },
     dispose() {
       clearTimeout(statusTimer)
@@ -1263,16 +1294,18 @@ function buildPanel<S extends Schema>(
       doc.removeEventListener("keyup", endCompare, true)
       doc.defaultView?.removeEventListener("blur", endCompare)
       controls.compare(false)
+      morph?.dispose()
       root.remove()
     },
   }
+  return panel
 }
 
 export function createPanel<S extends Schema>(
   controls: Controls<S>,
   anchor: HTMLElement,
   close: () => void,
-  options?: MountPanelOptions & { readonly restored?: boolean },
+  options?: MountPanelOptions & { readonly restored?: boolean; readonly chip?: HTMLElement },
 ): Panel {
   return buildPanel(controls, anchor.ownerDocument.body, {
     ...options,

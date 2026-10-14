@@ -14,6 +14,7 @@ import {
   Spring,
   trailScale,
 } from "../motion.js"
+import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
 import { getRevealVersion, isAnyRevealing, isRevealingIn } from "../reveal.js"
 import type { Slider } from "../slider.js"
@@ -35,6 +36,8 @@ const LAYOUT_TOKENS = new Set(
 
 const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
+/** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
+const MAX_MASKS = 16
 type Clip = readonly [number, number, number, number]
 
 /** When a row's motion starts (performance.now() ms), so a preset cascade reaches it in turn. */
@@ -193,6 +196,8 @@ export interface GpuPanelBinding {
   readonly rows: readonly GpuRowBinding[]
   readonly actionButtons: readonly HTMLButtonElement[]
   isPopoverOpen(): boolean
+  /** While the panel grows out of (or into) its chip: the shape at a frame time. */
+  readonly morph?: (now: number) => MorphFrame | undefined
 }
 
 export interface KnobsGpuDiagnostics {
@@ -313,6 +318,13 @@ class GpuOverlayManager {
   private pointCount = 0
   private prevPointCount = -1
   private pointBuffer: any = null
+  private maskBuffer: any = null
+  private readonly masks = new Float32Array(MAX_MASKS * 8)
+  private maskCount = 0
+  /** Index + 1 of the mask clipping the current panel's content; 0 for none. */
+  private curMask = 0
+  /** This frame's time, so the overlay and the DOM sample a morph at the same moment. */
+  private frameNow = 0
   /** Point lists easing from where they were toward new targets, like the DOM's `d` and transform transitions. */
   private readonly morphs = new WeakMap<
     object,
@@ -422,7 +434,7 @@ class GpuOverlayManager {
 
   register(panel: GpuPanelBinding): () => void {
     this.panels.add(panel)
-    if (!panel.inline && !("restored" in panel.root.dataset))
+    if (!panel.inline && !("restored" in panel.root.dataset) && !("morphing" in panel.root.dataset))
       this.openUntil.set(panel, performance.now() + 220)
     panel.root.dataset.renderer = "gpu"
     this.attachGlobalListeners()
@@ -622,6 +634,7 @@ class GpuOverlayManager {
           { binding: 2, visibility: 2, texture: { sampleType: "float" } },
           { binding: 3, visibility: 2, sampler: { type: "filtering" } },
           { binding: 4, visibility: 2, buffer: { type: "read-only-storage" } },
+          { binding: 5, visibility: 2, buffer: { type: "read-only-storage" } },
         ],
       })
       this.pipeline = device.createRenderPipeline({
@@ -649,6 +662,7 @@ class GpuOverlayManager {
       })
       this.viewBuffer = device.createBuffer({ size: 16, usage: 0x40 | 0x08 })
       this.pointBuffer = device.createBuffer({ size: MAX_POINTS * 8, usage: 0x80 | 0x08 })
+      this.maskBuffer = device.createBuffer({ size: MAX_MASKS * 32, usage: 0x80 | 0x08 })
       this.labelTexture = device.createTexture({
         size: [ATLAS_SIZE, ATLAS_SIZE],
         format: "rgba8unorm",
@@ -663,6 +677,7 @@ class GpuOverlayManager {
           { binding: 2, resource: this.labelTexture.createView() },
           { binding: 3, resource: sampler },
           { binding: 4, resource: { buffer: this.pointBuffer } },
+          { binding: 5, resource: { buffer: this.maskBuffer } },
         ],
       })
 
@@ -755,7 +770,7 @@ class GpuOverlayManager {
     d[b + 24] = o.blurX ?? 0
     d[b + 25] = o.blurY ?? 0
     d[b + 26] = o.stretchX ?? 0
-    d[b + 27] = o.corners ? 1 : 0
+    d[b + 27] = (o.corners ? 1 : 0) + 2 * this.curMask
     d[b + 28] = o.p0 ?? 0
     d[b + 29] = o.p1 ?? 0
     d[b + 30] = o.p2 ?? 0
@@ -1764,6 +1779,7 @@ class GpuOverlayManager {
   private buildScene(dt: number, scale: number, reducedMotion: boolean): boolean {
     this.primCount = 0
     this.pointCount = 0
+    this.maskCount = 0
     this.curScale = scale
     this.hotRows.clear()
     this.atlas.beginFrame()
@@ -1797,6 +1813,7 @@ class GpuOverlayManager {
     })
 
     for (const panel of orderedPanels) {
+      this.curMask = 0
       const pRect = panel.root.getBoundingClientRect()
       if (!panel.root.isConnected || panel.root.hidden || pRect.width <= 0 || pRect.height <= 0) {
         this.placeBackdrop(panel)
@@ -1841,36 +1858,50 @@ class GpuOverlayManager {
       const outerClip = panel.inline
         ? getEffectiveClipRect(panel.root, win, this.styleVersion)
         : ([0, 0, win.innerWidth, win.innerHeight] as [number, number, number, number])
-      const panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
+      // Growing out of its chip, the card takes the morph's shape and the content is clipped to it.
+      const morph = panel.morph?.(this.frameNow)
+      const shown = morph ? clamp(morph.progress, 0, 1) : 1
+      const card = morph ? new DOMRect(morph.x, morph.y, morph.w, morph.h) : pRect
+      const cardRadius = morph ? morph.radius : tokens.panelRadius
+      if (morph) anyMoving = true
+      let panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
+      if (morph)
+        panelClip = intersectClip(panelClip, [card.left, card.top, card.right, card.bottom])
       const pillFill = cssMix(tokens.accent, tokens.segActive, 0.18)
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
       // lying over another firms up, since the canvas can't blur what it drew below.
       const covers = drawn.some(
         (r) =>
-          r.left < pRect.right &&
-          r.right > pRect.left &&
-          r.top < pRect.bottom &&
-          r.bottom > pRect.top,
+          r.left < card.right && r.right > card.left && r.top < card.bottom && r.bottom > card.top,
       )
-      drawn.push(pRect)
+      drawn.push(card)
       const glass = tokens.glass * (1 - this.ease(panel.root, "solid", covers ? 1 : 0, 18))
-      this.placeBackdrop(panel, pRect, outerClip, tokens.panelRadius, glass, tokens.glassTone)
+      this.placeBackdrop(panel, card, outerClip, cardRadius, glass, tokens.glassTone)
+      // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
+      const shadow = tokens.isLight ? 0.16 : 0.48
       this.pushPrim({
-        x: pRect.left,
-        y: pRect.top,
-        w: pRect.width,
-        h: pRect.height,
+        x: card.left,
+        y: card.top,
+        w: card.width,
+        h: card.height,
         clip: outerClip,
-        color: withAlpha(tokens.bg, 1 - glass * 0.2),
+        color: withAlpha(tokens.bg, 1 - glass * 0.2 * shown),
         color2: tokens.line,
-        radius: tokens.panelRadius,
+        radius: cardRadius,
         strokeWidth: 1,
-        glowOrBlur: panel.inline ? 0 : 18,
+        glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
         kind: 0,
-        p0: panel.inline ? 0 : tokens.isLight ? 0.16 : 0.48,
-        aux2: tokens.rim,
+        p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
+        aux2: shown < 1 ? withAlpha(tokens.rim, shown) : tokens.rim,
       })
+      if (morph && this.maskCount < MAX_MASKS) {
+        this.masks.set(
+          [morph.x, morph.y, morph.w, morph.h, morph.radius, morph.fadeTop, morph.fadeBottom, 0],
+          this.maskCount * 8,
+        )
+        this.curMask = ++this.maskCount
+      }
 
       let bodyClip: [number, number, number, number] = [
         panelClip[0] + 1,
@@ -2540,6 +2571,7 @@ class GpuOverlayManager {
 
     this.curPanelRect = null
     this.curAlpha = 1
+    this.curMask = 0
     const easing = this.easeMoving
     this.easeMoving = false
     return anyMoving || easing
@@ -2585,6 +2617,7 @@ class GpuOverlayManager {
     }
 
     const reducedMotion = win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+    this.frameNow = now
     const anyMoving = this.buildScene(dt, dpr, reducedMotion)
 
     if (!this.dirty && !anyMoving && this.isDataUnchanged(pixelW, pixelH)) {
@@ -2618,6 +2651,14 @@ class GpuOverlayManager {
           floatLen * 4,
         )
       }
+      if (this.maskCount > 0)
+        this.device.queue.writeBuffer(
+          this.maskBuffer,
+          0,
+          this.masks.buffer,
+          this.masks.byteOffset,
+          this.maskCount * 32,
+        )
       if (this.pointCount > 0)
         this.device.queue.writeBuffer(
           this.pointBuffer,

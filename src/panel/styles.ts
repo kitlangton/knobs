@@ -118,6 +118,19 @@ const css = `
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
   animation:knobs-in .16s var(--k-ease);}
 .knobs-panel[data-restored]{animation:none}
+/* Opening from its chip, the panel's chrome rides a separate shape (see morph.ts) while the
+   content, laid out at full size, is clipped to it and revealed top first. */
+.knobs-panel[data-morphing]{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none}
+.knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;
+  background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20% * var(--p)),transparent);border:1px solid var(--k-line);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--p) * 100%),transparent);
+  --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
+  -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
+.knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}
+.knobs-morph::before{box-shadow:0 4px 16px rgba(0,0,0,.35);opacity:calc(1 - var(--p))}
+.knobs-morph::after{box-shadow:var(--k-shadow);opacity:var(--p)}
+/* Meanwhile the chip is just its label, fading on the shape. */
+.knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
 .knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 var(--k-rim);animation:none}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}

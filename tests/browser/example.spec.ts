@@ -488,6 +488,8 @@ test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", asy
   await study.hover({ position: { x: bounds.width - 20, y: 60 } })
   await page.getByRole("button", { name: "Tune splat", exact: true }).click()
   const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  // Pointers reach only what the growing shape has revealed, so let it settle first.
+  await expect(panel).not.toHaveAttribute("data-morphing")
   const count = panel.getByRole("slider", { name: "count", exact: true })
   const track = (await count.boundingBox())!
   const y = track.y + track.height / 2
@@ -1064,5 +1066,118 @@ test("group dice, mutate and hold-to-compare", async ({ page }) => {
   expect(await state()).toEqual(changed)
   await page.keyboard.press("u")
   await expect(cutoff).toHaveAttribute("aria-valuenow", "2420")
+  expect(errors).toEqual([])
+})
+
+test("a floating panel grows out of its chip and collapses back into it, interruptibly", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  // Frames run on a fake clock, 16 ms apart, so the spring's path is sampled exactly.
+  await page.clock.install()
+  await page.goto("/?dom")
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  await page.reload()
+  const study = page.locator('[data-study="splat"]')
+  const b = (await study.boundingBox())!
+  await study.hover({ position: { x: b.width - 20, y: 60 } })
+  const chip = page.getByRole("button", { name: "Tune splat", exact: true })
+  await expect(chip).toBeVisible()
+  // Measured once its scale-in has finished.
+  await page.waitForTimeout(400)
+  const chipBox = (await chip.boundingBox())!
+  const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000)
+  type Box = { x: number; y: number; w: number; h: number; label: number }
+  const shape = () =>
+    page.evaluate(() => {
+      const el = document.querySelector(".knobs-morph")
+      if (!el) return undefined
+      const r = el.getBoundingClientRect()
+      const chip = document.querySelector('.knobs-chip[aria-label="Tune splat"]')!
+      const label = Number(getComputedStyle(chip).opacity)
+      return { x: r.x, y: r.y, w: r.width, h: r.height, label }
+    })
+  /** Steps frames until the morph settles; `at` runs before a given frame. */
+  const film = async (at: Record<number, () => Promise<unknown>> = {}) => {
+    const boxes: Box[] = []
+    for (let i = 0; i < 120; i++) {
+      await at[i]?.()
+      await page.clock.runFor(16)
+      const box = await shape()
+      if (!box && i > Math.max(0, ...Object.keys(at).map(Number))) break
+      if (box) boxes.push(box)
+    }
+    return boxes
+  }
+
+  await chip.click()
+  await expect(panel).toBeAttached()
+  const opening = await film()
+  const final = (await panel.boundingBox())!
+  // Every frame's shape lies between the chip and the panel (a few px of bounce aside), it
+  // passes through sizes in between, the label fades out early, and it settles in about 0.5 s.
+  expect(opening.length).toBeGreaterThan(12)
+  expect(opening.length).toBeLessThan(45)
+  const between = (v: number, a: number, z: number, slack: number) =>
+    v >= Math.min(a, z) - slack && v <= Math.max(a, z) + slack
+  for (const box of opening) {
+    expect(between(box.x, chipBox.x, final.x, 8)).toBe(true)
+    expect(between(box.y, chipBox.y, final.y, 8)).toBe(true)
+    expect(between(box.w, chipBox.width, final.width, 12)).toBe(true)
+    expect(between(box.h, chipBox.height, final.height, 12)).toBe(true)
+  }
+  expect(opening.some((box) => box.w > chipBox.width + 40 && box.w < final.width - 40)).toBe(true)
+  expect(opening[0]!.label).toBeGreaterThan(0.5)
+  expect(opening[8]!.label).toBe(0)
+  await expect(page.locator(".knobs-morph")).toHaveCount(0)
+  await expect(panel).not.toHaveAttribute("data-morphing")
+  await expect(panel.getByRole("slider", { name: "seed" })).toBeFocused()
+
+  // Escape collapses it back into the chip, which gets focus back.
+  await page.keyboard.press("Escape")
+  const closing = await film()
+  expect(closing.length).toBeGreaterThan(12)
+  expect(closing.at(-1)!.w).toBeLessThan(chipBox.width + 2)
+  expect(closing.at(-1)!.label).toBeGreaterThan(0.95)
+  await expect(panel).toHaveCount(0)
+  await expect(chip).toBeFocused()
+  await expect(chip).toBeVisible()
+
+  // Clicking the chip again mid-open reverses from the current shape, keeping its velocity: it
+  // grows a little further, turns without a jump and shrinks back; focus returns to the chip.
+  await chip.click()
+  await expect(panel).toBeAttached()
+  const toggled = await film({
+    6: () =>
+      page.evaluate(() =>
+        document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!.click(),
+      ),
+  })
+  const widths = toggled.map((box) => box.w)
+  const peak = widths.indexOf(Math.max(...widths))
+  expect(peak).toBeGreaterThan(6)
+  expect(widths[peak]!).toBeGreaterThan(chipBox.width + 40)
+  expect(widths[peak]!).toBeLessThan(final.width - 8)
+  const most = Math.max(...widths.slice(1).map((w, i) => Math.abs(w - widths[i]!)))
+  for (let i = 1; i < widths.length; i++)
+    expect(Math.abs(widths[i]! - widths[i - 1]!)).toBeLessThanOrEqual(most)
+  expect(most).toBeLessThan((final.width - chipBox.width) * 0.2)
+  await expect(panel).toHaveCount(0)
+  await expect(chip).toBeFocused()
+
+  // A reload reopens an open panel in place, without the morph.
+  await chip.click()
+  await expect(panel).toBeAttached()
+  await film()
+  await page.clock.resume()
+  await page.reload()
+  await expect(panel).toBeVisible()
+  await expect(page.locator(".knobs-morph")).toHaveCount(0)
+  await expect(panel).not.toHaveAttribute("data-morphing")
   expect(errors).toEqual([])
 })
