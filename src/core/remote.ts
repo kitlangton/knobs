@@ -1,14 +1,18 @@
 import { colorHex, oklchToRgb, parseColor } from "./color.js"
 import type { Bezier } from "./easing.js"
+import { RESHAPE, type Reshape } from "./internal.js"
 import {
+  action,
   choice,
   color,
   easing,
+  flatSpring,
   knob,
   point,
   spring,
   toggle,
   type Field,
+  type Knob,
   type Point,
   type Schema,
   same,
@@ -24,13 +28,47 @@ import {
   type GroupPreset,
   type Controls,
   type DensityMode,
+  type PanelKeys,
+  type PanelModule,
   type RendererMode,
+  type SyncOptions,
   type ThemeMode,
 } from "./store.js"
 
-export interface ControlDescriptor {
+/** A choice option with its own label: `{ id: "md", label: "Medium" }` (`value` works for `id`). */
+export interface ChoiceOption {
+  readonly id?: string
+  readonly value?: string
+  readonly label?: string
+}
+interface DescriptorMeta {
   readonly key: string
   readonly label?: string
+  readonly group?: string
+  /** The page region the descriptor's group sits in (see `mountPage`). */
+  readonly section?: string
+  readonly shortcut?: string
+}
+/**
+ * Two flat number keys drawn as one spring card (a curve and two sliders). Values stay flat:
+ * `onSet("duration", 0.4)`, `values.bounce`. When the bound keys have number descriptors of their
+ * own, their ranges, labels and defaults are used (and they aren't drawn again); otherwise the
+ * spring's `default` and the standard spring ranges are.
+ */
+export interface SpringBindingDescriptor extends DescriptorMeta {
+  readonly kind: "spring"
+  readonly bind: { readonly duration: string; readonly bounce: string }
+  readonly default?: SpringValue
+}
+/** A button row: pressing it calls `onAction(key)`. */
+export interface ActionDescriptor extends DescriptorMeta {
+  readonly kind: "action"
+  readonly default?: undefined
+  readonly bind?: undefined
+}
+export type ControlDescriptor = ValueDescriptor | SpringBindingDescriptor | ActionDescriptor
+export interface ValueDescriptor extends DescriptorMeta {
+  readonly bind?: undefined
   readonly kind:
     | "knob"
     | "number"
@@ -47,17 +85,28 @@ export interface ControlDescriptor {
   readonly max?: number
   readonly step?: number
   readonly unit?: string
-  readonly choices?: readonly string[]
-  readonly options?: readonly string[]
-  readonly group?: string
-  /** The page region the descriptor's group sits in (see `mountPage`). */
-  readonly section?: string
-  readonly shortcut?: string
+  /** Readout digits after the point (the step's own by default). */
+  readonly decimals?: number
+  /** Choices: segments or a drop-down menu (see `Choice.display`); automatic by default. */
+  readonly display?: "menu" | "segmented"
+  /** Strings, or `{ id, label }` options; past four, or when they don't fit, a menu. */
+  readonly choices?: readonly (string | ChoiceOption)[]
+  readonly options?: readonly (string | ChoiceOption)[]
   readonly swiftType?: string
 }
 
 export interface RemoteControlsOptions {
   readonly enabled?: boolean | (() => boolean)
+  /** Ships the panel as product UI, live in production: `() => import("knobs/panel")` (see `ControlsOptions.ship`). */
+  readonly ship?: () => Promise<PanelModule>
+  /** How long (ms) a key changed here outranks incoming values for it; 600 by default. */
+  readonly echo?: number
+  /**
+   * `onSet` sends `null` when a key returns to its default (and a key's reset is an `onSet` of
+   * `null` too), as the socket protocol expects. `false` sends the value itself, and resets reach
+   * only `onReset`.
+   */
+  readonly nullDefaults?: boolean
   readonly values?: State
   readonly presets?: Readonly<Record<string, State>>
   /** Numbered presets per group, e.g. the phone's preset sets (see `ControlsOptions.groupPresets`). */
@@ -67,8 +116,15 @@ export interface RemoteControlsOptions {
   readonly theme?: ThemeMode
   readonly density?: DensityMode
   readonly renderer?: RendererMode
+  /** Default key bindings for its panels (see `MountPanelOptions.keys`). */
+  readonly keys?: PanelKeys
+  /** `false`: its panels show no modified marks or resets (see `MountPanelOptions.marks`). */
+  readonly marks?: boolean
   readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
+  /** A key, a group, or (`{}`) everything was reset. */
   readonly onReset?: (target: { key?: string; group?: string }) => void
+  /** An action row was pressed. */
+  readonly onAction?: (key: string) => void
   /**
    * A group preset was chosen. When given, the peer applies its own preset (and sends back its
    * state) instead of receiving `onSet` for each key.
@@ -78,8 +134,26 @@ export interface RemoteControlsOptions {
 
 export interface RemoteControls extends Controls<Schema> {
   readonly descriptors: readonly ControlDescriptor[]
+  /**
+   * Swaps in another set of descriptors (another variation, another item) without tearing the
+   * panel down. Rows with the same key keep their DOM and spring to their new value; new rows
+   * enter and missing ones leave. `values` are the complete values (missing keys sit at their
+   * defaults), held back for any key in hand as `sync` does.
+   *
+   * Undo history starts over when the descriptors change shape or `land` is set: it belonged to
+   * the previous set. `land: true` (a different item arrived) also places every value at once,
+   * without springing or rolling.
+   */
+  update(
+    descriptors: readonly ControlDescriptor[],
+    values?: State,
+    options?: { land?: boolean },
+  ): void
   swift(group?: string): string
 }
+
+const optionId = (o: string | ChoiceOption) =>
+  typeof o === "string" ? o : String(o.id ?? o.value ?? o.label ?? "")
 
 export function descriptorToField(d: ControlDescriptor): Field {
   const meta = {
@@ -88,6 +162,8 @@ export function descriptorToField(d: ControlDescriptor): Field {
     ...(d.section !== undefined ? { section: d.section } : {}),
     ...(d.shortcut !== undefined ? { shortcut: d.shortcut } : {}),
   }
+  if (d.kind === "action") return action(d.label, meta)
+  if (d.bind) return flatSpring({}, { ...meta, id: d.key }).duration
   if (d.kind === "knob" || d.kind === "number") {
     const def = typeof d.default === "number" && Number.isFinite(d.default) ? d.default : 0
     const min = d.min ?? Math.min(0, def * 2)
@@ -98,14 +174,25 @@ export function descriptorToField(d: ControlDescriptor): Field {
       max,
       step,
       ...(d.unit !== undefined ? { unit: d.unit } : {}),
+      ...(d.decimals !== undefined ? { decimals: d.decimals } : {}),
       ...meta,
     })
   }
   if (d.kind === "choice") {
-    const list = d.options ?? d.choices ?? [String(d.default)]
-    if (list.length === 0) throw new Error(`Choice descriptor ${d.key} needs options.`)
-    const def = list.includes(String(d.default)) ? String(d.default) : list[0]
-    return choice(def, list as readonly [string, ...string[]], meta)
+    const given = d.options ?? d.choices ?? [String(d.default)]
+    if (given.length === 0) throw new Error(`Choice descriptor ${d.key} needs options.`)
+    const list = given.map(optionId)
+    const labels = Object.fromEntries(
+      given.flatMap((o) =>
+        typeof o === "string" || o.label === undefined ? [] : [[optionId(o), o.label]],
+      ),
+    )
+    const def = list.includes(String(d.default)) ? String(d.default) : list[0]!
+    return choice(def, list as [string, ...string[]], {
+      ...meta,
+      labels,
+      ...(d.display ? { display: d.display } : {}),
+    })
   }
   if (d.kind === "spring") return spring(d.default as SpringValue, meta)
   if (d.kind === "color")
@@ -116,12 +203,47 @@ export function descriptorToField(d: ControlDescriptor): Field {
   return toggle(Boolean(d.default), meta)
 }
 
+/**
+ * Converts descriptors into a schema. A spring binding becomes its two flat number fields, at the
+ * binding's place (their own descriptors, if any, give their ranges and labels).
+ */
 export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Schema {
-  return Object.freeze(Object.fromEntries(descriptors.map((d) => [d.key, descriptorToField(d)])))
+  const byKey = new Map(descriptors.map((d) => [d.key, d]))
+  const bound = new Set<string>()
+  for (const d of descriptors)
+    if (d.bind) {
+      if (d.bind.duration === d.bind.bounce) throw new Error(`Spring ${d.key} binds one key twice.`)
+      bound.add(d.bind.duration).add(d.bind.bounce)
+    }
+  const entries: [string, Field][] = []
+  for (const d of descriptors) {
+    if (bound.has(d.key) && !d.bind) continue
+    if (!d.bind) {
+      entries.push([d.key, descriptorToField(d)])
+      continue
+    }
+    const half = (part: "duration" | "bounce") => {
+      const own = byKey.get(d.bind[part])
+      if (own && !own.bind && (own.kind === "number" || own.kind === "knob"))
+        return descriptorToField({ ...own, group: d.group ?? own.group }) as Knob
+      return (d.default?.[part] ?? (part === "duration" ? 0.5 : 0)) as number
+    }
+    const pair = flatSpring(
+      { duration: half("duration"), bounce: half("bounce") },
+      {
+        id: d.key,
+        ...(d.label !== undefined ? { label: d.label } : {}),
+        ...(d.group !== undefined ? { group: d.group } : {}),
+        ...(d.section !== undefined ? { section: d.section } : {}),
+      },
+    )
+    entries.push([d.bind.duration, pair.duration], [d.bind.bounce, pair.bounce])
+  }
+  return Object.freeze(Object.fromEntries(entries))
 }
 
 const decimal = (n: number) => String(Math.round(n * 10000) / 10000)
-const swiftLiteral = (d: ControlDescriptor, v: Value): string => {
+const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
   if (d.kind === "color") {
     const [r, g, b] = oklchToRgb(parseColor(v) ?? { l: 0, c: 0, h: 0 }).map(decimal)
     return `Color(red: ${r}, green: ${g}, blue: ${b})`
@@ -150,12 +272,13 @@ export function formatSwift(
   const byKey = new Map(descriptors.map((d) => [d.key, d]))
   const done = new Set<string>()
   const lines: string[] = []
-  for (const d of descriptors) {
+  for (const d of descriptors as readonly ValueDescriptor[]) {
+    if ((d.kind as string) === "action" || d.bind) continue
     const changed = d.key in values && !same(values[d.key], d.default)
     if (!changed || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
-    const duration = byKey.get(`${base}.duration`)
-    const bounce = byKey.get(`${base}.bounce`)
+    const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
+    const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
     if (base !== d.key && duration && bounce) {
       done.add(duration.key).add(bounce.key)
       const label = (duration.label ?? duration.key).replace(/ duration$/i, "")
@@ -199,19 +322,31 @@ export function formatSwift(
 /** How long a local change outranks the peer's state for that key. */
 const ECHO_MS = 600
 
+/** Copies `source`'s properties, getters as getters, then `extra`'s. */
+function extend<T extends object, E extends object>(source: T, extra: E): T & E {
+  return Object.freeze(
+    Object.defineProperties(
+      {},
+      {
+        ...Object.getOwnPropertyDescriptors(source),
+        ...Object.getOwnPropertyDescriptors(extra),
+      },
+    ),
+  ) as T & E
+}
+
 export function createRemoteControls(
   id: string,
   descriptors: readonly ControlDescriptor[],
   options: RemoteControlsOptions = {},
 ): RemoteControls {
-  const frozenDescriptors = Object.freeze([...descriptors])
-  const schema = fromDescriptors(frozenDescriptors)
-  // Keys changed here recently: a peer's state that crosses them in flight (an echo of an older
-  // value mid-drag) doesn't pull them back.
-  const sent = new Map<string, number>()
-  const now = () => Date.now()
-  const controls = defineControls(id, schema, {
+  let frozenDescriptors = Object.freeze([...descriptors])
+  let given = descriptors
+  const nullDefaults = options.nullDefaults !== false
+  const controls = defineControls(id, fromDescriptors(frozenDescriptors), {
     enabled: options.enabled ?? true,
+    ship: options.ship,
+    echo: options.echo ?? ECHO_MS,
     storage: options.storage ?? null,
     presets: options.presets,
     groupPresets: options.groupPresets,
@@ -220,68 +355,110 @@ export function createRemoteControls(
     theme: options.theme,
     density: options.density,
     renderer: options.renderer,
+    keys: options.keys,
+    marks: options.marks,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
-      const peerPreset = meta.source === "preset" && meta.group !== undefined && options.onPreset
+      if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return
       for (const [key, val] of Object.entries(patch)) {
         if (val === undefined) continue
-        sent.set(key, now())
-        if (peerPreset) continue
-        const next = same(val, controls.locked[key]) ? null : val
+        const next = nullDefaults && same(val, controls.locked[key]) ? null : val
         options.onSet?.(key, next, meta)
       }
     },
     onReset(target) {
-      if (target.key) {
+      if (target.key && nullDefaults) {
         options.onSet?.(target.key, null, { source: "reset", key: target.key })
       }
       options.onReset?.(target)
     },
+    onAction: (key) => options.onAction?.(key),
   })
   if (options.values) {
     controls.sync(options.values, { replace: true })
   }
-  // Once the window passes, the peer's latest state is applied as it is, so a value the peer
-  // corrected (clamped, rounded) while it was held still lands.
-  let settle: ReturnType<typeof setTimeout> | undefined
-  const sync: RemoteControls["sync"] = (values, syncOptions) => {
-    const held: Record<string, unknown> = { ...values }
-    const current = controls.get() as Record<string, unknown>
-    const t = now()
-    let holding = false
-    for (const [key, at] of sent) {
-      if (t - at >= ECHO_MS) sent.delete(key)
-      else {
-        held[key] = current[key]
-        holding = true
-      }
-    }
-    controls.sync(held as State, syncOptions)
-    clearTimeout(settle)
-    if (holding) settle = setTimeout(() => sync(values, syncOptions), ECHO_MS)
-  }
-  return Object.freeze({
-    ...controls,
-    sync,
-    get enabled() {
-      return controls.enabled
+  const reshape = (controls as unknown as { [RESHAPE]: Reshape })[RESHAPE]
+  return extend(controls, {
+    get descriptors() {
+      return frozenDescriptors
     },
-    get storage() {
-      return controls.storage
+    update(next: readonly ControlDescriptor[], values: State = {}, opts?: { land?: boolean }) {
+      // The same array: only the values can have changed.
+      if (next === given || next === frozenDescriptors)
+        return controls.sync(values, { replace: true, land: opts?.land })
+      given = next
+      frozenDescriptors = Object.freeze([...next])
+      reshape(fromDescriptors(frozenDescriptors), values, opts)
     },
-    get error() {
-      return controls.error
-    },
-    get canUndo() {
-      return controls.canUndo
-    },
-    get canRedo() {
-      return controls.canRedo
-    },
-    get comparing() {
-      return controls.comparing
-    },
-    descriptors: frozenDescriptors,
+    sync: (values: State, syncOptions?: SyncOptions) => controls.sync(values, syncOptions),
     swift: (group?: string) => formatSwift(frozenDescriptors, controls.modified() as State, group),
   })
+}
+
+/** A titled section of settings, as a hosted prototype reports them (viewer.js `pv:settings`). */
+export interface SettingsGroup {
+  readonly title?: string
+  readonly items: readonly SettingsItem[]
+}
+export type SettingsItem =
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "choice"
+      readonly choices: readonly { readonly id: string; readonly label?: string }[]
+      readonly value?: string | null
+    }
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "toggle"
+      readonly value?: boolean
+    }
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "action"
+      readonly value?: boolean
+    }
+
+/**
+ * Settings sections as descriptors and values, one row per item: choices (a menu past four
+ * options), switches and buttons, each section's title its group.
+ *
+ * The prototype owns these values, so each setting's default is its `home`: the value the
+ * prototype first reported. Pass the first call's `values` back as `home` (merging in settings
+ * that appear later) so the shape stays put while the values move; without it, the values
+ * reported now are the defaults.
+ */
+export function fromSettings(
+  groups: readonly SettingsGroup[],
+  home: State = {},
+): { descriptors: ControlDescriptor[]; values: State } {
+  const descriptors: ControlDescriptor[] = []
+  const values: Record<string, Value> = {}
+  for (const g of groups)
+    for (const item of g.items) {
+      const meta = { key: item.id, label: item.label, ...(g.title ? { group: g.title } : {}) }
+      if (item.kind === "action") descriptors.push({ ...meta, kind: "action" })
+      else if (item.kind === "toggle") {
+        values[item.id] = Boolean(item.value)
+        const def = home[item.id]
+        descriptors.push({
+          ...meta,
+          kind: "toggle",
+          default: typeof def === "boolean" ? def : values[item.id]!,
+        })
+      } else if (item.choices.length) {
+        const ids = item.choices.map((c) => c.id)
+        values[item.id] = item.value != null && ids.includes(item.value) ? item.value : ids[0]!
+        const def = home[item.id]
+        descriptors.push({
+          ...meta,
+          kind: "choice",
+          default: typeof def === "string" && ids.includes(def) ? def : values[item.id]!,
+          choices: item.choices,
+        })
+      }
+    }
+  return { descriptors, values }
 }

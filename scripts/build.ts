@@ -17,6 +17,7 @@ for (const [name, entry] of [
   ["react", "src/react/index.ts"],
   ["solid", "src/solid/index.ts"],
   ["panel", "src/panel/index.ts"],
+  ["themes", "src/themes/index.ts"],
 ]) {
   const result = await Bun.build({
     entrypoints: [entry],
@@ -42,6 +43,14 @@ const locked = built.defineControls(
 locked.set({ value: 8 })
 if (locked.enabled || locked.get() !== locked.locked || locked.get().value !== 2)
   throw new Error("Production core must stay locked, even with enabled: true.")
+const shipped = built.defineControls(
+  "production-shipped",
+  { value: built.knob(2, { min: 0, max: 10, step: 1 }) },
+  { storage: null, ship: () => Promise.reject(new Error("no panel in this check")) },
+)
+shipped.set({ value: 8 })
+if (!shipped.enabled || shipped.get().value !== 8)
+  throw new Error("A shipped store must stay live in production.")
 console.log(
   `Core: ${Buffer.byteLength(production)} bytes, ${Bun.gzipSync(production).length} gzip. Production panel import: absent.`,
 )

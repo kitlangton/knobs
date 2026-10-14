@@ -1,6 +1,14 @@
 import { parseColor } from "./color.js"
 import { EASING_Y } from "./easing.js"
-import { SPRING, normalizeField, same, type Field, type Schema, type Value } from "./schema.js"
+import {
+  SPRING,
+  normalizeField,
+  same,
+  type Schema,
+  type Value,
+  type ValueField,
+  valueKeys,
+} from "./schema.js"
 import type { SpringValue } from "./spring.js"
 
 /**
@@ -51,7 +59,7 @@ function nudge(
   return at(steps)
 }
 
-function shift(field: Field, value: Value, random: () => number): unknown {
+function shift(field: ValueField, value: Value, random: () => number): unknown {
   switch (field.kind) {
     case "knob":
       return nudge(value as number, field.min, field.max, field.step, random)
@@ -114,14 +122,14 @@ const other = (options: readonly string[], value: string, random: () => number) 
 export function mutateValues<S extends Schema>(
   schema: S,
   current: Readonly<Record<string, Value>>,
-  keys: readonly string[] = Object.keys(schema),
+  keys: readonly string[] = valueKeys(schema),
   random = Math.random,
 ): Record<string, Value> {
   const out: Record<string, Value> = {}
   let changed = false
   for (const key of keys) {
     const field = schema[key]
-    if (!field) continue
+    if (!field || field.kind === "action") continue
     const before = current[key] ?? field.value
     const next = normalizeField(field, shift(field, before, random))
     out[key] = next

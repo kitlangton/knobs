@@ -1,9 +1,9 @@
 import { Spring } from "../core/spring.js"
+import { arrowOf } from "./prefs.js"
 import type { MountPanelOptions } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { isRevealingIn, resize, reveal } from "./reveal.js"
-import { placeSegPill } from "./seg.js"
-import { panOptions } from "./swipe.js"
+import { createChoice } from "./choice.js"
 
 export interface MountPageOptions extends MountPanelOptions {
   /** Section order; sections not listed follow in the order they first appear. */
@@ -48,11 +48,15 @@ export interface PageCard {
   readonly body: HTMLElement
   /** Right side of the card's header, for a badge or a small button. */
   readonly accessory: HTMLElement
-  /** A segmented row, like a choice field (no `label` spans the card). */
+  /**
+   * A choice row, like a choice field (no `label` spans the card): segmented while the labels fit
+   * and there are at most four, a drop-down menu otherwise; `display` fixes one or the other.
+   */
   choice<T extends string>(options: {
     readonly label?: string
     readonly options: readonly (T | { readonly value: T; readonly label: string })[]
     readonly value: T
+    readonly display?: "menu" | "segmented"
     onChange(value: T): void
   }): PageControl<T>
   /** A switch row. */
@@ -816,12 +820,7 @@ export function createCustomCard(
     body.append(card)
     return card
   }
-  const arrows = (event: KeyboardEvent) =>
-    event.key === "ArrowLeft" || event.key === "h"
-      ? -1
-      : event.key === "ArrowRight" || event.key === "l"
-        ? 1
-        : 0
+  const arrows = arrowOf
   const quiet = (node: HTMLElement) =>
     node.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
   const still = () =>
@@ -860,72 +859,47 @@ export function createCustomCard(
       readonly label?: string
       readonly options: readonly (T | { readonly value: T; readonly label: string })[]
       readonly value: T
+      readonly display?: "menu" | "segmented"
       onChange(value: T): void
     }) {
       const list = o.options.map((x) => (typeof x === "string" ? { value: x, label: x } : x))
       const row = el("div", o.label ? "knobs-row" : "knobs-row knobs-row-full")
       if (o.label) row.append(el("span", undefined, o.label))
-      const seg = el("div", "knobs-seg")
-      const pill = el("span", "knobs-seg-pill")
-      pill.setAttribute("aria-hidden", "true")
-      seg.append(pill)
-      seg.tabIndex = 0
-      seg.dataset.knobsStop = ""
-      seg.setAttribute("role", "radiogroup")
-      if (o.label) seg.setAttribute("aria-label", o.label)
       let value = o.value
-      const choose = (next: T) => {
-        if (next === value) return
-        value = next
-        placeSegPill(seg, buttons, value)
-        o.onChange(value)
-        hooks.wake()
-      }
-      const buttons = list.map((x) => {
-        const b = el("button", undefined, x.label)
-        b.type = "button"
-        b.tabIndex = -1
-        b.dataset.value = x.value
-        b.setAttribute("role", "radio")
-        b.onclick = () => {
-          choose(x.value)
-          quiet(seg)
-        }
-        seg.append(b)
-        return b
-      })
-      const step = (direction: number) => {
-        const at = list.findIndex((x) => x.value === value)
-        const next = (at + direction + list.length) % list.length
-        if (list[next]) choose(list[next]!.value)
-      }
-      seg.addEventListener("keydown", (event) => {
-        const d = arrows(event)
-        if (!d || event.metaKey || event.altKey) return
-        event.preventDefault()
-        event.stopPropagation()
-        step(d)
-      })
-      panOptions(seg, {
-        box: seg,
-        pill,
-        buttons: () => buttons,
-        selected: () => list.findIndex((x) => x.value === value),
-        select: (i) => choose(list[i]!.value),
-        rest: () => placeSegPill(seg, buttons, value),
-        wake: () => hooks.wake(),
-      })
-      new ResizeObserver(() => placeSegPill(seg, buttons, value, true)).observe(seg)
-      row.append(seg)
       inset().append(row)
-      placeSegPill(seg, buttons, value)
+      // The panel's own choice control: segments while they fit, a menu when they don't.
+      const control = createChoice(doc, row, {
+        label: o.label,
+        items: list,
+        display: o.display,
+        value: () => value,
+        choose: (next) => {
+          if (next === value) return
+          value = next as T
+          control.show(value)
+          o.onChange(value)
+          hooks.wake()
+        },
+        wake: hooks.wake,
+      })
+      for (const node of [control.seg, control.menu]) {
+        node.dataset.knobsStop = ""
+        node.addEventListener("keydown", (event) => {
+          const d = arrows(event)
+          if (!d || event.metaKey || event.altKey) return
+          event.preventDefault()
+          event.stopPropagation()
+          control.step(d, true)
+        })
+      }
+      control.show(value, true)
       return {
         element: row,
         get: () => value,
         set(next: T) {
           if (next === value) return
           value = next
-          placeSegPill(seg, buttons, value)
+          control.show(value)
           hooks.wake()
         },
       }

@@ -6,8 +6,13 @@ export {
   color,
   point,
   easing,
+  action,
+  flatSpring,
   SPRING,
   type FieldMeta,
+  type ActionField,
+  type SpringPart,
+  type ValueField,
   type Knob,
   type Choice,
   type Toggle,
@@ -35,6 +40,11 @@ export {
   type DensityMode,
   type GroupPreset,
   type MountPanelOptions,
+  type PanelCommand,
+  type PanelHandle,
+  type PanelModule,
+  type PanelKeys,
+  type SyncOptions,
   type RendererMode,
   type ThemeMode,
 } from "./core/store.js"
@@ -43,10 +53,18 @@ export {
   descriptorToField,
   formatSwift,
   fromDescriptors,
+  fromSettings,
+  type SettingsGroup,
+  type SettingsItem,
+  type ActionDescriptor,
+  type ChoiceOption,
   type ControlDescriptor,
+  type SpringBindingDescriptor,
+  type ValueDescriptor,
   type RemoteControls,
   type RemoteControlsOptions,
 } from "./core/remote.js"
 export { memoryStorage, urlFlag, type StoragePort } from "./core/storage.js"
+export type { TokenPreset } from "./core/theme.js"
 export { formatCode, type CodeFormat } from "./core/code.js"
 export type { Variant, Variants } from "./core/variants.js"

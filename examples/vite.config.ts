@@ -12,7 +12,18 @@ const port = Number(process.env.PORT) || 5178
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
 export default defineConfig(({ command, mode }) => ({
   root: "examples",
-  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html", "die.html", "tune.html"] },
+  resolve: { dedupe: ["solid-js"] },
+  optimizeDeps: {
+    include: ["solid-js", "solid-js/web", "solid-js/html"],
+    entries: [
+      "index.html",
+      "contracts.html",
+      "meta.html",
+      "die.html",
+      "tune.html",
+      "problems.html",
+    ],
+  },
   server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
   build: {
     outDir: mode === "site" ? "site" : "dist",
@@ -24,17 +35,20 @@ export default defineConfig(({ command, mode }) => ({
         meta: resolve(import.meta.dirname, "meta.html"),
         die: resolve(import.meta.dirname, "die.html"),
         tune: resolve(import.meta.dirname, "tune.html"),
+        problems: resolve(import.meta.dirname, "problems.html"),
       },
     },
   },
   ...(command === "serve" || mode === "site"
     ? {
         resolve: {
+          dedupe: ["solid-js"],
           alias: [
             { find: /^knobs$/, replacement: resolve(rootDir, "src/index.ts") },
             { find: /^knobs\/react$/, replacement: resolve(rootDir, "src/react/index.ts") },
             { find: /^knobs\/solid$/, replacement: resolve(rootDir, "src/solid/index.ts") },
             { find: /^knobs\/panel$/, replacement: resolve(rootDir, "src/panel/index.ts") },
+            { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
           ],
         },
         plugins: [

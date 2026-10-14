@@ -5,6 +5,8 @@ export interface MenuItem {
   readonly disabled?: boolean
   /** Draws a hairline above the item. */
   readonly separated?: boolean
+  /** Marks the current option, as a pop-up menu's check mark does. */
+  readonly checked?: boolean
   run(): void
 }
 
@@ -42,7 +44,15 @@ export function openMenu(
   panel: HTMLElement,
   items: readonly MenuItem[],
   at: { x: number; y: number },
-  options: { keyboard?: boolean; returnTo?: HTMLElement; onClose?: () => void } = {},
+  options: {
+    keyboard?: boolean
+    returnTo?: HTMLElement
+    onClose?: () => void
+    /** The item marked active on open (a pop-up menu starts on its current option). */
+    active?: number
+    /** At least this wide (px), e.g. the button it drops from. */
+    minWidth?: number
+  } = {},
 ): Menu {
   const win = doc.defaultView!
   const previous = options.returnTo ?? (doc.activeElement as HTMLElement | null)
@@ -64,6 +74,10 @@ export function openMenu(
     node.setAttribute("role", "menuitem")
     if (item.disabled) node.setAttribute("aria-disabled", "true")
     if (item.separated) node.dataset.separated = ""
+    if (item.checked !== undefined) {
+      node.setAttribute("role", "menuitemradio")
+      node.setAttribute("aria-checked", String(item.checked))
+    }
     const label = doc.createElement("span")
     label.textContent = item.label
     node.append(label)
@@ -92,6 +106,8 @@ export function openMenu(
     return -1
   }
 
+  if (items.some((item) => item.checked !== undefined)) menu.dataset.checks = ""
+  if (options.minWidth) menu.style.minWidth = `${Math.round(options.minWidth)}px`
   doc.body.append(menu)
   // Opens away from the edges, growing out of the corner nearest the pointer.
   const w = menu.offsetWidth
@@ -110,7 +126,8 @@ export function openMenu(
       { duration: 150, easing: "cubic-bezier(.2,.8,.2,1)" },
     )
   menu.focus({ preventScroll: true })
-  if (options.keyboard) setActive(step(-1, 1))
+  if (options.active !== undefined && enabled(options.active)) setActive(options.active)
+  else if (options.keyboard) setActive(step(-1, 1))
 
   let closed = false
   const close = (restore = true) => {

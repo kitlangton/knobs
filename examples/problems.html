@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Problems viewer · knobs embedded</title>
+    <style>
+      :root {
+        --sf: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        --bg: #0a0a0b; --bg-raised: #121214; --card: #19191b; --line: rgba(255,255,255,.075);
+        --label: #f5f5f7; --label2: rgba(235,235,245,.62); --label3: rgba(235,235,245,.36);
+        --fill2: rgba(120,120,128,.16); --fill3: rgba(120,120,128,.1); --blue: #0091ff; --orange: #ff9230;
+        --panel-solid: #161618;
+        color-scheme: dark;
+      }
+      :root[data-theme="light"] {
+        --bg: #f2f2f7; --bg-raised: #fbfbfd; --card: #fff; --line: rgba(0,0,0,.07);
+        --label: #000; --label2: rgba(60,60,67,.66); --label3: rgba(60,60,67,.38);
+        --fill2: rgba(120,120,128,.11); --fill3: rgba(120,120,128,.07); --blue: #0088ff; --orange: #f27a00;
+        --panel-solid: #fff;
+        color-scheme: light;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--label); font: 13px/1.4 var(--sf); -webkit-font-smoothing: antialiased; }
+      .top { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: .5px solid var(--line); background: var(--bg-raised); }
+      .top b { font-weight: 600; }
+      .top .item { color: var(--label2); }
+      .top .keys { margin-left: auto; color: var(--label3); font-size: 12px; }
+      .top button { all: unset; cursor: pointer; padding: 3px 8px; border-radius: 6px; color: var(--label2); background: var(--fill3); }
+      .uv { display: grid; grid-template-columns: 196px 1fr 316px; height: calc(100% - 56px); }
+      .uv-vars { padding: 12px; border-right: .5px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+      .uv-var { all: unset; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; cursor: pointer; color: var(--label2); transition: background-color 100ms ease; }
+      .uv-var:hover { background: var(--fill3); transition-duration: 0ms; }
+      .uv-var.cur { background: var(--fill2); color: var(--label); }
+      .dc-letter { width: 18px; height: 18px; border-radius: 50%; font: 600 10.5px/18px var(--sf); text-align: center; background: var(--fill2); color: var(--label2); flex: none; }
+      .uv-var.cur .dc-letter, .uv-head .dc-letter { background: var(--blue); color: #fff; }
+      .stage { position: relative; display: grid; place-items: center; overflow: hidden; }
+      .stage .device { width: 300px; height: 520px; border-radius: 40px; background: var(--card); box-shadow: 0 18px 50px rgba(0,0,0,.4); display: grid; place-items: center; position: relative; overflow: hidden; }
+      .stage .chip { background: var(--blue); }
+      .stage .dots { position: absolute; bottom: 28px; display: flex; gap: 6px; }
+      .stage .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--fill2); transition: background .2s; }
+      .stage .dots i.on { background: var(--blue); }
+      .stage .caption { position: absolute; top: 24px; color: var(--label3); font-size: 12px; }
+      .side { background: var(--panel-solid); display: flex; flex-direction: column; min-height: 0; border-left: .5px solid var(--line); padding: 12px 16px; gap: 12px; overflow: auto; }
+      .side h4 { margin: 0; display: flex; align-items: center; gap: 8px; font: 600 12px/16px var(--sf); color: var(--label2); }
+      .side h4 .reset { all: unset; margin-left: auto; padding: 2px 6px; border-radius: 5px; font: 500 12px/16px var(--sf); color: var(--blue); cursor: pointer; opacity: 0; transform: scale(.9); pointer-events: none; transition: opacity .16s ease, transform .22s cubic-bezier(.34,1.36,.64,1), background-color 100ms ease; }
+      .side h4 .reset.show { opacity: 1; transform: none; pointer-events: auto; }
+      .side h4 .reset:hover { background: var(--fill3); transition-duration: 160ms, 220ms, 0ms; }
+      .choose { all: unset; position: relative; cursor: pointer; text-align: center; padding: 9px; border-radius: 10px; background: var(--blue); color: #fff; font-weight: 600; }
+      .choose .dot { position: absolute; right: 10px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: #fff; opacity: 0; transform: scale(0); transition: opacity .16s, transform .3s cubic-bezier(.34,1.56,.64,1); }
+      .choose .dot.on { opacity: 1; transform: none; }
+      .log { margin-top: auto; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--label3); white-space: pre-wrap; min-height: 5.5em; }
+      .section-gap { border-top: .5px solid var(--line); margin: 0 -16px; }
+      .proto-dock { position: fixed; left: 16px; bottom: 16px; width: 280px; padding: 8px; border: 1px dashed var(--orange); border-radius: 12px; background: var(--panel-solid); }
+      .proto-dock > button { all: unset; cursor: pointer; color: var(--orange); font: 600 12px/20px var(--sf); padding: 0 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./problems.ts"></script>
+  </body>
+</html>

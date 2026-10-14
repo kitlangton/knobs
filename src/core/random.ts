@@ -1,11 +1,11 @@
 import { EASINGS } from "./easing.js"
-import { normalize, type Field, type Schema, type Values } from "./schema.js"
+import { normalize, type Schema, type ValueField, type Values } from "./schema.js"
 
 const lattice = (min: number, max: number, step: number, r: number) =>
   min + Math.floor(r * (Math.floor((max - min) / step + 1e-9) + 1)) * step
 const between = (min: number, max: number, r: number) => min + (max - min) * r
 
-function pick(field: Field, random: () => number) {
+function pick(field: ValueField, random: () => number) {
   const r = () => Math.max(0, Math.min(1 - Number.EPSILON, random()))
   switch (field.kind) {
     case "knob":
@@ -34,6 +34,10 @@ function pick(field: Field, random: () => number) {
 export function randomValues<S extends Schema>(schema: S, random = Math.random): Values<S> {
   return normalize(
     schema,
-    Object.fromEntries(Object.entries(schema).map(([key, field]) => [key, pick(field, random)])),
+    Object.fromEntries(
+      Object.entries(schema).flatMap(([key, field]) =>
+        field.kind === "action" ? [] : [[key, pick(field, random)]],
+      ),
+    ),
   )
 }

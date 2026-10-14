@@ -111,10 +111,43 @@ export interface PanelThemeTokens {
   readonly toggleThumb: Rgba
   readonly rim: Rgba
   readonly rowHover: Rgba
+  /** Space between rows (px); above 0 each row is its own bar rather than part of one card. */
+  readonly rowGap: number
+  /** Hover wash in and out (ms). */
+  readonly hoverIn: number
+  readonly hoverOut: number
+  /** A slider handle's opacity at rest (0 shows it only on hover, focus and drag). */
+  readonly handleRest: number
+  /** Group headings in small caps (`--k-group-transform: none` keeps their case). */
+  readonly groupUpper: boolean
+  /** The slider handle's colour and how far inside the fill's edge it sits (px). */
+  readonly handle: Rgba
+  readonly handleInset: number
+  /** Group headings: size (px), colour, letter spacing (em) and the hairline above a group. */
+  readonly groupSize: number
+  readonly groupColor: Rgba
+  readonly groupTracking: number
+  readonly groupDivider: Rgba
+  /** Readout units: the space before them (px) and their colour. */
+  readonly unitGap: number
+  /** null: the readout's own colour (`currentColor`). */
+  readonly unitColor: Rgba | null
+  /** 1: a modified readout takes the modified colour behind a small dot. */
+  readonly readoutMark: number
+  /** The readout's face. */
+  readonly valueFamily: string
+  /** Spring curve: horizontal inset (px), one dashed guide at rest (vs. two solid), the running dot. */
+  readonly curveInset: number
+  readonly curveDashed: boolean
+  readonly curveDot: number
   readonly pillBg: Rgba
   readonly pillBorder: Rgba
   readonly fillRest: Rgba
   readonly fillActive: Rgba
+  /** The fill under a hovered slider. */
+  readonly fillHover: Rgba
+  /** 0 drops an inline panel's card: background, border and rim. */
+  readonly chrome: number
   readonly pad: number
   readonly inset: number
   readonly row: number
@@ -157,6 +190,16 @@ const numProp = (style: CSSStyleDeclaration, name: string, fallback: number): nu
   const raw = parseFloat(token(style, name))
   return Number.isFinite(raw) ? raw : fallback
 }
+
+/** A length token in px: `Npx`, or `Nem` against `em`; anything else (a calc) is `fallback`. */
+const lengthProp = (style: CSSStyleDeclaration, name: string, em: number, fallback: number) => {
+  const raw = token(style, name).trim()
+  const n = parseFloat(raw)
+  if (!Number.isFinite(n)) return fallback
+  return raw.endsWith("em") ? n * em : n
+}
+const colorProp = (style: CSSStyleDeclaration, name: string, fallback: Rgba): Rgba =>
+  token(style, name).trim() ? parseCssColor(token(style, name), fallback) : fallback
 
 const tokenCache = new WeakMap<HTMLElement, { version: number; tokens: PanelThemeTokens }>()
 
@@ -201,6 +244,9 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     token(style, "toggle-track"),
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
   )
+  const fillBase = style.getPropertyValue("--k-fill-base").trim()
+    ? parseCssColor(token(style, "fill-base"), surfaceHi)
+    : surfaceHi
   const accentLum = accent[0] * 0.2126 + accent[1] * 0.7152 + accent[2] * 0.0722
   const toggleThumb = parseCssColor(
     token(style, "toggle-thumb"),
@@ -250,10 +296,36 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     toggleThumb,
     rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
     rowHover: withAlpha(surface, 0.5),
+    rowGap: numProp(style, "row-gap", 0),
+    hoverIn: numProp(style, "hover-in", 150),
+    hoverOut: numProp(style, "hover-out", 150),
+    handleRest: numProp(style, "handle-rest", 0),
+    handle: colorProp(style, "handle", accent),
+    handleInset: lengthProp(style, "handle-inset", fontSize, 0),
+    groupUpper: style.getPropertyValue("--k-group-transform").trim() !== "none",
+    groupSize: lengthProp(style, "group-size", fontSize, fontSize - 2),
+    groupColor: colorProp(style, "group-color", dim),
+    groupTracking: lengthProp(style, "group-tracking", 1, 0.04),
+    groupDivider: colorProp(style, "group-divider", [0, 0, 0, 0]),
+    unitGap: lengthProp(style, "unit-gap", fontSize - 0.5, (fontSize - 0.5) * 0.28),
+    unitColor: /^currentcolor$/i.test(token(style, "unit-color").trim())
+      ? null
+      : colorProp(style, "unit-color", dim),
+    readoutMark: numProp(style, "readout-mark", 0),
+    valueFamily: style.getPropertyValue("--k-value-font").trim() || fontFamily,
+    curveInset: lengthProp(style, "curve-inset", fontSize, 6),
+    curveDashed: style.getPropertyValue("--k-curve-guide").trim() === "dashed",
+    curveDot: numProp(style, "curve-dot", 1),
     pillBg: cssMix(accent, segActive, 0.18),
     pillBorder: withAlpha(accent, 0.32),
-    fillRest: cssMix(accent, surfaceHi, 0.2),
-    fillActive: cssMix(accent, surfaceHi, 0.3),
+    fillRest: cssMix(accent, fillBase, numProp(style, "fill-rest-mix", 20) / 100),
+    fillActive: cssMix(accent, fillBase, numProp(style, "fill-active-mix", 30) / 100),
+    fillHover: cssMix(
+      accent,
+      fillBase,
+      numProp(style, "fill-hover-mix", numProp(style, "fill-rest-mix", 20)) / 100,
+    ),
+    chrome: Math.min(1, Math.max(0, numProp(style, "chrome", 1))),
     pad,
     inset,
     row,

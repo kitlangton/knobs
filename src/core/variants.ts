@@ -16,7 +16,7 @@ export interface Variants<V> {
   import(json: string): void
 }
 export function createVariants<S extends Schema>(
-  schema: S,
+  schema: () => S,
   id: string,
   key: string,
   storage: () => StoragePort | null,
@@ -46,7 +46,7 @@ export function createVariants<S extends Schema>(
         if (item.name !== undefined && (typeof item.name !== "string" || item.name.length > 100))
           throw new Error("Variant names must be at most 100 characters.")
         if (!isRecord(item.values)) throw new Error("Invalid variant values.")
-        const values = normalize(schema, item.values)
+        const values = normalize(schema(), item.values)
         if (!equal(values, item.values as Values<S>))
           throw new Error("Variant values do not match the schema, bounds, or step.")
         return Object.freeze({

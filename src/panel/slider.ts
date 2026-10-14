@@ -1,5 +1,6 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
+import { keyPrefs } from "./prefs.js"
 import {
   clamp,
   FILL,
@@ -47,9 +48,9 @@ export interface Slider {
   /** Velocity tracker on normalized fill ratio for drag motion blur. */
   velocity: VelocityTracker
   /** Number of tick marks along the track. */
-  tickCount: number
+  readonly tickCount: number
   /** Where the default value sits along the track [0..1]. */
-  notchRatio: number
+  readonly notchRatio: number
   /** Whether a drag is currently held on the default by the notch's magnet. */
   isMagnetized(): boolean
   /** Drag speed mapped to 0..1 for the fill's leading-edge glow (0 once the pointer rests). */
@@ -64,8 +65,15 @@ export interface Slider {
   isDragging(): boolean
   /** Whether the inline number input is open. */
   isEditing(): boolean
-  /** `delay` (ms) holds this row's motion for its turn in a preset cascade. */
-  update(value: number, delay?: number): void
+  /**
+   * `delay` (ms) holds this row's motion for its turn in a preset cascade; `instant` places the
+   * value without springing or rolling (a different item arrived).
+   */
+  update(value: number, delay?: number, instant?: boolean): void
+  /** Takes a new range, step, label or unit in place, keeping the DOM (see `RemoteControls.update`). */
+  retune(field: KnobField): void
+  /** The field it currently draws. */
+  readonly field: KnobField
   /** Open the inline editor (used when a digit is typed on the track). */
   edit(): void
 }
@@ -86,64 +94,75 @@ const decimals = (step: number) => {
 export function createSlider(
   doc: Document,
   key: string,
-  field: KnobField,
+  initialField: KnobField,
   set: (value: number, options?: { coalesce?: boolean }) => void,
   onMotionWake?: () => void,
 ): Slider {
+  let field = initialField
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
     const node = doc.createElement(tag)
     if (cls) node.className = cls
     return node
   }
-  const display = field.label ?? key
   const root = el("div", "knobs-slider")
   const track = el("div", "knobs-track")
   track.tabIndex = 0
   track.setAttribute("role", "slider")
-  track.setAttribute("aria-label", display)
-  track.setAttribute("aria-valuemin", String(field.min))
-  track.setAttribute("aria-valuemax", String(field.max))
   const ratioOf = (v: number) =>
     field.max === field.min
       ? 0
       : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
-  const notchRatio = ratioOf(field.value)
+  let notchRatio = 0
+  let steps = 0
+  let count = 0
+  let span = 0
   const marks = el("div", "knobs-marks")
-  const steps = (field.max - field.min) / field.step
-  const count = steps <= 10 ? Math.round(steps) + 1 : 11
-  for (let i = 0; i < count; i++) {
-    const r = i / (count - 1)
-    if (Math.abs(r - notchRatio) < 0.025) continue
-    const mark = el("i")
-    mark.style.left = `${r * 100}%`
-    marks.append(mark)
-  }
   const notch = el("i", "knobs-notch")
-  notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
-  marks.append(notch)
   const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
-  label.textContent = display
   const value = el("button", "knobs-value")
   value.type = "button"
   value.tabIndex = -1
-  value.setAttribute("aria-label", `Edit ${display}`)
   const digits = el("span", "knobs-digits")
   value.append(digits)
-  if (field.unit) {
-    const unit = el("span", "knobs-unit")
-    unit.textContent = field.unit
-    value.append(unit)
-  }
+  const unit = el("span", "knobs-unit")
   const number = el("input", "knobs-number")
   number.type = "number"
   number.name = `${key}-value`
-  number.min = String(field.min)
-  number.max = String(field.max)
-  number.step = String(field.step)
   number.hidden = true
-  number.setAttribute("aria-label", `${display} value`)
+  /** Lays out everything that follows from the field: marks, notch, labels and limits. */
+  const shape = () => {
+    const display = field.label ?? key
+    track.setAttribute("aria-label", display)
+    track.setAttribute("aria-valuemin", String(field.min))
+    track.setAttribute("aria-valuemax", String(field.max))
+    notchRatio = ratioOf(field.value)
+    span = field.max - field.min
+    steps = span / field.step
+    count = steps <= 10 ? Math.round(steps) + 1 : 11
+    const ticks: HTMLElement[] = []
+    for (let i = 0; i < count; i++) {
+      const r = i / (count - 1)
+      if (Math.abs(r - notchRatio) < 0.025) continue
+      const mark = el("i")
+      mark.style.left = `${r * 100}%`
+      ticks.push(mark)
+    }
+    notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
+    marks.replaceChildren(...ticks, notch)
+    if (label.textContent !== display) label.textContent = display
+    value.setAttribute("aria-label", `Edit ${display}`)
+    unit.textContent = field.unit ?? ""
+    if (field.unit) {
+      if (!unit.isConnected) value.append(unit)
+    } else unit.remove()
+    number.min = String(field.min)
+    number.max = String(field.max)
+    number.step = String(field.step)
+    number.setAttribute("aria-label", `${display} value`)
+  }
+  shape()
   track.append(fill, marks, handle, label, value, number)
   root.append(track)
   // Hover ticks and the default notch stay clear of both the readout and the label.
@@ -157,22 +176,25 @@ export function createSlider(
   ro.observe(track)
   ro.observe(label)
 
-  const places = decimals(field.step)
+  let places = field.decimals ?? decimals(field.step)
   const fmtDigits = (v: number) => v.toFixed(places)
   const fmt = (v: number) => `${fmtDigits(v)}${field.unit ? ` ${field.unit}` : ""}`
-  const roller = createRollingNumber(digits, {
-    value: field.value,
-    format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
-    duration: 320,
-    motionBlur: true,
-  })
+  const makeRoller = (at: number) =>
+    createRollingNumber(digits, {
+      value: at,
+      format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
+      duration: 320,
+      motionBlur: true,
+    })
+  let roller = makeRoller(field.value)
   // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
   let cachedRollAt = -Infinity
   let cachedStepRoll = 320
   let cachedDragRoll = 0
   const rollMs = (drag: boolean) => {
     const now = performance.now()
-    if (now - cachedRollAt > 16) {
+    // Read once per press while dragging: a style read per pointer move would force a restyle.
+    if (now - cachedRollAt > 16 && !dragging) {
       cachedRollAt = now
       const cs = getComputedStyle(root)
       const sRaw = parseFloat(cs.getPropertyValue("--k-roll"))
@@ -183,6 +205,8 @@ export function createSlider(
     return drag ? cachedDragRoll : cachedStepRoll
   }
   const pct = (v: number) => ratioOf(v) * 100
+  /** Few enough stops that a drag glides from one to the next instead of tracking the pointer. */
+  const stepped = () => steps <= 10
   const quantize = (v: number) =>
     Math.min(
       field.max,
@@ -264,7 +288,7 @@ export function createSlider(
     fill.style.setProperty("--k-fill", `${p}%`)
     handle.style.left = `${p}%`
     // Dodge the text when the handle would sit on top of it.
-    handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
+    handle.classList.toggle("knobs-dodge", p < 28 || p > 76)
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
   const slotX = (slot: HTMLElement) =>
@@ -284,13 +308,13 @@ export function createSlider(
     if (sem) sem.textContent = text
     return true
   }
-  const update = (v: number, delay = 0) => {
+  const update = (v: number, delay = 0, instant = false) => {
     const previous = current
     current = v
     const r = ratioOf(v)
     velocity.add(r, 0)
-    const ms = !initialized ? 0 : rollMs(inHand())
-    if (!initialized || (inHand() && !settling())) fillSpring.snap(r)
+    const ms = !initialized || instant ? 0 : rollMs(inHand())
+    if (!initialized || instant || (inHand() && !settling() && !stepped())) fillSpring.snap(r)
     else fillSpring.set(r, delay)
     const digitsStr = fmtDigits(v)
     syncDigits(digitsStr, Math.sign(v - previous), ms, ms > 0 ? delay : 0)
@@ -302,6 +326,7 @@ export function createSlider(
     // when the character count changes (for readout width).
     const gpu = root.closest('[data-gpu-active="true"]') !== null
     const animateDom = ms > 0 && !gpu
+    if (instant) delay = 0
     const roll = () => {
       rollerDirty = false
       lastRollerLen = digitsStr.length
@@ -329,12 +354,24 @@ export function createSlider(
     }
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
-    if (number.hidden) paint(v, !inHand())
+    if (number.hidden) paint(v, !instant && (!inHand() || stepped()))
+    onMotionWake?.()
+  }
+  const retune = (next: KnobField) => {
+    if (next === field) return
+    const placesBefore = places
+    field = next
+    shape()
+    places = field.decimals ?? decimals(field.step)
+    if (places !== placesBefore) {
+      digits.replaceChildren()
+      roller = makeRoller(current)
+      lastRollerLen = fmtDigits(current).length
+    }
     onMotionWake?.()
   }
 
   const getTrackWidth = () => trackWidth || (trackWidth = track.offsetWidth)
-  const span = field.max - field.min
   const valueAt = (clientX: number, rect = track.getBoundingClientRect()) => {
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return field.min + t * span
@@ -401,6 +438,8 @@ export function createSlider(
     if (event.button !== 0 || (target && number.contains(target))) return
     event.preventDefault()
     fromValue = Boolean(target && value.contains(target))
+    cachedRollAt = -Infinity
+    rollMs(false)
     track.setPointerCapture(event.pointerId)
     dragRect = track.getBoundingClientRect()
     trackWidth = dragRect.width
@@ -599,7 +638,7 @@ export function createSlider(
   }
   track.onkeydown = (event) => {
     if (event.target !== track) return
-    if (event.key === "Enter" && number.hidden) {
+    if (event.key === "Enter" && number.hidden && keyPrefs(track).edit) {
       event.preventDefault()
       edit()
     } else if (event.key === "Home" || event.key === "End") {
@@ -618,8 +657,16 @@ export function createSlider(
     handleSpring,
     digitPlaces,
     velocity,
-    tickCount: count,
-    notchRatio,
+    get tickCount() {
+      return count
+    },
+    get notchRatio() {
+      return notchRatio
+    },
+    get field() {
+      return field
+    },
+    retune,
     isMagnetized: () => magnet,
     speed,
     get poppedAt() {
