@@ -50,6 +50,12 @@ export interface WheelSample {
   readonly timeStamp: number
   /** Safari only: false when natural scrolling is off, so the deltas follow the fingers. */
   readonly webkitDirectionInvertedFromDevice?: boolean
+  /**
+   * Chromium 151+ (Chrome, Edge, Brave): true for the inertia the OS sends after the fingers lift
+   * (the platform's own momentum phase). Where it exists the pan needs no guessing; where it
+   * doesn't (Safari, Firefox), the lift is recognised from the stream's shape.
+   */
+  readonly momentum?: boolean
 }
 
 export interface PanHandlers {
@@ -203,6 +209,7 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
     }
     const x = event.deltaX
     const y = event.deltaY
+    if (typeof event.momentum === "boolean") return told(event, t, x, y)
     if (x === 0 && y === 0) {
       // Chrome on Windows marks the fingers lifting with a -0 event.
       if (Object.is(x, -0) && phase === "pan") {
@@ -343,6 +350,53 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
     }
     speeds.push(speed)
     if (speeds.length > 3) speeds.shift()
+    apply(x, y)
+    return true
+  }
+
+  /**
+   * The browser says which events are momentum: finger events move 1:1 from the first, the first
+   * momentum event ends the gesture there and then, and the rest of the tail is swallowed (still
+   * claimed, so the page doesn't scroll on with it). A finger event after it is a new touch.
+   */
+  function told(event: WheelSample, t: number, x: number, y: number): boolean {
+    if (event.momentum) {
+      if (phase === "pan") {
+        hint()
+        settle()
+        phase = "coast"
+        certain = true
+      }
+      at = t
+      return phase === "coast"
+    }
+    if (phase === "coast") phase = "idle"
+    if (x === 0 && y === 0) return phase === "pan"
+    const mag = Math.hypot(x, y)
+    if (phase === "pass") {
+      remember(t, x, y, mag)
+      return false
+    }
+    if (phase === "idle") {
+      remember(t, x, y, mag)
+      if (Math.abs(x) <= Math.abs(y) || (handlers.accept && !handlers.accept())) {
+        phase = "pass"
+        return false
+      }
+      phase = "pan"
+      flip = event.webkitDirectionInvertedFromDevice === false ? -1 : 1
+      moved = false
+      travelX = travelY = 0
+    }
+    travelX += Math.abs(x)
+    travelY += Math.abs(y)
+    if (!both && travelY > travelX * 2 + 24) {
+      finish()
+      phase = "pass"
+      remember(t, x, y, mag)
+      return false
+    }
+    remember(t, x, y, mag)
     apply(x, y)
     return true
   }

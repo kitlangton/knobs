@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { defineConfig } from "vite"
 
@@ -52,6 +52,25 @@ export default defineConfig(({ command, mode }) => ({
           ],
         },
         plugins: [
+          {
+            // examples/wheel.html posts recorded trackpad streams here (dev server only).
+            name: "knobs-wheel-traces",
+            configureServer(server) {
+              server.middlewares.use("/__wheel-traces", (req, res) => {
+                if (req.method !== "POST") return void res.writeHead(405).end()
+                let body = ""
+                req.on("data", (chunk) => (body += chunk))
+                req.on("end", () => {
+                  const trace = JSON.parse(body) as { label: string }
+                  const dir = resolve(rootDir, "tests/fixtures/kit-traces")
+                  mkdirSync(dir, { recursive: true })
+                  const name = `${trace.label.replace(/[^a-z0-9-]/gi, "")}-${Date.now()}.json`
+                  writeFileSync(resolve(dir, name), JSON.stringify(trace))
+                  res.writeHead(200).end("ok")
+                })
+              })
+            },
+          },
           {
             name: "knobs-css-text",
             enforce: "pre",

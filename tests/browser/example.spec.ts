@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 
-type Wheel = { dx: number; dy?: number; t: number }
+type Wheel = { dx: number; dy?: number; t: number; momentum?: boolean }
 /**
  * Dispatches wheel events in one burst with their own timestamps (`t`, ms), so a slow runner's
  * timers can't split or join gestures. Returns whether every event was claimed, and `probe` (an
@@ -13,13 +13,14 @@ const wheel = (page: Page, selector: string, events: readonly Wheel[], probe = "
       const read = new Function(`return ${probe}`)
       let claimed = 0
       const seen: unknown[] = []
-      for (const { dx, dy = 0, t } of events) {
+      for (const { dx, dy = 0, t, momentum = false } of events) {
         const e = new WheelEvent("wheel", {
           deltaX: dx,
           deltaY: dy,
           bubbles: true,
           cancelable: true,
-        })
+          momentum,
+        } as WheelEventInit)
         Object.defineProperty(e, "timeStamp", { value: t })
         el.dispatchEvent(e)
         if (e.defaultPrevented) claimed++
@@ -35,14 +36,17 @@ const wheel = (page: Page, selector: string, events: readonly Wheel[], probe = "
  */
 const pan = (fingers: readonly number[], start: number): Wheel[] =>
   fingers.map((d, i) => ({ dx: -d, t: start + i * 8 }))
-/** The fingers lifting after `pan`: a 25 ms pause, the spike that covers it, then fading momentum. */
+/**
+ * The fingers lifting after `pan`: a 25 ms pause, the spike that covers it, then fading momentum,
+ * marked as Chromium 151+ marks it (WheelEvent.momentum).
+ */
 const lift = (fingers: readonly number[], start: number): Wheel[] => {
   const last = fingers.at(-1)!
   const sign = Math.sign(last)
   let t = start + (fingers.length - 1) * 8 + 25
-  const out: Wheel[] = [{ dx: -Math.round((last / 8) * 25 * 0.75), t }]
+  const out: Wheel[] = [{ dx: -Math.round((last / 8) * 25 * 0.75), t, momentum: true }]
   for (let m = Math.abs(last / 8) * 16.7; m >= 0.6; m *= 0.92)
-    out.push({ dx: -sign * Math.max(1, Math.round(m)), t: (t += 16.7) })
+    out.push({ dx: -sign * Math.max(1, Math.round(m)), t: (t += 16.7), momentum: true })
   return out
 }
 
@@ -672,9 +676,9 @@ test("panning drags the preset and choice pills across their options, one undo e
     ["default", expect.closeTo(chips[0]! + 27, 0), "none"],
     ["warm", expect.closeTo(chips[0]! + 35, 0), "none"],
   ])
-  // The spike and the momentum after it confirm the lift; meanwhile nothing moves.
-  expect(seen.slice(5, 8)).toEqual(seen.slice(5, 8).map(() => seen[4]))
-  expect(seen.slice(8)).toEqual(seen.slice(8).map(() => ["warm", chips[1], ""]))
+  // The browser marks the momentum: at its first event the pill springs into its slot, and the tail
+  // moves nothing.
+  expect(seen.slice(5)).toEqual(seen.slice(5).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
   await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
   await synth.getByRole("button", { name: "Undo" }).click()
@@ -1326,6 +1330,8 @@ test("a floating panel grows out of its chip and collapses back into it, interru
 test("design-system geometry contracts: left/right column alignment, concentric radii, and uniform row heights across renderers and densities", async ({
   page,
 }) => {
+  // Six page loads (two renderers × three densities): ~23 s on its own, more on a busy machine.
+  test.setTimeout(60_000)
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
 

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import {
   createPan,
@@ -442,5 +443,59 @@ describe("panning a row of options", () => {
       { left: 0, right: 60, top: 30 },
     ]
     expect(slide(grid, { index: 1, offset: 0 }, 40)).toEqual({ index: 2, offset: -24 })
+  })
+})
+
+describe("native momentum (WheelEvent.momentum, Chromium 151+)", () => {
+  /** A recorded Brave 155 flick (Kit's Pro): its momentum events marked as the browser marks them. */
+  const brave = (file: string, liftAt: number) => {
+    const { events } = JSON.parse(
+      readFileSync(new URL(`./fixtures/kit-traces/${file}`, import.meta.url), "utf8"),
+    ) as {
+      events: [number, number | string, number, number][]
+    }
+    return events.map(
+      ([t, dx, dy, mode]): WheelSample => ({
+        deltaX: Number(dx),
+        deltaY: dy,
+        deltaMode: mode,
+        shiftKey: false,
+        timeStamp: t,
+        momentum: t >= liftAt,
+      }),
+    )
+  }
+
+  it("moves with the fingers and stops at the first momentum event, swallowing the tail", () => {
+    const events = brave("flick-left-1792010181364.json", 87)
+    const fingers = events.filter((e) => !e.momentum).reduce((sum, e) => sum + e.deltaX, 0)
+    const r = run(events)
+    expect(r.travel).toBe(fingers)
+    expect(r.ends).toBe(1)
+    // The tail is still claimed, so the page doesn't scroll on with it.
+    expect(r.claimed.every(Boolean)).toBe(true)
+  })
+
+  it("starts a new gesture with the next finger event, even mid-tail", () => {
+    const r = run([
+      { deltaX: 10, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 0, momentum: false },
+      { deltaX: 12, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 8, momentum: false },
+      { deltaX: 24, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 25, momentum: true },
+      { deltaX: 20, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 33, momentum: true },
+      { deltaX: 3, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 60, momentum: false },
+      { deltaX: 5, deltaY: 0, deltaMode: 0, shiftKey: false, timeStamp: 68, momentum: false },
+    ])
+    expect(r.travel).toBe(10 + 12 + 3 + 5)
+    expect(r.ends).toBe(2)
+  })
+
+  it("leaves vertical scrolls and their momentum to the page", () => {
+    const r = run([
+      { deltaX: 0, deltaY: 10, deltaMode: 0, shiftKey: false, timeStamp: 0, momentum: false },
+      { deltaX: 1, deltaY: 12, deltaMode: 0, shiftKey: false, timeStamp: 8, momentum: false },
+      { deltaX: 0, deltaY: 20, deltaMode: 0, shiftKey: false, timeStamp: 25, momentum: true },
+    ])
+    expect(r.claimed).toEqual([false, false, false])
+    expect(r.travel).toBe(0)
   })
 })

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — trackpad traces</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0e0e10; color: rgba(255,255,255,.92); font: 14px/1.5 system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+      main { width: min(720px, 92vw); display: grid; gap: 18px; }
+      h1 { margin: 0; font-size: 18px; font-weight: 600; }
+      ol { margin: 0; padding-left: 20px; color: rgba(255,255,255,.7); }
+      li { padding: 4px 0; }
+      li.done { color: rgba(255,255,255,.35); text-decoration: line-through; }
+      li.now { color: #fff; }
+      #pad { height: 220px; border-radius: 16px; background: #1c1c1e; display: grid; place-items: center; color: rgba(255,255,255,.5); touch-action: none; user-select: none; overscroll-behavior: contain; }
+      #pad.armed { outline: none; background: #20263a; color: #fff; }
+      #status { min-height: 1.5em; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; }
+      button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 0; background: #2c2c2e; color: #fff; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Trackpad traces</h1>
+      <ol id="steps"></ol>
+      <div id="pad">Click here, then do the highlighted gesture over this box</div>
+      <div id="status"></div>
+      <div><button id="redo">Redo this one</button> <button id="skip">Skip</button></div>
+    </main>
+    <script type="module" src="./wheel.ts"></script>
+  </body>
+</html>
