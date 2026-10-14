@@ -1,8 +1,11 @@
+import { livePill } from "./swipe.js"
+
 /**
  * Places a segmented control's selected pill (`.knobs-seg-pill`) under the button whose
  * `data-value` is `value`. The pill is placed by its edges so the edge facing the move can lead
  * (see .knobs-seg-pill); a resize (a token gliding) carries it with its option instead of
  * animating it, and the first placement doesn't animate. With no matching button the pill fades.
+ * While a pan holds the pill (see `panOptions`), it stays with the fingers.
  */
 export function placeSegPill(
   seg: HTMLElement,
@@ -17,7 +20,7 @@ export function placeSegPill(
     if (on) active = b
   }
   const pill = seg.querySelector<HTMLElement>(".knobs-seg-pill")
-  if (!pill) return
+  if (!pill || livePill(seg)) return
   if (!active) {
     if (pill.dataset.placed) pill.dataset.off = ""
     return

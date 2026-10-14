@@ -37,7 +37,7 @@ import { placeSegPill } from "./seg.js"
 import { createSlider, type Slider } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { injectStyles } from "./styles.js"
-import { onSwipe } from "./swipe.js"
+import { panOptions } from "./swipe.js"
 
 export interface Panel {
   element: HTMLElement
@@ -590,11 +590,15 @@ function buildPanel<S extends Schema>(
         return b
       })
       seg.tabIndex = 0
-      // A sideways swipe moves one option per gesture, stopping at the ends.
-      onSwipe(seg, (direction) => {
-        const at = field.options.indexOf(String(controls.get()[key]))
-        const next = field.options[Math.max(0, Math.min(field.options.length - 1, at + direction))]
-        if (next !== undefined && next !== controls.get()[key]) run(() => set(next))
+      // A sideways pan drags the pill across the options, as one undo step.
+      panOptions(seg, {
+        box: seg,
+        pill: segPill,
+        buttons: () => buttons,
+        selected: () => field.options.indexOf(String(controls.get()[key])),
+        select: (i, coalesce) => run(() => set(field.options[i], { coalesce })),
+        rest: () => placeSegPill(seg, buttons, String(controls.get()[key])),
+        wake: () => wakeGpu(),
       })
       new ResizeObserver(() =>
         placeSegPill(seg, buttons, String(controls.get()[key]), true),

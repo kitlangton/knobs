@@ -18,6 +18,7 @@ import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { Slider } from "../slider.js"
+import { livePill } from "../swipe.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
   cssMix,
@@ -2112,12 +2113,17 @@ class GpuOverlayManager {
           activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
         const pe = ps.pillEdges
         const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
+        const panned = livePill(ps.track)
         if (activeBtn && activeBtnRect && !activeState.isCustom) {
           const left = activeBtnRect.left - trackRect.left
           const right = left + Math.max(20, activeBtnRect.width)
           const top = activeBtnRect.top - trackRect.top
           this.carry(pe, activeBtn, left, right, ps.pillY, top)
-          if (reducedMotion || pe.end.x - pe.start.x <= 1) {
+          // A pan holds the pill with the fingers, as a drag holds a slider's fill.
+          if (panned) {
+            pe.snap(panned.left, panned.right)
+            ps.pillY.snap(panned.top)
+          } else if (reducedMotion || pe.end.x - pe.start.x <= 1) {
             pe.snap(left, right)
             ps.pillY.snap(top)
           } else {
@@ -2654,8 +2660,10 @@ class GpuOverlayManager {
             const left = activeBr.left - segRect.left
             const right = left + activeBr.width
             const pe = row.pill
+            const panned = livePill(row.segEl)
             this.carry(pe, activeBtn, left, right)
-            if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
+            if (panned) pe.snap(panned.left, panned.right)
+            else if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
             else {
               pe.to(left, right, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
               if (!pe.resting) anyMoving = true
