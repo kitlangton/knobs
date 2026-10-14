@@ -1,7 +1,8 @@
 // Checks the GPU frame loop goes to sleep after interactions settle.
 import { chromium } from "@playwright/test"
 import { spawn } from "node:child_process"
-const port = 5196
+// --port=N when 5196 is taken.
+const port = Number(process.argv.find((a) => a.startsWith("--port="))?.split("=")[1]) || 5196
 const server = spawn("bunx", ["vite", "--config", "examples/vite.config.ts"], {
   env: { ...process.env, PORT: String(port) },
   stdio: "ignore",
