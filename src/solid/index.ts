@@ -4,6 +4,7 @@ import {
   createMemo,
   createSignal,
   onCleanup,
+  untrack,
   type Accessor,
   type JSX,
 } from "solid-js"
@@ -92,8 +93,9 @@ export function KnobsPanel<S extends Schema>(
     }
     const dispose = c.mount(host, {
       title: props.title,
-      theme: props.theme,
-      density: props.density,
+      // Theme and density restyle the mounted panel in place (below), so its tokens glide.
+      theme: untrack(() => props.theme),
+      density: untrack(() => props.density),
       renderer: props.renderer,
       variants: props.variants,
       history: props.history,
@@ -102,6 +104,14 @@ export function KnobsPanel<S extends Schema>(
       onClose: props.onClose,
     })
     onCleanup(dispose)
+  })
+  createEffect(() => {
+    const theme = props.theme ?? props.controls.theme
+    const density = props.density ?? props.controls.density
+    const panel = host.firstElementChild as HTMLElement | null
+    if (!panel) return
+    panel.dataset.theme = theme
+    panel.dataset.density = density
   })
   return host as unknown as JSX.Element
 }

@@ -61,12 +61,21 @@ export function KnobsPanel<S extends Schema>({
     () => false,
   )
   const ref = useRef<HTMLDivElement>(null)
+  // Theme and density restyle the mounted panel in place, so its tokens glide instead of the
+  // panel being rebuilt.
+  const look = useRef({ theme, density })
+  look.current = { theme, density }
+  useEffect(() => {
+    const panel = ref.current?.firstElementChild as HTMLElement | null | undefined
+    if (!panel) return
+    panel.dataset.theme = theme ?? controls.theme
+    panel.dataset.density = density ?? controls.density
+  }, [controls, theme, density])
   useEffect(() => {
     if (!enabled || !ref.current) return
     return controls.mount(ref.current, {
       title,
-      theme,
-      density,
+      ...look.current,
       renderer,
       variants,
       history,
@@ -74,19 +83,7 @@ export function KnobsPanel<S extends Schema>({
       actions,
       onClose,
     })
-  }, [
-    enabled,
-    controls,
-    title,
-    theme,
-    density,
-    renderer,
-    variants,
-    history,
-    footer,
-    actions,
-    onClose,
-  ])
+  }, [enabled, controls, title, renderer, variants, history, footer, actions, onClose])
   if (!enabled) return null
   return <div ref={ref} data-knobs-mount={controls.id} />
 }
