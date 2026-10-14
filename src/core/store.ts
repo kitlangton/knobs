@@ -1,4 +1,5 @@
 import { formatCode, type CodeFormat } from "./code.js"
+import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
 import {
   equal,
@@ -25,6 +26,8 @@ export type ChangeSource =
   | "undo"
   | "redo"
   | "randomize"
+  | "mutate"
+  | "compare"
 export interface ChangeMeta {
   readonly source: ChangeSource
   readonly coalesce?: boolean
@@ -87,12 +90,26 @@ export interface Controls<S extends Schema = Schema> {
   readonly canUndo: boolean
   readonly canRedo: boolean
   subscribe(cb: () => void): () => void
-  reset(): void
+  /** Back to the defaults: every field, or only `keys`. Locks don't apply. */
+  reset(keys?: readonly (keyof S & string)[]): void
   resetKey(key: keyof S & string): void
   resetGroup(group: string): void
   isModified(key?: keyof S & string): boolean
   modified(): Partial<Values<S>>
-  randomize(): void
+  /** Random values for every unlocked field, or the unlocked ones among `keys`. One undo step. */
+  randomize(keys?: readonly (keyof S & string)[]): void
+  /** Small changes around the current values instead of a re-roll; skips locked fields. */
+  mutate(keys?: readonly (keyof S & string)[]): void
+  /** Keeps fields out of Random and Mutate (or lets them back in). Saved with the values. */
+  lock(keys: (keyof S & string) | readonly (keyof S & string)[], locked?: boolean): void
+  isLocked(key: keyof S & string): boolean
+  /**
+   * While held, `get()` shows the values from before the last change (the previous undo entry);
+   * releasing restores the current ones. Nothing is recorded or stored; `onChange` reports
+   * `source: "compare"` both ways.
+   */
+  compare(hold: boolean): void
+  readonly comparing: boolean
   preset(id: string): void
   matchingPreset(): string
   code(format?: CodeFormat, values?: Values<S>): string
@@ -126,6 +143,9 @@ export function defineControls<const S extends Schema>(
   let current = locked
   let read = false
   let error: string | null = null
+  let locks = new Set<string>()
+  /** The earlier values shown while compare is held. */
+  let comparing: Values<S> | null = null
   const past: Values<S>[] = []
   const future: Values<S>[] = []
   const HISTORY = 100
@@ -139,15 +159,23 @@ export function defineControls<const S extends Schema>(
       }),
     ]),
   ) as Readonly<Record<string, Values<S>>>
-  function get() {
-    if (!enabled()) return locked
+  /** The committed values, read from storage on first use. */
+  function load() {
     if (!read) {
       read = true
       try {
         const raw = storage()?.getItem(stateKey)
         if (raw) {
           const data = JSON.parse(raw)
-          if (data?.version === 1) current = normalize(schema, data.values)
+          if (data?.version === 1) {
+            current = normalize(schema, data.values)
+            if (Array.isArray(data.locks))
+              locks = new Set(
+                data.locks.filter(
+                  (k: unknown) => typeof k === "string" && Object.hasOwn(schema, k),
+                ),
+              )
+          }
         }
       } catch (cause) {
         error = String(cause)
@@ -155,15 +183,46 @@ export function defineControls<const S extends Schema>(
     }
     return current
   }
-  function commit(next: Values<S>) {
-    current = next
+  function get() {
+    if (!enabled()) return locked
+    return comparing ?? load()
+  }
+  function persist() {
     try {
-      storage()?.setItem(stateKey, JSON.stringify({ version: 1, values: next }))
+      storage()?.setItem(
+        stateKey,
+        JSON.stringify({
+          version: 1,
+          values: current,
+          ...(locks.size ? { locks: [...locks] } : {}),
+        }),
+      )
       error = null
     } catch (cause) {
       error = String(cause)
     }
+  }
+  function commit(next: Values<S>) {
+    current = next
+    persist()
     notify()
+  }
+  function changes(from: Values<S>, to: Values<S>) {
+    const diff: Record<string, unknown> = {}
+    for (const k of Object.keys(schema)) if (!same(from[k], to[k])) diff[k] = to[k]
+    return diff as Partial<Values<S>>
+  }
+  /** Lets go of a held compare, so any real change starts from the current values. */
+  function release() {
+    if (!comparing) return
+    const shown = comparing
+    comparing = null
+    options.onChange?.(changes(shown, current), current, { source: "compare" })
+    notify()
+  }
+  const unlocked = (keys?: readonly string[]) => {
+    load()
+    return (keys ?? Object.keys(schema)).filter((k) => Object.hasOwn(schema, k) && !locks.has(k))
   }
   function applyPatch(base: Values<S>, previous: Values<S>, patch: Partial<Values<S>>) {
     const out: Record<string, unknown> = { ...base }
@@ -203,7 +262,8 @@ export function defineControls<const S extends Schema>(
     setOpts?: { coalesce?: boolean; source?: ChangeSource; key?: string; group?: string },
   ) {
     if (!enabled()) return
-    const previous = get()
+    release()
+    const previous = load()
     const applied = applyPatch(previous, previous, patch)
     if (!applied) return
     const { next, diff } = applied
@@ -222,7 +282,8 @@ export function defineControls<const S extends Schema>(
   }
   function sync(values: Partial<Values<S>>, syncOpts?: { replace?: boolean }) {
     if (!enabled()) return
-    const previous = get()
+    release()
+    const previous = load()
     const base = syncOpts?.replace ? locked : previous
     const applied = applyPatch(base, previous, values)
     if (!applied) return
@@ -256,29 +317,26 @@ export function defineControls<const S extends Schema>(
     get canRedo() {
       return future.length > 0
     },
+    get comparing() {
+      return comparing !== null
+    },
     undo() {
+      release()
       const previous = past.pop()
       if (!previous) return
-      const before = get()
+      const before = load()
       future.push(before)
       commit(previous)
-      const diff: Record<string, unknown> = {}
-      for (const k of Object.keys(schema)) {
-        if (!same(before[k], previous[k])) diff[k] = previous[k]
-      }
-      options.onChange?.(diff as Partial<Values<S>>, previous, { source: "undo" })
+      options.onChange?.(changes(before, previous), previous, { source: "undo" })
     },
     redo() {
+      release()
       const next = future.pop()
       if (!next) return
-      const before = get()
+      const before = load()
       past.push(before)
       commit(next)
-      const diff: Record<string, unknown> = {}
-      for (const k of Object.keys(schema)) {
-        if (!same(before[k], next[k])) diff[k] = next[k]
-      }
-      options.onChange?.(diff as Partial<Values<S>>, next, { source: "redo" })
+      options.onChange?.(changes(before, next), next, { source: "redo" })
     },
     getServerSnapshot: () => locked,
     subscribe(cb) {
@@ -287,10 +345,17 @@ export function defineControls<const S extends Schema>(
         listeners.delete(cb)
       }
     },
-    reset() {
+    reset(keys) {
       if (!enabled()) return
-      set(locked, { source: "reset" })
-      options.onReset?.({})
+      if (!keys) {
+        set(locked, { source: "reset" })
+        options.onReset?.({})
+        return
+      }
+      const patch: Record<string, unknown> = {}
+      for (const k of keys) if (Object.hasOwn(schema, k)) patch[k] = locked[k]
+      set(patch as Partial<Values<S>>, { source: "reset" })
+      for (const key of Object.keys(patch)) options.onReset?.({ key })
     },
     resetKey(key) {
       if (!enabled()) return
@@ -320,7 +385,51 @@ export function defineControls<const S extends Schema>(
       }
       return Object.freeze(out) as Partial<Values<S>>
     },
-    randomize: () => set(randomValues(schema), { source: "randomize" }),
+    randomize(keys) {
+      if (!enabled()) return
+      const pool = unlocked(keys)
+      if (pool.length === 0) return
+      const all = randomValues(schema) as Record<string, unknown>
+      const patch = Object.fromEntries(pool.map((k) => [k, all[k]]))
+      set(patch as Partial<Values<S>>, { source: "randomize" })
+    },
+    mutate(keys) {
+      if (!enabled()) return
+      release()
+      const pool = unlocked(keys)
+      if (pool.length === 0) return
+      set(mutateValues(schema, load(), pool) as Partial<Values<S>>, { source: "mutate" })
+    },
+    lock(keys, on = true) {
+      if (!enabled()) return
+      load()
+      let changed = false
+      for (const key of typeof keys === "string" ? [keys] : keys) {
+        if (!Object.hasOwn(schema, key)) throw new Error(`Unknown control key: ${key}`)
+        if (locks.has(key) === on) continue
+        if (on) locks.add(key)
+        else locks.delete(key)
+        changed = true
+      }
+      if (!changed) return
+      persist()
+      notify()
+    },
+    isLocked(key) {
+      if (!enabled()) return false
+      load()
+      return locks.has(key)
+    },
+    compare(hold) {
+      if (!enabled()) return
+      if (!hold) return release()
+      const before = past.at(-1)
+      const now = load()
+      if (comparing || !before || equal(before, now)) return
+      comparing = before
+      options.onChange?.(changes(now, before), before, { source: "compare" })
+      notify()
+    },
     preset(id) {
       if (!Object.hasOwn(presets, id)) throw new Error(`Unknown preset: ${id}`)
       set(presets[id], { source: "preset" })

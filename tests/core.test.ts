@@ -26,6 +26,7 @@ import {
 import { maxChroma, parseColor } from "../src/core/color.js"
 import { normalize } from "../src/core/schema.js"
 import { randomValues } from "../src/core/random.js"
+import { mutateValues } from "../src/core/mutate.js"
 import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
@@ -788,5 +789,214 @@ describe("motion", () => {
     expect(popScale(55)).toBeCloseTo(1.04, 3)
     expect(popScale(0)).toBe(1)
     expect(popScale(400)).toBe(1)
+  })
+})
+
+describe("locks, mutate and compare", () => {
+  const mixed = {
+    count: knob(98, { min: 0, max: 300, step: 1 }),
+    size: knob(7, { min: 1, max: 30, step: 0.5 }),
+    coarse: knob(0, { min: 0, max: 10, step: 5 }),
+    flavor: choice("inked", ["inked", "clean", "rough"]),
+    grain: toggle(true),
+    reveal: spring({ duration: 0.4, bounce: 0.2 }),
+    tint: color("#4f8cff"),
+    origin: point({ x: 0, y: 0 }, { min: -1, max: 1, step: 0.05 }),
+    curve: easing("ease-out"),
+  }
+  const makeMixed = (storage = memoryStorage(), onChange = vi.fn()) =>
+    defineControls("mixed", mixed, { enabled: true, storage, onChange })
+  // A deterministic stream that walks the whole [0, 1) range.
+  const stream = (seed: number) => {
+    let s = seed
+    return () => {
+      s = (s * 16807) % 2147483647
+      return (s - 1) / 2147483646
+    }
+  }
+
+  it("Random and Mutate skip locked fields; Reset still resets them; locks persist", () => {
+    const storage = memoryStorage()
+    const c = makeMixed(storage)
+    c.set({ count: 120, flavor: "clean" })
+    c.lock(["count", "flavor"])
+    expect(c.isLocked("count")).toBe(true)
+    expect(c.isLocked("size")).toBe(false)
+    for (let i = 0; i < 20; i++) {
+      c.randomize()
+      c.mutate()
+    }
+    expect(c.get().count).toBe(120)
+    expect(c.get().flavor).toBe("clean")
+    c.randomize(["count", "flavor"])
+    expect(c.get().count).toBe(120)
+
+    // Saved with the values, and back after a reload.
+    expect(JSON.parse(storage.getItem(storageKey("mixed", "state"))!).locks).toEqual([
+      "count",
+      "flavor",
+    ])
+    const reloaded = makeMixed(storage)
+    expect(reloaded.isLocked("flavor")).toBe(true)
+    expect(reloaded.get().count).toBe(120)
+
+    c.lock("flavor", false)
+    expect(c.isLocked("flavor")).toBe(false)
+    expect(() => c.lock("nope" as "count")).toThrow()
+    c.reset()
+    expect(c.get().count).toBe(98)
+    expect(c.isLocked("count")).toBe(true)
+    c.lock("count", false)
+    expect(JSON.parse(storage.getItem(storageKey("mixed", "state"))!).locks).toBeUndefined()
+  })
+
+  it("locking notifies subscribers without touching history or onChange", () => {
+    const onChange = vi.fn()
+    const c = makeMixed(memoryStorage(), onChange)
+    const listener = vi.fn()
+    c.subscribe(listener)
+    c.lock("size")
+    c.lock("size")
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(c.canUndo).toBe(false)
+  })
+
+  it("resets a set of keys as one undo step", () => {
+    const c = makeMixed()
+    c.set({ count: 1, size: 2, grain: false })
+    c.reset(["count", "size"])
+    expect(c.get()).toMatchObject({ count: 98, size: 7, grain: false })
+    c.undo()
+    expect(c.get()).toMatchObject({ count: 1, size: 2 })
+  })
+
+  it("mutates within bounds: numbers 8–12% of range, stepped and clamped; rare flips", () => {
+    const random = stream(7)
+    let flips = 0
+    const runs = 400
+    for (let i = 0; i < runs; i++) {
+      const current = randomValues(mixed, random)
+      const next = mutateValues(mixed, current, undefined, random) as Values<typeof mixed>
+      const near = (a: number, b: number, span: number, step: number) => {
+        const d = Math.abs(a - b)
+        expect(d).toBeLessThanOrEqual(Math.max(span * 0.12 + step / 2, step) + 1e-9)
+        expect(d).toBeGreaterThan(0)
+      }
+      near(next.count, current.count, 300, 1)
+      near(next.size, current.size, 29, 0.5)
+      expect([0, 5, 10]).toContain(next.coarse)
+      expect(next.count % 1).toBe(0)
+      expect((next.size * 2) % 1).toBe(0)
+      expect(next.count).toBeGreaterThanOrEqual(0)
+      expect(next.count).toBeLessThanOrEqual(300)
+      for (const axis of ["x", "y"] as const) {
+        expect(Math.abs(next.origin[axis] - current.origin[axis])).toBeLessThanOrEqual(0.25 + 1e-9)
+        expect(Math.abs(next.origin[axis])).toBeLessThanOrEqual(1)
+      }
+      expect(Math.abs(next.reveal.duration - current.reveal.duration)).toBeLessThanOrEqual(0.09)
+      expect(Math.abs(next.reveal.bounce - current.reveal.bounce)).toBeLessThanOrEqual(0.06)
+      next.curve.forEach((v, j) => {
+        expect(Math.abs(v - current.curve[j]!)).toBeLessThanOrEqual(0.065)
+      })
+      const a = parseColor(current.tint)!
+      const b = parseColor(next.tint)!
+      const dh = Math.abs(((b.h - a.h + 540) % 360) - 180)
+      expect(dh).toBeLessThanOrEqual(12.5)
+      expect(Math.abs(b.l - a.l)).toBeLessThanOrEqual(0.046)
+      if (next.flavor !== current.flavor) flips++
+      if (next.grain !== current.grain) flips++
+    }
+    // About 15% each for the choice and the switch.
+    expect(flips / (runs * 2)).toBeGreaterThan(0.08)
+    expect(flips / (runs * 2)).toBeLessThan(0.22)
+
+    // Only switches asked for and none flipped: one flips anyway.
+    const quiet = mutateValues(mixed, randomValues(mixed, random), ["grain"], () => 0.9)
+    expect(quiet.grain).toBeDefined()
+  })
+
+  it("mutates in one undo step with source mutate", () => {
+    const onChange = vi.fn()
+    const c = makeMixed(memoryStorage(), onChange)
+    const before = c.get()
+    c.mutate()
+    expect(c.get()).not.toEqual(before)
+    expect(onChange.mock.lastCall![2]).toEqual({ source: "mutate" })
+    c.undo()
+    expect(c.get()).toEqual(before)
+    expect(c.canUndo).toBe(false)
+  })
+
+  it("compare shows the previous undo entry while held and restores exactly, without history or storage", () => {
+    const storage = memoryStorage()
+    const setItem = vi.spyOn(storage, "setItem")
+    const onChange = vi.fn()
+    const c = makeMixed(storage, onChange)
+    c.set({ count: 10 })
+    c.set({ count: 20, size: 3 })
+    const current = c.get()
+    const writes = setItem.mock.calls.length
+    onChange.mockClear()
+    const listener = vi.fn()
+    c.subscribe(listener)
+
+    c.compare(true)
+    expect(c.comparing).toBe(true)
+    expect(c.get()).toMatchObject({ count: 10, size: 7 })
+    expect(onChange).toHaveBeenLastCalledWith(
+      { count: 10, size: 7 },
+      expect.objectContaining({ count: 10 }),
+      { source: "compare" },
+    )
+    c.compare(true)
+    c.compare(false)
+    expect(c.comparing).toBe(false)
+    expect(c.get()).toBe(current)
+    expect(onChange).toHaveBeenLastCalledWith({ count: 20, size: 3 }, current, {
+      source: "compare",
+    })
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(setItem.mock.calls.length).toBe(writes)
+    c.undo()
+    expect(c.get().count).toBe(10)
+
+    // A change while held starts from the current values.
+    c.redo()
+    c.compare(true)
+    c.set({ grain: false })
+    expect(c.comparing).toBe(false)
+    expect(c.get()).toMatchObject({ count: 20, size: 3, grain: false })
+    c.undo()
+    expect(c.get()).toBe(current)
+
+    // Nothing to compare against: nothing happens.
+    const fresh = makeMixed()
+    fresh.compare(true)
+    expect(fresh.comparing).toBe(false)
+  })
+
+  it("remote controls lock, skip locks on Random and preview compare through onSet", () => {
+    const onSet = vi.fn()
+    const remote = createRemoteControls(
+      "phone",
+      [
+        { key: "a", kind: "number", default: 1, min: 0, max: 10, step: 1 },
+        { key: "b", kind: "number", default: 2, min: 0, max: 10, step: 1 },
+      ],
+      { onSet },
+    )
+    remote.lock("a")
+    expect(remote.isLocked("a")).toBe(true)
+    for (let i = 0; i < 10; i++) remote.randomize()
+    expect(remote.get().a).toBe(1)
+    remote.reset()
+    remote.set({ b: 9 })
+    onSet.mockClear()
+    remote.compare(true)
+    expect(remote.comparing).toBe(true)
+    expect(onSet).toHaveBeenCalledWith("b", null, { source: "compare" })
+    remote.compare(false)
+    expect(onSet).toHaveBeenLastCalledWith("b", 9, { source: "compare" })
   })
 })

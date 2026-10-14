@@ -235,6 +235,9 @@ export function createRemoteControls(
     get canRedo() {
       return controls.canRedo
     },
+    get comparing() {
+      return controls.comparing
+    },
     descriptors: frozenDescriptors,
     swift: (group?: string) => formatSwift(frozenDescriptors, controls.modified() as State, group),
   })
