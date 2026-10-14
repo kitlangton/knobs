@@ -1353,7 +1353,7 @@ class GpuOverlayManager {
     const text = el.textContent ?? ""
     const r = this.rectOf(el, text.length)
     this.drawText(text, r.right, centerY, color, {
-      px: this.curTokens.fontSize - 0.5,
+      px: this.curTokens.textControl,
       weight: 400,
       align: "right",
       clip,
@@ -1522,7 +1522,7 @@ class GpuOverlayManager {
         const lineY = tr.top + tr.height / 2
         const lr = this.rectOf(s.label)
         this.drawText(s.label.textContent ?? "", lr.left, lineY, withAlpha(t.dim, rowAlpha), {
-          px: t.fontSize - 1.5,
+          px: t.textCap,
           weight: 600,
           align: "left",
           clip: body,
@@ -1754,7 +1754,7 @@ class GpuOverlayManager {
             this.hot(chip, checked || this.isHovered(chip) || this.isFocused(chip)),
             rowAlpha,
           ),
-          { px: t.fontSize - 0.5, align: "center", clip: body },
+          { px: t.textControl, align: "center", clip: body },
         )
       }
     })
@@ -1927,7 +1927,7 @@ class GpuOverlayManager {
       {
         this.curSubHovered = this.curPanelHovered && panel.header.matches(":hover")
         const tRect = this.rectOf(panel.titleEl)
-        const px = tokens.fontSize + 1
+        const px = tokens.textTitle
         // Dims while compare is held, like the DOM's 0.2 s opacity transition.
         const comparing = panel.root.hasAttribute("data-comparing")
         this.drawText(
@@ -2061,7 +2061,7 @@ class GpuOverlayManager {
             br.top + br.height * 0.5,
             withAlpha(this.hot(btn, isActive || chipHovered), this.missed(btn, hinting)),
             {
-              px: tokens.fontSize - 0.5,
+              px: tokens.textControl,
               weight: isActive ? 600 : tokens.labelWeight,
               align: "center",
               clip: stripClip,
@@ -2099,7 +2099,7 @@ class GpuOverlayManager {
           lr.left,
           lr.top + lr.height * 0.5,
           tokens.dim,
-          { px: Math.max(9.5, tokens.fontSize - 2), weight: 600, track: 0.04 },
+          { px: Math.max(9, tokens.textCap), weight: 600, track: 0.04 },
         )
         for (const gb of g.buttons) {
           this.drawButton(
@@ -2107,7 +2107,7 @@ class GpuOverlayManager {
             activeEl,
             hinting,
             tokens.radiusSm,
-            Math.max(10, tokens.fontSize - 1.5),
+            Math.max(10, tokens.textMeta),
             false,
           )
         }
@@ -2191,8 +2191,10 @@ class GpuOverlayManager {
         const rowCenterY = rRect.top + rRect.height * 0.5
         const hovered = this.isHovered(row.row)
         this.curSubHovered = hovered
-        const hot =
-          hovered || row.row.classList.contains("knobs-active") || this.hasFocusVisible(row.row)
+        const isX = row.kind === "color" || row.kind === "point" || row.kind === "easing"
+        const hot = isX
+          ? (hovered && row.x.head.matches(":hover")) || this.isFocused(row.x.head)
+          : hovered || row.row.classList.contains("knobs-active") || this.hasFocusVisible(row.row)
         if (hot) {
           this.hotRows.add(row.row)
           const parent = row.row.parentElement
@@ -2338,7 +2340,7 @@ class GpuOverlayManager {
           if (!sl.isEditing()) {
             const unitText = sl.getUnitText()
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
-            const valPx = tokens.fontSize - 0.5
+            const valPx = tokens.textControl
             let rightEdge = vRect.right + stretchX * 0.35
             // The decile pop scales the whole readout about its right edge.
             const popAge = clock - sl.poppedAt
@@ -2352,7 +2354,8 @@ class GpuOverlayManager {
                   weight: 400,
                   align: "right",
                   ...zoom,
-                }) + 3.5
+                }) +
+                valPx * 0.28
             }
 
             {
@@ -2476,8 +2479,8 @@ class GpuOverlayManager {
               br.top + br.height * 0.5,
               withAlpha(this.hot(b, checked || this.isHovered(b)), rowAlpha),
               {
-                px: tokens.fontSize - 0.5,
-                weight: checked ? 600 : tokens.labelWeight,
+                px: tokens.textControl,
+                weight: tokens.labelWeight,
                 align: "center",
               },
             )
@@ -2541,7 +2544,7 @@ class GpuOverlayManager {
       this.curSubHovered = this.curPanelHovered
       for (const btn of panel.actionButtons) {
         if (!btn.hidden && this.doc.body.contains(btn)) {
-          this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.fontSize - 0.5, true)
+          this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.textControl, true)
         }
       }
 
@@ -2575,7 +2578,7 @@ class GpuOverlayManager {
           ] as const) {
             if (!text) continue
             hx += this.drawText(text, hx, hr.top + hr.height * 0.5, color, {
-              px: tokens.fontSize - 2.5,
+              px: tokens.textCap,
               weight: 700,
               mono: true,
               clip: panelClip,

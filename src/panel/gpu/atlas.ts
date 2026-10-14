@@ -31,7 +31,7 @@ export class LabelAtlas {
     c.height = ATLAS_SIZE
     c.setAttribute("aria-hidden", "true")
     c.style.cssText =
-      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;contain:strict;-webkit-font-smoothing:antialiased;"
+      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;contain:strict;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;font-feature-settings:'tnum';"
     this.canvas = c
     this.ctx = c.getContext("2d")!
   }
@@ -154,9 +154,11 @@ export class LabelAtlas {
     const key = `${text}|${px}|${weight}|${family}`
     const hit = this.widths.get(key)
     if (hit !== undefined) return hit
+    this.attach()
     const ctx = this.ctx
     ctx.font = `${weight} ${px}px ${family}`
     if ("letterSpacing" in ctx) (ctx as any).letterSpacing = "0px"
+    if ("fontKerning" in ctx) (ctx as any).fontKerning = "normal"
     const w = ctx.measureText(text).width
     if (this.widths.size > 4096) this.widths.clear()
     this.widths.set(key, w)

@@ -260,12 +260,11 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
   let tickAlpha = clamp(p.extra.w, 0.0, 1.0);
   let tickCount = p.extra.z;
   if (tickAlpha > 0.01 && tickCount >= 2.0) {
-    let padX = 1.0;
-    let span = max(1.0, size.x - padX * 2.0);
-    let u = clamp((local.x - padX) / span, 0.0, 1.0);
+    let span = max(1.0, size.x);
+    let u = clamp(local.x / span, 0.0, 1.0);
     let stepU = 1.0 / (tickCount - 1.0);
     let nearestIdx = round(u / stepU);
-    let tickX = padX + nearestIdx * stepU * span;
+    let tickX = nearestIdx * stepU * span;
     let dx = abs(local.x - tickX);
     let dy = abs(local.y - size.y * 0.5);
     let tDist = max(dx - 0.5, dy - 3.5);
