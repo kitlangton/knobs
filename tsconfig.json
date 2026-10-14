@@ -17,5 +17,5 @@
       "knobs/themes": ["./src/themes/index.ts"]
     }
   },
-  "include": ["src", "tests", "examples", "scripts", "*.ts"]
+  "include": ["src", "tests", "examples", "scripts", "site", "*.ts"]
 }

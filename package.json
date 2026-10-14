@@ -42,8 +42,11 @@
     "format": "biome format --write .",
     "example": "vite --config examples/vite.config.ts",
     "example:build": "vite build --config examples/vite.config.ts",
-    "site:build": "vite build --config examples/vite.config.ts --mode site",
-    "site:deploy": "bun run site:build && bunx wrangler@latest deploy"
+    "site": "vite --config site/vite.config.ts",
+    "site:build": "vite build --config site/vite.config.ts",
+    "site:preview": "vite preview --config site/vite.config.ts",
+    "site:deploy": "bun run site:build && bunx wrangler@latest deploy",
+    "test:site": "playwright test --config playwright.site.config.ts"
   },
   "peerDependencies": {
     "react": ">=18",

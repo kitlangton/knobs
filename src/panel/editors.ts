@@ -158,6 +158,7 @@ function measure(node: Element, onResize: () => void) {
  * The shared disclosure row: a head (label, summary, caret) that is the row's stop, and a body
  * revealed by Enter, Space or a click and folded away by Esc.
  */
+let summaries = 0
 function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   const { el, svg } = factory(c.doc)
   const row = el("div", "knobs-x")
@@ -166,9 +167,13 @@ function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   head.tabIndex = 0
   head.setAttribute("role", "button")
   head.setAttribute("aria-expanded", String(Boolean(c.expanded)))
-  head.setAttribute("aria-label", c.display)
   const label = el("span", "knobs-x-label", c.display)
   const sum = el("span", "knobs-x-sum")
+  // The row takes its name from its label (the summary is hidden from the name) and is described
+  // by its summary (hex, coordinates, curve name), so what's announced matches what's visible.
+  sum.id = `knobs-x-sum-${++summaries}`
+  sum.setAttribute("aria-hidden", "true")
+  head.setAttribute("aria-describedby", sum.id)
   const caret = svg("svg", "knobs-caret")
   caret.setAttribute("viewBox", "0 0 10 10")
   caret.setAttribute("aria-hidden", "true")
