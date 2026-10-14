@@ -51,6 +51,7 @@ import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill } from "./seg.js"
 import { createSlider, type Slider } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
+import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
 import { injectPreset, injectStyles } from "./styles.js"
 import { onSwipe } from "./swipe.js"
 
@@ -91,73 +92,6 @@ interface InternalPanelOptions extends MountPanelOptions {
   readonly page?: MountPageOptions
 }
 
-/** Each command's default keys. */
-const DEFAULT_KEYS: Readonly<Record<PanelCommand, readonly string[]>> = {
-  random: ["r"],
-  mutate: ["r"],
-  reset: ["Backspace", "Delete"],
-  resetAll: ["R"],
-  compare: ["\\"],
-  hint: ["s"],
-  undo: ["u", "z"],
-  redo: ["U", "Z"],
-  copy: ["C"],
-  save: ["S"],
-  lock: ["L"],
-  presets: ["[", "]"],
-  group: ["g"],
-  first: ["f"],
-  help: ["?"],
-  menu: ["ContextMenu"],
-  leave: ["Escape"],
-}
-/** ⌥ commands and Tab-like keys that a remap may share with a plain command. */
-const ALT_COMMANDS = new Set<PanelCommand>(["mutate"])
-
-/**
- * The keys each command answers to. An explicit binding wins: a default that collides with one
- * is dropped (`{ hint: "f" }` takes `f` from "first row"). `presets` takes two characters, back
- * then forward (`"[]"`).
- */
-export function resolveKeys(
-  given: PanelKeys | undefined,
-  page = false,
-): Record<PanelCommand, string[]> {
-  const out = {} as Record<PanelCommand, string[]>
-  const explicit = new Set<string>()
-  for (const [command, value] of Object.entries(given ?? {}) as [PanelCommand, string | boolean][])
-    if (typeof value === "string" && !ALT_COMMANDS.has(command))
-      for (const k of command === "presets" ? [...value] : [value]) explicit.add(k)
-  for (const command of Object.keys(DEFAULT_KEYS) as PanelCommand[]) {
-    const value = given?.[command]
-    if (value === false) out[command] = []
-    else if (typeof value === "string")
-      out[command] = command === "presets" ? [...value].slice(0, 2) : [value]
-    else
-      out[command] = DEFAULT_KEYS[command].filter(
-        (k) => ALT_COMMANDS.has(command) || !explicit.has(k),
-      )
-  }
-  if (page) out.leave = []
-  return out
-}
-/** How a key reads in the shortcuts popover. */
-export function keyLabel(key: string, alt = false): string {
-  const named: Record<string, string> = {
-    Backspace: "⌫",
-    Delete: "⌦",
-    Escape: "Esc",
-    ContextMenu: "Menu",
-    ArrowUp: "↑",
-    ArrowDown: "↓",
-    ArrowLeft: "←",
-    ArrowRight: "→",
-    " ": "Space",
-  }
-  if (alt) return `⌥${key.toUpperCase()}`
-  if (named[key]) return named[key]
-  return /^[A-Z]$/.test(key) ? `⇧${key}` : key
-}
 const ariaKeys = (keys: readonly string[]) =>
   keys.map((k) => (/^[A-Z]$/.test(k) ? `Shift+${k.toLowerCase()}` : k)).join(" ")
 
@@ -239,7 +173,22 @@ function buildPanel<S extends Schema>(
   const showVariants = options.variants !== false
   const showHistory = options.history !== false
   const showFooter = options.footer !== false
-  const keys = resolveKeys(options.keys ?? controls.keys, Boolean(page))
+  const given = options.keys ?? controls.keys
+  const keys = resolveKeys(given, Boolean(page))
+  // Locks and group dice only mean something while something can roll.
+  if (!keys.random.length && !keys.mutate.length) keys.lock = keys.group = []
+  // A row menu with nothing in it doesn't open.
+  if (![keys.lock, keys.random, keys.reset, keys.copy].some((k) => k.length)) keys.menu = []
+  const prefs: KeyPrefs = {
+    vim: given?.vim !== false,
+    edit: given?.edit !== false,
+    bigStep:
+      typeof given?.bigStep === "number" && given.bigStep > 0
+        ? given.bigStep
+        : DEFAULT_PREFS.bigStep,
+    wrap: given?.wrap !== false,
+  }
+  setKeyPrefs(root, prefs)
   /** Whether a command is on (it has a key, or its button stays). */
   const bound = (command: PanelCommand) => keys[command].length > 0
   const pressed = (command: PanelCommand, event: KeyboardEvent) => keys[command].includes(event.key)
@@ -278,7 +227,7 @@ function buildPanel<S extends Schema>(
   const pair = (a: PanelCommand, b: PanelCommand, what: string) =>
     bound(a) && bound(b) ? [[`${show(a)} / ${show(b)}`, what]] : []
   for (const [k, desc] of [
-    ["↑↓ / j k", "Move between rows"],
+    [prefs.vim ? "↑↓ / j k" : "↑↓", "Move between rows"],
     ...((page
       ? [
           ["Tab / ⇧Tab", "Next / previous group"],
@@ -286,11 +235,11 @@ function buildPanel<S extends Schema>(
           ...(page.filter !== false ? [["/", "Filter rows"]] : []),
         ]
       : [["Tab", "Next control"]]) as [string, string][]),
-    ["←→ / h l", "Adjust value (⇧ ×10)"],
+    [prefs.vim ? "←→ / h l" : "←→", `Adjust value (⇧ ×${prefs.bigStep})`],
     ["⌥ drag", "Fine adjust"],
     ...(bound("presets") ? [[show("presets"), "Cycle presets"]] : []),
     ...(bound("hint") ? [[show("hint"), "Jump to anything by code"]] : []),
-    [page ? "Enter" : "0–9 / Enter", "Edit number inline"],
+    ...(prefs.edit ? [[page ? "Enter" : "0–9 / Enter", "Edit number inline"]] : []),
     ...(bound("reset") ? [[keyLabel(keys.reset[0]!), "Reset row · delete saved preset"]] : []),
     ...(bound("random") && bound("resetAll")
       ? [[`${show("random")} / ${show("resetAll")}`, "Random / Reset all"]]
@@ -1311,9 +1260,9 @@ function buildPanel<S extends Schema>(
       anchor = head = indices[0]!
       selectRange(anchor, head)
     }
-    const keys = keysOf(indices)
-    if (!keys.length) return
-    const locked = keys.every((k) => controls.isLocked(k))
+    const chosen = keysOf(indices)
+    if (!chosen.length) return
+    const locked = chosen.every((k) => controls.isLocked(k))
     const active = doc.activeElement as HTMLElement | null
     const returnTo = active && root.contains(active) ? active : rows[from ?? indices[0]!]!.input
     menu?.close(false)
@@ -1321,24 +1270,45 @@ function buildPanel<S extends Schema>(
       doc,
       root,
       [
-        {
-          label: locked ? "Unlock" : "Lock from Random",
-          shortcut: "⇧L",
-          run: () => toggleLock(indices),
-        },
-        {
-          label: "Randomize",
-          shortcut: "r",
-          disabled: locked,
-          run: () => run(() => reroll(keys, false)),
-        },
-        {
-          label: "Reset",
-          shortcut: "⌫",
-          disabled: !keys.some((k) => controls.isModified(k)),
-          run: () => run(() => controls.reset(keys)),
-        },
-        { label: "Copy", shortcut: "⇧C", separated: true, run: () => copyKeys(keys) },
+        ...(bound("lock")
+          ? [
+              {
+                label: locked ? "Unlock" : "Lock from Random",
+                shortcut: show("lock"),
+                run: () => toggleLock(indices),
+              },
+            ]
+          : []),
+        ...(bound("random")
+          ? [
+              {
+                label: "Randomize",
+                shortcut: show("random"),
+                disabled: locked,
+                run: () => run(() => reroll(chosen, false)),
+              },
+            ]
+          : []),
+        ...(bound("reset")
+          ? [
+              {
+                label: "Reset",
+                shortcut: keyLabel(keys.reset[0]!),
+                disabled: !chosen.some((k) => controls.isModified(k)),
+                run: () => run(() => controls.reset(chosen)),
+              },
+            ]
+          : []),
+        ...(bound("copy")
+          ? [
+              {
+                label: "Copy",
+                shortcut: show("copy"),
+                separated: true,
+                run: () => copyKeys(chosen),
+              },
+            ]
+          : []),
       ],
       at,
       { keyboard, returnTo, onClose: () => (menu = undefined) },
@@ -1927,10 +1897,10 @@ function buildPanel<S extends Schema>(
       focusRow(head)
       return
     }
-    const down = key === "ArrowDown" || key === "j"
-    const up = key === "ArrowUp" || key === "k"
-    const right = key === "ArrowRight" || key === "l"
-    const left = key === "ArrowLeft" || key === "h"
+    const down = key === "ArrowDown" || (prefs.vim && key === "j")
+    const up = key === "ArrowUp" || (prefs.vim && key === "k")
+    const right = key === "ArrowRight" || (prefs.vim && key === "l")
+    const left = key === "ArrowLeft" || (prefs.vim && key === "h")
     const bar = actionBarButtons()
     const barIndex = bar.indexOf(target as HTMLButtonElement)
     if (barIndex >= 0) lastActionButton = bar[barIndex]
@@ -1939,8 +1909,15 @@ function buildPanel<S extends Schema>(
       event.stopPropagation()
       const list = stops()
       const at = list.findIndex((stop) => stop.contains(target))
+      const step = at + (down ? 1 : -1)
       const next =
-        at < 0 ? (down ? 0 : list.length - 1) : (at + (down ? 1 : -1) + list.length) % list.length
+        at < 0
+          ? down
+            ? 0
+            : list.length - 1
+          : prefs.wrap
+            ? (step + list.length) % list.length
+            : Math.max(0, Math.min(list.length - 1, step))
       list[next]?.focus(page ? { preventScroll: true } : undefined)
     } else if ((left || right) && barIndex >= 0) {
       event.preventDefault()
@@ -1950,7 +1927,7 @@ function buildPanel<S extends Schema>(
       event.preventDefault()
       event.stopPropagation()
       const t = tracks.get(target)!
-      t.set(t.get() + (right ? 1 : -1) * t.field.step * (event.shiftKey ? 10 : 1))
+      t.set(t.get() + (right ? 1 : -1) * t.field.step * (event.shiftKey ? prefs.bigStep : 1))
     } else if (
       (left || right) &&
       index >= 0 &&
@@ -1971,7 +1948,7 @@ function buildPanel<S extends Schema>(
           ],
         )
       else if (field.kind === "toggle") row.set(!value)
-    } else if (tracks.has(target) && /^[0-9.\-]$/.test(event.key)) {
+    } else if (prefs.edit && tracks.has(target) && /^[0-9.\-]$/.test(event.key)) {
       event.preventDefault()
       const { slider } = tracks.get(target)!
       slider.edit()
@@ -2035,7 +2012,7 @@ function buildPanel<S extends Schema>(
   )
   root.addEventListener("contextmenu", (event) => {
     const at = rowAt(event.target as Node)
-    if (at < 0) return
+    if (at < 0 || !bound("menu") || !rows[at]!.keys.length) return
     event.preventDefault()
     if (!selected.has(at)) {
       anchor = head = at

@@ -29,6 +29,7 @@ import type {
   GpuStrip,
   RowWave,
 } from "./gpu/renderer.js"
+import { arrowOf, bigOf } from "./prefs.js"
 import { reveal } from "./reveal.js"
 import { createSlider, type Slider } from "./slider.js"
 
@@ -135,12 +136,7 @@ function factory(doc: Document) {
   return { el, svg }
 }
 
-const arrow = (event: KeyboardEvent) =>
-  event.key === "ArrowLeft" || event.key === "h"
-    ? -1
-    : event.key === "ArrowRight" || event.key === "l"
-      ? 1
-      : 0
+const arrow = arrowOf
 const plainKey = (event: KeyboardEvent) => !event.metaKey && !event.ctrlKey && !event.isComposing
 
 /** A size kept current by a ResizeObserver, so layout reads stay out of the frame loop. */
@@ -329,7 +325,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     event.preventDefault()
     event.stopPropagation()
     o.start()
-    const by = o.step * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1)
+    const by = o.step * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)
     o.set(edge ?? quantize(current + dir * by, event.altKey))
   })
   const gpu: GpuStrip = {
@@ -584,7 +580,9 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     event.stopPropagation()
     g.start()
     send({
-      h: (((shown.h + dir * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1)) % 360) + 360) % 360,
+      h:
+        (((shown.h + dir * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)) % 360) + 360) %
+        360,
     })
   })
   const gpu: GpuColorRow = {
@@ -741,7 +739,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
       const step = f.step[axis]
       if (event.altKey) return step
       const unit = Math.max(1, Math.round((f.max[axis] - f.min[axis]) / step / 100)) * step
-      return unit * (event.shiftKey ? 10 : 1)
+      return unit * bigOf(event)
     }
     g.start()
     g.set({ x: shown.x + dx * by("x"), y: shown.y + dy * by("y") })
@@ -752,7 +750,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     event.preventDefault()
     event.stopPropagation()
     g.start()
-    g.set({ x: shown.x + dir * f.step.x * (event.shiftKey ? 10 : 1), y: shown.y })
+    g.set({ x: shown.x + dir * f.step.x * bigOf(event), y: shown.y })
   })
   const gpu: GpuPointRow = {
     kind: "point",

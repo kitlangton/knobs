@@ -342,10 +342,31 @@ window.addEventListener("keydown", (event) => {
   } else if (key === "j" || key === "J") switchItem(1)
   else if (key === "k" || key === "K") switchItem(-1)
   else if (key === "r" || key === "R") note("host: next round (R)")
-  else if (key === "Tab") focusParams()
+  // Tab tunes; inside a panel it's the panel's own Tab order.
+  else if (key === "Tab" && !(event.target as HTMLElement).closest(".knobs-panel")) focusParams()
+  else if (key === "Enter" && !(event.target as HTMLElement).closest("button,[role=radiogroup]"))
+    note(`host: choose ${variationIndex() + 1}`)
   else return
   event.preventDefault()
 })
+
+// Problems' own keys win: J/K switch items and 1–9 variations even while tuning, Enter chooses.
+const paramKeys = {
+  random: false,
+  mutate: false,
+  compare: false,
+  hint: false,
+  undo: false,
+  redo: false,
+  presets: false,
+  save: false,
+  copy: false,
+  resetAll: false,
+  vim: false,
+  edit: false,
+  bigStep: 5,
+  wrap: false,
+} as const
 
 // ── The page ─────────────────────────────────────────────────────────────────────────────────
 const springOf = () => {
@@ -378,7 +399,7 @@ function App(): JSX.Element {
     <div class="top">
       <b>Problems</b>
       <span class="item">${() => `${item().id} — ${item().title}`}</span>
-      <span class="keys">1–9 variation · J/K item · R round · Tab tune · Esc leave</span>
+      <span class="keys">1–9 variation · J/K item · R round · Tab tune · ↵ choose · Esc leave</span>
       <button
         onClick=${() => {
           const root = document.documentElement
@@ -411,7 +432,7 @@ function App(): JSX.Element {
           variants=${false}
           theme="auto"
           preset=${problemsPreset}
-          keys=${{ random: false, mutate: false, compare: false, hint: false, undo: false, redo: false, presets: false, save: false, copy: false, resetAll: false }}
+          keys=${paramKeys}
           onReady=${(panel: { focus(): void }) => (focusParams = () => panel.focus())}
         />
         <button class="choose">
@@ -439,4 +460,19 @@ function App(): JSX.Element {
   ` as unknown as JSX.Element
 }
 render(App, document.getElementById("app")!)
-Object.assign(window, { __problems: { params, prototypeSettings, dock, edits, server, prototype } })
+Object.assign(window, {
+  __problems: {
+    params,
+    prototypeSettings,
+    dock,
+    edits,
+    server,
+    prototype,
+    /** The board changes a value of the open variation on its own (another person, a clamp). */
+    serverSet(key: string, value: number) {
+      const at = slot(item().id, variation().id)
+      setEdits((all) => ({ ...all, [at]: { ...(all[at] ?? {}), [key]: value } }))
+    },
+    state: () => ({ item: item().id, variation: variation().id, values: values() }),
+  },
+})

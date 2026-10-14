@@ -1,3 +1,4 @@
+import { arrowOf } from "./prefs.js"
 import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
@@ -380,11 +381,11 @@ export function createPresetStrip<S extends Schema>(
 
   root.onkeydown = (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return
-    if (event.key === "ArrowLeft" || event.key === "h") {
+    if (arrowOf(event) === -1) {
       event.preventDefault()
       event.stopPropagation()
       cycle(-1)
-    } else if (event.key === "ArrowRight" || event.key === "l") {
+    } else if (arrowOf(event) === 1) {
       event.preventDefault()
       event.stopPropagation()
       cycle(1)

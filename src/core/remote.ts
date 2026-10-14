@@ -29,6 +29,7 @@ import {
   type Controls,
   type DensityMode,
   type PanelKeys,
+  type PanelModule,
   type RendererMode,
   type SyncOptions,
   type ThemeMode,
@@ -94,6 +95,8 @@ export interface ValueDescriptor extends DescriptorMeta {
 
 export interface RemoteControlsOptions {
   readonly enabled?: boolean | (() => boolean)
+  /** Ships the panel as product UI, live in production: `() => import("knobs/panel")` (see `ControlsOptions.ship`). */
+  readonly ship?: () => Promise<PanelModule>
   /** How long (ms) a key changed here outranks incoming values for it; 600 by default. */
   readonly echo?: number
   /**
@@ -334,6 +337,7 @@ export function createRemoteControls(
   const nullDefaults = options.nullDefaults !== false
   const controls = defineControls(id, fromDescriptors(frozenDescriptors), {
     enabled: options.enabled ?? true,
+    ship: options.ship,
     echo: options.echo ?? ECHO_MS,
     storage: options.storage ?? null,
     presets: options.presets,

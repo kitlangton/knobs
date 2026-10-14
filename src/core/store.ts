@@ -73,7 +73,19 @@ export type PanelCommand =
  * Remaps (a single character, or a key name such as `"F2"`) or turns off (`false`) a panel's key
  * bindings. Unlisted commands keep their default key. `true` keeps the default.
  */
-export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean }
+export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
+  /** `false` drops the j/k and h/l aliases: only the arrows move and adjust; the letters reach the page. */
+  readonly vim?: boolean
+  /**
+   * `false` stops digits, `.`, `-` and Enter from opening a slider's inline number editor (they
+   * reach the page); clicking the readout still edits.
+   */
+  readonly edit?: boolean
+  /** What ⇧ multiplies an arrow's step by; 10 by default. */
+  readonly bigStep?: number
+  /** `false` stops ↑/↓ at the first and last rows instead of wrapping around. */
+  readonly wrap?: boolean
+}
 export interface MountPanelOptions {
   readonly title?: string | false
   /**
@@ -88,7 +100,7 @@ export interface MountPanelOptions {
   /** `false` drops the header (title and buttons) for a host that draws its own. */
   readonly header?: boolean
   /** Called once the panel is mounted, with a handle to focus it (a host's "Tune" key). */
-  readonly onReady?: (panel: { readonly element: HTMLElement; focus(): void }) => void
+  readonly onReady?: (panel: PanelHandle) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
   readonly theme?: ThemeMode
@@ -109,8 +121,33 @@ export interface SyncOptions {
    */
   readonly land?: boolean
 }
+/** A mounted panel: what `mount` hands `onReady`. */
+export interface PanelHandle {
+  readonly element: HTMLElement
+  focus(): void
+  dispose(): void
+}
+/**
+ * The panel module a shipped store mounts with: `() => import("knobs/panel")`. Structural, so the
+ * core never imports the panel itself.
+ */
+export interface PanelModule {
+  mountPanel(
+    controls: Controls<any>,
+    container: HTMLElement,
+    options?: MountPanelOptions,
+  ): PanelHandle
+  attach(controls: Controls<any>, element: HTMLElement): () => void
+}
 export interface ControlsOptions<S extends Schema> {
   enabled?: boolean | (() => boolean)
+  /**
+   * Ships this store as product UI: it stays live in production builds (where stores are
+   * otherwise locked to their defaults) and mounts panels from the module this loads, e.g.
+   * `ship: () => import("knobs/panel")`. `enabled` defaults to true. Stores without it stay
+   * dev-only and ship constants.
+   */
+  ship?: () => Promise<PanelModule>
   /**
    * How long (ms) a key changed here outranks incoming values for it (see `sync`), so an echo of
    * an older value still in flight can't pull it back. 0 by default; remote controls use 600.
@@ -239,13 +276,15 @@ export function defineControls<const S extends Schema>(
   const theme: ThemeMode = options.theme ?? "dark"
   const density: DensityMode = options.density ?? "default"
   const renderer: RendererMode = options.renderer ?? "auto"
+  // Development builds, or a store shipped as product UI (`ship`), which stays live in production.
   const enabled = () =>
-    (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__) &&
+    (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__ || Boolean(options.ship)) &&
     (typeof options.enabled === "function"
       ? options.enabled()
       : (options.enabled ??
-        (typeof location !== "undefined" &&
-          ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname))))
+        (Boolean(options.ship) ||
+          (typeof location !== "undefined" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)))))
   const storage = () => (options.storage === undefined ? browserStorage() : options.storage)
   const listeners = new Set<() => void>()
   const notify = () => {
@@ -769,47 +808,53 @@ export function defineControls<const S extends Schema>(
       enabled,
     ),
     attach(element) {
-      if (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__) {
-        if (!enabled()) return () => {}
-        let disposed = false
-        let detach: (() => void) | undefined
-        void import("../panel/attach.js")
-          .then((module) => {
-            if (!disposed && enabled()) detach = module.attach(controls, element)
-          })
-          .catch((cause) => {
-            error = String(cause)
-            notify()
-          })
-        return () => {
-          disposed = true
-          detach?.()
-        }
+      // A shipped store loads the host's panel module; a dev build its own lazy chunk. A
+      // production build of an unshipped store has neither, so no panel code is reachable.
+      const load = options.ship
+        ? () => options.ship!().then((m) => m.attach)
+        : typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__
+          ? () => import("../panel/attach.js").then((m) => m.attach)
+          : undefined
+      if (!load || !enabled()) return () => {}
+      let disposed = false
+      let detach: (() => void) | undefined
+      void load()
+        .then((attach) => {
+          if (!disposed && enabled()) detach = attach(controls, element)
+        })
+        .catch((cause) => {
+          error = String(cause)
+          notify()
+        })
+      return () => {
+        disposed = true
+        detach?.()
       }
-      return () => {}
     },
     mount(container, mountOptions) {
-      if (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__) {
-        if (!enabled()) return () => {}
-        let disposed = false
-        let panel: { dispose(): void } | undefined
-        void import("../panel/panel.js")
-          .then((module) => {
-            if (!disposed && enabled()) {
-              panel = module.mountPanel(controls, container, mountOptions)
-              mountOptions?.onReady?.(panel as unknown as { element: HTMLElement; focus(): void })
-            }
-          })
-          .catch((cause) => {
-            error = String(cause)
-            notify()
-          })
-        return () => {
-          disposed = true
-          panel?.dispose()
-        }
+      const load = options.ship
+        ? () => options.ship!().then((m) => m.mountPanel)
+        : typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__
+          ? () => import("../panel/panel.js").then((m) => m.mountPanel)
+          : undefined
+      if (!load || !enabled()) return () => {}
+      let disposed = false
+      let panel: PanelHandle | undefined
+      void load()
+        .then((mountPanel) => {
+          if (!disposed && enabled()) {
+            panel = mountPanel(controls, container, mountOptions)
+            mountOptions?.onReady?.(panel)
+          }
+        })
+        .catch((cause) => {
+          error = String(cause)
+          notify()
+        })
+      return () => {
+        disposed = true
+        panel?.dispose()
       }
-      return () => {}
     },
   }
   return Object.freeze(controls)

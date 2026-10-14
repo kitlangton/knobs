@@ -1,5 +1,6 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
+import { keyPrefs } from "./prefs.js"
 import { GESTURE_GAP, sideways } from "./swipe.js"
 import {
   clamp,
@@ -596,7 +597,7 @@ export function createSlider(
   }
   track.onkeydown = (event) => {
     if (event.target !== track) return
-    if (event.key === "Enter" && number.hidden) {
+    if (event.key === "Enter" && number.hidden && keyPrefs(track).edit) {
       event.preventDefault()
       edit()
     } else if (event.key === "Home" || event.key === "End") {

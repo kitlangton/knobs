@@ -340,3 +340,49 @@ describe("viewer.js settings", () => {
     expect(r.canUndo).toBe(true)
   })
 })
+
+describe("panel key bindings", () => {
+  it("remaps, turns off, and lets explicit bindings take a default's key", async () => {
+    const { resolveKeys, keyLabel } = await import("../src/panel/prefs.js")
+    const keys = resolveKeys({ hint: "f", random: false, presets: ",.", vim: false, bigStep: 5 })
+    expect(keys.hint).toEqual(["f"])
+    expect(keys.first).toEqual([]) // f went to hint
+    expect(keys.random).toEqual([])
+    expect(keys.mutate).toEqual(["r"]) // ⌥ commands match by physical key
+    expect(keys.presets).toEqual([",", "."])
+    expect(keys.undo).toEqual(["u", "z"])
+    expect(resolveKeys(undefined, true).leave).toEqual([])
+    expect([keyLabel("R"), keyLabel("Backspace"), keyLabel("r", true)]).toEqual(["⇧R", "⌫", "⌥R"])
+  })
+  it("reads vim, edit, bigStep and wrap per panel", async () => {
+    const { DEFAULT_PREFS, keyPrefs } = await import("../src/panel/prefs.js")
+    expect(DEFAULT_PREFS).toEqual({ vim: true, edit: true, bigStep: 10, wrap: true })
+    expect(keyPrefs(null)).toBe(DEFAULT_PREFS)
+  })
+})
+
+describe("shipping", () => {
+  it("a shipped store mounts from the module it names; an unshipped one uses its own lazy chunk", async () => {
+    const mounted: string[] = []
+    const panel = {
+      mountPanel: (c: { id: string }) => {
+        mounted.push(c.id)
+        return { element: {} as HTMLElement, focus() {}, dispose() {} }
+      },
+      attach: () => () => {},
+    }
+    const ready: unknown[] = []
+    const r = createRemoteControls("shipped", params(), { ship: async () => panel })
+    r.mount({} as HTMLElement, { onReady: (p) => ready.push(p) })
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(mounted).toEqual(["shipped"])
+    expect(ready).toHaveLength(1)
+    // `enabled` defaults to true for a shipped store, even away from localhost.
+    const c = defineControls(
+      "shipped-local",
+      { a: knob(1, { min: 0, max: 2, step: 1 }) },
+      { storage: null, ship: async () => panel },
+    )
+    expect(c.enabled).toBe(true)
+  })
+})

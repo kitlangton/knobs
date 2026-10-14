@@ -41,6 +41,8 @@ export {
   type GroupPreset,
   type MountPanelOptions,
   type PanelCommand,
+  type PanelHandle,
+  type PanelModule,
   type PanelKeys,
   type SyncOptions,
   type RendererMode,

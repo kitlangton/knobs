@@ -1,3 +1,4 @@
+import { arrowOf } from "./prefs.js"
 import type { MountPanelOptions } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { placeSegPill } from "./seg.js"
@@ -284,12 +285,7 @@ export function createCustomCard(
     body.append(card)
     return card
   }
-  const arrows = (event: KeyboardEvent) =>
-    event.key === "ArrowLeft" || event.key === "h"
-      ? -1
-      : event.key === "ArrowRight" || event.key === "l"
-        ? 1
-        : 0
+  const arrows = arrowOf
   const quiet = (node: HTMLElement) =>
     node.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
 
