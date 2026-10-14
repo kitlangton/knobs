@@ -176,7 +176,22 @@ const motion = defineControls("motion", {
 })
 ```
 
-When fields specify `group`, each group's rows share one rounded card under a section header. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
+When fields specify `group`, each group's rows share one rounded card under a section header.
+
+**Labels apart from ids.** A group's string is its identity (group presets, `resetGroup`, `onReset({ group })`, `page.highlight({ groups })`, `swift(group)`), and by default also its title. When the ids are machine-shaped (`drawer.spacing`, `composer.spacing`) give them labels; same-labelled groups stay separate cards:
+
+```ts
+defineControls("tune", schema, {
+  groupLabels: { "drawer.spacing": "Spacing", "composer.spacing": "Spacing" }, // by group id, verbatim
+  sectionLabels: { drawer: "Session List" }, // by section id (pages)
+  presetLabels: { snappy: "Snappy" }, // by preset id
+  defaultLabel: "Native", // shorthand for presetLabels.default: the baseline's chip
+})
+// or per field / descriptor (the first one that gives a label wins):
+knob(44, { min: 28, max: 72, group: "drawer.spacing", groupLabel: "Spacing", section: "drawer", sectionLabel: "Session List" })
+```
+
+`createRemoteControls` takes the same options (and `groupLabel` / `sectionLabel` on descriptors), and `mountPanel` / `mountPage` take them too, over the store's. Everything that shows a name uses the label: card headers in both renderers, aria names, hint codes, the preset strip, its hint badges. The filter matches labels and ids alike. The preset id stays `default` for `[` / `]`, storage and `matchingPreset()`; there's no second "default" chip. Stores answer `groupLabel(id)`, `sectionLabel(id)` and `presetLabel(id)`. Group presets already have names, so `presetLabels` doesn't apply to them. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
 
 ### Remote / Socket-Driven Controls (`createRemoteControls`)
 
@@ -373,7 +388,11 @@ const page = mountPage(tune, document.querySelector("#app")!, {
 })
 ```
 
-Fields and descriptors take a `section` beside their `group` (`knob(44, { min: 28, max: 72, group: "Spacing", section: "Session List" })`); panels ignore it. `defineControls` takes `groupPresets` and `onPreset` too, and every store has `groupPresets`, `groupPreset(group, index)` (one undo step, `source: "preset"` with its `group`) and `matchingGroupPreset(group)`. Hovering a numbered chip shows its preset's name where the card's title is; applying one by key shows it briefly.
+Fields and descriptors take a `section` beside their `group` (`knob(44, { min: 28, max: 72, group: "Spacing", section: "Session List" })`); panels ignore it. `defineControls` takes `groupPresets` and `onPreset` too, and every store has `groupPresets`, `groupPreset(group, index, { coalesce? })` (one undo step, `source: "preset"` with its `group`) and `matchingGroupPreset(group)`.
+
+**Card presets by name.** A card's presets sit in its header by name ("Native · Tight · Airy") as segments, with the same gliding pill as the preset strip (pans drag it, one undo step per gesture). When the names don't fit beside the title, they become a compact menu showing the selected name (a quiet "Custom" when nothing matches), its items numbered. The title wins the room: the presets give way first. `1`–`9` apply the focused card's presets either way, and hint mode (`s`) offers the focused card's presets as "1 Native", "2 Tight"…. `groupPresetDisplay` chooses (on the store, remote options or `mountPage`): `"auto"` (names while they fit, else the menu; the default), `"names"`, `"menu"`, or `"numbers"` for the compact 1, 2, 3 chips, where hovering a number shows its preset's name in place of the title and applying one by key shows it briefly.
+
+**Card titles.** A card's title drops its section's name when it repeats it ahead of a separator (· • : / | › » or a dash): "Transcript · Arrivals" under the Transcript section reads "Arrivals". A `groupLabels` entry (or `groupLabel`) is used verbatim instead; custom cards' titles are shortened the same way. Card headers are compact: as tall as their 20 px controls, a gap and a half above the rows (`--k-head-gap`), tighter still in the compact density.
 
 **Custom cards** sit in the same grid, in the same material, for anything that isn't a field: a playground switcher, a list of motion jumps, a video player. Small primitives come with them, each built from the panel's own rows; `set` shows a value that arrived from elsewhere without calling `onChange`:
 
@@ -399,6 +418,16 @@ watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `
 speed.set("0.25") // the phone changed it
 ```
 
+**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. A reload brings back what each card was last in this tab (sessionStorage, with the panel's other per-tab state), over `collapsed`.
+
+```ts
+const connection = page.card({ title: "Connection", section: "Connection", collapsed: false, summary: "Waiting for iPhone…" })
+connection.body.append(qrCode)
+// Once the phone has paired and signed in:
+connection.summary(`iPhone · ${phone.version} · connected`)
+connection.collapse(true)
+```
+
 Content that changes over time animates if you update it in place. `card.list()` keeps rows by key: `set` updates the rows that stay, folds new ones open and removed ones shut (rows replaced by others cross-fade while the card eases to its new height). `actions(...).set` swaps buttons the same way, keyed by label, and the row folds away while it's empty. `card.show(element, visible)` folds anything in the card open or shut.
 
 ```ts
@@ -408,13 +437,21 @@ const scenarios = playground.actions([])
 scenarios.set(screen === "composer" ? [{ label: "Call", run: call }, { label: "Dictation", run: dictate }] : [])
 ```
 
+**What's on screen.** `page.highlight({ groups?, sections? })` marks what's showing elsewhere, such as the phone's current screen. Highlighted cards and sections keep full strength. A section highlighted as a whole gets a small dot by its heading, and a card highlighted on its own gets one by its title. Everything else dims a little under a veil of the page's colour (`--k-page-dim`, 0.4). Dimmed cards stay readable and fully interactive, and one you focus comes back up while you work in it. Changes glide on the panel spring (`--k-spring`) and can be interrupted midway. `null` clears it. `groups` takes group ids or custom card titles, and `sections` takes section ids. With `{ reveal: true }`, the first highlighted card (or its section's heading) glides into view when it's off screen. It won't do that while you're dragging, or if you scrolled, pressed a key or touched the page in the last two seconds. `Tab` from the header lands on the first highlighted card. Both renderers draw the veil and the dot the same way.
+
+```ts
+// The tune server's Context { id, groups, label? }: the phone's groups are the page's sections.
+page.highlight({ sections: phone.context.groups.map((g) => SECTIONS[g] ?? title(g)) }, { reveal: true })
+```
+
 On a page, the keyboard spans every card:
 
 | Key | Action |
 | --- | --- |
 | `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
-| `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits) |
-| `1`–`9` | Apply the focused group's numbered preset (in groups without them, digits still edit numbers; `Enter` always does) |
+| `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits); from the header, the first highlighted card |
+| `1`–`9` | Apply the focused group's preset, by its number (in groups without them, digits still edit numbers; `Enter` always does) |
+| `Enter` on a collapsible card's header | Fold or open it |
 | `/` | Filter rows by label, group or section, live; rows fold shut, cards with nothing left fold away and the rest glide into re-balanced columns; `Esc` clears |
 | `s` | Hints for what's on screen, custom cards included |
 
@@ -503,7 +540,7 @@ The package has two core exports selected through the standard `development` con
 
 | Function | Behavior |
 | --- | --- |
-| `knob(value, { min, max, step?, unit?, shortcut?, label?, group?, section? })` | Numeric slider control with rolling readout and inline editor. |
+| `knob(value, { min, max, step?, unit?, shortcut?, label?, group?, groupLabel?, section?, sectionLabel? })` | Numeric slider control with rolling readout and inline editor. |
 | `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
 | `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
@@ -515,7 +552,7 @@ The package has two core exports selected through the standard `development` con
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
-| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element })` adds custom cards. |
+| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element, collapsed?, summary? })` adds custom cards (`card.collapse(bool)`, `card.collapsed`, `card.summary(text)`), and `page.highlight({ groups?, sections? } \| null, { reveal? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel` and `groupPresetDisplay` over the store's. |
 
 ### Store (`Controls<S>`)
 
@@ -531,7 +568,8 @@ The package has two core exports selected through the standard `development` con
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
 - `controls.preset(id)` / `controls.matchingPreset()`
-- `controls.groupPresets` / `controls.groupPreset(group, index)` / `controls.matchingGroupPreset(group)`
+- `controls.groupPresets` / `controls.groupPreset(group, index, { coalesce? })` / `controls.matchingGroupPreset(group)` / `controls.groupPresetDisplay`
+- `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel

@@ -43,7 +43,10 @@ The tune page is a page of groups, not a panel, so it maps onto `mountPage` (fro
 | Per-group randomize / undo roll | The card's die (`g`, `⌥` mutates) runs locally and sends sets; local undo/redo replaces "undo roll". Keep `{ type: "randomize" }` as a group action if the phone's own dice matter. |
 | Copy as Swift / Copy values | `copy: () => remote.swift()` (Copy and ⇧C); a row's menu copies a selection. |
 | Playground & Slow Motion, Motion Watch, review player | `page.card({ title, section, element })` with `choice` (segmented, e.g. speed chips 0.1×–2×), `toggle`, `actions` and `item`; jumps that come and go are a keyed `card.list()`, and per-screen scenario buttons an `actions(...).set`, so both animate; arbitrary DOM goes in `card.body`. |
-| `context` (only this screen's groups unless All), `hidden` | Build the descriptors from the groups to show and remount when that set changes, or show everything: a page has room. `/` filters rows live. |
+| `context` (only this screen's groups unless All), `hidden` | Show everything (a page has room) and `page.highlight({ sections })` what's on the phone's screen: the rest dims a little, and the highlight glides as the phone moves (see below). `/` filters rows live. |
+| Card titles such as "Transcript · Arrivals" under Transcript | Shown as "Arrivals" automatically; or keep machine ids (`transcript.arrivals`) as groups with `groupLabels` / `groupLabel` for what they show. |
+| Numbered preset chips 1, 2, 3 | Names ("Today · Brisk · Gentle") while they fit beside the title, else a compact menu; `1`–`9` still apply them (`groupPresetDisplay: "numbers"` keeps the chips). |
+| The pairing card (QR code, Copy Link) | A collapsible custom card: `collapsed: false` while pairing, `card.collapse(true)` once the phone has signed in, with a one-line `summary`. |
 
 ```ts
 import { createRemoteControls, type ControlDescriptor, type GroupPreset } from "knobs"
@@ -114,7 +117,69 @@ function onState(phone: Phone) {
 }
 ```
 
-Nothing in `opencode-ios` changes for this: the wire stays as it is. What knobs doesn't do yet: a choice with many options (`DrawerTextStyle` has eight) is still a segmented row, which outgrows a card; it wants a compact menu. The review player's frame canvas stays your own DOM in a custom card.
+### What's on screen, pairing, and quieter titles
+
+The phone already reports what it shows (`phone.context = { id, groups, label? }`, sent as `{ type: "context" }`). Its `groups` are the keys' first segments, which are the page's sections, so the page highlights them: those sections keep full strength with a dot by their headings, the rest dims a little (still readable and interactive), and each change glides. `reveal: true` brings the first one into view when it's off screen, unless Kit scrolled, typed or touched the page in the last two seconds, or is dragging.
+
+```ts
+let shownContext = ""
+function onState(phone: Phone) {
+  // …remote.sync(…) as above…
+  const key = JSON.stringify(phone.context)
+  if (key !== shownContext) {
+    const first = shownContext === ""
+    shownContext = key
+    // The phone's groups → the page's section ids (here the section names themselves).
+    const sections = [...new Set(phone.context.groups.map((g) => SECTIONS[g] ?? title(g)))]
+    page.highlight(showsAll ? null : { sections }, { reveal: !first })
+  }
+}
+```
+
+The groups can be cards too (`{ groups: ["transcript.arrivals"] }`, group ids or custom card titles), and a card highlighted on its own gets the dot by its title. Call it again after a remount: a new page starts with nothing highlighted.
+
+The pairing card folds away once the phone is in. It remembers being folded per tab, so a reload doesn't bring the QR code back:
+
+```ts
+const connection = page.card({
+  title: "Connection",
+  section: "Connection",
+  collapsed: false, // collapsible, open until paired
+  summary: "Waiting for iPhone…",
+})
+connection.body.append(qrImage, pairingHint)
+connection.actions([{ label: "Copy Link", run: copyLink }])
+
+let paired: boolean | undefined
+function onPairing(phone?: Phone) {
+  const now = Boolean(phone)
+  if (now === paired) return
+  connection.summary(phone ? `iPhone · ${phone.version} · connected` : "Waiting for iPhone…")
+  if (now && paired === false) connection.collapse(true) // paired just now: fold the code away
+  paired = now
+}
+```
+
+Clicking its header (or `Enter` on it) opens it again to pair another phone.
+
+Card titles: a title that repeats its section ("Transcript · Arrivals" under Transcript) shows as "Arrivals" on its own. To keep unique ids without the prefix, group by id (the preset set's key for keys a set covers, else the key's first two segments) and label the groups. "Spacing" under Session List and "Spacing" under Composer then stay two cards, and presets, resets (`onReset({ group })`), `swift(group)` and highlights all take the id:
+
+```ts
+const setOf = new Map(phone.presets.flatMap((set) => set.keys.map((k) => [k, set] as const)))
+const descriptors = phone.schema.map((d) => {
+  const set = setOf.get(d.key)
+  const id = set?.key ?? d.key.split(".").slice(0, 2).join(".") // "drawer.spacing"
+  const label = set ? title(set.label) : title(d.key.split(".")[1] ?? d.group)
+  return { ...d, group: id, groupLabel: label, section: d.group, sectionLabel: SECTIONS[d.group] }
+})
+const groupPresets = Object.fromEntries(phone.presets.map((set) => [set.key, set.presets]))
+// onPreset: ({ group, index }) => send({ type: "preset", key: group, index }): the id is the set's key
+mountPage(remote, app, { sections: ["Connection", "Playground", "drawer", "transcript", "composer"], defaultLabel: "Native" })
+```
+
+`defaultLabel: "Native"` names the header's baseline chip (its id stays `default`). Card presets show their names: "Today · Compact · Roomy" where they fit beside the title, a compact menu where they don't; `1`–`9` apply them as before.
+
+Nothing in `opencode-ios` changes for this: the wire stays as it is. The review player's frame canvas stays your own DOM in a custom card.
 
 ---
 
