@@ -159,9 +159,9 @@ const css = `
 /* Opening from its chip, the panel's chrome rides a separate shape (see morph.ts) while the
    content, laid out at full size, is clipped to it and revealed top first. */
 .knobs-panel[data-morphing]{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none}
-.knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;
+.knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;--spec:0;
   background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20% * var(--p)),transparent);border:1px solid var(--k-line);
-  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--p) * 100%),transparent);
+  box-shadow:inset 0 0 0 1px rgb(255 255 255/var(--spec)),inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--p) * 100%),transparent);
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
 .knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}

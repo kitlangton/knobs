@@ -27,10 +27,12 @@ struct Prim {
   aux2: vec4f,    // kind-specific color
 }
 
-// A panel morphing out of its chip clips its content to the shape and reveals it top first.
+// A panel morphing out of its chip clips its content to the shape and reveals it top first,
+// blurred, faded and scaled as the DOM's filter, opacity and scale do it.
 struct Mask {
   rect: vec4f,    // x, y, w, h in viewport CSS px
-  look: vec4f,    // radius, fully shown above y, hidden below y, unused
+  look: vec4f,    // radius, fully shown above y, hidden below y, content blur (px)
+  fx: vec4f,      // content opacity, content scale, scale origin x, y (viewport CSS px)
 }
 
 struct View {
@@ -66,8 +68,16 @@ struct Out {
   // Shadows and the pill/switch glows reach ~14px past their shapes.
   let wide = p.look.w == 0.0 || p.look.w == 3.0 || p.look.w == 4.0 || p.look.w == 10.0;
   let padGlow = select(p.look.z * 1.6, p.look.z * 2.2 + 8.0, wide);
-  let pad = vec2f(padGlow + 2.0) + abs(p.motion.xy) * 0.65;
-  let screenPx = (r.xy - pad) + c * (r.zw + pad * 2.0);
+  var pad = vec2f(padGlow + 2.0) + abs(p.motion.xy) * 0.65;
+  var screenPx = (r.xy - pad) + c * (r.zw + pad * 2.0);
+  // Morphing content: the quad grows by the blur's reach and scales with the content.
+  let mi = u32(p.motion.w) >> 1u;
+  if (mi > 0u) {
+    let m = masks[mi - 1u];
+    pad += vec2f(m.look.w * 2.5 + 1.0);
+    let content = (r.xy - pad) + c * (r.zw + pad * 2.0);
+    screenPx = m.fx.zw + (content - m.fx.zw) * m.fx.y;
+  }
 
   var o: Out;
   o.pos = vec4f(screenPx / view.size * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
@@ -141,6 +151,13 @@ fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let rimCov = covSd(roundedBox(inner, innerSize, r - 1.0)) *
     (1.0 - covSd(roundedBox(inner - vec2f(0.0, 1.0), innerSize, r - 1.0)));
   card = over(card, premul(p.aux2) * rimCov);
+
+  // A morphing card's specular ring (extra.y), 1px inside the border like CSS's inset 0 0 0 1px.
+  if (p.extra.y > 0.001) {
+    let ring = covSd(roundedBox(inner, innerSize, r - 1.0)) *
+      (1.0 - covSd(roundedBox(local - vec2f(2.0), size - vec2f(4.0), r - 2.0)));
+    card = over(card, vec4f(vec3f(p.extra.y), p.extra.y) * ring);
+  }
 
   // 1px border
   let borderCov = hairline(dist, max(p.look.y, 1.0));
@@ -503,50 +520,77 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   return out;
 }
 
-@fragment fn fs_main(in: Out) -> @location(0) vec4f {
-  let p = prims[in.id];
+// A prim's colour at viewport point \`at\` (frag: its device px), within its clip.
+fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
   let clipDist = min(
-    min(in.screenPx.x - p.clip.x, p.clip.z - in.screenPx.x),
-    min(in.screenPx.y - p.clip.y, p.clip.w - in.screenPx.y)
+    min(at.x - p.clip.x, p.clip.z - at.x),
+    min(at.y - p.clip.y, p.clip.w - at.y)
   );
   let clipCov = clamp(clipDist * view.dpr + 0.5, 0.0, 1.0);
   if (clipCov <= 0.0) { return vec4f(0.0); }
-  var maskCov = 1.0;
-  let mi = u32(p.motion.w) >> 1u;
-  if (mi > 0u) {
-    let m = masks[mi - 1u];
-    maskCov = covSd(roundedBox(in.screenPx - m.rect.xy, m.rect.zw, m.look.x));
-    if (m.look.z > m.look.y) {
-      maskCov *= clamp((m.look.z - in.screenPx.y) / (m.look.z - m.look.y), 0.0, 1.0);
-    }
-    if (maskCov <= 0.0) { return vec4f(0.0); }
-  }
 
-  let local = in.screenPx - in.rect.xy;
-  let size = max(in.rect.zw, vec2f(1.0));
+  let local = at - rect.xy;
+  let size = max(rect.zw, vec2f(1.0));
   let kind = i32(p.look.w + 0.5);
 
   var out = vec4f(0.0);
   switch (kind) {
     case 0: { out = shadePanel(p, local, size); }
     case 1: { out = shadeTrack(p, local, size); }
-    case 2: { out = shadeSlider(p, local, size, in.pos.xy); }
-    case 3: { out = shadePill(p, local, size, in.pos.xy); }
+    case 2: { out = shadeSlider(p, local, size, frag); }
+    case 3: { out = shadePill(p, local, size, frag); }
     case 4: { out = shadeToggle(p, local, size); }
     case 5: {
-      out = shadeText(p, local, size, in.pos.xy);
+      out = shadeText(p, local, size, frag);
       // Feathered slot for rolling digits: fade toward the clip's top and bottom edges.
       if (p.extra.x > 0.0) {
-        let edge = min(in.screenPx.y - p.clip.y, p.clip.w - in.screenPx.y);
+        let edge = min(at.y - p.clip.y, p.clip.w - at.y);
         out = out * smoothstep(0.0, p.extra.x, edge);
       }
     }
-    case 8: { out = shadeLine(p, in.screenPx); }
+    case 8: { out = shadeLine(p, at); }
     case 9: { out = shadeStrip(p, local, size); }
     case 10: { out = shadeShape(p, local, size); }
-    case 11: { out = shadeDie(p, in.rect, in.pos.xy); }
+    case 11: { out = shadeDie(p, rect, frag); }
     default: { out = shadeDot(p, local, size); }
   }
-  return out * (clipCov * maskCov);
+  return out * clipCov;
+}
+
+@fragment fn fs_main(in: Out) -> @location(0) vec4f {
+  let p = prims[in.id];
+  let mi = u32(p.motion.w) >> 1u;
+  if (mi == 0u) { return shadeAt(p, in.screenPx, in.rect, in.pos.xy); }
+
+  // Morphing content: clipped to the shape and revealed top first on screen, after it has been
+  // scaled about the origin and blurred, like the DOM's clip-path and mask over its filter.
+  let m = masks[mi - 1u];
+  var maskCov = covSd(roundedBox(in.screenPx - m.rect.xy, m.rect.zw, m.look.x)) * m.fx.x;
+  if (m.look.z > m.look.y) {
+    maskCov *= clamp((m.look.z - in.screenPx.y) / (m.look.z - m.look.y), 0.0, 1.0);
+  }
+  if (maskCov <= 0.0) { return vec4f(0.0); }
+  let o = m.fx.zw;
+  let s = max(m.fx.y, 0.01);
+  let sigma = m.look.w * s;
+  if (sigma < 0.05) {
+    let at = o + (in.screenPx - o) / s;
+    return shadeAt(p, at, in.rect, at * view.dpr) * maskCov;
+  }
+  // A Gaussian (σ = the CSS blur radius) from a jittered Vogel disc of samples.
+  let n = clamp(i32(sigma * 2.5) + 6, 8, 24);
+  let reach = sigma * 2.5;
+  let spin = hash21(in.pos.xy) * 6.2831853;
+  var acc = vec4f(0.0);
+  var total = 0.0;
+  for (var k = 0; k < n; k++) {
+    let r = sqrt((f32(k) + 0.5) / f32(n)) * reach;
+    let a = f32(k) * 2.39996323 + spin;
+    let at = o + (in.screenPx + vec2f(cos(a), sin(a)) * r - o) / s;
+    let w = exp(-0.5 * (r * r) / (sigma * sigma));
+    acc += shadeAt(p, at, in.rect, at * view.dpr) * w;
+    total += w;
+  }
+  return acc / total * maskCov;
 }
 `

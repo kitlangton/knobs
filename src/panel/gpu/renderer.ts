@@ -39,6 +39,7 @@ const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 /** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
 const MAX_MASKS = 16
+const MASK_FLOATS = 12
 /** An `ease` omega this high places the value at once (a 0 ms token). */
 const SNAP_OMEGA = 1e4
 type Clip = readonly [number, number, number, number]
@@ -372,7 +373,7 @@ class GpuOverlayManager {
   private prevPointCount = -1
   private pointBuffer: any = null
   private maskBuffer: any = null
-  private readonly masks = new Float32Array(MAX_MASKS * 8)
+  private readonly masks = new Float32Array(MAX_MASKS * MASK_FLOATS)
   private maskCount = 0
   /** Index + 1 of the mask clipping the current panel's content; 0 for none. */
   private curMask = 0
@@ -690,7 +691,7 @@ class GpuOverlayManager {
           { binding: 2, visibility: 2, texture: { sampleType: "float" } },
           { binding: 3, visibility: 2, sampler: { type: "filtering" } },
           { binding: 4, visibility: 2, buffer: { type: "read-only-storage" } },
-          { binding: 5, visibility: 2, buffer: { type: "read-only-storage" } },
+          { binding: 5, visibility: 1 | 2, buffer: { type: "read-only-storage" } },
         ],
       })
       this.pipeline = device.createRenderPipeline({
@@ -718,7 +719,10 @@ class GpuOverlayManager {
       })
       this.viewBuffer = device.createBuffer({ size: 16, usage: 0x40 | 0x08 })
       this.pointBuffer = device.createBuffer({ size: MAX_POINTS * 8, usage: 0x80 | 0x08 })
-      this.maskBuffer = device.createBuffer({ size: MAX_MASKS * 32, usage: 0x80 | 0x08 })
+      this.maskBuffer = device.createBuffer({
+        size: MAX_MASKS * MASK_FLOATS * 4,
+        usage: 0x80 | 0x08,
+      })
       this.labelTexture = device.createTexture({
         size: [ATLAS_SIZE, ATLAS_SIZE],
         format: "rgba8unorm",
@@ -2052,8 +2056,11 @@ class GpuOverlayManager {
       const card = morph ? new DOMRect(morph.x, morph.y, morph.w, morph.h) : pRect
       const cardRadius = morph ? morph.radius : tokens.panelRadius
       if (morph) anyMoving = true
+      // The mask clips the content to the shape after blurring and scaling it, as the DOM's
+      // clip-path does; only without a mask slot does the clip take the shape's box.
+      const masked = morph !== undefined && this.maskCount < MAX_MASKS
       let panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
-      if (morph)
+      if (morph && !masked)
         panelClip = intersectClip(panelClip, [card.left, card.top, card.right, card.bottom])
       const pillFill = tokens.pillBg
 
@@ -2085,12 +2092,27 @@ class GpuOverlayManager {
           glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
           kind: 0,
           p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
+          // The specular ring the glass wears while it deforms.
+          p1: morph?.specular ?? 0,
           aux2: withAlpha(tokens.rim, (shown < 1 ? shown : tokens.rim[3]) * chrome),
         })
-      if (morph && this.maskCount < MAX_MASKS) {
+      if (morph && masked) {
         this.masks.set(
-          [morph.x, morph.y, morph.w, morph.h, morph.radius, morph.fadeTop, morph.fadeBottom, 0],
-          this.maskCount * 8,
+          [
+            morph.x,
+            morph.y,
+            morph.w,
+            morph.h,
+            morph.radius,
+            morph.fadeTop,
+            morph.fadeBottom,
+            morph.blur,
+            morph.opacity,
+            morph.scale,
+            morph.originX,
+            morph.originY,
+          ],
+          this.maskCount * MASK_FLOATS,
         )
         this.curMask = ++this.maskCount
       }
@@ -3020,7 +3042,7 @@ class GpuOverlayManager {
           0,
           this.masks.buffer,
           this.masks.byteOffset,
-          this.maskCount * 32,
+          this.maskCount * MASK_FLOATS * 4,
         )
       if (this.pointCount > 0)
         this.device.queue.writeBuffer(
