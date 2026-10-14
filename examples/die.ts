@@ -1,90 +1,151 @@
-import { createDieElement, DIE_CSS, DieMotion } from "../src/panel/die.js"
+import { defineControls, knob, spring } from "knobs"
+import { mountPanel } from "knobs/panel"
+import {
+  createDieCanvas,
+  DIE_LOOK,
+  DIE_SPIN,
+  type DieLook,
+  DieMotion,
+  type DieView,
+  dieBox,
+  dieSamples,
+} from "../src/panel/die.js"
 import { DIE_WGSL } from "../src/panel/gpu/die.wgsl.js"
 
-const style = document.createElement("style")
-style.textContent = DIE_CSS
-document.head.append(style)
+const controls = defineControls(
+  "die",
+  {
+    spin: spring(DIE_SPIN.spring, { label: "Spin", group: "Roll" }),
+    turns: knob(DIE_SPIN.turns, { min: 0, max: 3, step: 1, label: "Extra turns", group: "Roll" }),
+    perspective: knob(DIE_LOOK.perspective, {
+      min: 1.5,
+      max: 10,
+      step: 0.1,
+      label: "Perspective",
+      group: "Shape",
+    }),
+    lift: knob(DIE_LOOK.lift, { min: 0, max: 1, step: 0.01, label: "Lift", group: "Shape" }),
+    bevel: knob(DIE_LOOK.bevel, {
+      min: 10,
+      max: 50,
+      step: 1,
+      unit: "°",
+      label: "Bevel",
+      group: "Shape",
+    }),
+    fill: knob(DIE_LOOK.fill, { min: 0, max: 0.5, step: 0.01, label: "Ambient", group: "Light" }),
+    shade: knob(DIE_LOOK.shade, { min: 0, max: 0.6, step: 0.01, label: "Light", group: "Light" }),
+    slow: knob(1, {
+      min: 1,
+      max: 10,
+      step: 0.5,
+      unit: "×",
+      label: "Slow motion",
+      group: "Preview",
+    }),
+    size: knob(120, { min: 15, max: 200, step: 1, unit: "px", label: "Size", group: "Preview" }),
+  },
+  { enabled: true },
+)
+mountPanel(controls, document.getElementById("panel")!)
 
 const motion = new DieMotion()
-const doms = ["dom-small", "dom-big"].map((id) => {
-  const die = createDieElement(document)
-  document.getElementById(id)!.append(die.root)
-  return die
-})
+let view: DieView = { rx: 0, ry: 0, energy: 0 }
+const look = (): DieLook => {
+  const v = controls.get()
+  return { perspective: v.perspective, lift: v.lift, bevel: v.bevel, fill: v.fill, shade: v.shade }
+}
 
 const SHADER = /* wgsl */ `
 ${DIE_WGSL}
-struct U { size: f32, dpr: f32, rot: vec2f, energy: f32, pad: f32, box: vec2f, color: vec4f }
+struct U { look: vec4f, color: vec4f, rot: vec2f, size: f32, dpr: f32, energy: f32, shade: f32, samples: f32, box: f32 }
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
   return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
 }
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let p = pos.xy / u.dpr - u.box / 2.0;
-  let c = die_coverage(p, u.size, u.rot, u.energy);
-  let a = c.x + c.y * (1.0 - c.x);
-  return vec4f(u.color.rgb * a * u.color.a, a * u.color.a);
+  let origin = vec2f(u.box * u.dpr / 2.0);
+  let a = die_coverage(pos.xy, origin, u.dpr, u32(u.samples), u.size, u.rot, u.energy, u.look, u.shade) * u.color.a;
+  return vec4f(u.color.rgb * a, a);
 }`
 
-interface GpuDie {
-  draw(rx: number, ry: number, energy: number): void
+type Rgba = readonly [number, number, number, number]
+const colorOf = (el: Element): Rgba => {
+  const [r, g, b, a] = getComputedStyle(el)
+    .color.match(/[\d.]+/g)!
+    .map(Number)
+  return [r!, g!, b!, a ?? 1]
 }
 
-async function gpuDie(host: HTMLElement, size: number, box: number): Promise<GpuDie | undefined> {
-  // biome-ignore lint: no WebGPU types in this repo (the renderer uses `any` too)
-  const gpu = (navigator as any).gpu
-  const adapter = await gpu?.requestAdapter()
-  const device = await adapter?.requestDevice()
+interface Die {
+  draw(): void
+  remove(): void
+}
+
+function domDie(host: HTMLElement, size: number): Die {
+  const die = createDieCanvas(document, size)
+  host.append(die.canvas)
+  return { draw: () => die.render(view, look(), colorOf(host)), remove: () => die.canvas.remove() }
+}
+
+// biome-ignore lint: no WebGPU types in this repo (the renderer uses `any` too)
+const gpu = (navigator as any).gpu
+const device = await (await gpu?.requestAdapter())?.requestDevice()
+const format = gpu?.getPreferredCanvasFormat()
+const pipeline = device?.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: device.createShaderModule({ code: SHADER }), entryPoint: "vs" },
+  fragment: {
+    module: device.createShaderModule({ code: SHADER }),
+    entryPoint: "fs",
+    targets: [{ format }],
+  },
+})
+
+function gpuDie(host: HTMLElement, size: number): Die {
   if (!device) {
     host.textContent = "no WebGPU"
-    return
+    return { draw() {}, remove() {} }
   }
+  const box = dieBox(size)
   const dpr = devicePixelRatio
   const canvas = document.createElement("canvas")
-  canvas.width = Math.round(box * dpr)
-  canvas.height = Math.round(box * dpr)
-  canvas.style.width = canvas.style.height = `${box}px`
-  canvas.style.margin = `${(size - box) / 2}px`
+  canvas.width = canvas.height = Math.round(box * dpr)
+  canvas.style.cssText = `width:${box}px;height:${box}px;margin:${(size - box) / 2}px;display:block;pointer-events:none`
   host.append(canvas)
   const ctx = canvas.getContext("webgpu") as any
-  const format = gpu.getPreferredCanvasFormat()
   ctx.configure({ device, format, alphaMode: "premultiplied" })
-  const module = device.createShaderModule({ code: SHADER })
-  const info = await module.getCompilationInfo()
-  for (const m of info.messages) console.warn(m.lineNum, m.message)
-  const pipeline = device.createRenderPipeline({
-    layout: "auto",
-    vertex: { module, entryPoint: "vs" },
-    fragment: { module, entryPoint: "fs", targets: [{ format }] },
-  })
-  const buf = device.createBuffer({ size: 48, usage: 0x40 | 0x08 })
+  const buf = device.createBuffer({ size: 64, usage: 0x40 | 0x08 })
   const bind = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: buf } }],
   })
-  const color = getComputedStyle(host.closest(".btn") ?? document.body)
-    .color.match(/[\d.]+/g)!
-    .map(Number)
   return {
-    draw(rx, ry, energy) {
+    draw() {
+      const l = look()
+      const [r, g, b, a] = colorOf(host)
       const d2r = Math.PI / 180
       device.queue.writeBuffer(
         buf,
         0,
         new Float32Array([
+          l.perspective,
+          l.lift,
+          Math.cos(l.bevel * d2r),
+          l.fill,
+          r / 255,
+          g / 255,
+          b / 255,
+          a,
+          view.rx * d2r,
+          view.ry * d2r,
           size,
           dpr,
-          rx * d2r,
-          ry * d2r,
-          energy,
-          0,
+          view.energy,
+          l.shade,
+          dieSamples(size),
           box,
-          box,
-          color[0]! / 255,
-          color[1]! / 255,
-          color[2]! / 255,
-          color[3] ?? 1,
         ]),
       )
       const enc = device.createCommandEncoder()
@@ -104,53 +165,57 @@ async function gpuDie(host: HTMLElement, size: number, box: number): Promise<Gpu
       pass.end()
       device.queue.submit([enc.finish()])
     },
+    remove: () => canvas.remove(),
   }
 }
 
-const gpus = (
-  await Promise.all([
-    gpuDie(document.getElementById("gpu-small")!, 15, 24),
-    gpuDie(document.getElementById("gpu-big")!, 120, 192),
-  ])
-).filter((g): g is GpuDie => Boolean(g))
+const el = (id: string) => document.getElementById(id)!
+const small = [domDie(el("dom-small"), 15), gpuDie(el("gpu-small"), 15)]
+let big: Die[] = []
+let bigSize = 0
+function layout() {
+  const size = controls.get().size
+  if (size === bigSize) return
+  bigSize = size
+  for (const d of big) d.remove()
+  big = [domDie(el("dom-big"), size), gpuDie(el("gpu-big"), size)]
+}
 
-const slow = document.getElementById("slow") as HTMLInputElement
-const valueEl = document.getElementById("value")!
 let last = performance.now()
 let running = false
-
 function frame(now: number) {
-  const dt = (now - last) / 1000 / Number(slow.value)
+  view = motion.step((now - last) / 1000 / controls.get().slow)
   last = now
-  const { rx, ry, energy } = motion.step(dt)
-  for (const d of doms) d.render(rx, ry, energy)
-  for (const g of gpus) g.draw(rx, ry, energy)
-  if (motion.resting) {
-    running = false
-    return
-  }
-  requestAnimationFrame(frame)
+  for (const d of [...small, ...big]) d.draw()
+  if (motion.resting) running = false
+  else requestAnimationFrame(frame)
 }
-
 function kick() {
   if (running) return
   running = true
   last = performance.now()
   requestAnimationFrame(frame)
 }
-
 function roll() {
-  valueEl.textContent = String(motion.roll())
+  motion.roll()
   kick()
 }
 
-for (const el of document.querySelectorAll(".btn, #dom-big, #gpu-big"))
-  el.addEventListener("click", roll)
+controls.subscribe(() => {
+  const v = controls.get()
+  motion.tune({ spring: v.spin, turns: v.turns })
+  layout()
+  kick()
+})
+for (const id of ["dom-small", "gpu-small", "dom-big", "gpu-big"])
+  el(id).addEventListener("click", roll)
 addEventListener("keydown", (e: KeyboardEvent) => {
-  if (e.key === " ") {
+  if (e.key === " " && !(e.target as Element).closest?.(".knobs-panel, input")) {
     e.preventDefault()
     roll()
   }
 })
-;(window as unknown as { __die: unknown }).__die = { motion, roll, kick }
+;(window as unknown as { __die: unknown }).__die = { motion, roll, kick, controls }
+motion.tune({ spring: controls.get().spin, turns: controls.get().turns })
+layout()
 kick()

@@ -1,11 +1,20 @@
-import { Spring } from "./motion.js"
+import { Spring, springMotion, type SpringValue } from "../core/spring.js"
 
-// A die drawn like Phosphor's dice icons: six flat faces (a rounded-square outline with pips) folded
-// into a cube and seen in perspective. Face-on at rest it is exactly the dice-five glyph; a roll
-// tumbles it to another face. Both renderers read the same orientation from `DieMotion`.
+// A die drawn like Phosphor's dice icons, but solid: a rounded cube whose bevel is inked wherever the
+// surface turns more than `bevel` degrees from a face. Face-on, that band is exactly the glyph's
+// outline (outer corner 32, inner 16, stroke 16 on the 256 grid), so at rest it is the icon; mid-roll
+// every edge and corner is one continuous surface. The DOM traces it on a small canvas, the GPU in
+// WGSL generated from the same constants, so both draw identical pixels.
 
-/** Icon units (Phosphor's 256 grid): outer half-size, stroke, corner radius and pip radius. */
-export const DIE = { half: 96, stroke: 16, radius: 32, pip: 12 } as const
+/**
+ * Icon units (Phosphor's 256 grid): half the cube's edge, its rounding, and the pip radius. The ink
+ * band runs from `bevel` off one face to `bevel` off the next; seen face-on its edges sit at
+ * inner + round·sin(bevel) and inner + round·cos(bevel), with corner radii round·sin and round·cos.
+ * Phosphor's outline (80 to 96, corners 16 and 32) needs round·sin = 16 and round·cos = 32: a
+ * rounding of 16√5 on a 64 inner half, with the bevel at atan(½).
+ */
+const ROUND = 16 * Math.sqrt(5)
+export const DIE = { half: 64 + ROUND, round: ROUND, pip: 12 } as const
 
 /** Pip centres per face value, relative to the face centre, in icon units (y down). */
 export const PIPS: Record<number, readonly (readonly [number, number])[]> = {
@@ -42,53 +51,116 @@ export const PIPS: Record<number, readonly (readonly [number, number])[]> = {
   ],
 }
 
+type V3 = readonly [number, number, number]
+
+/** CSS `rotateX(ax) rotateY(ay)` (degrees) applied to a vector (y down, z towards the viewer). */
+function rotate([x, y, z]: V3, ax: number, ay: number): V3 {
+  const a = (ay * Math.PI) / 180
+  const b = (ax * Math.PI) / 180
+  const x1 = x * Math.cos(a) + z * Math.sin(a)
+  const z1 = -x * Math.sin(a) + z * Math.cos(a)
+  return [x1, y * Math.cos(b) - z1 * Math.sin(b), y * Math.sin(b) + z1 * Math.cos(b)]
+}
+const round = (v: V3): V3 => [Math.round(v[0]), Math.round(v[1]), Math.round(v[2])]
+
 /**
- * Faces in cube space: value, the face's own rotation (CSS `rotateX`/`rotateY`, degrees) before it is
- * pushed out by half the edge, and the cube rotation that brings it to the front. Opposites sum to 7.
+ * Faces: value, the cube rotation that brings it to the front, and its outward normal and in-plane
+ * axes in cube space (the front face rotated by the inverse turn). Opposites sum to 7.
  */
-export const FACES = [
-  { value: 5, face: [0, 0], front: [0, 0] },
-  { value: 2, face: [0, 180], front: [0, 180] },
-  { value: 3, face: [0, 90], front: [0, -90] },
-  { value: 4, face: [0, -90], front: [0, 90] },
-  { value: 1, face: [90, 0], front: [-90, 0] },
-  { value: 6, face: [-90, 0], front: [90, 0] },
-] as const
+export const FACES = (
+  [
+    [5, 0, 0],
+    [2, 0, 180],
+    [3, 0, -90],
+    [4, 0, 90],
+    [1, -90, 0],
+    [6, 90, 0],
+  ] as const
+).map(([value, fx, fy]) => {
+  // Undo the front rotation: rotateY(-fy) then rotateX(-fx) is its inverse.
+  const axis = (v: V3) => round(rotate(rotate(v, -fx, 0), 0, -fy))
+  return {
+    value,
+    front: [fx, fy] as const,
+    n: axis([0, 0, 1]),
+    u: axis([1, 0, 0]),
+    v: axis([0, 1, 0]),
+  }
+})
 
-/** Perspective distance, and how far a spinning die lifts towards the eye, in icon sizes. */
-export const DIE_PERSPECTIVE = 3.2
-export const DIE_LIFT = 0.45
+export interface DieLook {
+  /** Eye distance in icon sizes at full spin (the resting die is seen orthographically). */
+  readonly perspective: number
+  /** How far a spinning die rises towards the eye, in icon sizes, at full spin. */
+  readonly lift: number
+  /** Degrees from a face where the inked bevel begins (atan ½ ≈ 26.6° is Phosphor's outline). */
+  readonly bevel: number
+  /** Face fill while spinning: ambient and lit (Lambert) parts. */
+  readonly fill: number
+  readonly shade: number
+}
+export const DIE_LOOK: DieLook = {
+  perspective: 3.2,
+  lift: 0.45,
+  bevel: +((Math.atan(0.5) * 180) / Math.PI).toFixed(2),
+  fill: 0.1,
+  shade: 0.22,
+}
 
-const SPIN = { omega: 15, zeta: 0.64 }
+export interface DieSpin {
+  readonly spring: SpringValue
+  /** Extra whole turns per roll. */
+  readonly turns: number
+}
+export const DIE_SPIN: DieSpin = { spring: { duration: 0.42, bounce: 0.36 }, turns: 1 }
+
+/** The canvas box around a die of `size` px: room for the corners while it tumbles and lifts. */
+export const dieBox = (size: number) => Math.ceil(size * 1.6)
+/** Supersamples per axis: dense at icon sizes, cheaper when large. */
+export const dieSamples = (size: number) => (size <= 40 ? 3 : 2)
 
 export class DieMotion {
-  readonly rx = new Spring(0, SPIN.omega, SPIN.zeta)
-  readonly ry = new Spring(0, SPIN.omega, SPIN.zeta)
+  readonly rx = new Spring(0)
+  readonly ry = new Spring(0)
   value = 5
+  turns = DIE_SPIN.turns
 
-  /** Tumble to a different face (or `to`), at least one full turn, from wherever it is now. */
+  constructor(spin: DieSpin = DIE_SPIN) {
+    this.tune(spin)
+  }
+
+  tune({ spring, turns }: DieSpin) {
+    const { omega, zeta } = springMotion(spring)
+    for (const s of [this.rx, this.ry]) {
+      s.omega = omega
+      s.zeta = zeta
+    }
+    this.turns = turns
+  }
+
+  /** Tumble to a different face (or `to`) from wherever it is now. */
   roll(to?: number, random = Math.random) {
     const others = FACES.filter((f) => f.value !== this.value)
     const face = FACES.find((f) => f.value === to) ?? others[Math.floor(random() * others.length)]!
     this.value = face.value
     const [bx, by] = face.front
-    const sign = () => (random() < 0.5 ? -1 : 1)
-    // One axis takes the full turn; the other just goes where it must, so it reads as a flick.
+    const spin = 360 * this.turns * (random() < 0.5 ? -1 : 1)
+    // One axis takes the extra turns; the other just goes where it must, so it reads as a flick.
     const flipX = random() < 0.5
-    this.rx.set(nearest(bx, this.rx.target + (flipX ? 360 * sign() : 0)))
-    this.ry.set(nearest(by, this.ry.target + (flipX ? 0 : 360 * sign())))
+    this.rx.set(nearest(bx, this.rx.target + (flipX ? spin : 0)))
+    this.ry.set(nearest(by, this.ry.target + (flipX ? 0 : spin)))
     return face.value
   }
 
   snapTo(value: number) {
-    const face = FACES.find((f) => f.value === value) ?? FACES[0]
+    const face = FACES.find((f) => f.value === value) ?? FACES[0]!
     this.value = face.value
     this.rx.snap(face.front[0])
     this.ry.snap(face.front[1])
   }
 
-  /** Advance; returns the orientation (degrees) and spin energy 0…1 for shading. */
-  step(dt: number) {
+  /** Advance; returns the orientation (degrees) and spin energy 0…1 for lift and shading. */
+  step(dt: number): DieView {
     const rx = this.rx.step(dt)
     const ry = this.ry.step(dt)
     const energy = Math.min(1, (Math.abs(this.rx.v) + Math.abs(this.ry.v)) / 900)
@@ -100,92 +172,171 @@ export class DieMotion {
   }
 }
 
+export interface DieView {
+  readonly rx: number
+  readonly ry: number
+  readonly energy: number
+}
+
 /** The value congruent to `base` (mod 360) closest to `around`. */
 function nearest(base: number, around: number) {
   return base + 360 * Math.round((around - base) / 360)
 }
 
 /** Light direction for the spin shading (towards the viewer, from the upper left; y down). */
-const LIGHT = normalize([-0.45, -0.6, 0.66])
+export const DIE_LIGHT: V3 = [-0.4818, -0.6424, 0.5961]
 
-/** Lambert term per face for a cube orientation, in `FACES` order. */
-export function faceLight(rx: number, ry: number): number[] {
-  return FACES.map(({ face }) => {
-    const n = rotate(rotate([0, 0, 1], face[0], face[1]), rx, ry)
-    return Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2])
-  })
-}
+const INNER = DIE.half - DIE.round
+const BOUND = INNER * Math.sqrt(3) + DIE.round + 1
+/** How far in front of the icon plane rays start (icon units): beyond any lifted corner. */
+const START = 512
 
-type V3 = [number, number, number]
-/** CSS `rotateX(ax) rotateY(ay)` applied to a vector (y down, z towards the viewer). */
-function rotate([x, y, z]: V3, ax: number, ay: number): V3 {
-  const a = (ay * Math.PI) / 180
-  const b = (ax * Math.PI) / 180
-  const x1 = x * Math.cos(a) + z * Math.sin(a)
-  const z1 = -x * Math.sin(a) + z * Math.cos(a)
-  return [x1, y * Math.cos(b) - z1 * Math.sin(b), y * Math.sin(b) + z1 * Math.cos(b)]
-}
-function normalize([x, y, z]: number[]): V3 {
-  const l = Math.hypot(x!, y!, z!)
-  return [x! / l, y! / l, z! / l]
-}
+/** A ray that misses the die (coverage 0), told apart so the canvas can skip empty pixels. */
+const MISS = -1
 
-/** Phosphor's dice-N glyph (regular weight) as an SVG path in icon units, built from the same constants. */
-export function facePath(value: number): string {
-  const { half, stroke, radius, pip } = DIE
-  const rr = (h: number, r: number) =>
-    `M${128 - h + r},${128 - h}H${128 + h - r}A${r},${r},0,0,1,${128 + h},${128 - h + r}V${128 + h - r}A${r},${r},0,0,1,${128 + h - r},${128 + h}H${128 - h + r}A${r},${r},0,0,1,${128 - h},${128 + h - r}V${128 - h + r}A${r},${r},0,0,1,${128 - h + r},${128 - h}Z`
-  const dots = PIPS[value]!.map(
-    ([x, y]) =>
-      `M${128 + x - pip},${128 + y}a${pip},${pip},0,1,0,${2 * pip},0a${pip},${pip},0,1,0,${-2 * pip},0Z`,
-  )
-  return rr(half, radius) + rr(half - stroke, radius - stroke) + dots.join("")
-}
-
-const faceMask = (value: number) =>
-  `url("data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${128 - DIE.half} ${128 - DIE.half} ${2 * DIE.half} ${2 * DIE.half}"><path fill-rule="evenodd" d="${facePath(value)}"/></svg>`,
-  )}")`
-
-/** The DOM die: a CSS 3D cube of six faces, each the dice glyph as a vector mask, sized by `--die`. */
-export function createDieElement(doc: Document): {
-  root: HTMLElement
-  render(rx: number, ry: number, energy: number): void
-} {
-  const root = doc.createElement("span")
-  root.className = "knobs-die"
-  root.setAttribute("aria-hidden", "true")
-  const cube = doc.createElement("span")
-  cube.className = "knobs-die-cube"
-  root.append(cube)
-  const faces = FACES.map(({ value, face }) => {
-    const el = doc.createElement("span")
-    el.className = "knobs-die-face"
-    el.style.transform = `rotateX(${face[0]}deg) rotateY(${face[1]}deg) translateZ(calc(var(--die) * ${DIE.half / 256}))`
-    el.style.setProperty("--face", faceMask(value))
-    cube.append(el)
-    return el
-  })
-  return {
-    root,
-    render(rx, ry, energy) {
-      cube.style.transform = `translateZ(calc(var(--die) * ${(DIE_LIFT * energy - DIE.half / 256).toFixed(4)})) rotateX(${rx}deg) rotateY(${ry}deg)`
-      const light = faceLight(rx, ry)
-      faces.forEach((el, i) => {
-        el.style.setProperty("--die-fill", String(fillAlpha(energy, light[i]!)))
-      })
-    },
+/**
+ * Traces one ray through the pixel offset (`x`, `y`) px from the die's centre and returns
+ * ink + fill coverage (0…1), or `MISS`. Mirrors `die_trace` in die.wgsl.ts step for step.
+ */
+export function dieTracer(size: number, view: DieView, look: DieLook) {
+  const unit = size / 256
+  // Perspective grows with the spin: at rest the projection is orthographic, so the die is exactly
+  // the glyph; tumbling, the eye sits `perspective` icon sizes away.
+  const k = view.energy / (look.perspective * 256)
+  const cz = look.lift * view.energy * 256 - DIE.half
+  const ax = (view.rx * Math.PI) / 180
+  const ay = (view.ry * Math.PI) / 180
+  const cx = Math.cos(ax)
+  const sx = Math.sin(ax)
+  const cy = Math.cos(ay)
+  const sy = Math.sin(ay)
+  const cosBevel = Math.cos((look.bevel * Math.PI) / 180)
+  const toWorld = (v: V3) => rotate(v, view.rx, view.ry)
+  return (x: number, y: number): number => {
+    // The ray through (x, y) on the icon plane, started well in front of the die.
+    const ix = x / unit
+    const iy = y / unit
+    let rx = ix * k
+    let ry = iy * k
+    let rz = -1
+    const l = Math.sqrt(rx * rx + ry * ry + rz * rz)
+    rx /= l
+    ry /= l
+    rz /= l
+    const wx = ix - rx * START
+    const wy = iy - ry * START
+    const wz = -rz * START - cz
+    // Into cube space: undo rotateX, then rotateY.
+    let y1 = ry * cx + rz * sx
+    let z1 = -ry * sx + rz * cx
+    const d0 = rx * cy - z1 * sy
+    const d1 = y1
+    const d2 = rx * sy + z1 * cy
+    y1 = wy * cx + wz * sx
+    z1 = -wy * sx + wz * cx
+    const o0 = wx * cy - z1 * sy
+    const o1 = y1
+    const o2 = wx * sy + z1 * cy
+    // Enter the bounding sphere, then sphere-trace the rounded box.
+    const b = o0 * d0 + o1 * d1 + o2 * d2
+    const c = o0 * o0 + o1 * o1 + o2 * o2 - BOUND * BOUND
+    const disc = b * b - c
+    if (disc < 0) return MISS
+    let t = Math.max(0, -b - Math.sqrt(disc))
+    const far = -b + Math.sqrt(disc)
+    let px = 0
+    let py = 0
+    let pz = 0
+    let hit = false
+    for (let i = 0; i < 48 && t < far; i++) {
+      px = o0 + t * d0
+      py = o1 + t * d1
+      pz = o2 + t * d2
+      const qx = Math.abs(px) - INNER
+      const qy = Math.abs(py) - INNER
+      const qz = Math.abs(pz) - INNER
+      const mx = qx > 0 ? qx : 0
+      const my = qy > 0 ? qy : 0
+      const mz = qz > 0 ? qz : 0
+      const inside = qx > qy ? (qx > qz ? qx : qz) : qy > qz ? qy : qz
+      const dist = Math.sqrt(mx * mx + my * my + mz * mz) + (inside < 0 ? inside : 0) - DIE.round
+      if (dist < 0.02) {
+        hit = true
+        break
+      }
+      t += dist
+    }
+    if (!hit) return MISS
+    let nx = Math.max(Math.abs(px) - INNER, 0) * Math.sign(px)
+    let ny = Math.max(Math.abs(py) - INNER, 0) * Math.sign(py)
+    let nz = Math.max(Math.abs(pz) - INNER, 0) * Math.sign(pz)
+    const nl = Math.hypot(nx, ny, nz) || 1
+    nx /= nl
+    ny /= nl
+    nz /= nl
+    if (Math.max(Math.abs(nx), Math.abs(ny), Math.abs(nz)) < cosBevel) return 1
+    let best = 0
+    let score = -2
+    for (let f = 0; f < 6; f++) {
+      const n = FACES[f]!.n
+      const s = n[0] * nx + n[1] * ny + n[2] * nz
+      if (s > score) {
+        score = s
+        best = f
+      }
+    }
+    const face = FACES[best]!
+    const u = face.u[0] * px + face.u[1] * py + face.u[2] * pz
+    const v = face.v[0] * px + face.v[1] * py + face.v[2] * pz
+    for (const [x0, y0] of PIPS[face.value]!)
+      if ((u - x0) * (u - x0) + (v - y0) * (v - y0) < DIE.pip * DIE.pip) return 1
+    const w = toWorld([nx, ny, nz])
+    const lambert = Math.max(0, w[0] * DIE_LIGHT[0] + w[1] * DIE_LIGHT[1] + w[2] * DIE_LIGHT[2])
+    return view.energy * (look.fill + look.shade * lambert)
   }
 }
 
-/** Fill opacity of a face mid-spin; zero at rest so the die is pure line art. */
-export const fillAlpha = (energy: number, light: number) =>
-  +(energy * (0.1 + 0.22 * light)).toFixed(3)
-
-const u = (n: number) => `calc(var(--die) * ${n / 256})`
-export const DIE_CSS = `
-.knobs-die{--die:15px;position:relative;display:inline-block;width:var(--die);height:var(--die);perspective:calc(var(--die) * ${DIE_PERSPECTIVE});vertical-align:middle}
-.knobs-die-cube{position:absolute;inset:0;transform-style:preserve-3d}
-.knobs-die-face{position:absolute;left:${u(128 - DIE.half)};top:${u(128 - DIE.half)};width:${u(2 * DIE.half)};height:${u(2 * DIE.half)};border-radius:${u(DIE.radius)};backface-visibility:hidden;background:color-mix(in srgb,currentColor calc(var(--die-fill,0) * 100%),transparent)}
-.knobs-die-face::after{content:"";position:absolute;inset:0;background:currentColor;-webkit-mask:var(--face) center/100% 100% no-repeat;mask:var(--face) center/100% 100% no-repeat}
-`
+/** The DOM die: a canvas sized for `size` px, traced in JS only when its view changes. */
+export function createDieCanvas(doc: Document, size: number) {
+  const canvas = doc.createElement("canvas")
+  canvas.className = "knobs-die"
+  canvas.setAttribute("aria-hidden", "true")
+  const box = dieBox(size)
+  const inset = (size - box) / 2
+  canvas.style.cssText = `width:${box}px;height:${box}px;margin:${inset}px;display:block;pointer-events:none`
+  const ctx = canvas.getContext("2d")!
+  return {
+    canvas,
+    render(view: DieView, look: DieLook, rgba: readonly [number, number, number, number]) {
+      const dpr = doc.defaultView?.devicePixelRatio ?? 1
+      const w = Math.round(box * dpr)
+      if (canvas.width !== w) canvas.width = canvas.height = w
+      const img = ctx.createImageData(w, w)
+      const trace = dieTracer(size, view, look)
+      const s = dieSamples(size)
+      const at = (i: number, j: number, a: number, b: number) =>
+        trace((i + a) / dpr - box / 2, (j + b) / dpr - box / 2)
+      // One ray per pixel finds the die; only pixels on or beside it are supersampled.
+      const hit = new Uint8Array(w * w)
+      for (let j = 0; j < w; j++)
+        for (let i = 0; i < w; i++) hit[j * w + i] = at(i, j, 0.5, 0.5) === MISS ? 0 : 1
+      for (let j = 0; j < w; j++)
+        for (let i = 0; i < w; i++) {
+          let near = 0
+          for (let y = Math.max(0, j - 1); y <= Math.min(w - 1, j + 1) && !near; y++)
+            for (let x = Math.max(0, i - 1); x <= Math.min(w - 1, i + 1); x++)
+              near |= hit[y * w + x]!
+          if (!near) continue
+          let cov = 0
+          for (let b = 0; b < s; b++)
+            for (let a = 0; a < s; a++) cov += Math.max(0, at(i, j, (a + 0.5) / s, (b + 0.5) / s))
+          const k = (j * w + i) * 4
+          img.data[k] = rgba[0]
+          img.data[k + 1] = rgba[1]
+          img.data[k + 2] = rgba[2]
+          img.data[k + 3] = Math.round((cov / (s * s)) * rgba[3] * 255)
+        }
+      ctx.putImageData(img, 0, 0)
+    },
+  }
+}

@@ -1,83 +1,92 @@
-import { DIE, DIE_LIFT, DIE_PERSPECTIVE, FACES, PIPS } from "../die.js"
+import { DIE, DIE_LIGHT, FACES, PIPS } from "../die.js"
 
-// Ray-traces the same six faces the DOM folds into a CSS 3D cube: the eye sits `perspective` px in
-// front of the icon plane, the front face rests in that plane, faces facing away are culled (a cube
-// is convex, so the rest never overlap). Face coordinates are Phosphor icon units; antialiasing comes
-// from the face-space size of a pixel, found by tracing two neighbours (no derivatives needed).
+// The rounded-cube die, traced exactly as `dieTracer` in die.ts does (same constants, same steps),
+// so the GPU and the DOM canvas draw identical pixels.
 
 const f = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n))
-const rad = (deg: number) => f(+((deg * Math.PI) / 180).toFixed(6))
+const v3 = (v: readonly number[]) => `vec3f(${v.map(f).join(", ")})`
 
 const pipBranches = FACES.map(({ value }, i) => {
   const d = PIPS[value]!.map(([x, y]) => `length(uv - vec2f(${f(x)}, ${f(y)}))`)
-  const body = d.reduce((acc, e) => `min(${acc}, ${e})`)
-  return `  if (face == ${i}u) { return ${body} - ${f(DIE.pip)}; }`
+  return `  if (face == ${i}u) { return ${d.reduce((acc, e) => `min(${acc}, ${e})`)}; }`
 }).join("\n")
 
-const faceRot = FACES.map(({ face }) => `vec2f(${rad(face[0])}, ${rad(face[1])})`).join(", ")
+const INNER = DIE.half - DIE.round
+const BOUND = +(INNER * Math.sqrt(3) + DIE.round + 1).toFixed(4)
 
 export const DIE_WGSL = /* wgsl */ `
-const DIE_FACE_ROT = array<vec2f, 6>(${faceRot});
-const DIE_LIGHT = vec3f(-0.4818, -0.6424, 0.5961);
-
-// CSS rotateX(a.x) rotateY(a.y) on a vector (y down, z towards the viewer).
-fn die_rot(v: vec3f, a: vec2f) -> vec3f {
-  let cy = cos(a.y); let sy = sin(a.y);
-  let x1 = v.x * cy + v.z * sy;
-  let z1 = -v.x * sy + v.z * cy;
-  let cx = cos(a.x); let sx = sin(a.x);
-  return vec3f(x1, v.y * cx - z1 * sx, v.y * sx + z1 * cx);
-}
-
-fn die_round_rect(p: vec2f, half: f32, r: f32) -> f32 {
-  let q = abs(p) - vec2f(half - r);
-  return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r;
-}
+const DIE_N = array<vec3f, 6>(${FACES.map((x) => v3(x.n)).join(", ")});
+const DIE_U = array<vec3f, 6>(${FACES.map((x) => v3(x.u)).join(", ")});
+const DIE_V = array<vec3f, 6>(${FACES.map((x) => v3(x.v)).join(", ")});
+const DIE_LIGHT = ${v3(DIE_LIGHT)};
 
 fn die_pips(face: u32, uv: vec2f) -> f32 {
 ${pipBranches}
   return 1e9;
 }
 
-// Face-space (icon units) point where the ray through pixel offset p meets the face plane.
-fn die_uv(p: vec2f, q: vec3f, n: vec3f, xa: vec3f, ya: vec3f, eye: f32, unit: f32) -> vec2f {
-  let e = vec3f(0.0, 0.0, eye);
-  let d = vec3f(p, -eye);
-  let t = dot(n, q - e) / dot(n, d);
-  if (t <= 0.0) { return vec2f(1e4); } // the plane is behind the eye along this ray
-  let h = e + t * d - q;
-  return vec2f(dot(h, xa), dot(h, ya)) / unit;
+// CSS rotateX(a.x) rotateY(a.y) on a vector (y down, z towards the viewer).
+fn die_to_world(v: vec3f, a: vec2f) -> vec3f {
+  let x1 = v.x * cos(a.y) + v.z * sin(a.y);
+  let z1 = -v.x * sin(a.y) + v.z * cos(a.y);
+  return vec3f(x1, v.y * cos(a.x) - z1 * sin(a.x), v.y * sin(a.x) + z1 * cos(a.x));
+}
+fn die_to_local(v: vec3f, a: vec2f) -> vec3f {
+  let y1 = v.y * cos(a.x) + v.z * sin(a.x);
+  let z1 = -v.y * sin(a.x) + v.z * cos(a.x);
+  return vec3f(v.x * cos(a.y) - z1 * sin(a.y), y1, v.x * sin(a.y) + z1 * cos(a.y));
 }
 
-// p: offset from the die centre in px (y down); size: icon box in px; rot: cube rotation (radians);
-// energy: spin 0…1. Returns (outline + pip coverage, fill alpha).
-fn die_coverage(p: vec2f, size: f32, rot: vec2f, energy: f32) -> vec2f {
+// One ray through offset p (px from the die centre). look = (perspective, lift, cos bevel, fill).
+fn die_trace(p: vec2f, size: f32, rot: vec2f, energy: f32, look: vec4f, shade: f32) -> f32 {
   let unit = size / 256.0;
-  let half = ${f(DIE.half)} * unit;
-  let eye = size * ${f(DIE_PERSPECTIVE)};
-  let centre = vec3f(0.0, 0.0, size * ${f(DIE_LIFT)} * energy - half);
-  var line = 0.0;
-  var fill = 0.0;
-  for (var i = 0u; i < 6u; i++) {
-    let n = die_rot(die_rot(vec3f(0.0, 0.0, 1.0), DIE_FACE_ROT[i]), rot);
-    let q = centre + n * half;
-    let facing = dot(n, normalize(vec3f(0.0, 0.0, eye) - q));
-    if (facing <= 0.0) { continue; }
-    // Nearly edge-on a face covers under a pixel; fading it avoids a smeared antialiasing streak.
-    let edgeOn = smoothstep(0.0, 0.06, facing);
-    let xa = die_rot(die_rot(vec3f(1.0, 0.0, 0.0), DIE_FACE_ROT[i]), rot);
-    let ya = die_rot(die_rot(vec3f(0.0, 1.0, 0.0), DIE_FACE_ROT[i]), rot);
-    let uv = die_uv(p, q, n, xa, ya, eye, unit);
-    let w = max(
-      length(die_uv(p + vec2f(1.0, 0.0), q, n, xa, ya, eye, unit) - uv),
-      length(die_uv(p + vec2f(0.0, 1.0), q, n, xa, ya, eye, unit) - uv),
-    );
-    let outline = abs(die_round_rect(uv, ${f(DIE.half - DIE.stroke / 2)}, ${f(DIE.radius - DIE.stroke / 2)})) - ${f(DIE.stroke / 2)};
-    let ink = min(outline, die_pips(i, uv));
-    line += clamp(0.5 - ink / w, 0.0, 1.0) * edgeOn;
-    let inside = clamp(0.5 - die_round_rect(uv, ${f(DIE.half)}, ${f(DIE.radius)}) / w, 0.0, 1.0);
-    fill += inside * edgeOn * energy * (0.1 + 0.22 * max(0.0, dot(n, DIE_LIGHT)));
+  let k = energy / (look.x * 256.0);
+  let cz = look.y * energy * 256.0 - ${f(+DIE.half.toFixed(4))};
+  let dw = normalize(vec3f(p / unit * k, -1.0));
+  let ow = vec3f(p / unit, 0.0) - dw * 512.0 - vec3f(0.0, 0.0, cz);
+  let o = die_to_local(ow, rot);
+  let d = die_to_local(dw, rot);
+  let b = dot(o, d);
+  let disc = b * b - (dot(o, o) - ${f(BOUND)} * ${f(BOUND)});
+  if (disc < 0.0) { return 0.0; }
+  var t = max(0.0, -b - sqrt(disc));
+  let far = -b + sqrt(disc);
+  var q = vec3f(0.0);
+  var hit = false;
+  for (var i = 0; i < 48 && t < far; i++) {
+    q = o + t * d;
+    let e = abs(q) - vec3f(${f(INNER)});
+    let dist = length(max(e, vec3f(0.0))) + min(max(e.x, max(e.y, e.z)), 0.0) - ${f(+DIE.round.toFixed(4))};
+    if (dist < 0.02) { hit = true; break; }
+    t += dist;
   }
-  return vec2f(min(line, 1.0), min(fill, 1.0));
+  if (!hit) { return 0.0; }
+  let raw = max(abs(q) - vec3f(${f(INNER)}), vec3f(0.0)) * sign(q);
+  let n = select(raw / length(raw), vec3f(0.0, 0.0, 1.0), length(raw) == 0.0);
+  if (max(abs(n.x), max(abs(n.y), abs(n.z))) < look.z) { return 1.0; }
+  var best = 0u;
+  var score = -2.0;
+  for (var k = 0u; k < 6u; k++) {
+    let s = dot(DIE_N[k], n);
+    if (s > score) { score = s; best = k; }
+  }
+  let uv = vec2f(dot(DIE_U[best], q), dot(DIE_V[best], q));
+  if (die_pips(best, uv) < ${f(DIE.pip)}) { return 1.0; }
+  let lambert = max(0.0, dot(die_to_world(n, rot), DIE_LIGHT));
+  return energy * (look.w + shade * lambert);
+}
+
+// Supersampled coverage of the device pixel whose centre is at frag (device px); origin is the
+// device-px position of the die centre.
+fn die_coverage(frag: vec2f, origin: vec2f, dpr: f32, samples: u32, size: f32, rot: vec2f, energy: f32, look: vec4f, shade: f32) -> f32 {
+  let s = f32(samples);
+  var cov = 0.0;
+  for (var j = 0u; j < samples; j++) {
+    for (var i = 0u; i < samples; i++) {
+      let dev = frag - vec2f(0.5) + (vec2f(f32(i), f32(j)) + 0.5) / s;
+      cov += die_trace((dev - origin) / dpr, size, rot, energy, look, shade);
+    }
+  }
+  return cov / (s * s);
 }
 `
