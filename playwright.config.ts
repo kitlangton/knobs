@@ -5,8 +5,17 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5178",
     viewport: { width: 1440, height: 1000 },
     browserName: "chromium",
+    // CI runners have no GPU. Chromium's software WebGPU (SwiftShader) works in the full browser's
+    // new headless mode; the default headless shell drops its WebGPU instance.
+    ...(process.env.CI ? { channel: "chromium" } : {}),
     launchOptions: {
-      args: ["--enable-gpu"],
+      args: process.env.CI
+        ? [
+            "--enable-unsafe-webgpu",
+            "--enable-unsafe-swiftshader",
+            "--use-webgpu-adapter=swiftshader",
+          ]
+        : ["--enable-gpu"],
     },
   },
   webServer: [
