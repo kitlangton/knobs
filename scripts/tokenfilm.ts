@@ -18,8 +18,8 @@ const tokens = (page: Page) => page.getByRole("region", { name: "knobs-tokens co
 const slider = (label: string) => (page: Page) =>
   tokens(page).getByRole("slider", { name: label, exact: true }).focus()
 const scenes: Scene[] = [
-  { name: "padding", setup: slider("Panel padding"), key: "ArrowRight" },
-  { name: "radius", setup: slider("Panel radius"), key: "ArrowRight" },
+  { name: "padding", setup: slider("Density scale"), key: "ArrowRight" },
+  { name: "radius", setup: slider("Control radius"), key: "ArrowRight" },
   {
     name: "theme",
     setup: (page) => tokens(page).getByRole("radiogroup", { name: "Preset or variant" }).focus(),

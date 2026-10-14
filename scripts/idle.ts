@@ -91,7 +91,7 @@ try {
   await report("compare off")
   // Token transitions keep the loop awake only while they run.
   const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
-  await tokens.getByRole("slider", { name: "Panel padding" }).focus()
+  await tokens.getByRole("slider", { name: "Density scale" }).focus()
   await page.keyboard.press("Shift+ArrowRight")
   await report("token glide")
   await tokens.getByRole("radio", { name: "paper" }).click()

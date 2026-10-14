@@ -38,44 +38,19 @@ const metaSchema = {
     label: "Glass",
     group: "Appearance",
   }),
+  scale: knob(1, {
+    min: 0.8,
+    max: 1.25,
+    step: 0.025,
+    label: "Density scale",
+    group: "Geometry",
+  }),
   width: knob(288, {
     min: 232,
     max: 384,
     step: 4,
     unit: "px",
     label: "Panel width",
-    group: "Geometry",
-  }),
-  pad: knob(10, {
-    min: 6,
-    max: 20,
-    step: 1,
-    unit: "px",
-    label: "Panel padding",
-    group: "Geometry",
-  }),
-  inset: knob(10, {
-    min: 6,
-    max: 18,
-    step: 1,
-    unit: "px",
-    label: "Row inset",
-    group: "Geometry",
-  }),
-  rowHeight: knob(32, {
-    min: 24,
-    max: 44,
-    step: 2,
-    unit: "px",
-    label: "Row height",
-    group: "Geometry",
-  }),
-  rowGap: knob(4, {
-    min: 2,
-    max: 12,
-    step: 1,
-    unit: "px",
-    label: "Spacing",
     group: "Geometry",
   }),
   radius: knob(8, {
@@ -86,29 +61,18 @@ const metaSchema = {
     label: "Control radius",
     group: "Geometry",
   }),
-  panelRadius: knob(12, {
-    min: 0,
-    max: 24,
-    step: 1,
-    unit: "px",
-    label: "Panel radius",
-    group: "Geometry",
-  }),
-  fontSize: knob(12, {
-    min: 10.5,
-    max: 15,
-    step: 0.5,
-    unit: "px",
-    label: "Font size",
-    group: "Typography & Motion",
-  }),
   labelWeight: knob(500, {
     min: 400,
-    max: 700,
+    max: 650,
     step: 50,
     label: "Label weight",
     group: "Typography & Motion",
   }),
+  motion: spring(
+    { duration: 0.24, bounce: 0.16 },
+    { label: "Panel spring", group: "Typography & Motion" },
+  ),
+  reveal: easing([0.2, 0.8, 0.2, 1], { label: "Reveal curve", group: "Typography & Motion" }),
   motionBlur: knob(1, {
     min: 0,
     max: 2,
@@ -123,34 +87,12 @@ const metaSchema = {
     label: "Focus glow",
     group: "Typography & Motion",
   }),
-  roll: knob(320, {
-    min: 0,
-    max: 1000,
-    step: 20,
-    unit: "ms",
-    label: "Roll speed",
-    group: "Typography & Motion",
-  }),
   cascade: knob(12, {
     min: 0,
     max: 40,
     step: 1,
     unit: "ms",
     label: "Preset cascade",
-    group: "Typography & Motion",
-  }),
-  motion: spring(
-    { duration: 0.21, bounce: 0.12 },
-    { label: "Panel spring", group: "Typography & Motion" },
-  ),
-  reveal: easing([0.2, 0.8, 0.2, 1], { label: "Reveal curve", group: "Typography & Motion" }),
-  dragRoll: toggle(false, { label: "Roll while dragging", group: "Typography & Motion" }),
-  dragRollSpeed: knob(100, {
-    min: 40,
-    max: 400,
-    step: 10,
-    unit: "ms",
-    label: "Drag roll speed",
     group: "Typography & Motion",
   }),
 }
@@ -184,6 +126,7 @@ function tokensFor(v: MetaValues): [string, string][] {
   }
   const { l, c: chroma, h } = cachedAccentParsed
   const accent = isLight && l > 0.55 ? `oklch(0.55 ${chroma} ${h})` : v.accent
+  const toggleThumb = !isLight && l > 0.78 ? "#1c1c1e" : "#ffffff"
   if (
     !cachedMotion ||
     cachedMotion.duration !== v.motion.duration ||
@@ -193,34 +136,43 @@ function tokensFor(v: MetaValues): [string, string][] {
     cachedFill = springCss(v.motion)
   }
   const fill = cachedFill
+  const row = Math.round((32 * v.scale) / 2) * 2
+  const pad = Math.round((10 * v.scale) / 2) * 2
+  const gap = Math.max(2, Math.round(4 + (v.scale - 1) * 9.5))
+  const fontSize = Math.round((12 + (v.scale - 1) * 6.5) * 2) / 2
+  const panelRadius = v.radius + 4
   cachedValues = v
   cachedTokens = [
     ["--k-bg", isLight ? "#f5f5f7" : "#1c1c1e"],
+    ["--k-contrast", String(v.contrast)],
     ["--k-surface", `rgba(${rgb}, ${alpha(0.05, 0.055)})`],
     ["--k-surface-hi", `rgba(${rgb}, ${alpha(0.095, 0.11)})`],
     ["--k-line", `rgba(${rgb}, ${alpha(0.1, 0.1)})`],
     ["--k-line-hi", `rgba(${rgb}, ${alpha(0.2, 0.18)})`],
     ["--k-text", isLight ? "rgba(0, 0, 0, 0.88)" : "rgba(255, 255, 255, 0.92)"],
     ["--k-label", isLight ? "rgba(60, 60, 67, 0.68)" : "rgba(255, 255, 255, 0.64)"],
-    ["--k-dim", isLight ? "rgba(60, 60, 67, 0.44)" : "rgba(255, 255, 255, 0.42)"],
+    ["--k-dim", isLight ? "rgba(60, 60, 67, 0.5)" : "rgba(255, 255, 255, 0.42)"],
     ["--k-modified", isLight ? "rgba(0, 0, 0, 0.42)" : "rgba(255, 255, 255, 0.5)"],
     ["--k-seg-bg", isLight ? "rgba(0, 0, 0, 0.065)" : "rgba(0, 0, 0, 0.26)"],
     ["--k-seg-active", isLight ? "#ffffff" : `rgba(255, 255, 255, ${(0.11 * c).toFixed(3)})`],
     ["--k-toggle-track", `rgba(${rgb}, 0.14)`],
+    ["--k-toggle-thumb", toggleThumb],
     ["--k-accent", accent],
+    ["--k-unit", "4px"],
+    ["--k-density", String(v.scale)],
     ["--k-width", `${v.width}px`],
-    ["--k-pad", `${v.pad}px`],
-    ["--k-inset", `${v.inset}px`],
-    ["--k-row", `${v.rowHeight}px`],
-    ["--k-gap", `${v.rowGap}px`],
+    ["--k-pad", `${pad}px`],
+    ["--k-inset", `${pad}px`],
+    ["--k-row", `${row}px`],
+    ["--k-gap", `${gap}px`],
     ["--k-radius", `${v.radius}px`],
-    ["--k-panel-radius", `${v.panelRadius}px`],
-    ["--k-font-size", `${v.fontSize}px`],
+    ["--k-panel-radius", `${panelRadius}px`],
+    ["--k-radius-md", `${Math.max(0, v.radius - 2)}px`],
+    ["--k-radius-sm", `${Math.max(0, v.radius - 4)}px`],
+    ["--k-font-size", `${fontSize}px`],
     ["--k-label-weight", String(v.labelWeight)],
     ["--k-blur", String(v.motionBlur)],
     ["--k-glow", String(v.glow)],
-    ["--k-roll", String(v.roll)],
-    ["--k-drag-roll", String(v.dragRoll ? v.dragRollSpeed : 0)],
     ["--k-cascade", String(v.cascade)],
     ["--k-glass", String(v.glass)],
     ["--k-reveal-ease", bezierCss(v.reveal)],
@@ -279,41 +231,27 @@ const knobsMeta = defineControls("knobs-tokens", metaSchema, {
   enabled: true,
   presets: {
     compact: {
+      scale: 0.875,
       width: 260,
-      pad: 8,
-      inset: 8,
-      rowHeight: 26,
-      rowGap: 3,
       radius: 6,
-      panelRadius: 10,
-      fontSize: 11,
     },
     airy: {
+      scale: 1.1875,
       width: 320,
-      pad: 14,
-      inset: 12,
-      rowHeight: 38,
-      rowGap: 7,
       radius: 10,
-      panelRadius: 16,
-      fontSize: 13,
     },
     paper: {
       theme: "light",
       accent: "oklch(0.56 0.15 45)",
       contrast: 1.05,
       radius: 8,
-      panelRadius: 12,
     },
     terminal: {
       theme: "dark",
       accent: "oklch(0.82 0.19 148)",
       contrast: 1.35,
+      scale: 0.875,
       radius: 2,
-      panelRadius: 4,
-      rowHeight: 28,
-      rowGap: 3,
-      fontSize: 11.5,
     },
     cobalt: {
       theme: "dark",

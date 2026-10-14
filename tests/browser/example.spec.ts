@@ -308,7 +308,7 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })
   await presetStrip.getByRole("radio", { name: "compact", exact: true }).click()
   await expect(page.locator("[data-css-output]")).toContainText("--k-width: 260px;")
-  await expect(page.locator("[data-css-output]")).toContainText("--k-row: 26px;")
+  await expect(page.locator("[data-css-output]")).toContainText("--k-row: 28px;")
 
   // Switch to "terminal" preset
   await presetStrip.getByRole("radio", { name: "terminal", exact: true }).click()
@@ -620,7 +620,7 @@ test("group reset appears only while its group differs from defaults", async ({ 
 
   // Vertical stops end at the custom actions row when there is one.
   const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
-  await tokens.getByRole("slider", { name: "Drag roll speed" }).focus()
+  await tokens.getByRole("slider", { name: "Preset cascade" }).focus()
   await page.keyboard.press("ArrowDown")
   await expect(tokens.getByRole("button", { name: "Copy CSS" })).toBeFocused()
 })
@@ -1179,5 +1179,173 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   await expect(panel).toBeVisible()
   await expect(page.locator(".knobs-morph")).toHaveCount(0)
   await expect(panel).not.toHaveAttribute("data-morphing")
+  expect(errors).toEqual([])
+})
+
+test("design-system geometry contracts: left/right column alignment, concentric radii, and uniform row heights across renderers and densities", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+
+  for (const mode of ["dom", "gpu"] as const) {
+    await page.goto(`/${mode === "gpu" ? "?gpu" : "?dom"}`)
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    await page.reload()
+
+    // Open splat floating dialog so we also measure '+' save button and context menu radii
+    const splatStudy = page.locator('[data-study="splat"]')
+    const sb = (await splatStudy.boundingBox())!
+    await splatStudy.hover({ position: { x: sb.width - 20, y: 60 } })
+    await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+    const splatPanel = page.getByRole("dialog", { name: "splat controls", exact: true })
+    await expect(splatPanel).toBeVisible()
+    await expect(splatPanel).not.toHaveAttribute("data-morphing")
+
+    const remote = page.getByRole("region", { name: "remote-tune controls" })
+    await remote.scrollIntoViewIfNeeded()
+    if (mode === "gpu") {
+      await expect(remote).toHaveAttribute("data-gpu-active", "true")
+    }
+
+    // Expand disclosure rows so strip labels/readouts, pad, easing box and chips are visible
+    for (const name of ["Fade curve", "Tint", "Anchor"]) {
+      const head = remote.getByRole("button", { name, exact: true })
+      if ((await head.getAttribute("aria-expanded")) !== "true") await head.click()
+    }
+
+    for (const density of ["compact", "default", "comfortable"] as const) {
+      await page.getByRole("button", { name: density, exact: true }).click()
+      await splatPanel.evaluate((el, d) => ((el as HTMLElement).dataset.density = d), density)
+      await page.mouse.move(2, 2)
+      // Wait for token transitions and GPU springs to settle
+      await remote.evaluate((el) =>
+        Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+      )
+      await splatPanel.evaluate((el) =>
+        Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+      )
+      if (mode === "gpu") {
+        await expect
+          .poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false))
+          .toBe(true)
+      }
+
+      // Open context menu on splat panel to verify menu concentric radii at this density
+      await splatPanel.getByRole("slider", { name: "count" }).focus()
+      await page.keyboard.press("Shift+F10")
+      await expect(page.getByRole("menu")).toBeVisible()
+
+      const m = await page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>('[aria-label="remote-tune controls"]')!
+        const splat = document.querySelector<HTMLElement>('[aria-label="splat controls"]')!
+        const menu = document.querySelector<HTMLElement>(".knobs-menu")!
+        const pr = panel.getBoundingClientRect()
+        const sr = splat.getBoundingClientRect()
+        const L = (el: Element) => el.getBoundingClientRect().left - pr.left
+        const R = (el: Element) => pr.right - el.getBoundingClientRect().right
+        const H = (el: Element) => el.getBoundingClientRect().height
+        const rad = (el: Element) => parseFloat(getComputedStyle(el).borderRadius)
+
+        const saveBtn = splat.querySelector<HTMLElement>(".knobs-preset-save")!
+        const saveRange = document.createRange()
+        saveRange.selectNodeContents(saveBtn)
+        const saveGlyphRight = sr.right - saveRange.getBoundingClientRect().right
+
+        const stripLabel = panel.querySelector<HTMLElement>(".knobs-strip-label")!
+        const stripRange = document.createRange()
+        stripRange.selectNodeContents(stripLabel)
+        const stripGlyphLeft = stripRange.getBoundingClientRect().left - pr.left
+
+        const lefts = [
+          L(panel.querySelector("header strong")!),
+          ...Array.from(panel.querySelectorAll(".knobs-group-head > span:first-child"), L),
+          ...Array.from(panel.querySelectorAll(".knobs-label"), L),
+          ...Array.from(panel.querySelectorAll(".knobs-row > span:first-child"), L),
+          ...Array.from(panel.querySelectorAll(".knobs-x-label"), L),
+          ...Array.from(panel.querySelectorAll(".knobs-strip-label"), L),
+          stripGlyphLeft,
+          L(panel.querySelector(".knobs-pad")!),
+          L(panel.querySelector(".knobs-ease")!),
+          L(panel.querySelector(".knobs-ease-chips")!),
+        ]
+
+        const rights = [
+          ...Array.from(panel.querySelectorAll(".knobs-slider:not(.knobs-sub) .knobs-value"), R),
+          ...Array.from(panel.querySelectorAll(".knobs-seg"), R),
+          ...Array.from(panel.querySelectorAll(".knobs-toggle"), R),
+          R(panel.querySelector(".knobs-spring-curve")!),
+          ...Array.from(panel.querySelectorAll(".knobs-x-sum"), R),
+          ...Array.from(panel.querySelectorAll(".knobs-strip-read"), R),
+          R(panel.querySelector(".knobs-pad")!),
+          R(panel.querySelector(".knobs-ease")!),
+          R(panel.querySelector(".knobs-head-actions button:last-child .knobs-icon")!),
+          ...Array.from(
+            panel.querySelectorAll(".knobs-group-head > span:last-child > button:last-child > *"),
+            R,
+          ),
+          saveGlyphRight,
+        ]
+
+        const rowTarget = parseFloat(getComputedStyle(panel).getPropertyValue("--kv-row"))
+        const rowHeights = [
+          ...Array.from(panel.querySelectorAll(".knobs-slider"), H),
+          ...Array.from(panel.querySelectorAll(".knobs-row"), H),
+          ...Array.from(panel.querySelectorAll(".knobs-x-head"), H),
+        ]
+
+        const presetsEl = panel.querySelector<HTMLElement>(".knobs-presets")!
+        const presetPillEl = panel.querySelector<HTMLElement>(".knobs-presets-pill")!
+        const segEl = panel.querySelector<HTMLElement>(".knobs-seg")!
+        const segPillEl = panel.querySelector<HTMLElement>(".knobs-seg-pill")!
+        const easeChipsEl = panel.querySelector<HTMLElement>(".knobs-ease-chips")!
+        const easeChipEl = panel.querySelector<HTMLElement>(".knobs-ease-chip")!
+        const cardEl = panel.querySelector<HTMLElement>(".knobs-card")!
+        const menuItemEl = menu.querySelector<HTMLElement>(".knobs-menu-item")!
+
+        return {
+          lefts,
+          rights,
+          rowTarget,
+          rowHeights,
+          radii: {
+            panelDiff: rad(panel) - rad(cardEl),
+            presetsDiff:
+              rad(presetsEl) -
+              rad(presetPillEl) -
+              parseFloat(getComputedStyle(presetsEl).paddingTop),
+            segDiff: rad(segEl) - rad(segPillEl) - parseFloat(getComputedStyle(segEl).paddingTop),
+            easeDiff:
+              rad(easeChipsEl) -
+              rad(easeChipEl) -
+              parseFloat(getComputedStyle(easeChipsEl).paddingTop),
+            menuDiff: rad(menu) - rad(menuItemEl) - parseFloat(getComputedStyle(menu).paddingTop),
+          },
+        }
+      })
+
+      await page.keyboard.press("Escape")
+      await page.keyboard.press("Escape")
+
+      const expectedCol = density === "compact" ? 17 : density === "default" ? 21 : 25
+      for (const l of m.lefts) {
+        expect(Math.abs(l - expectedCol)).toBeLessThanOrEqual(0.5)
+      }
+      for (const r of m.rights) {
+        expect(Math.abs(r - expectedCol)).toBeLessThanOrEqual(0.5)
+      }
+      for (const h of m.rowHeights) {
+        expect(Math.abs(h - m.rowTarget)).toBeLessThanOrEqual(0.5)
+      }
+      expect(Math.abs(m.radii.panelDiff - 4)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(m.radii.presetsDiff)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(m.radii.segDiff)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(m.radii.easeDiff)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(m.radii.menuDiff)).toBeLessThanOrEqual(0.5)
+    }
+  }
   expect(errors).toEqual([])
 })
