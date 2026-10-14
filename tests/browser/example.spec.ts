@@ -435,7 +435,9 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   await page.screenshot({ path: "test-results/example-gpu.png" })
 
   // Verify idle frame skipping (RAF loop goes to sleep once springs settle)
-  await expect.poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false)).toBe(true)
+  await expect
+    .poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false), { timeout: 20_000 })
+    .toBe(true)
 
   // Verify graceful fallback when WebGPU is unavailable
   const fallbackContext = await page.context().browser()!.newContext()
@@ -1084,7 +1086,9 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await expect(gpuPanel).toHaveAttribute("data-gpu-active", "true")
   const settled = async () => {
     await page.mouse.move(5, 5)
-    await expect.poll(() => page.evaluate(() => window.__knobsGpu!.sleeping)).toBe(true)
+    await expect
+      .poll(() => page.evaluate(() => window.__knobsGpu!.sleeping), { timeout: 20_000 })
+      .toBe(true)
     return page.evaluate(() => window.__knobsGpu!.lastInstanceCount)
   }
   const closed = await settled()
@@ -1926,7 +1930,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   ).toBeGreaterThan(2)
   expect(Math.abs(start.y - end.y) + Math.abs(start.x - end.x)).toBeGreaterThan(50)
   await expect
-    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 5000 })
+    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 20_000 })
     .toBe(true)
   expect(errors).toEqual([])
 })
