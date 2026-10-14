@@ -984,6 +984,11 @@ class GpuOverlayManager {
     let room = 0
     if (lock) {
       const on = lock.dataset.on === "true" ? 1 : 0
+      // A lock added just now enters from nothing; one there from the start is simply shown.
+      if ("enter" in lock.dataset && !this.eased.has(lock)) {
+        this.ease(lock, "room", 0)
+        this.ease(lock, "shown", 0)
+      }
       room = 14 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
       const shown = this.ease(lock, "shown", on, 28, 0.62)
       if (shown > 0.005) {

@@ -396,16 +396,23 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
   path.setAttribute("fill", "currentColor")
   path.setAttribute("fill-rule", "evenodd")
   svg.append(path)
-  const traced = createDieCanvas(doc, size)
-  traced.canvas.hidden = true
-  node.append(svg, traced.canvas)
+  node.append(svg)
+  // The canvas only exists once a DOM-rendered roll needs it.
+  let canvas: ReturnType<typeof createDieCanvas> | undefined
+  const traced = () => {
+    if (!canvas) {
+      canvas = createDieCanvas(doc, size)
+      node.append(canvas.canvas)
+    }
+    return canvas
+  }
 
   const motion = new DieMotion()
   let view: DieView = { rx: 0, ry: 0, energy: 0 }
   let frame = 0
   let last = 0
   const show = (rolling: boolean) => {
-    traced.canvas.hidden = !rolling
+    if (canvas) canvas.canvas.hidden = !rolling
     svg.style.visibility = rolling ? "hidden" : ""
     if (!rolling) path.setAttribute("d", facePath(motion.value))
   }
@@ -415,9 +422,7 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
   const tick = (now: number) => {
     view = motion.step((now - last) / 1000)
     last = now
-    if (!gpu()) {
-      traced.render(view, DIE_LOOK, cachedColor)
-    }
+    if (!gpu()) traced().render(view, DIE_LOOK, cachedColor)
     onFrame()
     if (motion.resting) {
       frame = 0
@@ -446,6 +451,7 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
       }
       if (nudge) motion.nudge()
       else motion.roll()
+      if (!gpu()) traced()
       show(true)
       if (!frame) {
         last = performance.now()

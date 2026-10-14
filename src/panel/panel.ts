@@ -497,15 +497,25 @@ function buildPanel<S extends Schema>(
     }
   })
 
-  // A locked row carries a small lock after its label (see .knobs-lock); the GPU finds it by label.
+  // A locked row carries a small lock after its label (see .knobs-lock), added the first time it's
+  // locked; the GPU finds it by label.
   const lockIcons = new Map<HTMLElement, HTMLElement>()
-  for (const r of rows) {
-    const lock = el("span")
-    lock.className = "knobs-lock"
-    lock.setAttribute("aria-hidden", "true")
-    lock.append(iconSvg(doc, "lock"))
-    r.labelEl.append(lock)
-    lockIcons.set(r.labelEl, lock)
+  const lockIcon = (label: HTMLElement, animate: boolean) => {
+    let lock = lockIcons.get(label)
+    if (!lock) {
+      lock = el("span")
+      lock.className = "knobs-lock"
+      lock.setAttribute("aria-hidden", "true")
+      lock.append(iconSvg(doc, "lock"))
+      label.append(lock)
+      lockIcons.set(label, lock)
+      // Styled unlocked first, so it scales in (data-enter tells the GPU to do the same).
+      if (animate) {
+        lock.dataset.enter = ""
+        lock.getBoundingClientRect()
+      }
+    }
+    return lock
   }
   const keyOf = (i: number) => rows[i]!.key as keyof S & string
   const groupKeys = (group: string) => rows.filter((r) => r.field.group === group).map((r) => r.key)
@@ -785,8 +795,8 @@ function buildPanel<S extends Schema>(
       const locked = controls.isLocked(row.key as keyof S & string)
       if (!locked) unlocked++
       if (row.row.classList.contains("knobs-locked") === locked) continue
+      lockIcon(row.labelEl, initialized).dataset.on = String(locked)
       row.row.classList.toggle("knobs-locked", locked)
-      lockIcons.get(row.labelEl)!.dataset.on = String(locked)
     }
     if (randomButton.disabled !== (unlocked === 0)) randomButton.disabled = unlocked === 0
     for (const [group, { button }] of groupDice) {
