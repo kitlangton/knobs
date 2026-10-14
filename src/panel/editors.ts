@@ -624,11 +624,11 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     const [px, py] = at(shown)
     const [hx, hy] = at(f.value)
     place([puck, vLine, hLine], instant, () => {
-      puck.style.transform = `translate(${px}px,${py}px)`
-      vLine.style.transform = `translateX(${px}px)`
-      hLine.style.transform = `translateY(${py}px)`
+      puck.style.translate = `${px}px ${py}px`
+      vLine.style.translate = `${px}px 0`
+      hLine.style.translate = `0 ${py}px`
     })
-    home.style.transform = `translate(${hx}px,${hy}px)`
+    home.style.translate = `${hx}px ${hy}px`
   }
   const size = measure(pad, () => layout(true))
   const g = gesture(c)
@@ -832,8 +832,8 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
         "d",
         `path("M${a[0]} ${a[1]}L${a[2]} ${a[3]}M${a[4]} ${a[5]}L${a[6]} ${a[7]}")`,
       )
-      handles[0]!.style.transform = `translate(${a[2]}px,${a[3]}px)`
-      handles[1]!.style.transform = `translate(${a[6]}px,${a[7]}px)`
+      handles[0]!.style.translate = `${a[2]}px ${a[3]}px`
+      handles[1]!.style.translate = `${a[6]}px ${a[7]}px`
     })
   }
   const size = measure(box, () => layout(true))

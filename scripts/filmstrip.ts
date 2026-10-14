@@ -24,6 +24,18 @@ async function openSplat(page: Page) {
   return panel
 }
 
+async function openMotion(page: Page) {
+  const study = page.locator('[data-study="motion"]')
+  const b = (await study.boundingBox())!
+  await study.hover({ position: { x: b.width - 20, y: 60 } })
+  await sleep(250)
+  await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+  await panel.waitFor()
+  await sleep(300)
+  return panel
+}
+
 type Scene = {
   name: string
   path: string
@@ -127,6 +139,64 @@ const scenes: Scene[] = [
       await panel.getByRole("radio", { name: "warm" }).click()
     },
     ms: 1300,
+  },
+  {
+    // Disclosure rows open on the height reveal while the rows below glide down.
+    name: "expand",
+    path: "/",
+    async setup(page) {
+      const panel = await openMotion(page)
+      await page.mouse.move(5, 5)
+      return async () => ({ ...(await panel.boundingBox())!, height: 640 })
+    },
+    async act(page, k) {
+      const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+      await panel.getByRole("button", { name: "Curve", exact: true }).click()
+      await sleep(500 * k)
+      await panel.getByRole("button", { name: "Tint", exact: true }).click()
+      await sleep(120 * k)
+      await panel.getByRole("button", { name: "Curve", exact: true }).click()
+    },
+    ms: 900,
+  },
+  {
+    // A preset reaching springs, curves, the pad and a colour in turn, retargeted mid-wave.
+    name: "rich-cascade",
+    path: "/",
+    async setup(page) {
+      await page.addStyleTag({ content: ":root .knobs-panel{--k-cascade:40!important}" })
+      const panel = await openMotion(page)
+      for (const name of ["Tint", "Target", "Curve"]) {
+        await panel.getByRole("button", { name, exact: true }).click()
+        await sleep(300)
+      }
+      await page.mouse.move(5, 5)
+      await sleep(400)
+      return async () => (await panel.boundingBox())!
+    },
+    async act(page, k) {
+      const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+      await panel.getByRole("radio", { name: "jelly" }).click()
+      await sleep(160 * k)
+      await panel.getByRole("radio", { name: "lazy" }).click()
+    },
+    ms: 1400,
+  },
+  {
+    name: "spring-dot",
+    path: "/",
+    async setup(page) {
+      const panel = await openMotion(page)
+      const row = panel.locator('[data-field="travel"]')
+      return async () => (await row.boundingBox())!
+    },
+    async act(page) {
+      const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+      await panel.getByRole("slider", { name: "Travel bounce" }).focus()
+      await page.keyboard.press("Shift+ArrowRight")
+      await page.keyboard.press("Shift+ArrowRight")
+    },
+    ms: 1500,
   },
   {
     name: "pill",

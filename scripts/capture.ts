@@ -1,4 +1,4 @@
-// Headless visual checks: `bun scripts/capture.ts` writes element screenshots to test-results/cap-*.png
+// Headless visual checks: `bun scripts/capture.ts [scene…]` writes element screenshots to test-results/cap-*.png
 // for both renderers. Add scenes below as polish targets come up.
 import { chromium, type Page } from "@playwright/test"
 import { spawn } from "node:child_process"
@@ -118,6 +118,33 @@ const scenes: { name: string; path: string; run(page: Page, mode: string): Promi
     },
   },
   {
+    // Spring, easing, point and colour rows, closed then open, in dark and light.
+    name: "motion",
+    path: "/",
+    async run(page, mode) {
+      const study = page.locator('[data-study="motion"]')
+      const b = (await study.boundingBox())!
+      await study.hover({ position: { x: b.width - 20, y: 60 } })
+      await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+      const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+      await panel.waitFor()
+      for (const theme of ["dark", "light"]) {
+        await panel.evaluate((el, t) => ((el as HTMLElement).dataset.theme = t), theme)
+        for (const open of [false, true]) {
+          for (const name of ["Curve", "Target", "Tint"]) {
+            const head = panel.getByRole("button", { name, exact: true })
+            if ((await head.getAttribute("aria-expanded")) !== String(open)) await head.click()
+          }
+          await page.mouse.move(5, 5)
+          await sleep(900)
+          await panel.screenshot({
+            path: `test-results/cap-${mode}-motion-${theme}-${open ? "open" : "closed"}.png`,
+          })
+        }
+      }
+    },
+  },
+  {
     name: "remote",
     path: "/",
     async run(page, mode) {
@@ -146,9 +173,11 @@ try {
     } catch {}
     await sleep(200)
   }
+  const only = process.argv.slice(2)
   const browser = await chromium.launch({ args: ["--enable-gpu"] })
   for (const mode of ["dom", "gpu"]) {
     for (const scene of scenes) {
+      if (only.length && !only.includes(scene.name)) continue
       const page = await browser.newPage({
         viewport: { width: 1440, height: 1000 },
         deviceScaleFactor: 2,

@@ -50,17 +50,22 @@ export function positionPanel(
       }
     }
   }
+  // x, y is where the panel wants to be; it shows clamped inside the viewport, so an editor
+  // opening near the bottom lifts it and closing that editor lets it settle back.
+  let shown = { x, y }
   const constrain = () => {
-    x = Math.max(8, Math.min(x, win.innerWidth - panel.offsetWidth - 8))
-    y = Math.max(8, Math.min(y, win.innerHeight - panel.offsetHeight - 8))
-    panel.style.left = `${x}px`
-    panel.style.top = `${y}px`
+    shown = {
+      x: Math.max(8, Math.min(x, win.innerWidth - panel.offsetWidth - 8)),
+      y: Math.max(8, Math.min(y, win.innerHeight - panel.offsetHeight - 8)),
+    }
+    panel.style.left = `${shown.x}px`
+    panel.style.top = `${shown.y}px`
   }
   let drag: { id: number; x: number; y: number; left: number; top: number } | undefined
   header.onpointerdown = (event) => {
     if (event.button !== 0 || (event.target as Element).closest("button,select,input")) return
     event.preventDefault()
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: x, top: y }
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: shown.x, top: shown.y }
     header.setPointerCapture(event.pointerId)
   }
   header.onpointermove = (event) => {
@@ -70,7 +75,9 @@ export function positionPanel(
     constrain()
   }
   header.onlostpointercapture = () => {
+    if (!drag) return
     drag = undefined
+    ;({ x, y } = shown)
     try {
       storage()?.setItem(key, JSON.stringify({ x, y }))
     } catch {

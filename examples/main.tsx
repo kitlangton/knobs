@@ -74,8 +74,18 @@ const motion = defineControls(
   {
     enabled: import.meta.env.DEV,
     presets: {
-      lazy: { travel: { duration: 1.1, bounce: 0 }, curve: [0.42, 0, 0.58, 1] },
-      jelly: { travel: { duration: 0.45, bounce: 0.6 }, curve: [0.34, 1.56, 0.64, 1] },
+      lazy: {
+        travel: { duration: 1.1, bounce: 0 },
+        curve: [0.42, 0, 0.58, 1],
+        target: { x: 0.2, y: 0.6 },
+        tint: "oklch(0.74 0.11 200)",
+      },
+      jelly: {
+        travel: { duration: 0.45, bounce: 0.6 },
+        curve: [0.34, 1.56, 0.64, 1],
+        target: { x: -0.5, y: 0.35 },
+        tint: "oklch(0.72 0.17 340)",
+      },
     },
   },
 )
