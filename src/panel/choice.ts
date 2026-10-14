@@ -1,6 +1,8 @@
+import { tick } from "./haptics.js"
 import { iconSvg } from "./icons.js"
 import { openMenu, type Menu } from "./menu.js"
 import { placeSegPill } from "./seg.js"
+import { smearPill } from "./smear.js"
 import { onPan, panOptions } from "./swipe.js"
 
 export interface ChoiceItem {
@@ -62,6 +64,7 @@ export function createChoice(
   const pill = doc.createElement("span")
   pill.className = "knobs-seg-pill"
   pill.setAttribute("aria-hidden", "true")
+  smearPill(pill, 6)
   seg.append(pill)
   seg.tabIndex = 0
   seg.setAttribute("role", "radiogroup")
@@ -154,6 +157,7 @@ export function createChoice(
         if (item && item.value !== o.value()) {
           o.choose(item.value, panned)
           panned = true
+          tick(menu)
         }
       }
     },

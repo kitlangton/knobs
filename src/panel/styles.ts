@@ -305,6 +305,10 @@ const css = `
   transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY},opacity .15s}
 .knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY},opacity .15s}
 .knobs-seg-pill[data-off]{opacity:0}
+/* --k-motion-blur: a gliding pill widens by its smear and fades over it at each end (see smear.ts). */
+.knobs-smear-pill{margin-inline:calc(var(--k-smear) * -.5px);
+  -webkit-mask:linear-gradient(to right,transparent,#000 calc(var(--k-smear) * 1px),#000 calc(100% - var(--k-smear) * 1px),transparent);
+  mask:linear-gradient(to right,transparent,#000 calc(var(--k-smear) * 1px),#000 calc(100% - var(--k-smear) * 1px),transparent)}
 .knobs-seg button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 7px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:var(--k-radius-sm);transition:background .15s,color .15s}
 .knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}

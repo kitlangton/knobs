@@ -50,6 +50,8 @@ import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill } from "./seg.js"
+import { smearPill } from "./smear.js"
+import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
@@ -126,6 +128,7 @@ function buildPanel<S extends Schema>(
   }
   const titleText = options.title === undefined ? controls.id : options.title
   if (options.restored) root.dataset.restored = ""
+  if (options.haptics === false) root.dataset.haptics = "off"
   root.setAttribute("role", inline ? "region" : "dialog")
   root.setAttribute("aria-label", `${titleText || controls.id} controls`)
   host.append(root)
@@ -477,6 +480,7 @@ function buildPanel<S extends Schema>(
       const pill = el("span")
       pill.className = "knobs-seg-pill"
       pill.setAttribute("aria-hidden", "true")
+      smearPill(pill, 6)
       seg.append(pill)
       const buttons = presets.map((preset, i) => {
         const b = el("button", String(i + 1))
@@ -878,7 +882,11 @@ function buildPanel<S extends Schema>(
     toggle.setAttribute("aria-label", display)
     if (field.shortcut) toggle.setAttribute("aria-keyshortcuts", field.shortcut)
     toggle.append(el("i"))
-    toggle.onclick = () => run(() => set(!controls.get()[key]))
+    const tapped = options.haptics !== false && tapTick(toggle)
+    toggle.onclick = () => {
+      run(() => set(!controls.get()[key]))
+      if (!tapped) tick(toggle)
+    }
     row.append(toggle)
     return {
       ...base,

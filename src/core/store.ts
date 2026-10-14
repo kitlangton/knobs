@@ -105,6 +105,12 @@ export interface MountPanelOptions {
   readonly preset?: TokenPreset
   /** `false` drops the header (title and buttons) for a host that draws its own. */
   readonly header?: boolean
+  /**
+   * Light haptic ticks on phones (a stepped slider crossing a stop, the default's magnet, a
+   * choice changing mid-pan, a switch flipping); on by default, `false` turns them off.
+   * Reduced motion turns them off too.
+   */
+  readonly haptics?: boolean
   /** Called once the panel is mounted, with a handle to focus it (a host's "Tune" key). */
   readonly onReady?: (panel: PanelHandle) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */

@@ -1369,7 +1369,8 @@ class GpuOverlayManager {
         radius: t.radiusSm,
         glowOrBlur: t.glowStrength * 0.6,
         kind: 3,
-        blurX: reduced ? 0 : clamp(pill.velocity * 0.006 * t.blurStrength, -6, 6),
+        // Edge blur (--k-motion-blur): a smear as wide as the pill's speed, like the DOM's.
+        blurX: reduced ? 0 : clamp(pill.velocity * 0.006 * t.motionBlur, -6, 6),
       })
     }
     for (const b of buttons) {
@@ -2579,7 +2580,7 @@ class GpuOverlayManager {
           )
           sl.fillSpring.omega = tokens.fillOmega
           sl.fillSpring.zeta = tokens.fillZeta
-          for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring]) {
+          for (const sp of [sl.fillSpring, sl.handleSpring]) {
             if (reducedMotion) sp.snap(sp.target)
             else {
               sp.step(dt)

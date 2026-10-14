@@ -2,6 +2,8 @@ import { arrowOf } from "./prefs.js"
 import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
+import { tick } from "./haptics.js"
+import { smearPill } from "./smear.js"
 import { livePill, panOptions } from "./swipe.js"
 
 export interface PresetEntry<V = Record<string, unknown>> {
@@ -105,6 +107,7 @@ export function createPresetStrip<S extends Schema>(
 
   const track = el("div", "knobs-presets-track")
   const pill = el("div", "knobs-presets-pill")
+  smearPill(pill, 8)
   pill.setAttribute("aria-hidden", "true")
   const saveButton = showVariants ? el("button", "knobs-preset-chip knobs-preset-save", "+") : null
   if (saveButton) {
@@ -375,6 +378,7 @@ export function createPresetStrip<S extends Schema>(
     if (idx >= 0 && idx !== activeState.activeIndex) {
       selectAt(idx, scrubCommitted)
       scrubCommitted = true
+      tick(track)
     }
   }
   const endScrub = () => {

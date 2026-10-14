@@ -1,3 +1,5 @@
+import { tick } from "./haptics.js"
+
 /** A pause this long (ms) with no wheel events ends a gesture. */
 export const GESTURE_GAP = 120
 
@@ -542,6 +544,7 @@ export function panOptions(
   const choose = (index: number) => {
     o.select(index, committed)
     committed = true
+    tick(o.box)
   }
   onPan(el, {
     accept: () => o.buttons().length > 0,
