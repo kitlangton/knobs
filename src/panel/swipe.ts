@@ -13,16 +13,20 @@ const LIFT_PACE = 1.4
  * its most speed (px/ms) against the fingers' (0.54–0.83 recorded; a long finger interval is ~1).
  */
 const LIFT_SPIKE = 1.25
-const LIFT_SPIKE_MIN = 10
+const LIFT_SPIKE_MIN = 5
 const LIFT_SLOWER = 0.9
 /** The momentum event after the spike: its size against the spike's, and its speed (px/ms). */
 const AFTER_SPIKE: readonly [number, number] = [0.25, 1.25]
 const AFTER_SPIKE_SPEEDUP = 1.2
 /** Event-to-event ratios of momentum once it's running (Chrome's and Firefox's first few rise). */
 const COAST: readonly [number, number] = [0.8, 1.15]
-/** Ratios of a steady fade, for streams with no lift pause, and how far one may drift from the last. */
-const FADE: readonly [number, number] = [0.75, 0.99]
-const FADE_DRIFT = 0.08
+/**
+ * A steady fade, for streams with no lift pause: a run that never rises, never drops by more
+ * than a quarter in one event, plateaus (whole px) at most one event at a time, and whose rate
+ * per event since it began holds within `FADE_DRIFT`.
+ */
+const FADE_STEP = 0.75
+const FADE_DRIFT = 0.05
 /** Momentum events held back before a lift is certain; a finger event in between releases them. */
 const CONFIRM = 4
 /** A new touch can't land without a pause this long (ms); a coast broken sooner was a false alarm. */
@@ -32,7 +36,7 @@ const TOUCH_GAP = 24
  * stops fading for `PLATEAU` events (Firefox's hovers for 9), or goes quiet before fading or
  * within `PLATEAU / 2`, was the fingers.
  */
-const PLATEAU_PX = 4
+const PLATEAU_PX = 3
 const PLATEAU = 10
 /** Px of rubber band at the ends: the overshoot a pan can bank before it stops counting. */
 export const OVERSHOOT = 224
@@ -89,7 +93,10 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
   let lastY = 0
   let lastMag = 0
   let lastGap = 0
-  let lastRatio = 1
+  /** The fade run: its length, where it began (px), its rate per event, and a plateau in it. */
+  let fadeFrom = 0
+  let fadeRate = 1
+  let plateau = false
   let moved = false
   let travelX = 0
   let travelY = 0
@@ -157,7 +164,7 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
       swallowedX += hx
       swallowedY += hy
     }
-    if (heldBy === "fade" || sure) hint()
+    if (heldBy === "lift" || sure) hint()
     held = []
     certain = sure
     if (sure) settle()
@@ -171,7 +178,6 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
     at = t
     lastX = x
     lastY = y
-    lastRatio = lastMag > 0 ? mag / lastMag : 1
     lastMag = mag
   }
   const median = (values: readonly number[]) =>
@@ -225,7 +231,7 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
         // Faded by a fifth, falling steadily: momentum, so the gesture is over.
         coasted++
         falling = mag <= lastMag ? falling + 1 : 0
-        if (floor <= liftMag * 0.81 && falling >= 2) settle()
+        if (floor <= liftMag * 0.81 && liftMag - floor >= 2 && falling >= 3) settle()
         swallowedX += x
         swallowedY += y
         remember(t, x, y, mag)
@@ -281,16 +287,30 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
       return false
     }
     const ratio = mag / lastMag
-    const steady = Math.abs(ratio - lastRatio) <= FADE_DRIFT
+    // Does this event carry on a steady fade?
+    const flat = mag === lastMag
+    const rate = fade > 0 ? (mag / fadeFrom) ** (1 / (fade + 1)) : ratio
+    const fading =
+      onward &&
+      mag >= 3 &&
+      ratio <= 1 &&
+      ratio >= FADE_STEP &&
+      !(flat && plateau) &&
+      (fade === 0 || Math.abs(rate - fadeRate) <= FADE_DRIFT)
     if (held.length) {
       const momentum =
         heldBy === "fade"
-          ? within(ratio, FADE) && steady
+          ? fading
           : held.length === 1
             ? within(ratio, AFTER_SPIKE) &&
               mag / Math.max(dt, 1) >= spikeSpeed * AFTER_SPIKE_SPEEDUP
             : within(ratio, COAST)
       if (onward && momentum && dt <= 40) {
+        if (heldBy === "fade") {
+          fade++
+          fadeRate = rate
+          plateau = flat
+        }
         held.push([x, y])
         remember(t, x, y, mag)
         if (held.length >= CONFIRM) lift(false)
@@ -306,8 +326,12 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
       dt >= Math.max(LIFT_GAP, median(gaps) * LIFT_PACE) &&
       mag >= Math.max(LIFT_SPIKE_MIN, lastMag * LIFT_SPIKE) &&
       speed <= median(speeds) * LIFT_SLOWER
-    const fading = onward && mag >= 3 && within(ratio, FADE)
-    fade = fading ? (fade > 0 && !steady ? 1 : fade + 1) : 0
+    if (fading) {
+      if (fade === 0) fadeFrom = lastMag
+      fade++
+      fadeRate = rate
+      plateau = flat
+    } else fade = 0
     gaps.push(dt)
     if (gaps.length > 4) gaps.shift()
     remember(t, x, y, mag)
@@ -315,7 +339,6 @@ export function createPan(handlers: PanHandlers, options: { axes?: "x" | "xy" } 
       held = [[x, y]]
       heldBy = spike ? "lift" : "fade"
       spikeSpeed = speed
-      if (spike) hint()
       return true
     }
     speeds.push(speed)

@@ -157,7 +157,7 @@ describe("trackpad pans", () => {
             }
   })
 
-  it("cues the lift on the first momentum event, and ends once the momentum fades", () => {
+  it("cues the lift once the momentum confirms it, and ends once it fades", () => {
     const f = flick({ peak: 30, decay: 0.92 })
     // The last event before the lift's pause.
     const lastFinger = f.events.findIndex((e, i) => (f.events[i + 1]?.t ?? 0) - e.t > 20)
@@ -169,15 +169,14 @@ describe("trackpad pans", () => {
     })
     f.events.forEach((e, i) => {
       pan.feed(sample(e))
-      if (i === lastFinger + 1) log.push("spike")
-      if (i === lastFinger + 6) log.push("+5")
+      log.push(`#${i - lastFinger}`)
     })
-    const at = (s: string) => log.indexOf(s)
+    // Nothing after the fingers moves; the spike and three momentum events confirm the lift
+    // (~75 ms), and the gesture ends once the momentum has faded a fifth.
     expect(log.filter((s) => s === "move")).toHaveLength(lastFinger + 1)
-    expect(at("lift")).toBe(at("spike") - 1)
-    expect(at("end")).toBeGreaterThan(at("spike"))
-    expect(at("end")).toBeLessThan(at("+5") + 6)
-    expect(log.lastIndexOf("move")).toBeLessThan(at("lift"))
+    expect(log.indexOf("lift")).toBe(log.indexOf("#4") - 1)
+    expect(log.indexOf("end")).toBeGreaterThan(log.indexOf("lift"))
+    expect(log.indexOf("end")).toBeLessThan(log.indexOf("#10"))
   })
 
   it("momentum with no lift pause is caught within one event of the fade", () => {
@@ -191,6 +190,40 @@ describe("trackpad pans", () => {
           expect(travel - f.fingers, label).toBeLessThanOrEqual(Math.round(peak * decay))
           expect(ends, label).toBe(1)
         }
+  })
+
+  it("irregular delivery (coalesced events, ±35% jitter) almost never costs travel", () => {
+    // A busy page coalesces wheel events: some intervals double, carrying double the travel,
+    // and look like a lift's pause and spike. Suspect events are held, never dropped, so even
+    // here travel is nearly always exact; a false alarm at worst splits the undo step.
+    let runs = 0
+    let lost = 0
+    let split = 0
+    for (const jitter of [0.15, 0.25, 0.35])
+      for (const level of [3, 6, 12, 25, 50])
+        for (let seed = 1; seed <= 40; seed++) {
+          const r = rng(seed * 7919 + level * 13 + Math.round(jitter * 100))
+          const events: Wheel[] = []
+          let truth = 0
+          let t = 0
+          for (let i = 0; i < 120; i++) {
+            const dt = r() < 0.15 ? 16 : 8
+            const ramp = Math.min(1, (i + 1) / 6)
+            const d = Math.max(
+              1,
+              Math.round((dt / 8) * level * (1 + (r() * 2 - 1) * jitter) * ramp),
+            )
+            truth += d
+            events.push({ dx: d, t: (t += dt) })
+          }
+          const { travel, ends } = run(events)
+          runs++
+          if (travel !== truth) lost++
+          if (ends > 1) split++
+        }
+    expect(runs).toBe(600)
+    expect(lost).toBeLessThanOrEqual(1)
+    expect(split).toBeLessThanOrEqual(12)
   })
 
   it("reverses mid-gesture without losing a px", () => {
