@@ -88,6 +88,46 @@ test.describe("production consumers", () => {
     expect(await hostSees(page, "3")).toEqual([false])
     await expect(panel.locator(".knobs-number:visible")).toHaveCount(0)
   })
+
+  test("a shipped store's chip stays hidden until ⌥⇧D turns on knobs mode", async ({ page }) => {
+    await serve(page, "shipped")
+    const hero = page.locator("#hero")
+    // A hidden chip is out of the accessibility tree, so it's found by its label.
+    const chip = page.locator('.knobs-chip[aria-label="Tune hero"]')
+    const status = page.locator(".knobs-toast")
+    await expect(chip).toBeAttached()
+    await hero.hover()
+    await page.waitForTimeout(250)
+    await expect(chip).toBeHidden()
+    // Typing in a field: the shortcut is the field's.
+    await page.getByRole("textbox", { name: "Notes" }).focus()
+    await page.keyboard.press("Alt+Shift+KeyD")
+    await expect(status).toHaveCount(0)
+    await page.getByRole("textbox", { name: "Notes" }).blur()
+    // Anywhere else it toggles knobs mode, and says so.
+    await page.keyboard.press("Alt+Shift+KeyD")
+    await expect(status).toHaveText("knobs on")
+    await expect(status).toHaveAttribute("role", "status")
+    await page.mouse.move(0, 0)
+    await hero.hover()
+    await expect(chip).toBeVisible()
+    await chip.click()
+    await expect(page.getByRole("dialog", { name: "hero controls" })).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("dialog", { name: "hero controls" })).toHaveCount(0)
+    // The mode is remembered for the tab.
+    await page.reload()
+    await hero.hover()
+    await expect(chip).toBeVisible()
+    // Turning it off from inside an open panel collapses the panel and hides the chip.
+    await chip.click()
+    await expect(page.getByRole("dialog", { name: "hero controls" })).toBeVisible()
+    await page.keyboard.press("Alt+Shift+KeyD")
+    await expect(status).toHaveText("knobs off")
+    await expect(chip).toBeHidden()
+    await expect(page.getByRole("dialog", { name: "hero controls" })).toHaveCount(0)
+    await expect(status).toHaveAttribute("data-shown", "false", { timeout: 3000 })
+  })
 })
 
 test("embedded keys: scoped to focus, Problems' bindings bubble to the host", async ({ page }) => {

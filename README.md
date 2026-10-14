@@ -2,7 +2,7 @@
 
 Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
-Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
+Give a component a few knobs. Hover it to reveal a tiny cog and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
 Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
@@ -313,6 +313,20 @@ A shipped store stays live in production (`enabled` defaults to true) and mounts
 name, which your bundler splits into its own chunk. The core never imports the panel itself.
 Stores without `ship` are unchanged.
 
+In production its chips stay hidden until someone presses **⌥⇧D**, which turns knobs mode on and off
+for the tab (remembered in `sessionStorage`, with a brief "knobs on" / "knobs off"); then they show on
+hover as in development. The key works anywhere on the page except while typing in a field. `chip`
+sets when chips show, the key and a label beside the cog, per store or per `attach`:
+
+```ts
+defineControls("hero", schema, {
+  ship: () => import("knobs/panel"),
+  // reveal: "hover" (dev default) | "shortcut" (production default) | "always"
+  chip: { reveal: "shortcut", shortcut: "Alt+Shift+K", label: "knobs" },
+})
+hero.attach(element, { reveal: "always" })
+```
+
 ### Styling and tokens
 
 Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a preset:
@@ -468,9 +482,9 @@ Override CSS variables on `:root` or `.knobs-panel`:
 
 Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
 
-A floating panel opens out of its chip like the Dynamic Island: one shape springs from the chip's pill to the panel's card (position, size and corners), the chip's label fades as it goes and the content, laid out at full size, is revealed top first. Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is. A reload brings an open panel back in place, with no morph.
+A floating panel opens out of its chip like liquid glass. The press squeezes the cog (to 0.94, easing in over 60 ms); then each edge of the glass rides its own spring from the chip to the panel. The edges facing the way it travels lead on a stiff spring (as stiff as their axis carries the travel) and the others trail on a softer one, so the glass stretches toward the panel, overshoots a little and settles in under 300 ms, its corners going from the cog's circle to the panel's radius. The content follows a beat behind: blurred 8 px, faded and at 97%, revealed top first, landing exactly crisp. Closing runs it backwards and faster: the content blurs out first, then the glass pulls into the cog with its far edges trailing (about 200 ms). Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is, keeping its velocity. The WebGPU overlay blurs, fades and scales the content in its shader, so both renderers match. A reload brings an open panel back in place, with no morph.
 
-Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot and the editors' height reveals, and panels simply fade in and out.
+Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot, the editors' height reveals and the chip's squeeze, and panels simply fade in and out, with no stretch or blur.
 
 ### Reacting to Random, Reset and presets
 
@@ -534,7 +548,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.groupPresets` / `controls.groupPreset(group, index)` / `controls.matchingGroupPreset(group)`
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
-- `controls.attach(element)` — floating chip + anchored panel
+- `controls.attach(element, chip?)` — floating chip + anchored panel; `chip` (`{ label?, reveal?, shortcut? }`) overrides the store's `chip` option
 - `controls.mount(container, options?)` — inline panel
 
 ## Develop

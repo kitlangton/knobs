@@ -240,6 +240,8 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
     JSON.parse(localStorage.getItem("knobs:splat:position:v1")!),
   )
   await panel.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
+  // Mid-morph the content is scaled a touch, so the box is read once it lands.
+  await expect(panel).not.toHaveAttribute("data-morphing")
   const restored = (await panel.boundingBox())!
   expect(restored.x).toBeCloseTo(position.x)
   expect(restored.y).toBeCloseTo(position.y)
@@ -1338,12 +1340,12 @@ test("group dice, mutate and hold-to-compare", async ({ page }) => {
   expect(errors).toEqual([])
 })
 
-test("a floating panel grows out of its chip and collapses back into it, interruptibly", async ({
+test("a floating panel grows out of its chip as liquid glass and collapses back into it, interruptibly", async ({
   page,
 }) => {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
-  // Frames run on a fake clock, 16 ms apart, so the spring's path is sampled exactly.
+  // Frames run on a fake clock, 16 ms apart, so the springs' paths are sampled exactly.
   await page.clock.install()
   await page.goto("/?dom")
   await page.evaluate(() => {
@@ -1359,17 +1361,44 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   // Measured once its scale-in has finished.
   await page.waitForTimeout(400)
   const chipBox = (await chip.boundingBox())!
+  // Just the cog: a small round button, labelled for assistive tech.
+  expect(chipBox.width).toBeCloseTo(chipBox.height, 0)
+  expect(chipBox.width).toBeLessThan(30)
+  await expect(chip.locator("svg.knobs-icon")).toHaveCount(1)
+  await expect(chip).toHaveText("")
   const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000)
-  type Box = { x: number; y: number; w: number; h: number; label: number }
+  type Box = {
+    x: number
+    y: number
+    w: number
+    h: number
+    label: number
+    chipScale: number
+    blur: number
+    opacity: number
+    scale: number
+  }
   const shape = () =>
     page.evaluate(() => {
       const el = document.querySelector(".knobs-morph")
       if (!el) return undefined
       const r = el.getBoundingClientRect()
-      const chip = document.querySelector('.knobs-chip[aria-label="Tune splat"]')!
-      const label = Number(getComputedStyle(chip).opacity)
-      return { x: r.x, y: r.y, w: r.width, h: r.height, label }
+      const chip = document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!
+      const root = document.querySelector<HTMLElement>('[aria-label="splat controls"]')
+      const cs = root ? getComputedStyle(root) : undefined
+      const scale = cs && cs.scale !== "none" ? Number(cs.scale) : 1
+      return {
+        x: r.x,
+        y: r.y,
+        w: r.width,
+        h: r.height,
+        label: Number(getComputedStyle(chip).opacity),
+        chipScale: chip.style.scale ? Number(chip.style.scale) : 1,
+        blur: Number(cs?.filter.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0),
+        opacity: cs ? Number(cs.opacity) : 1,
+        scale,
+      }
     })
   /** Steps frames until the morph settles; `at` runs before a given frame. */
   const film = async (at: Record<number, () => Promise<unknown>> = {}) => {
@@ -1383,15 +1412,26 @@ test("a floating panel grows out of its chip and collapses back into it, interru
     }
     return boxes
   }
+  /** At rest the content is exactly as laid out: no blur, fade, scale, clip or mask. */
+  const crisp = () =>
+    panel.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return [cs.filter, cs.opacity, cs.scale, cs.clipPath, cs.maskImage].join(" | ")
+    })
 
   await chip.click()
   await expect(panel).toBeAttached()
   const opening = await film()
   const final = (await panel.boundingBox())!
+  // Anticipation: the press squeezes the chip, and the shape with it, before anything grows.
+  expect(opening[0]!.chipScale).toBeLessThan(1)
+  const squeezed = opening.slice(0, 4).filter((box) => box.w < chipBox.width - 0.5)
+  expect(squeezed.length).toBeGreaterThan(0)
+  for (const box of squeezed) expect(box.w).toBeGreaterThan(chipBox.width * 0.93)
   // Every frame's shape lies between the chip and the panel (a few px of bounce aside), it
-  // passes through sizes in between, the label fades out early, and it settles in about 0.5 s.
-  expect(opening.length).toBeGreaterThan(12)
-  expect(opening.length).toBeLessThan(45)
+  // passes through sizes in between, the cog fades out early, and it settles fast.
+  expect(opening.length).toBeGreaterThan(10)
+  expect(opening.length).toBeLessThan(26)
   const between = (v: number, a: number, z: number, slack: number) =>
     v >= Math.min(a, z) - slack && v <= Math.max(a, z) + slack
   for (const box of opening) {
@@ -1402,15 +1442,48 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   }
   expect(opening.some((box) => box.w > chipBox.width + 40 && box.w < final.width - 40)).toBe(true)
   expect(opening[0]!.label).toBeGreaterThan(0.5)
-  expect(opening[8]!.label).toBe(0)
+  expect(opening[9]!.label).toBe(0)
+  // The panel opens down and to the right: the right and bottom edges lead, the left trails, so
+  // the glass stretches toward the panel on its way there.
+  const progress = (box: Box) => ({
+    left: (box.x - chipBox.x) / (final.x - chipBox.x),
+    right:
+      (box.x + box.w - chipBox.x - chipBox.width) /
+      (final.x + final.width - chipBox.x - chipBox.width),
+    bottom:
+      (box.y + box.h - chipBox.y - chipBox.height) /
+      (final.y + final.height - chipBox.y - chipBox.height),
+  })
+  expect(final.x).toBeGreaterThan(chipBox.x + chipBox.width)
+  expect(final.y + final.height).toBeGreaterThan(chipBox.y + chipBox.height + 100)
+  const mid = opening.map(progress).filter((p) => p.right > 0.3 && p.right < 0.9)
+  expect(mid.length).toBeGreaterThan(0)
+  for (const p of mid) {
+    expect(p.right).toBeGreaterThan(p.left + 0.1)
+    expect(p.bottom).toBeGreaterThan(p.left)
+  }
+  // The leading edges overshoot a little, never wobbling.
+  const widest = Math.max(...opening.map((box) => box.w))
+  expect(widest).toBeGreaterThan(final.width)
+  expect(widest).toBeLessThan(final.width * 1.04)
+  // Content comes in blurred, faded and a touch small, and lands exactly crisp.
+  expect(Math.max(...opening.map((box) => box.blur))).toBeGreaterThan(3)
+  expect(opening.some((box) => box.blur > 0 && box.opacity > 0.2 && box.scale < 1)).toBe(true)
   await expect(page.locator(".knobs-morph")).toHaveCount(0)
   await expect(panel).not.toHaveAttribute("data-morphing")
+  expect(await crisp()).toBe("none | 1 | none | none | none")
   await expect(panel.getByRole("slider", { name: "seed" })).toBeFocused()
 
-  // Escape collapses it back into the chip, which gets focus back.
+  // Escape collapses it back into the chip, which gets focus back. The content blurs out and
+  // fades first, while the glass still holds the panel's size; then the glass contracts.
   await page.keyboard.press("Escape")
   const closing = await film()
-  expect(closing.length).toBeGreaterThan(12)
+  expect(closing.length).toBeGreaterThan(6)
+  expect(closing.length).toBeLessThan(18)
+  const faded = closing.findIndex((box) => box.opacity < 0.2)
+  expect(faded).toBeGreaterThanOrEqual(0)
+  expect(closing[faded]!.blur).toBeGreaterThan(4)
+  for (const box of closing.slice(0, faded + 1)) expect(box.w).toBeGreaterThan(final.width - 6)
   expect(closing.at(-1)!.w).toBeLessThan(chipBox.width + 2)
   expect(closing.at(-1)!.label).toBeGreaterThan(0.95)
   await expect(panel).toHaveCount(0)
@@ -1422,27 +1495,39 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   await chip.click()
   await expect(panel).toBeAttached()
   const toggled = await film({
-    6: () =>
+    8: () =>
       page.evaluate(() =>
         document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!.click(),
       ),
   })
   const widths = toggled.map((box) => box.w)
   const peak = widths.indexOf(Math.max(...widths))
-  expect(peak).toBeGreaterThan(6)
+  expect(peak).toBeGreaterThan(8)
   expect(widths[peak]!).toBeGreaterThan(chipBox.width + 40)
   expect(widths[peak]!).toBeLessThan(final.width - 8)
   const most = Math.max(...widths.slice(1).map((w, i) => Math.abs(w - widths[i]!)))
-  for (let i = 1; i < widths.length; i++)
-    expect(Math.abs(widths[i]! - widths[i - 1]!)).toBeLessThanOrEqual(most)
-  expect(most).toBeLessThan((final.width - chipBox.width) * 0.2)
+  expect(most).toBeLessThan((final.width - chipBox.width) * 0.25)
   await expect(panel).toHaveCount(0)
   await expect(chip).toBeFocused()
 
-  // A reload reopens an open panel in place, without the morph.
+  // …and a click mid-collapse grows it straight back, carrying on to a crisp panel.
   await chip.click()
   await expect(panel).toBeAttached()
   await film()
+  await page.keyboard.press("Escape")
+  const reopened = await film({
+    5: () =>
+      page.evaluate(() =>
+        document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!.click(),
+      ),
+  })
+  const shrunk = Math.min(...reopened.map((box) => box.w))
+  expect(shrunk).toBeLessThan(final.width - 20)
+  expect(shrunk).toBeGreaterThan(chipBox.width + 20)
+  await expect(page.locator(".knobs-morph")).toHaveCount(0)
+  expect(await crisp()).toBe("none | 1 | none | none | none")
+
+  // A reload reopens an open panel in place, without the morph.
   await page.clock.resume()
   await page.reload()
   await expect(panel).toBeVisible()
