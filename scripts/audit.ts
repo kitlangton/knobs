@@ -215,6 +215,48 @@ try {
       "focus:",
       await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
     )
+    // 9. Compound editors: spring sliders, disclosure rows, strips, pad and curve handles
+    await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
+    const motionStudy = page.locator('[data-study="motion"]')
+    const mb = (await motionStudy.boundingBox())!
+    await motionStudy.hover({ position: { x: mb.width - 20, y: 60 } })
+    await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+    const motion = page.getByRole("dialog", { name: "motion controls", exact: true })
+    await motion.waitFor()
+    const motionValues = () => motionStudy.locator("[data-render]").getAttribute("data-render")
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))
+    for (const key of [
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowDown",
+      "Enter",
+      "ArrowDown",
+      "ArrowRight",
+      "Escape",
+    ]) {
+      await page.keyboard.press(key)
+      await sleep(40)
+    }
+    log("motion keys ->", await focused(), await motionValues())
+    for (const name of ["Tint", "Target", "Curve"]) {
+      await motion.getByRole("button", { name, exact: true }).click()
+      await sleep(320)
+    }
+    const dragAcross = async (name: string) => {
+      const box = (await motion.getByRole("slider", { name, exact: true }).boundingBox())!
+      await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.3, { steps: 10 })
+      await page.mouse.up()
+      await page.keyboard.press("u")
+      log(`${name} drag + one undo ->`, await motionValues())
+    }
+    for (const name of ["Tint hue", "Target", "Curve end handle"]) await dragAcross(name)
+    await page.keyboard.press("Shift+R")
+    await motion.getByRole("radio", { name: "jelly" }).click()
+    await sleep(600)
+    await motion.screenshot({ path: `test-results/audit-${mode}-motion.png` })
     log("errors:", errors)
     await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
     const fresh = await openSplat(page)
@@ -224,7 +266,7 @@ try {
     await sleep(800)
     await page.screenshot({ path: `test-results/audit-${mode}-meta.png` })
     const metaPanel = page.getByRole("region", { name: "knobs-tokens controls" })
-    await metaPanel.getByRole("slider", { name: "Accent hue" }).focus()
+    await metaPanel.getByRole("button", { name: "Accent", exact: true }).focus()
     await page.keyboard.press("s")
     await sleep(250)
     log("meta hint badges:", await metaPanel.locator(".knobs-hint").allTextContents())

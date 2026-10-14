@@ -6,6 +6,8 @@ Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`)
 
 Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
+Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
+
 Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
@@ -98,20 +100,48 @@ function Splatter() {
 
 `useKnobs(splat)` works as a Solid `ref={useKnobs(splat)}` callback, and `knobs` works as a `use:knobs={splat}` directive.
 
+### Springs, colours, points and easings
+
+```ts
+import { color, defineControls, easing, point, spring, springCss, bezierCss } from "knobs"
+
+const motion = defineControls("motion", {
+  travel: spring({ duration: 0.55, bounce: 0.3 }),            // { duration, bounce }
+  curve: easing("ease-out"),                                  // [x1, y1, x2, y2]
+  target: point({ x: 0.5, y: 0 }, { min: -1, max: 1, step: 0.01 }), // { x, y }
+  tint: color("#ef774b"),                                     // "oklch(0.7 0.16 40)"
+})
+
+const v = motion.get()
+const { easing: spring, duration } = springCss(v.travel)    // a CSS linear() twin of the spring
+el.style.transition = `transform ${duration}ms ${spring}, opacity 300ms ${bezierCss(v.curve)}`
+el.style.background = v.tint                                // OKLCH strings work as-is in CSS
+```
+
+- **`spring(value?, meta?)`**: `{ duration, bounce }` like SwiftUI's `.spring(duration:bounce:)` (ω = 2π / duration; ζ = 1 − bounce, or 1 / (1 + bounce) below zero). Duration runs 0.05–2 s and bounce −0.5–1, both in 0.01 steps. The row is two slider stops beside the step response over a fixed 1.2 s window, drawn with the panel's own spring integrator; a dot runs the curve in real time after each change. `springCss(value)` gives the same motion as a CSS `linear()` easing and duration; `springMotion(value)` gives ω and ζ.
+- **`color(value, meta?)`**: takes `#rgb`, `#rrggbb`, `oklch(L C H)` or `{ l, c, h }` and stores a canonical `oklch(L C H)` string (L 0–1), so values serialise, compare and drop into CSS directly. Colours always fit sRGB: chroma is trimmed until they do, keeping lightness and hue. While you scrub hue or lightness the editor remembers the chroma you asked for, so passing through a narrow part of the gamut doesn't erode it. Past the gamut edge the chroma strip is veiled. `colorHex(value)` and `parseColor(value)` convert.
+- **`point(value, { min, max, step? })`**: `{ x, y }`; bounds and step take a number or `{ x, y }`. y grows downward, as in CSS and UIKit. The pad marks the default with a ring; a drag is one undo step, and `⌥` drags at 1/10 speed.
+- **`easing(value, meta?)`**: `[x1, y1, x2, y2]` or a name: `ease`, `ease-in`/`in`, `ease-out`/`out`, `ease-in-out`/`in-out`, `linear`, `smooth`, `snappy` or `back`. x stays within 0–1 and y within −0.6–1.6. The row shows a mini curve; the editor has two handles and the named curves as chips. `bezierCss(value)` writes the CSS.
+
+Spring, point and easing values compare by their numbers everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
+
 ## Keyboard
 
 Panels and switchers are keyboard-first:
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` or `j` / `k` | Move between presets, rows and custom actions (`←`/`→` move along the custom actions) |
-| `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`) |
+| `↑` / `↓` or `j` / `k` | Move between presets, rows and custom actions (`←`/`→` move along the custom actions); a spring's two sliders are two stops |
+| `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`); on a colour row turn the hue, on a point row move x, on an easing row cycle the named curves |
+| `Enter` / `Space` | Open a colour, point or easing row's editor; `↓` then walks into it (strips, chips, handles, pad) |
+| `Esc` | Fold an open editor and return to its row (before closing the panel) |
+| Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed; scrolling sideways over it nudges by steps (one undo entry per gesture) |
-| `s` | Jump: badges every row, preset and button with its shortest unique prefix; type it to jump (presets apply) |
+| `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
 | `r` / `⇧R` | Randomize all fields / reset all fields to defaults |
@@ -176,6 +206,19 @@ ws.onmessage = (e) => {
 mountPanel(remote, document.querySelector("#groups")!, { variants: false })
 ```
 
+Descriptors also take `kind: "spring"` (default `{ duration, bounce }`), `"color"` (any string `color()` accepts), `"point"` (default `{ x, y }`, with `min`/`max`/`step` applying to both axes) and `"easing"` (default `[x1, y1, x2, y2]`). `onSet` then sends those values as they are (objects, strings and arrays), or `null` when a key returns to its default. `remote.swift()` emits matching Swift:
+
+```swift
+TunableSpring("drawer.spring", "Drawer", duration: 0.45, bounce: 0.25)  // was duration: 0.4, bounce: 0.25
+Tunable<Color>("composer.tint", "Tint", default: Color(red: 0.2393, green: 0.5451, blue: 0.9999))  // #3d8bff · was Color(red: 0.0392, green: 0.5176, blue: 1)
+Tunable<CGPoint>("composer.anchor", "Anchor", default: CGPoint(x: 0.5, y: 0.75))  // was CGPoint(x: 0.5, y: 1)
+Tunable<UnitCurve>("drawer.fade", "Fade curve", default: .bezier(startControlPoint: UnitPoint(x: 0.32, y: 0.72), endControlPoint: UnitPoint(x: 0, y: 1)))  // was .bezier(...)
+```
+
+Colours leave as sRGB components (the OKLCH value is already inside sRGB). Points are `CGPoint`s and easings SwiftUI `UnitCurve.bezier` values. Paired `*.duration` / `*.bounce` number descriptors still fold into one `TunableSpring`.
+
+**Migrating an app's Tune page:** the Swift side needs `Tunable` to support `Color`, `CGPoint` and `UnitCurve` (decoding the socket's `"oklch(L C H)"`/hex string, `{ x, y }` and `[x1, y1, x2, y2]`), and a `TunableSpring` that reads `{ duration, bounce }` from one key rather than two. Until then, keep sending a spring as paired `.duration`/`.bounce` number descriptors; the panel and codegen handle both. Nothing in other repositories changes until you opt in.
+
 See [`docs/migration.md`](./docs/migration.md) for full migration sketches for the OpenCode iOS Tune Page and Problems board config panels.
 
 ## Theming, Density & WebGPU Renderer
@@ -212,11 +255,15 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-cascade: 12;      /* preset ripple between rows (ms; 0 moves them together) */
   --k-glass: 0.6;       /* 0 is opaque; up to 1 thins the panel over a blurred backdrop */
   --k-glass-tone: 0.5;  /* backdrop brightness under full glass (light theme: 1.08) */
+  --k-spring: 0.24 0.16; /* duration and bounce values settle on (GPU); pair with: */
+  --k-fill-ease: linear(...); /* springCss(value).easing, for CSS transitions */
+  --k-fill-ms: 300;     /* springCss(value).duration */
+  --k-reveal-ease: cubic-bezier(.2, .8, .2, 1); /* how editors and messages open */
   --k-rim: rgba(255, 255, 255, 0.09);
 }
 ```
 
-Reduced motion (`prefers-reduced-motion`) turns off the cascade, the pop and the stretch.
+Reduced motion (`prefers-reduced-motion`) turns off the cascade, the pop, the stretch, the spring dot and the editors' height reveals.
 
 ## Explore in development. Ship constants.
 
@@ -236,6 +283,11 @@ The package has two core exports selected through the standard `development` con
 | `knob(value, { min, max, step?, unit?, shortcut?, label?, group? })` | Numeric slider control with rolling readout and inline editor. |
 | `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
 | `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
+| `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
+| `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |
+| `point({ x, y }, { min, max, step?, ...meta })` | 2D pad; bounds and step take a number or `{ x, y }`. |
+| `easing([x1, y1, x2, y2] \| name, meta?)` | Cubic bezier with a mini curve, a handle editor and named curves. |
+| `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen. |
 
