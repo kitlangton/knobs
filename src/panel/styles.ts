@@ -9,7 +9,7 @@ const fill = springEasing(FILL.omega, FILL.zeta)
 const release = springEasing(RELEASE.omega, RELEASE.zeta)
 const LEAD_T = `${lead.ms}ms var(--k-lead)`
 const TRAIL_T = `calc(${trail.ms}ms * (.6 + .4 * clamp(0, var(--k-blur), 2))) var(--k-trail)`
-const FILL_T = `calc(${fill.ms}ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
+const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
 
 const lightVars = `
@@ -34,7 +34,7 @@ const css = `
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-ease:cubic-bezier(.2,.8,.2,1);
-  --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-release:${release.easing};
+  --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
 :where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip):not([data-theme="dark"]),

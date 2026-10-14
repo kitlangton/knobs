@@ -14,7 +14,7 @@ export const EASINGS = {
 } as const satisfies Record<string, Bezier>
 export type EasingName = keyof typeof EASINGS | "ease-in" | "ease-out" | "ease-in-out"
 
-export const EASING_Y: readonly [number, number] = [-0.5, 1.5]
+export const EASING_Y: readonly [number, number] = [-0.6, 1.6]
 
 export function namedEasing(name: string): Bezier | undefined {
   const key = name.replace(/^ease-(?=in|out)/, "") as keyof typeof EASINGS

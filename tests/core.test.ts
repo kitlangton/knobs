@@ -148,7 +148,7 @@ describe("spring, color, point and easing fields", () => {
     ).toMatchObject({
       reveal: { duration: 2, bounce: -0.5 },
       origin: { x: 0.1, y: -1 },
-      curve: [0, 1.5, 1, -0.5],
+      curve: [0, 1.6, 1, -0.6],
     })
     const fitted = parseColor(normalize(rich, { tint: "oklch(0.7 0.4 145)" }).tint)!
     expect(fitted.c).toBeLessThanOrEqual(maxChroma(0.7, 145))

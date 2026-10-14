@@ -101,7 +101,7 @@ h1 em {
 }
 .studies {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 22px;
 }
 .study {
@@ -361,4 +361,48 @@ a:focus-visible,
   .meta-preview-row {
     grid-template-columns: 1fr;
   }
+}
+
+.motion {
+  background: var(--ink-panel);
+  color: var(--ink-panel-fg);
+}
+.motion-field {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  background-image: radial-gradient(
+    color-mix(in srgb, currentColor 18%, transparent) 1px,
+    transparent 1.4px
+  );
+  background-size: 18px 18px;
+  background-position: center;
+}
+.motion-target,
+.motion-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+}
+.motion-target {
+  width: 26px;
+  height: 26px;
+  margin: -13px;
+  border: 1px dashed color-mix(in srgb, currentColor 45%, transparent);
+}
+.motion-dot {
+  width: 22px;
+  height: 22px;
+  margin: -11px;
+}
+.motion-spring {
+  background: var(--tint);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--tint) 55%, transparent);
+}
+.motion-curve {
+  border: 2px solid var(--tint);
+  width: 34px;
+  height: 34px;
+  margin: -17px;
 }

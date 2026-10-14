@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-test("three hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
+test("hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
   page,
   context,
 }) => {
@@ -8,7 +8,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.goto("/")
-  await expect(page.locator(".knobs-chip")).toHaveCount(3)
+  await expect(page.locator(".knobs-chip")).toHaveCount(4)
   await expect(page.locator(".knobs-chip:visible")).toHaveCount(0)
   const rendered = (id: string) => page.locator(`[data-study="${id}"] [data-render]`)
   const beforeSplat = await rendered("splat").getAttribute("data-render")
@@ -202,7 +202,7 @@ test("production ships constants, with no panel chunks or hover UI", async ({ pa
     if (response.url().endsWith(".js")) scripts.push(response.url())
   })
   await page.goto("http://127.0.0.1:5179/")
-  await expect(page.locator("[data-study]")).toHaveCount(3)
+  await expect(page.locator("[data-study]")).toHaveCount(4)
   await page.evaluate(() =>
     localStorage.setItem(
       "knobs:splat:state:v1",
@@ -288,19 +288,21 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   await expect(tokensPanel).toBeVisible()
   await expect(synthPanel).toBeVisible()
 
-  // Hint mode on meta page: "Accent hue" -> "ah", "Accent chroma" -> "ac"; typing "ah" jumps to Accent hue
+  // Hint mode on meta page: "Panel width" -> "pw", "Control radius" -> "cr"
   await tokensPanel.getByRole("slider", { name: "Panel width", exact: true }).focus()
   await page.keyboard.press("s")
   const metaBadges = await tokensPanel.locator(".knobs-hint-layer .knobs-hint").allTextContents()
-  expect(metaBadges).toContain("ah")
-  expect(metaBadges).toContain("ac")
   expect(metaBadges).toContain("pw")
-  await page.keyboard.type("ah")
-  await expect(tokensPanel.getByRole("slider", { name: "Accent hue", exact: true })).toBeFocused()
+  expect(metaBadges).toContain("cr")
+  await page.keyboard.type("cr")
+  await expect(
+    tokensPanel.getByRole("slider", { name: "Control radius", exact: true }),
+  ).toBeFocused()
 
-  // Adjusting Accent hue on default preset immediately changes --k-accent
+  // The OKLCH accent: ←→ on its row turns the hue, and --k-accent follows at once
+  await tokensPanel.getByRole("button", { name: "Accent", exact: true }).focus()
   await page.keyboard.press("Shift+ArrowRight")
-  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: hsl(225 ")
+  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: oklch(0.7 0.13 260)")
 
   // Switch preset to "compact" and verify CSS variables update on :root and affect both panels
   const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })
@@ -631,4 +633,151 @@ test("presets ripple down the rows, reduced motion moves them together, and glas
         .evaluate((el) => getComputedStyle(el).backdropFilter),
     )
     .toContain("blur(14.4px)")
+})
+
+test("springs, colours, points and easings: keyboard, coalesced drags, live curves and GPU parity", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto("/?dom")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const study = page.locator('[data-study="motion"]')
+  const values = async () =>
+    JSON.parse((await study.locator("[data-render]").getAttribute("data-render"))!)
+  const open = async () => {
+    const b = (await study.boundingBox())!
+    await study.hover({ position: { x: b.width - 20, y: 60 } })
+    await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+    const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+    await expect(panel).toBeVisible()
+    return panel
+  }
+  const panel = await open()
+  const duration = panel.getByRole("slider", { name: "Travel duration" })
+  await expect(duration).toBeFocused()
+
+  // A spring is two slider stops beside its curve; the curve redraws from the same spring math.
+  const curve = panel.locator(".knobs-spring-curve .knobs-curve")
+  const d = () => curve.evaluate((el) => getComputedStyle(el).getPropertyValue("d"))
+  await expect.poll(async () => (await d()).match(/L/g)?.length ?? 0).toBeGreaterThanOrEqual(60)
+  const before = await d()
+  await page.keyboard.press("ArrowDown")
+  await expect(panel.getByRole("slider", { name: "Travel bounce" })).toBeFocused()
+  await page.keyboard.press("Shift+ArrowRight")
+  expect((await values()).travel).toEqual({ duration: 0.55, bounce: 0.4 })
+  await expect.poll(d).not.toBe(before)
+  await expect(panel.locator('[data-field="travel"]')).toHaveClass(/knobs-modified/)
+
+  // Disclosure rows: Enter opens, ↓ walks into the editor, Esc folds it and returns to the head.
+  await page.keyboard.press("ArrowDown")
+  const curveHead = panel.getByRole("button", { name: "Curve", exact: true })
+  await expect(curveHead).toBeFocused()
+  await page.keyboard.press("Enter")
+  await expect(curveHead).toHaveAttribute("aria-expanded", "true")
+  await page.keyboard.press("ArrowDown")
+  const chips = panel.getByRole("radiogroup", { name: "Curve presets" })
+  await expect(chips).toBeFocused()
+  await page.keyboard.press("ArrowRight")
+  expect((await values()).curve).toEqual([0.34, 1.56, 0.64, 1])
+  await expect(chips.getByRole("radio", { name: "back" })).toHaveAttribute("aria-checked", "true")
+  await page.keyboard.press("ArrowDown")
+  await expect(panel.getByRole("slider", { name: "Curve start handle" })).toBeFocused()
+  await page.keyboard.press("Shift+ArrowUp")
+  expect((await values()).curve).toEqual([0.34, 1.6, 0.64, 1])
+  await page.keyboard.press("Escape")
+  await expect(curveHead).toBeFocused()
+  await expect(curveHead).toHaveAttribute("aria-expanded", "false")
+  await expect(panel.locator('[data-field="curve"] .knobs-x-body')).toBeHidden()
+  await expect(panel).toBeVisible()
+
+  // Colour strips: ←→ adjust the focused strip; sRGB clamps chroma but hue moves keep the ask.
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("ArrowDown")
+  const tint = panel.getByRole("button", { name: "Tint", exact: true })
+  await expect(tint).toBeFocused()
+  await page.keyboard.press("Space")
+  await page.keyboard.press("ArrowDown")
+  await expect(panel.getByRole("slider", { name: "Tint hue" })).toBeFocused()
+  await page.keyboard.press("ArrowRight")
+  expect((await values()).tint).toBe("oklch(0.7 0.16 41)")
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("End")
+  const fitted = (await values()).tint
+  expect(fitted).toMatch(/^oklch\(0\.7 0\.1[5-9]\d* 41\)$/)
+  await page.keyboard.press("Escape")
+
+  // A pad drag, however long, is one undo step; arrows nudge the puck.
+  const target = panel.getByRole("button", { name: "Target", exact: true })
+  await target.click()
+  const pad = panel.getByRole("slider", { name: "Target" })
+  await expect(pad).toBeVisible()
+  await panel.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+  )
+  const box = (await pad.boundingBox())!
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2)
+  await page.mouse.down()
+  for (let i = 1; i <= 10; i++)
+    await page.mouse.move(
+      box.x + box.width * (0.2 + i * 0.05),
+      box.y + box.height * (0.2 + i * 0.04),
+    )
+  await page.mouse.up()
+  expect((await values()).target).not.toEqual({ x: 0.55, y: -0.35 })
+  await page.keyboard.press("u")
+  expect((await values()).target).toEqual({ x: 0.55, y: -0.35 })
+  await pad.focus()
+  await page.keyboard.press("ArrowUp")
+  expect((await values()).target).toEqual({ x: 0.55, y: -0.37 })
+
+  // Hint mode reaches each row with one code.
+  await page.keyboard.press("j")
+  await page.keyboard.press("s")
+  const badges = await panel.locator(".knobs-hint-layer .knobs-hint").allTextContents()
+  expect(badges).toEqual(expect.arrayContaining(["tr", "cu", "ta", "ti"]))
+  await page.keyboard.type("cu")
+  await expect(curveHead).toBeFocused()
+
+  // Reset brings every field back, exactly.
+  await page.keyboard.press("Shift+R")
+  expect(await values()).toEqual({
+    travel: { duration: 0.55, bounce: 0.3 },
+    curve: [0.32, 0.72, 0, 1],
+    target: { x: 0.55, y: -0.35 },
+    tint: "oklch(0.7 0.16 40)",
+  })
+
+  // GPU: the overlay draws the editors (more primitives once they open), shows the same swatch
+  // colour, and sleeps once everything settles.
+  await page.goto("/?gpu")
+  const gpuPanel = await open()
+  await expect(gpuPanel).toHaveAttribute("data-gpu-active", "true")
+  const settled = async () => {
+    await page.mouse.move(5, 5)
+    await expect.poll(() => page.evaluate(() => window.__knobsGpu!.sleeping)).toBe(true)
+    return page.evaluate(() => window.__knobsGpu!.lastInstanceCount)
+  }
+  const closed = await settled()
+  for (const name of ["Tint", "Target", "Curve"])
+    await gpuPanel.getByRole("button", { name, exact: true }).click()
+  await page.waitForTimeout(400)
+  expect(await settled()).toBeGreaterThan(closed + 30)
+  const swatch = gpuPanel.locator(".knobs-swatch")
+  await expect(swatch).toHaveCSS("opacity", "0")
+  const shot = await page.screenshot({ clip: (await swatch.boundingBox())! })
+  const rgb = await page.evaluate(async (data) => {
+    const img = new Image()
+    img.src = `data:image/png;base64,${data}`
+    await img.decode()
+    const c = new OffscreenCanvas(img.width, img.height).getContext("2d")!
+    c.drawImage(img, 0, 0)
+    return [...c.getImageData(img.width >> 1, img.height >> 1, 1, 1).data.slice(0, 3)]
+  }, shot.toString("base64"))
+  // #ef774b
+  expect(
+    Math.abs(rgb[0]! - 0xef) + Math.abs(rgb[1]! - 0x77) + Math.abs(rgb[2]! - 0x4b),
+  ).toBeLessThan(12)
+  expect(errors).toEqual([])
 })

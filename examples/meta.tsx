@@ -1,9 +1,15 @@
 import { StrictMode, useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import {
+  bezierCss,
   choice,
+  color,
   defineControls,
+  easing,
   knob,
+  parseColor,
+  spring,
+  springCss,
   toggle,
   urlFlag,
   type RendererMode,
@@ -17,22 +23,7 @@ const metaSchema = {
     label: "Theme",
     group: "Appearance",
   }),
-  accentHue: knob(215, {
-    min: 0,
-    max: 360,
-    step: 1,
-    unit: "°",
-    label: "Accent hue",
-    group: "Appearance",
-  }),
-  accentChroma: knob(72, {
-    min: 0,
-    max: 100,
-    step: 2,
-    unit: "%",
-    label: "Accent chroma",
-    group: "Appearance",
-  }),
+  accent: color("oklch(0.7 0.13 250)", { label: "Accent", group: "Appearance" }),
   contrast: knob(1, {
     min: 0.6,
     max: 1.6,
@@ -148,6 +139,11 @@ const metaSchema = {
     label: "Preset cascade",
     group: "Typography & Motion",
   }),
+  motion: spring(
+    { duration: 0.24, bounce: 0.16 },
+    { label: "Panel spring", group: "Typography & Motion" },
+  ),
+  reveal: easing([0.2, 0.8, 0.2, 1], { label: "Reveal curve", group: "Typography & Motion" }),
   dragRoll: toggle(false, { label: "Roll while dragging", group: "Typography & Motion" }),
   dragRollSpeed: knob(100, {
     min: 40,
@@ -173,12 +169,10 @@ function tokensFor(v: MetaValues): [string, string][] {
   const c = v.contrast
   const rgb = isLight ? "0, 0, 0" : "255, 255, 255"
   const alpha = (light: number, dark: number) => ((isLight ? light : dark) * c).toFixed(3)
-  const accent =
-    v.accentChroma === 0
-      ? isLight
-        ? "#1c1c1e"
-        : "#ffffff"
-      : `hsl(${v.accentHue} ${Math.min(95, Math.round(v.accentChroma * 0.9))}% ${isLight ? 44 : 64}%)`
+  // Light panels darken the accent so it keeps its contrast.
+  const { l, c: chroma, h } = parseColor(v.accent)!
+  const accent = isLight && l > 0.55 ? `oklch(0.55 ${chroma} ${h})` : v.accent
+  const fill = springCss(v.motion)
   return [
     ["--k-bg", isLight ? "#f5f5f7" : "#1c1c1e"],
     ["--k-surface", `rgba(${rgb}, ${alpha(0.05, 0.055)})`],
@@ -208,6 +202,11 @@ function tokensFor(v: MetaValues): [string, string][] {
     ["--k-drag-roll", String(v.dragRoll ? v.dragRollSpeed : 0)],
     ["--k-cascade", String(v.cascade)],
     ["--k-glass", String(v.glass)],
+    ["--k-reveal-ease", bezierCss(v.reveal)],
+    // Values settle on this spring: the GPU reads --k-spring, CSS transitions its linear() twin.
+    ["--k-spring", `${v.motion.duration} ${v.motion.bounce}`],
+    ["--k-fill-ease", fill.easing],
+    ["--k-fill-ms", String(fill.duration)],
   ]
 }
 
@@ -233,11 +232,6 @@ function applyTokensToDocument(v: MetaValues) {
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {
   enabled: true,
-  onChange(patch, values, meta) {
-    if (meta.source === "local" && "accentHue" in patch && values.accentChroma === 0) {
-      knobsMeta.set({ accentChroma: 72 }, { coalesce: true })
-    }
-  },
   presets: {
     compact: {
       width: 260,
@@ -261,16 +255,14 @@ const knobsMeta = defineControls("knobs-tokens", metaSchema, {
     },
     paper: {
       theme: "light",
-      accentHue: 24,
-      accentChroma: 76,
+      accent: "oklch(0.56 0.15 45)",
       contrast: 1.05,
       radius: 8,
       panelRadius: 12,
     },
     terminal: {
       theme: "dark",
-      accentHue: 145,
-      accentChroma: 84,
+      accent: "oklch(0.82 0.19 148)",
       contrast: 1.35,
       radius: 2,
       panelRadius: 4,
@@ -280,8 +272,7 @@ const knobsMeta = defineControls("knobs-tokens", metaSchema, {
     },
     cobalt: {
       theme: "dark",
-      accentHue: 222,
-      accentChroma: 90,
+      accent: "oklch(0.66 0.18 262)",
       contrast: 1.15,
       glow: 1.1,
       motionBlur: 1.5,

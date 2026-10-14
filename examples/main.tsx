@@ -1,12 +1,20 @@
 import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import {
+  bezierCss,
+  color,
   createRemoteControls,
   defineControls,
+  easing,
   knob,
   choice,
+  point,
+  spring,
+  springCss,
+  springMotion,
   toggle,
   urlFlag,
+  type SpringValue,
   type DensityMode,
   type RendererMode,
   type ThemeMode,
@@ -55,6 +63,67 @@ const type = defineControls(
   },
 )
 
+const motion = defineControls(
+  "motion",
+  {
+    travel: spring({ duration: 0.55, bounce: 0.3 }, { label: "Travel" }),
+    curve: easing("snappy", { label: "Curve" }),
+    target: point({ x: 0.55, y: -0.35 }, { min: -1, max: 1, step: 0.01, label: "Target" }),
+    tint: color("oklch(0.7 0.16 40)", { label: "Tint" }),
+  },
+  {
+    enabled: import.meta.env.DEV,
+    presets: {
+      lazy: { travel: { duration: 1.1, bounce: 0 }, curve: [0.42, 0, 0.58, 1] },
+      jelly: { travel: { duration: 0.45, bounce: 0.6 }, curve: [0.34, 1.56, 0.64, 1] },
+    },
+  },
+)
+
+function Motion() {
+  const v = useControls(motion)
+  const [away, setAway] = useState(false)
+  // Both dots shuttle between home and the target: one on the spring, one on the curve.
+  useEffect(() => {
+    const id = setInterval(() => setAway((a) => !a), 1600)
+    return () => clearInterval(id)
+  }, [])
+  const spring = springCss(v.travel)
+  const at = (on: boolean) =>
+    on ? `translate(${v.target.x * 38}cqw, ${v.target.y * 34}cqh)` : "translate(0, 0)"
+  return (
+    <Knobs controls={motion}>
+      <article className="study" data-study="motion">
+        <div className="art motion" style={{ ["--tint" as string]: v.tint }}>
+          <div className="motion-field" data-render={JSON.stringify(v)}>
+            <span className="motion-target" style={{ transform: at(true) }} />
+            <span
+              className="motion-dot motion-spring"
+              style={{
+                transform: at(away),
+                transition: `transform ${spring.duration}ms ${spring.easing}`,
+              }}
+            />
+            <span
+              className="motion-dot motion-curve"
+              style={{
+                transform: at(away),
+                transition: `transform 700ms ${bezierCss(v.curve)}`,
+              }}
+            />
+          </div>
+          <span className="art-mark">04</span>
+        </div>
+        <div className="caption">
+          <h2>Motion / feel</h2>
+          <p>
+            Spring {v.travel.duration}s · bounce {v.travel.bounce}
+          </p>
+        </div>
+      </article>
+    </Knobs>
+  )
+}
 function Splatter() {
   const v = useControls(splat)
   let seed = v.seed
@@ -185,29 +254,19 @@ const remoteTune = createRemoteControls(
   "remote-tune",
   [
     {
-      key: "drawer.spring.duration",
-      label: "Duration",
-      kind: "number",
-      swiftType: "Double",
-      default: 0.4,
-      min: 0.1,
-      max: 1.0,
-      step: 0.05,
-      unit: "s",
-      group: "Spring",
+      key: "drawer.spring",
+      label: "Drawer",
+      kind: "spring",
+      default: { duration: 0.4, bounce: 0.25 },
+      group: "Motion",
       shortcut: "d",
     },
     {
-      key: "drawer.spring.bounce",
-      label: "Bounce",
-      kind: "number",
-      swiftType: "Double",
-      default: 0.25,
-      min: 0,
-      max: 0.65,
-      step: 0.05,
-      group: "Spring",
-      shortcut: "b",
+      key: "drawer.fade",
+      label: "Fade curve",
+      kind: "easing",
+      default: [0.25, 0.1, 0.25, 1],
+      group: "Motion",
     },
     {
       key: "drawer.edge.fade",
@@ -219,6 +278,17 @@ const remoteTune = createRemoteControls(
       max: 40,
       step: 1,
       unit: "pt",
+      group: "Surface",
+    },
+    { key: "composer.tint", label: "Tint", kind: "color", default: "#0a84ff", group: "Surface" },
+    {
+      key: "composer.anchor",
+      label: "Anchor",
+      kind: "point",
+      default: { x: 0.5, y: 1 },
+      min: 0,
+      max: 1,
+      step: 0.01,
       group: "Surface",
     },
     {
@@ -241,10 +311,10 @@ const remoteTune = createRemoteControls(
   ],
   {
     enabled: import.meta.env.DEV,
-    values: { "drawer.spring.duration": 0.45, "drawer.edge.fade": 24 },
+    values: { "drawer.spring": { duration: 0.45, bounce: 0.25 }, "drawer.edge.fade": 24 },
     presets: {
-      snappy: { "drawer.spring.duration": 0.25, "drawer.spring.bounce": 0.35 },
-      gentle: { "drawer.spring.duration": 0.65, "drawer.spring.bounce": 0.1 },
+      snappy: { "drawer.spring": { duration: 0.25, bounce: 0.35 } },
+      gentle: { "drawer.spring": { duration: 0.65, bounce: 0.1 } },
     },
     actions: [
       {
@@ -263,9 +333,8 @@ const remoteTune = createRemoteControls(
   },
 )
 
-function springCurvePath(duration: number, bounce: number, w = 320, h = 110): string {
-  const omega = (2 * Math.PI) / Math.max(0.1, duration)
-  const zeta = Math.max(0.05, 1 - bounce * 0.9)
+function springCurvePath(value: SpringValue, w = 320, h = 110): string {
+  const { omega, zeta } = springMotion(value)
   const pts: string[] = []
   const steps = 80
   for (let i = 0; i <= steps; i++) {
@@ -276,8 +345,13 @@ function springCurvePath(duration: number, bounce: number, w = 320, h = 110): st
       y =
         1 -
         Math.exp(-zeta * omega * t) * (Math.cos(wd * t) + ((zeta * omega) / wd) * Math.sin(wd * t))
-    } else {
+    } else if (zeta === 1) {
       y = 1 - (1 + omega * t) * Math.exp(-omega * t)
+    } else {
+      const r = Math.sqrt(zeta * zeta - 1)
+      const r1 = -omega * (zeta - r)
+      const r2 = -omega * (zeta + r)
+      y = 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1)
     }
     const px = (i / steps) * w
     const py = h - 22 - y * (h - 48)
@@ -290,8 +364,7 @@ function Workbench({ renderer }: { renderer: RendererMode }) {
   const v = useControls(remoteTune)
   const [panelTheme, setPanelTheme] = useState<ThemeMode>("dark")
   const [density, setDensity] = useState<DensityMode>("default")
-  const dur = Number(v["drawer.spring.duration"] ?? 0.4)
-  const bounce = Number(v["drawer.spring.bounce"] ?? 0.25)
+  const drawer = v["drawer.spring"] as SpringValue
   const swiftOut = remoteTune.swift() || "// Default constants"
 
   return (
@@ -340,9 +413,9 @@ function Workbench({ renderer }: { renderer: RendererMode }) {
             strokeDasharray="3 3"
           />
           <path
-            d={springCurvePath(dur, bounce)}
+            d={springCurvePath(drawer)}
             fill="none"
-            stroke="var(--accent)"
+            stroke={v["composer.tint"] as string}
             strokeWidth="2"
           />
         </svg>
@@ -399,7 +472,7 @@ function App() {
         </span>
       </header>
       <section className="intro">
-        <p className="eyebrow">COMPONENT STUDIES / 001—003</p>
+        <p className="eyebrow">COMPONENT STUDIES / 001—004</p>
         <h1>
           A little room
           <br />
@@ -415,6 +488,7 @@ function App() {
         <Splatter />
         <Halftone />
         <Typography />
+        <Motion />
       </div>
       {import.meta.env.DEV && <Workbench renderer={renderer} />}
       <footer>

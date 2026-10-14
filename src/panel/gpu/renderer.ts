@@ -1051,7 +1051,8 @@ class GpuOverlayManager {
       m.to = [...target]
       m.p.snap(0).set(1, delay)
     }
-    m.p.omega = FILL.omega / clamp(this.curTokens.blurStrength, 0.1, 2)
+    m.p.omega = this.curTokens.fillOmega / clamp(this.curTokens.blurStrength, 0.1, 2)
+    m.p.zeta = this.curTokens.fillZeta
     m.p.step(this.curDt)
     if (!m.p.resting) this.easeMoving = true
     const k = m.p.x
@@ -1819,6 +1820,8 @@ class GpuOverlayManager {
           const dragging = sl.isDragging()
           // The handle follows the same states as its CSS (hover, keyboard focus, drag).
           sl.handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
+          sl.fillSpring.omega = tokens.fillOmega
+          sl.fillSpring.zeta = tokens.fillZeta
           for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring]) {
             if (reducedMotion) sp.snap(sp.target)
             else {

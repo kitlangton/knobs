@@ -71,6 +71,45 @@ try {
   await report("group reset in")
   await synth.getByRole("button", { name: "Reset Filter" }).click()
   await report("group reset out")
+
+  // The compound editors: springs with their dot, disclosure rows, strips, pad and curve handles.
+  await page.goto(`http://127.0.0.1:${port}/?gpu`)
+  const motionStudy = page.locator('[data-study="motion"]')
+  const mb = (await motionStudy.boundingBox())!
+  await motionStudy.hover({ position: { x: mb.width - 20, y: 60 } })
+  await sleep(300)
+  await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+  const motion = page.getByRole("dialog", { name: "motion controls", exact: true })
+  await motion.waitFor()
+  await motion.getByRole("slider", { name: "Travel bounce" }).focus()
+  await page.keyboard.press("ArrowRight")
+  await report("spring dot")
+  await motion.getByRole("radio", { name: "jelly" }).click()
+  await report("spring preset")
+  for (const name of ["Tint", "Target", "Curve"]) {
+    await motion.getByRole("button", { name, exact: true }).click()
+    await report(`open ${name}`)
+  }
+  const drag = async (
+    box: { x: number; y: number; width: number; height: number },
+    label: string,
+  ) => {
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.3, { steps: 8 })
+    await page.mouse.up()
+    await report(label)
+  }
+  await drag((await motion.getByRole("slider", { name: "Tint hue" }).boundingBox())!, "hue drag")
+  await drag((await motion.getByRole("slider", { name: "Target" }).boundingBox())!, "pad drag")
+  await page.keyboard.press("Shift+ArrowUp")
+  await report("pad key")
+  const handle = (await motion.getByRole("slider", { name: "Curve start handle" }).boundingBox())!
+  await drag({ ...handle, x: handle.x - 20, width: 40 }, "handle drag")
+  await motion.getByRole("radio", { name: "ease", exact: true }).click()
+  await report("easing chip")
+  await page.keyboard.press("Escape")
+  await report("collapse")
   await browser.close()
 } finally {
   server.kill()

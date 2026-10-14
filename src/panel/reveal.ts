@@ -50,9 +50,11 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   }
   node.style.overflow = "hidden"
   if (!show) node.dataset.leaving = "true"
+  // --k-reveal-ease retunes the opening curve (the meta page's "Reveal curve").
+  const ease = cs.getPropertyValue("--k-reveal-ease").trim() || EASE_OUT
   const animation = node.animate([current, show ? open : closed], {
     duration: show ? 240 : 170,
-    easing: show ? EASE_OUT : EASE_IN,
+    easing: show ? ease : EASE_IN,
   })
   animation.onfinish = () => {
     node.style.overflow = ""

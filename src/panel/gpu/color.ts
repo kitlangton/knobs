@@ -1,3 +1,5 @@
+import { springMotion } from "../../core/spring.js"
+
 export type Rgba = readonly [number, number, number, number]
 
 const colorCache = new Map<string, Rgba>()
@@ -117,6 +119,9 @@ export interface PanelThemeTokens {
   readonly glass: number
   /** Backdrop brightness under full glass (dims what shows through dark panels). */
   readonly glassTone: number
+  /** The spring values settle on (--k-spring: duration bounce), as ω and ζ. */
+  readonly fillOmega: number
+  readonly fillZeta: number
   readonly fontFamily: string
   readonly monoFamily: string
   readonly isLight: boolean
@@ -177,6 +182,12 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
   )
 
+  const [duration, bounce] = style.getPropertyValue("--k-spring").trim().split(/\s+/).map(Number)
+  const fill =
+    Number.isFinite(duration) && Number.isFinite(bounce)
+      ? springMotion({ duration: duration!, bounce: bounce! })
+      : { omega: 26, zeta: 0.84 }
+
   const monoSample = panel.querySelector<HTMLElement>(".knobs-value")
   const monoComputed = monoSample ? getComputedStyle(monoSample).fontFamily : ""
 
@@ -206,6 +217,8 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
     glowStrength: numProp(style, "--k-glow", 0.5),
     glass: Math.min(1, Math.max(0, numProp(style, "--k-glass", 0))),
     glassTone: numProp(style, "--k-glass-tone", isLight ? 1.08 : 0.5),
+    fillOmega: fill.omega,
+    fillZeta: fill.zeta,
     fontFamily:
       style.fontFamily ||
       style.getPropertyValue("--k-font").trim() ||
