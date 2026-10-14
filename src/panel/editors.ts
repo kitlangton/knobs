@@ -232,13 +232,22 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   const span = o.max - o.min
   let current = o.min
   let colorAt: ((ratio: number) => string) | undefined
+  let veilFn: (() => number) | undefined
   let veilAt = 1
+  let paintKey = ""
+  let paintedKey = ""
   let dragging = false
+  let dragRect: DOMRect | undefined
   const ratio = (v: number) => clamp((v - o.min) / span, 0, 1)
   // The thumb's centre stays a radius inside the capsule, and so does the gradient.
   const xOf = (r: number) => size.h / 2 + (size.w - size.h) * r
-  const paint = () => {
+  const paint = (force = false) => {
     if (!size.w || !colorAt) return
+    const key = `${size.w}|${size.h}|${paintKey}`
+    if (!force && key === paintedKey) return
+    paintedKey = key
+    veilAt = veilFn ? veilFn() : 1
+    if (track.closest('[data-gpu-active="true"]') !== null) return
     const stops = Array.from({ length: 25 }, (_, i) => `${colorAt!(i / 24)} ${xOf(i / 24)}px`)
     track.style.background = `linear-gradient(to right,${stops.join(",")})`
     veil.style.left = `${xOf(veilAt)}px`
@@ -248,7 +257,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     if (size.w) place([thumb], instant, () => (thumb.style.left = `${xOf(ratio(current))}px`))
   }
   const size = measure(track, () => {
-    paint()
+    paint(true)
     placeThumb(true)
   })
   const quantize = (v: number, fine: boolean) => {
@@ -262,8 +271,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   let anchorX = 0
   let anchorValue = 0
   let fine = false
-  const valueAt = (clientX: number) => {
-    const r = track.getBoundingClientRect()
+  const valueAt = (clientX: number, r = dragRect ?? track.getBoundingClientRect()) => {
     if (fine)
       return anchorValue + ((clientX - anchorX) / Math.max(1, r.width - r.height)) * span * 0.1
     return (
@@ -276,12 +284,13 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     event.preventDefault()
     track.setPointerCapture(event.pointerId)
     track.focus({ preventScroll: true })
+    dragRect = track.getBoundingClientRect()
     dragging = true
     fine = event.altKey
     anchorX = event.clientX
     anchorValue = current
     o.start()
-    if (!fine) o.set(quantize(valueAt(event.clientX), false))
+    if (!fine) o.set(quantize(valueAt(event.clientX, dragRect), false))
     c.wake()
   }
   track.onpointermove = (event) => {
@@ -292,11 +301,12 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
       anchorValue = current
     }
     line.classList.add("knobs-active")
-    o.set(quantize(valueAt(event.clientX), fine))
+    o.set(quantize(valueAt(event.clientX, dragRect), fine))
   }
   const release = () => {
     if (!dragging) return
     dragging = false
+    dragRect = undefined
     line.classList.remove("knobs-active")
     c.wake()
   }
@@ -336,9 +346,10 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
       track.setAttribute("aria-valuetext", o.format(value))
       placeThumb(first)
     },
-    paint(fn: (ratio: number) => string, veilRatio = 1) {
+    paint(key: string, fn: (ratio: number) => string, veil?: () => number) {
+      paintKey = key
       colorAt = fn
-      veilAt = veilRatio
+      veilFn = veil
       paint()
     },
   }
@@ -580,13 +591,15 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
       hs!.update(shown.h)
       cs!.update(shown.c)
       ls!.update(shown.l)
-      const { l, h } = shown
-      hs!.paint((r) => rgbCss(oklchToRgb({ l, c: Math.max(shown.c, 0.06), h: r * 360 })))
+      const { l, c: ch, h } = shown
+      const hc = Math.max(ch, 0.06)
+      hs!.paint(`${l}|${hc}`, (r) => rgbCss(oklchToRgb({ l, c: hc, h: r * 360 })))
       cs!.paint(
+        `${l}|${h}`,
         (r) => rgbCss(oklchToRgb({ l, c: r * CHROMA_MAX, h })),
-        maxChroma(l, h) / CHROMA_MAX,
+        () => maxChroma(l, h) / CHROMA_MAX,
       )
-      ls!.paint((r) => rgbCss(oklchToRgb({ l: r, c: shown.c, h })))
+      ls!.paint(`${ch}|${h}`, (r) => rgbCss(oklchToRgb({ l: r, c: ch, h })))
       for (const s of strips) s.thumb.style.backgroundColor = rgb
     },
   }
@@ -637,10 +650,10 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   const size = measure(pad, () => layout(true))
   const g = gesture(c)
   let fine = false
+  let dragRect: DOMRect | undefined
   let anchor: [number, number] = [0, 0]
   let anchorValue = shown
-  const valueAt = (event: PointerEvent): Point => {
-    const r = pad.getBoundingClientRect()
+  const valueAt = (event: PointerEvent, r = dragRect ?? pad.getBoundingClientRect()): Point => {
     const spanX = f.max.x - f.min.x
     const spanY = f.max.y - f.min.y
     if (fine)
@@ -662,12 +675,13 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     event.preventDefault()
     pad.setPointerCapture(event.pointerId)
     pad.focus({ preventScroll: true })
+    dragRect = pad.getBoundingClientRect()
     dragging = true
     fine = event.altKey
     anchor = [event.clientX, event.clientY]
     anchorValue = shown
     g.start()
-    if (!fine) g.set(valueAt(event))
+    if (!fine) g.set(valueAt(event, dragRect))
     c.wake()
   }
   pad.onpointermove = (event) => {
@@ -678,11 +692,12 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
       anchorValue = shown
     }
     pad.classList.add("knobs-active")
-    g.set(valueAt(event))
+    g.set(valueAt(event, dragRect))
   }
   const release = () => {
     if (!dragging) return
     dragging = false
+    dragRect = undefined
     pad.classList.remove("knobs-active")
     c.wake()
   }
@@ -847,6 +862,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
   })
   const g = gesture(c)
   let dragging = -1
+  let dragRect: DOMRect | undefined
   let grab: [number, number] = [0, 0]
   let fine = false
   let anchor: [number, number] = [0, 0]
@@ -866,6 +882,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       h.setPointerCapture(event.pointerId)
       h.focus({ preventScroll: true })
       const r = box.getBoundingClientRect()
+      dragRect = r
       const [hx, hy] = map(shown[i * 2]!, shown[i * 2 + 1]!)
       grab = [event.clientX - r.left - hx, event.clientY - r.top - hy]
       anchor = [event.clientX, event.clientY]
@@ -890,7 +907,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
           anchorValue[i * 2]! + ((event.clientX - anchor[0]) / uw) * 0.1,
           anchorValue[i * 2 + 1]! - ((event.clientY - anchor[1]) / uh) * spanY * 0.1,
         )
-      const r = box.getBoundingClientRect()
+      const r = dragRect ?? (dragRect = box.getBoundingClientRect())
       move(
         i,
         (event.clientX - r.left - grab[0] - EASE_PAD.x) / uw,
@@ -900,6 +917,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     const release = () => {
       if (dragging !== i) return
       dragging = -1
+      dragRect = undefined
       box.classList.remove("knobs-active")
       c.wake()
     }
