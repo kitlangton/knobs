@@ -194,11 +194,14 @@ export interface GpuGroupBinding {
   readonly title?: boolean
   /** On a page: a preset's name, shown in place of the title while its chip is hovered. */
   readonly peek?: HTMLElement
-  /** On a page: the group's numbered presets. */
+  /** On a page: the group's presets, as named or numbered segments, or a compact menu. */
   readonly presets?: {
     readonly seg: HTMLElement
     readonly buttons: readonly HTMLButtonElement[]
     readonly pill: Edges
+    readonly menu?: HTMLButtonElement
+    readonly menuValue?: HTMLElement
+    readonly isMenu?: () => boolean
   }
 }
 
@@ -1381,6 +1384,45 @@ class GpuOverlayManager {
     return moving
   }
 
+  /** A card header's compact preset menu: its tray, the selected name (or a dim "Custom") and caret. */
+  private drawHeadMenu(b: HTMLButtonElement, valueEl: HTMLElement, hinting: boolean) {
+    const t = this.curTokens
+    const br = this.rectOf(b)
+    if (br.width <= 0) return
+    const open = b.getAttribute("aria-expanded") === "true"
+    const on = this.isHovered(b) || this.isFocused(b) || open
+    const wash = this.wash(b, on)
+    const alpha = this.missed(b, hinting)
+    this.pushPrim({
+      x: br.left,
+      y: br.top,
+      w: br.width,
+      h: br.height,
+      color: withAlpha(cssMix(t.surfaceHi, t.segBg, wash), alpha),
+      color2: t.accent,
+      radius: t.radiusMd,
+      glowOrBlur: t.glowStrength * 8,
+      kind: 1,
+    })
+    const none = b.hasAttribute("data-none")
+    const vr = this.rectOf(valueEl)
+    this.drawText(
+      this.fit(valueEl.textContent ?? "", vr.width + 1, t.textMeta, 500),
+      vr.left,
+      br.top + br.height * 0.5,
+      withAlpha(none ? t.dim : this.hot(b, on), alpha),
+      { px: t.textMeta, weight: 500 },
+    )
+    const caret = b.querySelector("svg")
+    if (caret)
+      this.drawIcon(
+        "caret",
+        t.iconSm - 3,
+        this.rectOf(caret),
+        withAlpha(this.hot(b, on, t.dim, t.label), alpha),
+      )
+  }
+
   /** Text that fits `maxW`, ellipsized like `text-overflow: ellipsis`. */
   private fit(text: string, maxW: number, px: number, weight: number): string {
     const m = (t: string) => this.atlas.measure(t, px, weight, this.curTokens.fontFamily)
@@ -2387,7 +2429,9 @@ class GpuOverlayManager {
             color: tokens.groupDivider,
             kind: 1,
           })
-        if (g.presets)
+        if (g.presets?.menu && g.presets.menuValue && g.presets.isMenu?.())
+          this.drawHeadMenu(g.presets.menu, g.presets.menuValue, hinting)
+        else if (g.presets)
           anyMoving =
             this.drawSeg(g.presets.seg, g.presets.buttons, g.presets.pill, {
               px: tokens.textMeta,

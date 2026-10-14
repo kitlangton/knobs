@@ -526,7 +526,9 @@ const css = `
 .knobs-column>:not([hidden])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
 .knobs-tile{position:relative;min-width:0;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
 .knobs-tile>.knobs-card{margin:0}
-.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-section-gap);min-height:var(--k-icon-btn);color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+/* A card's header is compact: as tall as its 20px controls, then a gap and a half before its rows. */
+.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-head-gap);min-height:20px;color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+.knobs-panel.knobs-page{--k-head-gap:calc(var(--k-gap) * 1.5)}
 .knobs-group-title{display:grid;flex:1;min-width:0}
 .knobs-group-title>*{grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .15s}
 .knobs-peek{opacity:0;pointer-events:none}
@@ -535,6 +537,13 @@ const css = `
 .knobs-group-head .knobs-chips.knobs-seg{flex:none;height:20px;max-width:none;gap:0;margin-right:var(--k-unit)}
 .knobs-group-head .knobs-chips button{width:18px;height:100%;padding:0;font-size:var(--k-text-meta);font-weight:500;font-variant-numeric:tabular-nums;border-radius:var(--k-radius-sm);background:transparent}
 .knobs-group-head .knobs-chips button[aria-checked="true"]{color:var(--k-text)}
+/* Named presets: their names as segments beside the title, or a compact menu of them. */
+.knobs-group-presets{display:flex;align-items:center;min-width:0;margin-right:var(--k-unit)}
+.knobs-group-presets .knobs-seg{flex:none;height:20px;max-width:none;padding:var(--k-tray-pad)}
+.knobs-group-presets .knobs-seg button{height:100%;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;background:transparent}
+.knobs-panel .knobs-group-presets .knobs-select{height:20px;max-width:11em;gap:3px;padding:0 3px 0 7px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none}
+.knobs-group-presets .knobs-select[data-none]{color:var(--k-dim)}
+.knobs-group-presets .knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 3px);height:calc(var(--k-icon-sm) - 3px)}
 .knobs-tile-body{display:flex;flex-direction:column}
 .knobs-tile-body>.knobs-card{margin:0}
 .knobs-panel .knobs-tile-body>.knobs-custom-actions{position:relative;margin:0}

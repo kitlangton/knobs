@@ -91,6 +91,8 @@ export function createPresetStrip<S extends Schema>(
   showVariants: boolean,
   run: (action: () => unknown) => void,
   onAfterChange?: () => void,
+  /** What a preset's chip says (its id stays its identity); `controls.presetLabel` by default. */
+  presetLabel: (id: string) => string = (id) => controls.presetLabel(id),
 ): PresetStrip {
   const wake = () => onAfterChange?.()
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -145,7 +147,7 @@ export function createPresetStrip<S extends Schema>(
         id: `p:${id}`,
         kind: "preset",
         rawId: id,
-        label: id,
+        label: presetLabel(id),
         values: presetValues,
         apply: () => controls.preset(id),
       }),

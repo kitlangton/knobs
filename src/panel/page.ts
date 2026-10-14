@@ -260,6 +260,8 @@ export function createPageLayout(
   options: {
     order: readonly string[]
     columnWidth: number
+    /** What a section's heading says (its name by default). */
+    sectionLabel?(name: string): string
     /** Cards moved in the DOM (re-sort anything kept in page order). */
     onLayout(): void
     /** Motion started or settled (the overlay re-reads rects). */
@@ -300,7 +302,7 @@ export function createPageLayout(
     if (name) {
       label = el("knobs-section-head", "h2")
       label.dataset.section = name
-      label.textContent = name
+      label.textContent = options.sectionLabel?.(name) ?? name
     }
     s = { name, rank, label, tiles: [], spacers: [] }
     const after = sections.findIndex((x) => x.rank > rank)
@@ -775,6 +777,21 @@ export function createPageLayout(
       contents.disconnect()
     },
   }
+}
+
+/**
+ * A card's title without its section's name repeated in front: "Transcript · Arrivals" under
+ * Transcript reads "Arrivals". `prefixes` are what the section is called (its id and label); the
+ * name has to be followed by a separator (· • : / | › » or a dash), and something has to remain.
+ */
+export function cardTitle(title: string, prefixes: readonly string[]): string {
+  const lower = title.toLowerCase()
+  for (const prefix of prefixes) {
+    if (!prefix || !lower.startsWith(prefix.toLowerCase())) continue
+    const rest = /^\s*[·•:/|›»—–-]\s*(\S.*)$/u.exec(title.slice(prefix.length))
+    if (rest) return rest[1]!
+  }
+  return title
 }
 
 /** Whether a field, group or card answers the filter: every word appears somewhere in `text`. */

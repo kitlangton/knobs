@@ -28,6 +28,7 @@ import {
   type GroupPreset,
   type Controls,
   type DensityMode,
+  type GroupPresetDisplay,
   type PanelKeys,
   type PanelModule,
   type RendererMode,
@@ -45,8 +46,12 @@ interface DescriptorMeta {
   readonly key: string
   readonly label?: string
   readonly group?: string
+  /** What the group's header shows, when not the `group` id (see `FieldMeta.groupLabel`). */
+  readonly groupLabel?: string
   /** The page region the descriptor's group sits in (see `mountPage`). */
   readonly section?: string
+  /** What the section's heading shows, when not the `section` id. */
+  readonly sectionLabel?: string
   readonly shortcut?: string
 }
 /**
@@ -111,6 +116,14 @@ export interface RemoteControlsOptions {
   readonly presets?: Readonly<Record<string, State>>
   /** Numbered presets per group, e.g. the phone's preset sets (see `ControlsOptions.groupPresets`). */
   readonly groupPresets?: Readonly<Record<string, readonly GroupPreset[]>>
+  /** Display labels by group id, section id and preset id (see `ControlsOptions.groupLabels`). */
+  readonly groupLabels?: Readonly<Record<string, string>>
+  readonly sectionLabels?: Readonly<Record<string, string>>
+  readonly presetLabels?: Readonly<Record<string, string>>
+  /** Shorthand for `presetLabels.default`, e.g. "Native". */
+  readonly defaultLabel?: string
+  /** How a page card shows its group presets (see `ControlsOptions.groupPresetDisplay`). */
+  readonly groupPresetDisplay?: GroupPresetDisplay
   readonly actions?: readonly ControlAction<State>[]
   readonly storage?: StoragePort | null
   readonly theme?: ThemeMode
@@ -159,7 +172,9 @@ export function descriptorToField(d: ControlDescriptor): Field {
   const meta = {
     ...(d.label !== undefined ? { label: d.label } : {}),
     ...(d.group !== undefined ? { group: d.group } : {}),
+    ...(d.groupLabel !== undefined ? { groupLabel: d.groupLabel } : {}),
     ...(d.section !== undefined ? { section: d.section } : {}),
+    ...(d.sectionLabel !== undefined ? { sectionLabel: d.sectionLabel } : {}),
     ...(d.shortcut !== undefined ? { shortcut: d.shortcut } : {}),
   }
   if (d.kind === "action") return action(d.label, meta)
@@ -225,7 +240,11 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
     const half = (part: "duration" | "bounce") => {
       const own = byKey.get(d.bind[part])
       if (own && !own.bind && (own.kind === "number" || own.kind === "knob"))
-        return descriptorToField({ ...own, group: d.group ?? own.group }) as Knob
+        return descriptorToField({
+          ...own,
+          group: d.group ?? own.group,
+          groupLabel: d.groupLabel ?? own.groupLabel,
+        }) as Knob
       return (d.default?.[part] ?? (part === "duration" ? 0.5 : 0)) as number
     }
     const pair = flatSpring(
@@ -234,7 +253,9 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
         id: d.key,
         ...(d.label !== undefined ? { label: d.label } : {}),
         ...(d.group !== undefined ? { group: d.group } : {}),
+        ...(d.groupLabel !== undefined ? { groupLabel: d.groupLabel } : {}),
         ...(d.section !== undefined ? { section: d.section } : {}),
+        ...(d.sectionLabel !== undefined ? { sectionLabel: d.sectionLabel } : {}),
       },
     )
     entries.push([d.bind.duration, pair.duration], [d.bind.bounce, pair.bounce])
@@ -357,6 +378,11 @@ export function createRemoteControls(
     renderer: options.renderer,
     keys: options.keys,
     marks: options.marks,
+    groupLabels: options.groupLabels,
+    sectionLabels: options.sectionLabels,
+    presetLabels: options.presetLabels,
+    defaultLabel: options.defaultLabel,
+    groupPresetDisplay: options.groupPresetDisplay,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return

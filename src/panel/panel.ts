@@ -11,6 +11,7 @@ import type { SpringValue } from "../core/spring.js"
 import type {
   ControlAction,
   Controls,
+  GroupPresetDisplay,
   MountPanelOptions,
   PanelCommand,
   PanelKeys,
@@ -38,6 +39,7 @@ import { Edges } from "./motion.js"
 import { morphFromChip, type PanelMorph } from "./morph.js"
 import { openMenu, type Menu } from "./menu.js"
 import {
+  cardTitle,
   createCustomCard,
   createPageLayout,
   matchesFilter,
@@ -332,7 +334,18 @@ function buildPanel<S extends Schema>(
   const dismiss = close ? headButton("close", `Close ${controls.id}`, "", close) : undefined
   if (dismiss && !showFooter) dismiss.classList.add("knobs-head-split")
   const titleEl = el("strong", titleText ? readableTitle(titleText) : "")
-  const presetStrip = createPresetStrip(doc, controls, showVariants, run, () => wakeGpu())
+  const presetLabel = (id: string) =>
+    options.presetLabels?.[id] ??
+    (id === "default" ? options.defaultLabel : undefined) ??
+    controls.presetLabel(id)
+  const presetStrip = createPresetStrip(
+    doc,
+    controls,
+    showVariants,
+    run,
+    () => wakeGpu(),
+    presetLabel,
+  )
   // A page's header is one sticky bar: title, then the presets, then the tools.
   const tools = el("div")
   tools.className = "knobs-page-tools"
@@ -382,6 +395,7 @@ function buildPanel<S extends Schema>(
     layout = createPageLayout(doc, body, {
       order: page.sections ?? [],
       columnWidth: page.columnWidth ?? 300,
+      sectionLabel: (name) => sectionTitle(name),
       onLayout: () => {
         layoutTick++
         // Rows follow the page: down each column, then on to the next.
@@ -405,8 +419,8 @@ function buildPanel<S extends Schema>(
     tile.className = "knobs-tile"
     if (group) {
       tile.dataset.group = group
-      tile.setAttribute("aria-label", group)
-      tile.append(groupHead(group))
+      tile.setAttribute("aria-label", groupTitle(group, section))
+      tile.append(groupHead(group, section))
     }
     const inner = el("div")
     inner.className = "knobs-card"
@@ -430,11 +444,26 @@ function buildPanel<S extends Schema>(
     return block
   }
 
-  function groupHead(groupName: string) {
+  /** A section's heading: its label, else its id. */
+  const sectionTitle = (section: string) =>
+    options.sectionLabels?.[section] ?? controls.sectionLabel(section) ?? section
+  /**
+   * A group's title: its label, verbatim; else on a page its id without the section's name
+   * repeated in front ("Transcript · Arrivals" under Transcript reads "Arrivals").
+   */
+  const groupTitle = (group: string, section?: string) =>
+    options.groupLabels?.[group] ??
+    controls.groupLabel(group) ??
+    (page && section ? cardTitle(group, [section, sectionTitle(section)]) : group)
+  const presetDisplay: GroupPresetDisplay =
+    options.groupPresetDisplay ?? controls.groupPresetDisplay
+
+  function groupHead(groupName: string, section?: string) {
+    const title = groupTitle(groupName, section)
     const gHead = el("div")
     gHead.className = "knobs-group-head"
     gHead.dataset.group = groupName
-    const gLabel = el("span", groupName)
+    const gLabel = el("span", title)
     gLabel.className = "knobs-group-label"
     const gRight = el("span")
     const gBtns: HTMLButtonElement[] = []
@@ -444,39 +473,38 @@ function buildPanel<S extends Schema>(
       gRight.append(b)
     }
     // Shown only while something in the group differs from its defaults.
-    const gReset = iconButton("reset", `Reset ${groupName}`, "", () => {
+    const gReset = iconButton("reset", `Reset ${title}`, "", () => {
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
         rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
     })
     gReset.className = "knobs-group-reset"
-    gReset.dataset.hint = `${groupName} reset`
+    gReset.dataset.hint = `${title} reset`
     gReset.dataset.shown = "false"
     gReset.disabled = true
     groupResetButtons.set(groupName, gReset)
     // The group's own die: Random for just these rows (⌥ mutates them).
     const gDie = createHeaderDie(doc, () => wakeGpu(), GROUP_DIE)
-    const gRandom = iconButton("random", `Randomize ${groupName}`, "g Alt+g", () => {})
+    const gRandom = iconButton("random", `Randomize ${title}`, "g Alt+g", () => {})
     gRandom.className = "knobs-group-die"
-    gRandom.dataset.hint = `${groupName} random`
+    gRandom.dataset.hint = `${title} random`
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
     if (!bound("random") && !bound("mutate")) gRandom.hidden = true
     groupDice.set(groupName, { button: gRandom, die: gDie })
-    // On a page, the group's numbered presets sit in its header; hovering one shows its name
-    // where the title is.
+    // On a page, the group's presets sit in its header: their names as segments while they fit
+    // beside the title, else a compact menu (or numbered chips, whose hovered name shows where
+    // the title is). 1–9 apply them whichever way they show.
     const presets = page ? (controls.groupPresets[groupName] ?? []).slice(0, 9) : []
-    let chips:
-      | { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges; ro: ResizeObserver }
-      | undefined
+    let ui: GroupPresetUi | undefined
     const gPeek = el("span")
     gPeek.className = "knobs-peek"
     gPeek.setAttribute("aria-hidden", "true")
-    if (presets.length) {
+    if (presets.length && presetDisplay === "numbers") {
       const seg = el("div")
       seg.className = "knobs-seg knobs-chips"
       seg.setAttribute("role", "radiogroup")
-      seg.setAttribute("aria-label", `${groupName} presets`)
+      seg.setAttribute("aria-label", `${title} presets`)
       const pill = el("span")
       pill.className = "knobs-seg-pill"
       pill.setAttribute("aria-hidden", "true")
@@ -500,10 +528,67 @@ function buildPanel<S extends Schema>(
         placeSegPill(seg, buttons, String(controls.matchingGroupPreset(groupName)), true),
       )
       ro.observe(seg)
-      chips = { seg, buttons, pill: new Edges(), ro }
-      groupChips.set(groupName, chips)
+      ui = {
+        head: gHead,
+        seg,
+        buttons,
+        pill: new Edges(),
+        numbers: true,
+        show: (value) => placeSegPill(seg, buttons, value),
+        dispose: () => ro.disconnect(),
+      }
       gRight.append(seg)
+    } else if (presets.length) {
+      const wrap = el("span")
+      wrap.className = "knobs-group-presets"
+      gRight.append(wrap)
+      // The title wins the room: names show only where they fit beside all of it.
+      const room = () => {
+        const cs = getComputedStyle(gHead)
+        const inner =
+          gHead.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+        const range = doc.createRange()
+        range.selectNodeContents(gLabel)
+        const titleW = range.getBoundingClientRect().width
+        const others = gRight.getBoundingClientRect().width - wrap.getBoundingClientRect().width
+        const gap = parseFloat(cs.columnGap) || 0
+        return inner - titleW - others - gap * 2
+      }
+      const control = createChoice(doc, wrap, {
+        label: `${title} presets`,
+        items: presets.map((p, i) => ({ value: String(i), label: p.name })),
+        display:
+          presetDisplay === "menu" ? "menu" : presetDisplay === "names" ? "segmented" : "auto",
+        compact: 9,
+        numbered: true,
+        none: "Custom",
+        value: () => String(controls.matchingGroupPreset(groupName)),
+        choose: (value, coalesce) =>
+          run(() => applyGroupPreset(groupName, Number(value), coalesce)),
+        wake: () => wakeGpu(),
+        observe: gHead,
+        room,
+      })
+      control.seg.tabIndex = -1
+      control.menu.tabIndex = -1
+      control.buttons.forEach((b, i) => {
+        b.setAttribute("aria-label", `${i + 1} ${presets[i]!.name}`)
+        b.setAttribute("aria-keyshortcuts", String(i + 1))
+      })
+      control.show(String(controls.matchingGroupPreset(groupName)), true)
+      ui = {
+        head: gHead,
+        seg: control.seg,
+        buttons: control.buttons,
+        pill: new Edges(),
+        menu: control.menu,
+        menuValue: control.menuValue,
+        isMenu: control.isMenu,
+        show: (value) => control.show(value),
+        dispose: control.dispose,
+      }
     }
+    if (ui) groupChips.set(groupName, ui)
     gRight.append(gReset, gRandom)
     if (page) {
       const gTitle = el("span")
@@ -518,19 +603,39 @@ function buildPanel<S extends Schema>(
       reset: gReset,
       die: { button: gRandom, die: gDie },
       ...(page ? { title: true, peek: gPeek } : {}),
-      ...(chips ? { presets: chips } : {}),
+      ...(ui
+        ? {
+            presets: {
+              seg: ui.seg,
+              buttons: ui.buttons,
+              pill: ui.pill,
+              ...(ui.menu ? { menu: ui.menu, menuValue: ui.menuValue!, isMenu: ui.isMenu! } : {}),
+            },
+          }
+        : {}),
     })
     return gHead
   }
-  const groupChips = new Map<
-    string,
-    { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges; ro: ResizeObserver }
-  >()
+  interface GroupPresetUi {
+    head: HTMLElement
+    seg: HTMLElement
+    buttons: readonly HTMLButtonElement[]
+    pill: Edges
+    /** Numbered chips (`groupPresetDisplay: "numbers"`): a hovered one peeks its name. */
+    numbers?: boolean
+    menu?: HTMLButtonElement
+    menuValue?: HTMLElement
+    isMenu?: () => boolean
+    show(value: string): void
+    dispose(): void
+  }
+  const groupChips = new Map<string, GroupPresetUi>()
   const peekTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** Shows a preset's name in place of its group's title (null brings the title back). */
   const peek = (group: string, name: string | null, linger = 0) => {
-    const head = groupChips.get(group)?.seg.closest<HTMLElement>(".knobs-group-head")
-    if (!head) return
+    const ui = groupChips.get(group)
+    if (!ui?.numbers) return
+    const head = ui.head
     clearTimeout(peekTimers.get(group))
     const label = head.querySelector<HTMLElement>(".knobs-peek")!
     if (name !== null) {
@@ -544,10 +649,11 @@ function buildPanel<S extends Schema>(
       )
     wakeGpu()
   }
-  const applyGroupPreset = (group: string, index: number) => {
+  const applyGroupPreset = (group: string, index: number, coalesce = false) => {
     const preset = controls.groupPresets[group]?.[index]
     if (!preset) return
-    controls.groupPreset(group, index)
+    controls.groupPreset(group, index, { coalesce })
+    // Names that show already say which one it is.
     peek(group, preset.name, 1100)
   }
 
@@ -963,7 +1069,7 @@ function buildPanel<S extends Schema>(
       groupResetButtons.delete(block.group)
       groupDice.get(block.group)?.die.dispose()
       groupDice.delete(block.group)
-      groupChips.get(block.group)?.ro.disconnect()
+      groupChips.get(block.group)?.dispose()
       groupChips.delete(block.group)
     }
   }
@@ -1450,8 +1556,7 @@ function buildPanel<S extends Schema>(
     if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
-    for (const [group, c] of groupChips)
-      placeSegPill(c.seg, c.buttons, String(controls.matchingGroupPreset(group)))
+    for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     presetStrip.update()
     shown = values as Values<S>
     initialized = true
@@ -1566,7 +1671,17 @@ function buildPanel<S extends Schema>(
     layout.change(
       () => {
         for (const r of rows) {
-          const show = !query || matchesFilter(query, r.display, r.key, r.group, r.section)
+          const show =
+            !query ||
+            matchesFilter(
+              query,
+              r.display,
+              r.key,
+              r.group,
+              r.group && groupTitle(r.group, r.section),
+              r.section,
+              r.section && sectionTitle(r.section),
+            )
           if (r.row.hidden === show) r.row.hidden = !show
         }
         for (const inner of tiles.values()) {
@@ -1575,7 +1690,13 @@ function buildPanel<S extends Schema>(
           if (tile.hidden !== empty) tile.hidden = empty
         }
         for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
-          const hide = Boolean(query) && !matchesFilter(query, tile.dataset.card)
+          const hide =
+            Boolean(query) &&
+            !matchesFilter(
+              query,
+              tile.dataset.card,
+              tile.querySelector(".knobs-group-label")?.textContent ?? undefined,
+            )
           if (tile.hidden !== hide) tile.hidden = hide
         }
       },
@@ -2271,7 +2392,7 @@ function buildPanel<S extends Schema>(
       clearTimeout(statusTimer)
       for (const t of peekTimers.values()) clearTimeout(t)
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
-      for (const c of groupChips.values()) c.ro.disconnect()
+      for (const c of groupChips.values()) c.dispose()
       presetStrip.dispose()
       layout?.dispose()
       tileSizes.disconnect()

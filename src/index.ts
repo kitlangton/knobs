@@ -39,6 +39,8 @@ export {
   type ControlsOptions,
   type DensityMode,
   type GroupPreset,
+  type GroupPresetDisplay,
+  type LabelOptions,
   type MountPanelOptions,
   type PanelCommand,
   type PanelHandle,
