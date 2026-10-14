@@ -902,6 +902,8 @@ export function createPageLayout(
       if (lit) queueMicrotask(retarget)
     },
     remove(tile) {
+      glows.delete(tile)
+      glowing.delete(tile)
       const s = sectionOf(tile)
       if (s) s.tiles.splice(s.tiles.indexOf(tile), 1)
       for (const child of tile.children) contents.unobserve(child)
@@ -974,9 +976,9 @@ export function createPageLayout(
       if (!lit) return []
       const out: HTMLElement[] = []
       for (const t of tilesInOrder()) if (showing(t) && litTile(t).on) out.push(t)
+      // A section highlighted as a whole starts at its heading.
       for (const s of sections)
-        if (s.label?.isConnected && s.label.classList.contains("knobs-highlighted"))
-          out.push(s.label)
+        if (s.label?.isConnected && lit.sections.has(s.name)) out.push(s.label)
       return out
         .map((node) => ({ node, r: node.getBoundingClientRect() }))
         .filter((x) => x.r.height > 0)

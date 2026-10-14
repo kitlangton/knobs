@@ -2501,17 +2501,23 @@ function buildPanel<S extends Schema>(
     },
   })
   /** Glides the first highlighted card (or heading) into view, unless the user is busy here. */
-  function revealHighlight() {
+  function revealHighlight(again?: HTMLElement, tries = 0) {
     if (!win) return
     const recent = performance.now() - touchedAt < REVEAL_QUIET_MS
     if (recent || pointersDown > 0 || html.hasAttribute("data-knobs-scrub")) return
-    const first = pageLayout.highlighted()[0]
-    if (!first) return
+    const first = again ?? pageLayout.highlighted()[0]
+    if (!first?.isConnected) return
     const headBottom = header.getBoundingClientRect().bottom
     const r = first.getBoundingClientRect()
-    // Already in view (its top showing with room below it): leave the page where it is.
-    if (r.top >= headBottom && r.top <= win.innerHeight - Math.min(160, win.innerHeight / 3)) return
     const margin = 12
+    // Already in view (its top showing with room below it): leave the page where it is. After a
+    // glide, only a target that moved meanwhile (content above it settling) is followed.
+    if (
+      again
+        ? Math.abs(r.top - headBottom - margin) < 1.5
+        : r.top >= headBottom && r.top <= win.innerHeight - Math.min(160, win.innerHeight / 3)
+    )
+      return
     const goal = Math.max(
       0,
       Math.min(
@@ -2523,6 +2529,8 @@ function buildPanel<S extends Schema>(
     scrollGoal = goal
     const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
     win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
+    if (tries < 2)
+      win.addEventListener("scrollend", () => revealHighlight(first, tries + 1), { once: true })
   }
   return pageApi
 }
