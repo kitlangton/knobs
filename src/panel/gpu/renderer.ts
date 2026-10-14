@@ -2219,11 +2219,13 @@ class GpuOverlayManager {
           if (sr.width <= 0 || sr.bottom < bodyClip[1] || sr.top > bodyClip[3]) continue
           const indent = tokens.pad + tokens.inset + 1
           const px = tokens.fontSize + 3
+          // A label fading in (its section just appeared) carries the DOM's opacity.
+          const shown = head.style.opacity ? Number(head.style.opacity) : 1
           this.drawText(
             this.fit(head.textContent ?? "", sr.width - indent * 2, px, 600),
             sr.left + indent,
             sr.top + sr.height * 0.5,
-            tokens.text,
+            withAlpha(tokens.text, shown),
             { px, weight: 600, track: -0.015 },
           )
         }

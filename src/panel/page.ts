@@ -238,6 +238,8 @@ interface Motion {
   readonly x: Spring
   readonly y: Spring
   h?: Spring
+  /** A section label fading in. */
+  o?: Spring
   /** Growing in from nothing or folding away (from or to this height): padding and the gap below ease with the height. */
   fold?: number
 }
@@ -335,6 +337,7 @@ export function createPageLayout(
     const y = m.y.x
     node.style.transform =
       Math.abs(x) > 0.01 || Math.abs(y) > 0.01 ? `translate(${x}px,${y}px)` : ""
+    if (m.o) node.style.opacity = String(Math.min(1, Math.max(0, m.o.x)))
     if (m.h) {
       const h = Math.max(0, m.h.x)
       node.style.height = `${h}px`
@@ -353,6 +356,7 @@ export function createPageLayout(
     node.style.overflow = ""
     node.style.marginBottom = ""
     node.style.paddingTop = node.style.paddingBottom = ""
+    node.style.opacity = ""
   }
   function settle(node: HTMLElement, m: Motion) {
     motions.delete(node)
@@ -375,7 +379,9 @@ export function createPageLayout(
       m.x.step(dt)
       m.y.step(dt)
       m.h?.step(dt)
-      if (m.x.resting && m.y.resting && (!m.h || m.h.resting)) settle(node, m)
+      m.o?.step(dt)
+      if (m.x.resting && m.y.resting && (!m.h || m.h.resting) && (!m.o || m.o.resting))
+        settle(node, m)
       else write(node, m)
     }
     if (motions.size) raf = win.requestAnimationFrame(tick)
@@ -596,6 +602,12 @@ export function createPageLayout(
       }
     }
     pending.clear()
+    // Labels of sections that just appeared fade in.
+    for (const s of sections)
+      if (s.label?.isConnected && !first.has(s.label)) {
+        const m = motionFor(s.label)
+        m.o = new Spring(0, SIZE.omega, SIZE.zeta, 0.01).set(1)
+      }
     for (const [node, m] of motions) write(node, m)
     // Last, then invert: each card and label starts where it was drawn and glides home.
     for (const node of nodes()) {

@@ -230,7 +230,9 @@ See [`docs/migration.md`](./docs/migration.md) for full migration sketches for t
 
 ## Full page
 
-When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections**, each a heading over its groups. Every group is a card, and the cards pack into balanced columns that follow the viewport (as many as fit at `columnWidth`, never more than the fullest section fills), reading down each column and on to the next.
+When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
+
+Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
 
 ```ts
 import { createRemoteControls } from "knobs"
@@ -285,6 +287,15 @@ watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `
 speed.set("0.25") // the phone changed it
 ```
 
+Content that changes over time animates if you update it in place. `card.list()` keeps rows by key: `set` updates the rows that stay, folds new ones open and removed ones shut (rows replaced by others cross-fade while the card eases to its new height). `actions(...).set` swaps buttons the same way, keyed by label, and the row folds away while it's empty. `card.show(element, visible)` folds anything in the card open or shut.
+
+```ts
+const jumps = watch.list()
+jumps.set(phone.jumps.map((j) => ({ key: j.id, label: j.title, detail: j.detail, onSelect: () => replay(j.id) })))
+const scenarios = playground.actions([])
+scenarios.set(screen === "composer" ? [{ label: "Call", run: call }, { label: "Dictation", run: dictate }] : [])
+```
+
 On a page, the keyboard spans every card:
 
 | Key | Action |
@@ -292,12 +303,12 @@ On a page, the keyboard spans every card:
 | `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
 | `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits) |
 | `1`–`9` | Apply the focused group's numbered preset (in groups without them, digits still edit numbers; `Enter` always does) |
-| `/` | Filter rows by label, group or section, live; cards with nothing left fold away and the columns re-balance; `Esc` clears |
+| `/` | Filter rows by label, group or section, live; rows fold shut, cards with nothing left fold away and the rest glide into re-balanced columns; `Esc` clears |
 | `s` | Hints for what's on screen, custom cards included |
 
 Focus that lands off screen (or under the header) glides into view, retargeting from where the last glide was headed so held keys don't fall behind. The rest (`[` `]`, `r`, `g`, `⇧L`, selection, the row menu, hold `\`) works as in a panel.
 
-Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling wakes the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
+Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header, and follows every frame of a glide or fold; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling and layout motion wake the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
 
 ## Theming, Density & WebGPU Renderer
 
