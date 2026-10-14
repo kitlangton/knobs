@@ -10,7 +10,7 @@ const rollingCss = readFileSync(
   "utf8",
 )
 const port = Number(process.env.PORT) || 5196
-const examples = ["studies", "meta", "die", "contracts"]
+const examples = ["studies", "meta", "die", "contracts", "tune", "problems"]
 
 // `/examples/<page>.html` serves the example page from `examples/` unchanged: the stub in
 // site/examples names the page, and its script resolves to the source through `/@examples/`.
@@ -36,7 +36,7 @@ function examplePages(): Plugin {
     // those in public/_redirects.
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const page = req.url?.match(/^\/(meta|die|contracts)\.html/)?.[1]
+        const page = req.url?.match(/^\/(meta|die|contracts|tune|problems)\.html/)?.[1]
         if (!page) return next()
         res.statusCode = 302
         res.setHeader("Location", `/examples/${page}.html`)
@@ -53,6 +53,7 @@ export default defineConfig({
   publicDir: resolve(siteDir, "public"),
   appType: "spa",
   optimizeDeps: {
+    include: ["solid-js", "solid-js/web", "solid-js/html"],
     entries: ["index.html", ...examples.map((page) => `examples/${page}.html`)],
   },
   server: {
@@ -81,11 +82,13 @@ export default defineConfig({
     },
   },
   resolve: {
+    dedupe: ["solid-js"],
     alias: [
       { find: /^knobs$/, replacement: resolve(rootDir, "src/index.ts") },
       { find: /^knobs\/react$/, replacement: resolve(rootDir, "src/react/index.ts") },
       { find: /^knobs\/solid$/, replacement: resolve(rootDir, "src/solid/index.ts") },
       { find: /^knobs\/panel$/, replacement: resolve(rootDir, "src/panel/index.ts") },
+      { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
     ],
   },
   plugins: [

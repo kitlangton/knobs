@@ -65,7 +65,7 @@ const descriptors: ControlDescriptor[] = [
   },
 ]
 const defaults: Record<string, Value> = Object.fromEntries(
-  descriptors.map((d) => [d.key, d.default]),
+  descriptors.map((d) => [d.key, d.default as Value]),
 )
 
 // A pretend phone on the other end of a pretend socket. It applies `set` messages after the
