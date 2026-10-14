@@ -579,17 +579,20 @@ class GpuOverlayManager {
   }
 
   private ensureCanvas() {
-    if (this.canvas && this.doc.body.contains(this.canvas)) return
-    const c = this.doc.createElement("canvas")
-    c.className = "knobs-gpu-canvas"
-    c.dataset.knobsGpu = ""
-    c.setAttribute("aria-hidden", "true")
-    c.style.cssText =
-      "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147480002;display:block;"
-    this.doc.body.append(c)
-    this.canvas = c
-    if (this.device) {
-      const ctx = (c as any).getContext("webgpu")
+    if (!this.canvas || !this.doc.body.contains(this.canvas)) {
+      const c = this.doc.createElement("canvas")
+      c.className = "knobs-gpu-canvas"
+      c.dataset.knobsGpu = ""
+      c.setAttribute("aria-hidden", "true")
+      c.style.cssText =
+        "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147480002;display:block;"
+      this.doc.body.append(c)
+      this.canvas = c
+      this.context = null
+    }
+    // After a lost device the canvas stays, but its context must be configured for the new one.
+    if (this.device && !this.context) {
+      const ctx = (this.canvas as any).getContext("webgpu")
       ctx?.configure({ device: this.device, format: this.format, alphaMode: "premultiplied" })
       this.context = ctx
     }
@@ -682,6 +685,7 @@ class GpuOverlayManager {
       })
 
       this.atlas.clear()
+      this.dirty = true
       this.ensureCanvas()
       this.setAllPanelsActive(true)
       this.publishDiagnostics()
