@@ -108,12 +108,33 @@ export interface PanelThemeTokens {
   readonly segBg: Rgba
   readonly segActive: Rgba
   readonly toggleTrack: Rgba
+  readonly toggleThumb: Rgba
   readonly rim: Rgba
+  readonly rowHover: Rgba
+  readonly pillBg: Rgba
+  readonly pillBorder: Rgba
+  readonly fillRest: Rgba
+  readonly fillActive: Rgba
+  readonly pad: number
+  readonly inset: number
+  readonly row: number
+  readonly gap: number
+  readonly trayPad: number
   readonly radius: number
   readonly panelRadius: number
-  readonly inset: number
+  readonly radiusMd: number
+  readonly radiusSm: number
   readonly fontSize: number
+  readonly textTitle: number
+  readonly textBody: number
+  readonly textControl: number
+  readonly textMeta: number
+  readonly textCap: number
+  readonly iconSize: number
+  readonly iconSm: number
   readonly labelWeight: number
+  readonly disabledOpacity: number
+  readonly hintTypedOpacity: number
   readonly blurStrength: number
   readonly glowStrength: number
   /** 0 is an opaque panel; up to 1 thins it over a blurred backdrop (--k-glass). */
@@ -164,7 +185,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   )
   const dim = parseCssColor(
     token(style, "dim"),
-    isLight ? [0.23, 0.23, 0.26, 0.44] : [1, 1, 1, 0.42],
+    isLight ? [0.235, 0.235, 0.263, 0.5] : [1, 1, 1, 0.42],
   )
   const accent = parseCssColor(
     token(style, "accent"),
@@ -172,13 +193,18 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   )
   const modified = parseCssColor(
     token(style, "modified"),
-    isLight ? [0.85, 0.47, 0.02, 1] : [1, 0.62, 0.04, 1],
+    isLight ? [0, 0, 0, 0.42] : [1, 1, 1, 0.5],
   )
-  const segBg = parseCssColor(token(style, "seg-bg"), isLight ? [0, 0, 0, 0.065] : [0, 0, 0, 0.25])
+  const segBg = parseCssColor(token(style, "seg-bg"), isLight ? [0, 0, 0, 0.065] : [0, 0, 0, 0.26])
   const segActive = parseCssColor(token(style, "seg-active"), surfaceHi)
   const toggleTrack = parseCssColor(
     token(style, "toggle-track"),
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
+  )
+  const accentLum = accent[0] * 0.2126 + accent[1] * 0.7152 + accent[2] * 0.0722
+  const toggleThumb = parseCssColor(
+    token(style, "toggle-thumb"),
+    !isLight && accentLum > 0.78 ? bg : [1, 1, 1, 1],
   )
 
   const [duration, bounce] = style.getPropertyValue("--k-spring").trim().split(/\s+/).map(Number)
@@ -193,7 +219,19 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     'system-ui, -apple-system, "SF Pro Text", sans-serif'
   const monoFamily =
     style.getPropertyValue("--k-mono").trim() ||
-    'ui-monospace, "Geist Mono", SFMono-Regular, Menlo, monospace'
+    '"SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace'
+
+  const unit = numProp(style, "unit", 4)
+  const pad = numProp(style, "pad", 10)
+  const inset = numProp(style, "inset", pad)
+  const row = numProp(style, "row", 32)
+  const gap = numProp(style, "gap", 4)
+  const trayPad = numProp(style, "tray-pad", unit * 0.5)
+  const radius = numProp(style, "radius", 8)
+  const panelRadius = numProp(style, "panel-radius", radius + unit)
+  const radiusMd = Math.max(0, radius - trayPad)
+  const radiusSm = Math.max(0, radius - trayPad * 2)
+  const fontSize = parseFloat(style.fontSize) || numProp(style, "font-size", 12)
 
   const tokens: PanelThemeTokens = {
     bg,
@@ -209,12 +247,33 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     segBg,
     segActive,
     toggleTrack,
+    toggleThumb,
     rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
-    radius: numProp(style, "radius", 8),
-    panelRadius: numProp(style, "panel-radius", 12),
-    inset: numProp(style, "inset", 10),
-    fontSize: parseFloat(style.fontSize) || numProp(style, "font-size", 12),
+    rowHover: withAlpha(surface, 0.5),
+    pillBg: cssMix(accent, segActive, 0.18),
+    pillBorder: withAlpha(accent, 0.32),
+    fillRest: cssMix(accent, surfaceHi, 0.2),
+    fillActive: cssMix(accent, surfaceHi, 0.3),
+    pad,
+    inset,
+    row,
+    gap,
+    trayPad,
+    radius,
+    panelRadius,
+    radiusMd,
+    radiusSm,
+    fontSize,
+    textTitle: fontSize + 1,
+    textBody: fontSize,
+    textControl: fontSize - 0.5,
+    textMeta: fontSize - 1,
+    textCap: fontSize - 2,
+    iconSize: numProp(style, "icon-size", 14),
+    iconSm: numProp(style, "icon-sm", 13),
     labelWeight: numProp(style, "label-weight", 500),
+    disabledOpacity: numProp(style, "disabled-opacity", 0.32),
+    hintTypedOpacity: numProp(style, "hint-typed-opacity", 0.42),
     blurStrength: numProp(style, "blur", 1),
     glowStrength: numProp(style, "glow", 0.5),
     glass: Math.min(1, Math.max(0, numProp(style, "glass", 0))),

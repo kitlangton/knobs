@@ -301,9 +301,7 @@ fn samplePillAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   }
   let cov = covSd(dist);
   if (cov <= 0.0) { return out; }
-  let top = 1.0 - smoothstep(0.0, size.y * 0.6, local.y);
-  let rgb = clamp(p.color.rgb + vec3f(top * 0.035), vec3f(0.0), vec3f(1.0));
-  var pill = vec4f(rgb * p.color.a, p.color.a) * cov;
+  var pill = premul(p.color) * cov;
   let rimCov = hairline(dist, 1.0);
   pill = over(pill, vec4f(p.color2.rgb * p.color2.a * rimCov, p.color2.a * rimCov));
   return over(out, pill);

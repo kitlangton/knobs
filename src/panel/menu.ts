@@ -52,7 +52,8 @@ export function openMenu(
   menu.tabIndex = -1
   const cs = win.getComputedStyle(panel)
   for (const t of TOKENS) menu.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))
-  for (const t of ["--k-font", "--k-shadow"]) menu.style.setProperty(t, cs.getPropertyValue(t))
+  for (const t of ["--k-font", "--k-mono", "--k-unit", "--k-shadow"])
+    menu.style.setProperty(t, cs.getPropertyValue(t))
   menu.style.colorScheme = cs.colorScheme
 
   let active = -1

@@ -969,7 +969,12 @@ class GpuOverlayManager {
 
   /** Hint mode dims what the typed code no longer matches, over the DOM's 0.1 s. */
   private missed(el: Element, hinting: boolean) {
-    return this.ease(el, "hint", hinting && el.classList.contains("knobs-hint-miss") ? 0.32 : 1, 40)
+    return this.ease(
+      el,
+      "hint",
+      hinting && el.classList.contains("knobs-hint-miss") ? this.curTokens.disabledOpacity : 1,
+      40,
+    )
   }
 
   /** A control's hover/press wash, faded in and out over the DOM's 0.15 s. */
@@ -1050,7 +1055,8 @@ class GpuOverlayManager {
     const hovered = !btn.disabled && this.isHovered(btn)
     const focused = this.isFocused(btn)
     const expanded = btn.getAttribute("aria-expanded") === "true"
-    const alpha = this.ease(btn, "dim", btn.disabled ? 0.36 : 1, 30) * this.missed(btn, hinting)
+    const alpha =
+      this.ease(btn, "dim", btn.disabled ? t.disabledOpacity : 1, 30) * this.missed(btn, hinting)
     const on = hovered || focused || expanded
     const wash = this.wash(btn, on)
     if (alwaysBg || wash > 0.005) {
@@ -1104,7 +1110,7 @@ class GpuOverlayManager {
       y: rRect.top,
       w: rRect.width,
       h: rRect.height,
-      color: withAlpha(this.curTokens.surface, 0.5 * hover),
+      color: withAlpha(this.curTokens.rowHover, hover),
       corners: this.rowCorners(row),
       kind: 1,
       stretchX,
@@ -1142,7 +1148,7 @@ class GpuOverlayManager {
       })
   }
 
-  /** The focus wash, with a ring for sliders and disclosure heads. */
+  /** The focus wash, matching the row's corners inside its card. */
   private drawFocus(el: HTMLElement, on: boolean, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     const t = this.curTokens
     const focus = this.ease(el, "focus", on ? 1 : 0)
@@ -1155,7 +1161,7 @@ class GpuOverlayManager {
       clip: cardClip,
       color: withAlpha(t.surface, focus),
       color2: t.accent,
-      radius: t.radius,
+      corners: this.rowCorners(el, el.getAttribute("aria-expanded") === "true"),
       glowOrBlur: t.glowStrength * 8,
       kind: 1,
       stretchX,
@@ -1372,7 +1378,7 @@ class GpuOverlayManager {
         y: hRect.top,
         w: hRect.width,
         h: hRect.height,
-        color: withAlpha(t.surface, 0.5 * hover),
+        color: withAlpha(t.rowHover, hover),
         corners: this.rowCorners(item, open),
         kind: 1,
       })
@@ -1427,7 +1433,7 @@ class GpuOverlayManager {
       w: box.width,
       h: box.height,
       color: withAlpha(t.segBg, rowAlpha),
-      radius: Math.max(0, t.radius - 3),
+      radius: t.radiusSm,
       kind: 1,
     })
     const clip = intersectClip(cardClip, [box.left, box.top, box.right, box.bottom])
@@ -1499,7 +1505,7 @@ class GpuOverlayManager {
       y: sw.top,
       w: sw.width,
       h: sw.height,
-      radius: Math.max(0, t.radius - 3),
+      radius: t.radiusSm,
       fill: rgb,
       ring: -1,
       ringColor: withAlpha(t.line, rowAlpha),
@@ -1580,7 +1586,7 @@ class GpuOverlayManager {
     if (!body) return
     this.inBody(row.x, () => {
       const pr = this.rectOf(row.pad)
-      const radius = Math.max(0, t.radius - 2)
+      const radius = t.radiusMd
       const clip = intersectClip(body, [pr.left, pr.top, pr.right, pr.bottom])
       this.pushPrim({
         x: pr.left,
@@ -1669,7 +1675,7 @@ class GpuOverlayManager {
     if (!body) return
     this.inBody(row.x, () => {
       const br = this.rectOf(row.box)
-      const radius = Math.max(0, t.radius - 2)
+      const radius = t.radiusMd
       this.pushPrim({
         x: br.left,
         y: br.top,
@@ -1726,7 +1732,6 @@ class GpuOverlayManager {
         radius,
         kind: 1,
       })
-      const pill = cssMix(t.accent, t.segActive, 0.18)
       for (const chip of row.chips) {
         const r = this.rectOf(chip)
         const checked = chip.getAttribute("aria-checked") === "true"
@@ -1738,9 +1743,9 @@ class GpuOverlayManager {
             w: r.width,
             h: r.height,
             clip: body,
-            color: withAlpha(pill, on * rowAlpha),
+            color: withAlpha(t.pillBg, on * rowAlpha),
             color2: [0, 0, 0, 0],
-            radius: Math.max(2, t.radius - 3),
+            radius: t.radiusSm,
             glowOrBlur: t.glowStrength * 0.6,
             kind: 3,
           })
@@ -1867,7 +1872,7 @@ class GpuOverlayManager {
       let panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
       if (morph)
         panelClip = intersectClip(panelClip, [card.left, card.top, card.right, card.bottom])
-      const pillFill = cssMix(tokens.accent, tokens.segActive, 0.18)
+      const pillFill = tokens.pillBg
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
       // lying over another firms up, since the canvas can't blur what it drew below.
@@ -1942,7 +1947,12 @@ class GpuOverlayManager {
           if (hovered) this.curSubHovered = false
           const focused = this.isFocused(hb.button)
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
-          const alpha = this.ease(hb.button, "dim", hb.button.disabled ? 0.3 : 1, 30)
+          const alpha = this.ease(
+            hb.button,
+            "dim",
+            hb.button.disabled ? tokens.disabledOpacity : 1,
+            30,
+          )
           const on = hovered || focused || expanded
           const wash = this.wash(hb.button, on)
           if (wash > 0.005) {
@@ -1962,7 +1972,7 @@ class GpuOverlayManager {
           const iconColor = withAlpha(this.hot(hb.button, on), alpha)
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
           if (die) this.drawDie(die, bRect, iconColor, panelClip)
-          else this.drawIcon(hb.icon, 15, bRect, iconColor, panelClip)
+          else this.drawIcon(hb.icon, tokens.iconSize, bRect, iconColor, panelClip)
         }
       }
 
@@ -2033,8 +2043,8 @@ class GpuOverlayManager {
             h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
             clip: stripClip,
             color: withAlpha(pillFill, pillAlpha),
-            color2: withAlpha(tokens.accent, 0.32 * pillAlpha),
-            radius: Math.max(2, tokens.radius - 2),
+            color2: withAlpha(tokens.pillBorder, pillAlpha),
+            radius: tokens.radiusMd,
             glowOrBlur: tokens.glowStrength,
             kind: 3,
             blurX: clamp(pe.velocity * 0.006 * blurMul, -8, 8),
@@ -2095,7 +2105,14 @@ class GpuOverlayManager {
           { px: Math.max(9.5, tokens.fontSize - 2), weight: 600, track: 0.04 },
         )
         for (const gb of g.buttons) {
-          this.drawButton(gb, activeEl, hinting, 4, Math.max(10, tokens.fontSize - 1.5), false)
+          this.drawButton(
+            gb,
+            activeEl,
+            hinting,
+            tokens.radiusSm,
+            Math.max(10, tokens.fontSize - 1.5),
+            false,
+          )
         }
         // The reset fades and scales on its GPU spring, matching the DOM transition.
         const reset = g.reset
@@ -2120,7 +2137,7 @@ class GpuOverlayManager {
             })
           this.drawIcon(
             "reset",
-            13,
+            tokens.iconSm,
             br,
             withAlpha(this.hot(reset, hovered || focused), alpha),
             undefined,
@@ -2133,7 +2150,8 @@ class GpuOverlayManager {
           const dr = this.rectOf(button)
           const on = !button.disabled && (this.isHovered(button) || this.isFocused(button))
           const dimmed =
-            this.ease(button, "dim", button.disabled ? 0.3 : 1, 30) * this.missed(button, hinting)
+            this.ease(button, "dim", button.disabled ? tokens.disabledOpacity : 1, 30) *
+            this.missed(button, hinting)
           const wash = this.wash(button, on)
           if (wash > 0.005)
             this.pushPrim({
@@ -2247,10 +2265,10 @@ class GpuOverlayManager {
           const rawVelPx =
             (Math.abs(springVel) > Math.abs(dragVel) ? springVel : dragVel) * rRect.width
           const blurX = clamp(rawVelPx * 0.022 * blurMul, -28, 28)
-          const fillTint = cssMix(
-            tokens.accent,
-            tokens.surfaceHi,
-            this.ease(row.row, "fill", dragging ? 0.3 : 0.2),
+          const fillTint = mixColor(
+            tokens.fillRest,
+            tokens.fillActive,
+            this.ease(row.row, "fill", dragging ? 1 : 0),
           )
           // The fill fades under the readout; the zone follows the readout's width.
           const digitsText = sl.getDigitsText()
@@ -2417,7 +2435,7 @@ class GpuOverlayManager {
             h: segRect.height,
             color: withAlpha(tokens.segBg, rowAlpha),
             color2: tokens.accent,
-            radius: Math.max(2, tokens.radius - 2),
+            radius: tokens.radiusMd,
             glowOrBlur: tokens.glowStrength * 8,
             kind: 1,
           })
@@ -2434,14 +2452,15 @@ class GpuOverlayManager {
               pe.to(left, right, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
               if (!pe.resting) anyMoving = true
             }
+            const pad = tokens.trayPad
             this.pushPrim({
               x: segRect.left + pe.start.x,
-              y: segRect.top + 2,
+              y: segRect.top + pad,
               w: Math.max(12, pe.end.x - pe.start.x),
-              h: Math.max(12, segRect.height - 4),
+              h: Math.max(12, segRect.height - pad * 2),
               color: withAlpha(pillFill, rowAlpha),
               color2: [0, 0, 0, 0],
-              radius: Math.max(2, tokens.radius - 3),
+              radius: tokens.radiusSm,
               glowOrBlur: tokens.glowStrength * 0.6,
               kind: 3,
               blurX: clamp(pe.velocity * 0.006 * blurMul, -6, 6),
@@ -2479,10 +2498,11 @@ class GpuOverlayManager {
           // where it will go, like iOS.
           const on = row.toggleEl.getAttribute("aria-checked") === "true"
           const pressed = this.curPanelHovered && row.toggleEl.matches(":active")
-          const d = tRect.height - 4
-          const travel = tRect.width - 4 - d
-          const from = 2 + (on ? travel : 0) - (pressed && on ? 4 : 0)
-          const to = 2 + (on ? travel : 0) + d + (pressed && !on ? 4 : 0)
+          const pad = tokens.trayPad
+          const d = tRect.height - pad * 2
+          const travel = tRect.width - pad * 2 - d
+          const from = pad + (on ? travel : 0) - (pressed && on ? 4 : 0)
+          const to = pad + (on ? travel : 0) + d + (pressed && !on ? 4 : 0)
           const th = row.thumb
           if (reducedMotion || th.end.x - th.start.x <= 1) th.snap(from, to)
           else {
@@ -2504,10 +2524,7 @@ class GpuOverlayManager {
             w: tRect.width,
             h: tRect.height,
             color: withAlpha(mixColor(tokens.toggleTrack, tokens.accent, prog), rowAlpha),
-            color2: withAlpha(
-              mixColor([1, 1, 1, 1], tokens.isLight ? [1, 1, 1, 1] : tokens.bg, prog),
-              rowAlpha,
-            ),
+            color2: withAlpha(mixColor([1, 1, 1, 1], tokens.toggleThumb, prog), rowAlpha),
             glowOrBlur: tokens.glowStrength,
             kind: 4,
             p0: prog,
@@ -2543,7 +2560,7 @@ class GpuOverlayManager {
             clip: panelClip,
             color: tokens.accent,
             color2: tokens.accent,
-            radius: 4,
+            radius: tokens.radiusSm,
             glowOrBlur: tokens.glowStrength * 0.5,
             kind: 3,
           })
@@ -2553,7 +2570,7 @@ class GpuOverlayManager {
             hintEl.querySelector(".knobs-hint-rest")?.textContent?.toUpperCase() ?? ""
           let hx = hr.left + 4
           for (const [text, color] of [
-            [typedText, withAlpha(tokens.bg, 0.45)],
+            [typedText, withAlpha(tokens.bg, tokens.hintTypedOpacity)],
             [restText, tokens.bg],
           ] as const) {
             if (!text) continue
