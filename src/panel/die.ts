@@ -114,8 +114,21 @@ export interface DieSpin {
 }
 export const DIE_SPIN: DieSpin = { spring: { duration: 0.38, bounce: 0.3 }, turns: 1 }
 
-/** The canvas box around a die of `size` px: room for the corners while it tumbles and lifts. */
-export const dieBox = (size: number) => Math.ceil(size * 1.6)
+/**
+ * The box around a die of `size` px, in sizes: room for the corners while it tumbles and lifts
+ * (they reach 0.6 of a size out at the default look), so it overflows its button's round wash
+ * rather than clipping to it. Past `DIE_FEATHER` of the way out it fades, so a die tuned to lift
+ * further never meets a hard edge.
+ */
+export const DIE_BOX = 2
+export const DIE_FEATHER = 0.75
+export const dieBox = (size: number) => Math.ceil(size * DIE_BOX)
+/** How much of the die shows `r` px from its centre: all of it, fading out at the box's edge. */
+export function dieFeather(size: number, r: number) {
+  const half = dieBox(size) / 2
+  const t = Math.min(1, Math.max(0, (r - half * DIE_FEATHER) / (half - half * DIE_FEATHER)))
+  return 1 - t * t * (3 - 2 * t)
+}
 /** Supersamples per axis: dense at icon sizes, cheaper when large. */
 export const dieSamples = (size: number) => (size <= 40 ? 6 : 3)
 
@@ -344,6 +357,11 @@ export function createDieCanvas(doc: Document, size: number) {
       const data = img.data
       for (let j = 0; j < w; j++)
         for (let i = 0; i < w; i++) {
+          const feather = dieFeather(
+            size,
+            Math.hypot(i + 0.5 - centre[0], j + 0.5 - centre[1]) / dpr,
+          )
+          if (feather <= 0) continue
           const a = at(i + 0.25, j + 0.25)
           const b = at(i + 0.75, j + 0.25)
           const c = at(i + 0.25, j + 0.75)
@@ -355,6 +373,7 @@ export function createDieCanvas(doc: Document, size: number) {
               for (let x = 0; x < fine; x++) cov += at(i + (x + 0.5) / fine, j + (y + 0.5) / fine)
             cov /= fine * fine
           }
+          cov *= feather
           if (cov <= 0) continue
           const k = (j * w + i) * 4
           data[k] = rgba[0]

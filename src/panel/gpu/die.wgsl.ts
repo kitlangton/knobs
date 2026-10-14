@@ -1,4 +1,4 @@
-import { DIE, DIE_LIGHT, FACES, PIPS } from "../die.js"
+import { DIE, DIE_BOX, DIE_FEATHER, DIE_LIGHT, FACES, PIPS } from "../die.js"
 
 // The rounded-cube die, traced exactly as `dieTracer` in die.ts does (same constants, same steps),
 // so the GPU and the DOM canvas draw identical pixels.
@@ -77,8 +77,11 @@ fn die_trace(p: vec2f, size: f32, rot: vec2f, energy: f32, look: vec4f, shade: f
 }
 
 // Supersampled coverage of the device pixel whose centre is at frag (device px); origin is the
-// device-px position of the die centre.
+// device-px position of the die centre. Feathered out toward the edge of its box, like the canvas.
 fn die_coverage(frag: vec2f, origin: vec2f, dpr: f32, samples: u32, size: f32, rot: vec2f, energy: f32, look: vec4f, shade: f32) -> f32 {
+  let half = ceil(size * ${f(DIE_BOX)}) * 0.5;
+  let feather = 1.0 - smoothstep(half * ${f(DIE_FEATHER)}, half, length(frag - origin) / dpr);
+  if (feather <= 0.0) { return 0.0; }
   let s = f32(samples);
   var cov = 0.0;
   for (var j = 0u; j < samples; j++) {
@@ -87,6 +90,6 @@ fn die_coverage(frag: vec2f, origin: vec2f, dpr: f32, samples: u32, size: f32, r
       cov += die_trace((dev - origin) / dpr, size, rot, energy, look, shade);
     }
   }
-  return cov / (s * s);
+  return cov / (s * s) * feather;
 }
 `
