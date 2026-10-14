@@ -125,6 +125,14 @@ describe("spring, color, point and easing fields", () => {
     expectTypeOf(c.get().tint).toEqualTypeOf<string>()
     expectTypeOf(c.get().origin).toEqualTypeOf<Point>()
     expectTypeOf(c.get().curve).toEqualTypeOf<Bezier>()
+    expectTypeOf<ReturnType<typeof useControls<typeof rich>>["origin"]>().toEqualTypeOf<Point>()
+    createSolidRoot((dispose) => {
+      const values = useSolidControls(c)
+      expectTypeOf(values().reveal).toEqualTypeOf<SpringValue>()
+      c.set({ origin: { x: 0.5, y: 0.5 } })
+      expect(values().origin).toEqual({ x: 0.5, y: 0.5 })
+      dispose()
+    })
     expect(rich.reveal).toMatchObject({ label: "Reveal", group: "Motion" })
     expect(c.locked.reveal).toEqual({ duration: 0.4, bounce: 0.2 })
     expect(c.locked.curve).toEqual([0, 0, 0.58, 1])
@@ -212,6 +220,8 @@ describe("spring, color, point and easing fields", () => {
     other.variants.load(saved.id)
     expect(other.get()).toEqual(c.get())
     expect(JSON.parse(c.code("json"))).toEqual(c.get())
+    expect(c.code()).toContain('reveal: { duration: 0.4, bounce: 0.2 }, tint: "oklch(0.6 0.12 30)"')
+    expect(c.code("jsx")).toContain("curve={[0.3, 1.2, 0.6, 1]}")
   })
 
   it("maps springs like SwiftUI and exports them as CSS linear() easings", () => {
