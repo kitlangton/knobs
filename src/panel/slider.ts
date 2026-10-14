@@ -249,6 +249,7 @@ export function createSlider(
 
   let current = field.value
   let lastRollerLen = fmtDigits(field.value).length
+  let rollerDirty = false
   // Entering or leaving the notch's magnet eases the last few px instead of jumping.
   let settleUntil = 0
   const settling = () => dragging && performance.now() < settleUntil
@@ -262,6 +263,18 @@ export function createSlider(
     handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
+  const fastPatchDigits = (text: string): boolean => {
+    const slots = digits.querySelectorAll<HTMLElement>(".rn-slot")
+    if (slots.length !== text.length) return false
+    for (let i = 0; i < slots.length; i++) {
+      const faces = slots[i]!.querySelectorAll<HTMLElement>(".rn-face")
+      if (faces.length !== 1) return false
+      faces[0]!.textContent = text[i]!
+    }
+    const sem = digits.querySelector<HTMLElement>(".rn-value")
+    if (sem) sem.textContent = text
+    return true
+  }
   const update = (v: number, delay = 0) => {
     const previous = current
     current = v
@@ -281,6 +294,7 @@ export function createSlider(
     const gpu = root.closest('[data-gpu-active="true"]') !== null
     const animateDom = ms > 0 && !gpu
     const roll = () => {
+      rollerDirty = false
       lastRollerLen = digitsStr.length
       roller.update({
         value: v,
@@ -290,9 +304,19 @@ export function createSlider(
       })
     }
     clearTimeout(rollTimer)
-    if (!gpu || digitsStr.length !== lastRollerLen) {
-      if (delay > 0 && animateDom) rollTimer = setTimeout(roll, delay)
-      else roll()
+    if (gpu && digitsStr.length === lastRollerLen) {
+      rollerDirty = true
+    } else if (
+      dragging &&
+      !animateDom &&
+      digitsStr.length === lastRollerLen &&
+      fastPatchDigits(digitsStr)
+    ) {
+      rollerDirty = true
+    } else if (delay > 0 && animateDom) {
+      rollTimer = setTimeout(roll, delay)
+    } else {
+      roll()
     }
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
@@ -453,6 +477,9 @@ export function createSlider(
     if (!moved) {
       if (fromValue) edit()
       else set(snap(valueAt(event.clientX, rect)))
+    } else if (rollerDirty && root.closest('[data-gpu-active="true"]') === null) {
+      rollerDirty = false
+      roller.update({ value: current, animated: true, duration: 1, motionBlur: false })
     }
     onMotionWake?.()
   }
