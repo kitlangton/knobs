@@ -11,6 +11,9 @@ const release = springEasing(RELEASE.omega, RELEASE.zeta)
 const LEAD_T = `${lead.ms}ms var(--k-lead)`
 const TRAIL_T = `calc(${trail.ms}ms * (.6 + .4 * clamp(0, var(--k-blur), 2))) var(--k-trail)`
 const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
+// Slider fills run on the spring itself, as the GPU's fill spring does (--k-blur stretches only the
+// editor morphs, like the GPU's morph spring).
+const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
@@ -259,7 +262,7 @@ const css = `
   transition:--k-fill-mix .15s}
 .knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-hover-mix)}
 .knobs-active .knobs-fill,.knobs-active:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
-.knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
+.knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,left ${SLIDE_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
 .knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
