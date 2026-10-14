@@ -290,8 +290,15 @@ const num = (v: unknown, fallback: number) =>
 export function normalizeField(field: ValueField, input: unknown): Value {
   switch (field.kind) {
     case "knob":
+      // Declared defaults, presets and remote values are kept exactly (clamped): a default of 0.4
+      // on a 0.02 grid from 0.15 stays 0.4, as on the phone. The slider snaps the user's own travel.
       if (typeof input !== "number" || !Number.isFinite(input)) return field.value
-      return snap(input, field.min, field.max, field.step)
+      {
+        const clamped = Math.min(field.max, Math.max(field.min, input))
+        // Whole-number fields (an Int on the phone) stay whole.
+        const whole = Number.isInteger(field.step) && Number.isInteger(field.min)
+        return whole ? Math.round(clamped) : Number(clamped.toPrecision(14))
+      }
     case "choice":
       return typeof input === "string" && field.options.includes(input) ? input : field.value
     case "toggle":

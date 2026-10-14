@@ -68,10 +68,12 @@ describe("schema", () => {
       controls.set({ missing: 3 })
     }
   })
-  it("clamps, snaps relative to min, drops extra keys and rejects non-finite input", () => {
+  it("clamps, keeps incoming values exact, drops extra keys and rejects non-finite input", () => {
     expect(
       normalize(schema, { count: 999, size: 1.7, flavor: "bad", grain: "false", extra: 4 }),
-    ).toEqual({ count: 300, size: 1.5, flavor: "inked", grain: true })
+    ).toEqual({ count: 300, size: 1.7, flavor: "inked", grain: true })
+    // Whole-number fields stay whole.
+    expect(normalize(schema, { count: 104.7 }).count).toBe(105)
     expect(normalize(schema, { count: NaN, size: -100, grain: false })).toEqual({
       count: 98,
       size: 1,
@@ -83,9 +85,22 @@ describe("schema", () => {
     expect(() => knob(1, { min: 2, max: 1 })).toThrow()
     expect(() => choice("a", ["a", "a"])).toThrow()
   })
-  it("never overshoots or lands off-step when the maximum isn't on the lattice", () => {
+  it("keeps declared defaults and incoming values off the step lattice exactly (as on the phone)", () => {
+    // OpenCode iOS tunables: defaults that sit between min-relative steps must read exactly.
+    const tune = {
+      promotion: knob(0.4, { min: 0.15, max: 1, step: 0.02 }),
+      jump: knob(0.5, { min: 0.15, max: 1, step: 0.02 }),
+      reveal: knob(0.78, { min: 0.55, max: 1, step: 0.02 }),
+    }
+    expect(normalize(tune, {})).toEqual({ promotion: 0.4, jump: 0.5, reveal: 0.78 })
+    expect(normalize(tune, { promotion: 0.4, reveal: 0.79 })).toMatchObject({
+      promotion: 0.4,
+      reveal: 0.79,
+    })
+  })
+  it("never overshoots when the maximum isn't on the lattice", () => {
     const s = { n: knob(0.1, { min: 0.1, max: 1, step: 0.2 }) }
-    expect(normalize(s, { n: 1 }).n).toBe(0.9)
+    expect(normalize(s, { n: 1.4 }).n).toBe(1)
     for (let i = 0; i <= 100; i++) {
       const n = randomValues(s, () => i / 100).n
       expect(n).toBeLessThanOrEqual(1)
