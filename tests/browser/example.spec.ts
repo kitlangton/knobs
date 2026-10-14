@@ -396,7 +396,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
   // Random, Reset and Copy are Phosphor icons in the header with undo/redo, help and close
-  await expect(panel.locator("header .knobs-icon")).toHaveCount(7)
+  await expect(panel.locator("header :is(.knobs-icon, .knobs-die-icon)")).toHaveCount(7)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
   await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
 

@@ -117,7 +117,7 @@ export const DIE_SPIN: DieSpin = { spring: { duration: 0.38, bounce: 0.3 }, turn
 /** The canvas box around a die of `size` px: room for the corners while it tumbles and lifts. */
 export const dieBox = (size: number) => Math.ceil(size * 1.6)
 /** Supersamples per axis: dense at icon sizes, cheaper when large. */
-export const dieSamples = (size: number) => (size <= 40 ? 3 : 2)
+export const dieSamples = (size: number) => (size <= 40 ? 6 : 3)
 
 export class DieMotion {
   readonly rx = new Spring(0, 24, 0.86, 0.25)
@@ -307,70 +307,64 @@ export function dieTracer(size: number, view: DieView, look: DieLook) {
   }
 }
 
-/** The DOM die: a canvas sized for `size` px, traced in JS only when its view changes. */
+/**
+ * The DOM die: a canvas traced in JS. Its backing store is whole device pixels and `render` takes
+ * the die centre in those pixels, so the caller can land the canvas on the pixel grid (no
+ * resampling blur). Each pixel is traced 2×2; only pixels whose samples disagree (an edge, a pip)
+ * are refined at `dieSamples` × `dieSamples`.
+ */
 export function createDieCanvas(doc: Document, size: number) {
   const canvas = doc.createElement("canvas")
   canvas.className = "knobs-die"
   canvas.setAttribute("aria-hidden", "true")
-  const box = dieBox(size)
-  const inset = (size - box) / 2
-  canvas.style.cssText = `width:${box}px;height:${box}px;margin:${inset}px;display:block;pointer-events:none`
+  canvas.style.cssText = "position:absolute;display:block;pointer-events:none"
   const ctx = canvas.getContext("2d")!
   let img: ImageData | undefined
-  let hit: Uint8Array | undefined
   return {
     canvas,
-    render(view: DieView, look: DieLook, rgba: readonly [number, number, number, number]) {
-      const dpr = doc.defaultView?.devicePixelRatio ?? 1
-      const w = Math.round(box * dpr)
-      if (canvas.width !== w || !img || !hit) {
+    /** Backing size (device px) for a given ratio; the CSS size is this over the ratio. */
+    pixels: (dpr: number) => Math.round(dieBox(size) * dpr),
+    render(
+      view: DieView,
+      look: DieLook,
+      rgba: readonly [number, number, number, number],
+      dpr: number,
+      centre: readonly [number, number],
+    ) {
+      const w = Math.round(dieBox(size) * dpr)
+      if (canvas.width !== w || !img) {
         canvas.width = canvas.height = w
+        canvas.style.width = canvas.style.height = `${w / dpr}px`
         img = ctx.createImageData(w, w)
-        hit = new Uint8Array(w * w)
-      } else {
-        img.data.fill(0)
-      }
+      } else img.data.fill(0)
       const trace = dieTracer(size, view, look)
-      const s = dieSamples(size)
-      const at = (i: number, j: number, a: number, b: number) =>
-        trace((i + a) / dpr - box / 2, (j + b) / dpr - box / 2)
-      // One ray per pixel finds the die; only pixels on or beside it are supersampled.
-      for (let j = 0; j < w; j++)
-        for (let i = 0; i < w; i++) hit[j * w + i] = at(i, j, 0.5, 0.5) === MISS ? 0 : 1
+      const fine = dieSamples(size)
+      const at = (x: number, y: number) =>
+        Math.max(0, trace((x - centre[0]) / dpr, (y - centre[1]) / dpr))
+      const data = img.data
       for (let j = 0; j < w; j++)
         for (let i = 0; i < w; i++) {
-          let near = 0
-          for (let y = Math.max(0, j - 1); y <= Math.min(w - 1, j + 1) && !near; y++)
-            for (let x = Math.max(0, i - 1); x <= Math.min(w - 1, i + 1); x++)
-              near |= hit[y * w + x]!
-          if (!near) continue
-          let cov = 0
-          for (let b = 0; b < s; b++)
-            for (let a = 0; a < s; a++) cov += Math.max(0, at(i, j, (a + 0.5) / s, (b + 0.5) / s))
+          const a = at(i + 0.25, j + 0.25)
+          const b = at(i + 0.75, j + 0.25)
+          const c = at(i + 0.25, j + 0.75)
+          const d = at(i + 0.75, j + 0.75)
+          let cov = (a + b + c + d) / 4
+          if (Math.max(a, b, c, d) - Math.min(a, b, c, d) > 0.02) {
+            cov = 0
+            for (let y = 0; y < fine; y++)
+              for (let x = 0; x < fine; x++) cov += at(i + (x + 0.5) / fine, j + (y + 0.5) / fine)
+            cov /= fine * fine
+          }
+          if (cov <= 0) continue
           const k = (j * w + i) * 4
-          img.data[k] = rgba[0]
-          img.data[k + 1] = rgba[1]
-          img.data[k + 2] = rgba[2]
-          img.data[k + 3] = Math.round((cov / (s * s)) * rgba[3] * 255)
+          data[k] = rgba[0]
+          data[k + 1] = rgba[1]
+          data[k + 2] = rgba[2]
+          data[k + 3] = Math.round(cov * rgba[3] * 255)
         }
       ctx.putImageData(img, 0, 0)
     },
   }
-}
-
-/** Phosphor's dice-N glyph (regular weight) as an even-odd SVG path on the 256 grid. */
-export function facePath(value: number): string {
-  const rr = (h: number, r: number) =>
-    `M${128 - h + r},${128 - h}H${128 + h - r}A${r},${r},0,0,1,${128 + h},${128 - h + r}V${128 + h - r}A${r},${r},0,0,1,${128 + h - r},${128 + h}H${128 - h + r}A${r},${r},0,0,1,${128 - h},${128 + h - r}V${128 - h + r}A${r},${r},0,0,1,${128 - h + r},${128 - h}Z`
-  const pip = DIE.pip
-  const dots = (PIPS[value] ?? []).map(
-    ([x, y]) =>
-      `M${128 + x - pip},${128 + y}a${pip},${pip},0,1,0,${2 * pip},0a${pip},${pip},0,1,0,${-2 * pip},0Z`,
-  )
-  // The hole winds the other way, so it stays open under nonzero filling too (the GPU atlas).
-  const hole = (h: number, r: number) =>
-    `M${128 - h + r},${128 - h}A${r},${r},0,0,0,${128 - h},${128 - h + r}V${128 + h - r}A${r},${r},0,0,0,${128 - h + r},${128 + h}H${128 + h - r}A${r},${r},0,0,0,${128 + h},${128 + h - r}V${128 - h + r}A${r},${r},0,0,0,${128 + h - r},${128 - h}Z`
-  return rr(96, 32) + hole(80, 16) + dots.join("")
 }
 
 /** Icon size of the header die (px), matching the other header icons. */
@@ -379,54 +373,90 @@ export const HEADER_DIE = 14
 export const GROUP_DIE = 13
 
 /**
- * A Random button's die, `size` px. At rest it is the face's glyph (an SVG, so hover colours
- * transition like every icon); a roll swaps in the traced canvas until it settles. In GPU mode the
- * canvas is skipped and the renderer draws `view` itself; `onFrame` wakes it.
+ * A die button's icon. It is always the traced die, rolling or at rest, so nothing swaps shape
+ * when a roll starts or lands. In the DOM it is a canvas laid on whole device pixels and re-traced
+ * when its colour changes (hover, focus, theme) or the zoom does; in GPU mode the canvas is skipped
+ * and the renderer traces `view` itself, with `onFrame` waking it.
  */
 export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADER_DIE) {
   const node = doc.createElement("span")
   node.className = "knobs-die-icon"
   node.style.width = node.style.height = `${size}px`
-  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
-  svg.setAttribute("viewBox", "0 0 256 256")
-  svg.setAttribute("aria-hidden", "true")
-  svg.setAttribute("class", "knobs-icon")
-  svg.style.width = svg.style.height = `${size}px`
-  const path = doc.createElementNS("http://www.w3.org/2000/svg", "path")
-  path.setAttribute("fill", "currentColor")
-  path.setAttribute("fill-rule", "evenodd")
-  svg.append(path)
-  node.append(svg)
-  // The canvas only exists once a DOM-rendered roll needs it.
+  const win = doc.defaultView
   let canvas: ReturnType<typeof createDieCanvas> | undefined
-  const traced = () => {
-    if (!canvas) {
-      canvas = createDieCanvas(doc, size)
-      node.append(canvas.canvas)
-    }
-    return canvas
-  }
-
   const motion = new DieMotion()
   let view: DieView = { rx: 0, ry: 0, energy: 0 }
   let frame = 0
   let last = 0
-  const show = (rolling: boolean) => {
-    if (canvas) canvas.canvas.hidden = !rolling
-    svg.style.visibility = rolling ? "hidden" : ""
-    if (!rolling) path.setAttribute("d", facePath(motion.value))
-  }
-  show(false)
-  let cachedColor: readonly [number, number, number, number] = [255, 255, 255, 1]
+  let painted = ""
   const gpu = () => node.closest('[data-gpu-active="true"]') !== null
+
+  /** Traces the current view in the button's current colour, unless nothing visible changed. */
+  const paint = (force = false) => {
+    if (gpu() || !node.isConnected) return
+    canvas ??= createDieCanvas(doc, size)
+    if (!canvas.canvas.isConnected) node.append(canvas.canvas)
+    const color = getComputedStyle(node).color
+    const dpr = win?.devicePixelRatio ?? 1
+    const r = node.getBoundingClientRect()
+    // Land the canvas's top-left on a device pixel; the die centre falls where the icon's is.
+    const pad = (dieBox(size) - size) / 2
+    const left = Math.round((r.left - pad) * dpr)
+    const top = Math.round((r.top - pad) * dpr)
+    const key = `${color}|${dpr}|${left - r.left * dpr}|${top - r.top * dpr}|${view.rx}|${view.ry}|${view.energy}|${motion.value}`
+    if (!force && key === painted) return
+    painted = key
+    canvas.canvas.style.left = `${left / dpr - r.left}px`
+    canvas.canvas.style.top = `${top / dpr - r.top}px`
+    const m = color.match(/[\d.]+/g) ?? ["255", "255", "255"]
+    const rgba = [
+      Number(m[0]),
+      Number(m[1]),
+      Number(m[2]),
+      m[3] !== undefined ? Number(m[3]) : 1,
+    ] as const
+    canvas.render(view, DIE_LOOK, rgba, dpr, [
+      (r.left + size / 2) * dpr - left,
+      (r.top + size / 2) * dpr - top,
+    ])
+  }
+
+  // Colour transitions (hover, focus, disabled, theme) re-trace each frame until they settle.
+  let fading = 0
+  const follow = (until: number) => {
+    const step = () => {
+      paint()
+      fading = performance.now() < until && !frame ? requestAnimationFrame(step) : 0
+    }
+    if (!fading) fading = requestAnimationFrame(step)
+  }
+  const nudgeColour = () => follow(performance.now() + 260)
+  for (const type of ["pointerenter", "pointerleave", "focusin", "focusout", "transitionrun"])
+    node.parentElement?.addEventListener?.(type, nudgeColour)
+  queueMicrotask(() => {
+    const button = node.closest("button")
+    for (const type of [
+      "pointerenter",
+      "pointerleave",
+      "focusin",
+      "focusout",
+      "transitionrun",
+      "transitionend",
+    ])
+      button?.addEventListener(type, nudgeColour)
+  })
+  const onResize = () => paint()
+  win?.addEventListener("resize", onResize)
+  requestAnimationFrame(() => paint(true))
+
   const tick = (now: number) => {
     view = motion.step((now - last) / 1000)
     last = now
-    if (!gpu()) traced().render(view, DIE_LOOK, cachedColor)
+    paint()
     onFrame()
     if (motion.resting) {
       frame = 0
-      show(false)
+      paint()
       onFrame()
     } else frame = requestAnimationFrame(tick)
   }
@@ -435,29 +465,24 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
     size,
     /** Tumble to another face; `nudge` turns a quarter onto a neighbour instead (Mutate). */
     roll(nudge = false) {
-      const still = doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      const still = win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches
       if (still) {
         const others = FACES.filter((f) => f.value !== motion.value)
         motion.snapTo(others[Math.floor(Math.random() * others.length)]!.value)
-        show(false)
+        view = motion.step(0)
+        paint()
         onFrame()
         return
       }
-      if (!gpu()) {
-        const m = getComputedStyle(node).color.match(/[\d.]+/g)
-        if (m && m.length >= 3) {
-          cachedColor = [Number(m[0]), Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : 1]
-        }
-      }
       if (nudge) motion.nudge()
       else motion.roll()
-      if (!gpu()) traced()
-      show(true)
       if (!frame) {
         last = performance.now()
         frame = requestAnimationFrame(tick)
       }
     },
+    /** Re-trace now (e.g. after the panel moved or switched renderer). */
+    repaint: () => paint(true),
     get view() {
       return view
     },
@@ -469,6 +494,8 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
     },
     dispose() {
       cancelAnimationFrame(frame)
+      cancelAnimationFrame(fading)
+      win?.removeEventListener("resize", onResize)
     },
   }
 }

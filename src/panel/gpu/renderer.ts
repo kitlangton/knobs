@@ -1,6 +1,6 @@
 import { oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
-import { DIE_LOOK, dieBox, facePath, type HeaderDie } from "../die.js"
+import { DIE_LOOK, dieBox, type HeaderDie } from "../die.js"
 import { ICONS, type IconName } from "../icons.js"
 import {
   clamp,
@@ -1220,22 +1220,8 @@ class GpuOverlayManager {
     })
   }
 
+  /** The die is always traced, at rest too, exactly as the DOM canvas does: nothing swaps. */
   private drawDie(die: HeaderDie, box: DOMRect, color: Rgba, clip?: Clip) {
-    if (!die.rolling) {
-      const entry = this.atlas.icon(facePath(die.value), die.size, this.curScale)
-      const s = this.curScale
-      this.pushPrim({
-        x: Math.round((box.left + (box.width - entry.w) * 0.5) * s) / s,
-        y: Math.round((box.top + (box.height - entry.h) * 0.5) * s) / s,
-        w: entry.w,
-        h: entry.h,
-        clip,
-        uv: entry.uv,
-        color,
-        kind: 5,
-      })
-      return
-    }
     // Same box as the DOM canvas: room for the corners while it tumbles and lifts.
     const b = dieBox(die.size)
     const { rx, ry, energy } = die.view

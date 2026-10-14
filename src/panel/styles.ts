@@ -176,7 +176,7 @@ const css = `
 .knobs-head-split{margin-left:calc(var(--k-unit) * 1.5)}
 .knobs-icon{width:var(--k-icon-size);height:var(--k-icon-size);display:block;flex:none}
 .knobs-die-icon{position:relative;display:block;width:var(--k-icon-size);height:var(--k-icon-size);flex:none}
-.knobs-die-icon>canvas{position:absolute;left:50%;top:50%;margin:0!important;transform:translate(-50%,-50%)}
+.knobs-die-icon>canvas{position:absolute;margin:0}
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 .knobs-panel header button{width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-label);background:transparent;border-radius:999px;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
