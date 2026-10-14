@@ -33,7 +33,7 @@ const splat = defineControls("splat", {
   presets: { subtle: { count: 40, size: 4 } },
 })
 
-// Floating hover chip + anchored panel:
+// Floating hover chip + anchored panel (it grows out of the chip and collapses back into it):
 const detach = splat.attach(document.querySelector<HTMLElement>("#splat")!)
 
 // Or mount an inline panel inside a container:
@@ -272,7 +272,9 @@ Override CSS variables on `:root` or `.knobs-panel`:
 
 Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
 
-Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, the stretch, the spring dot and the editors' height reveals.
+A floating panel opens out of its chip like the Dynamic Island: one shape springs from the chip's pill to the panel's card (position, size and corners), the chip's label fades as it goes and the content, laid out at full size, is revealed top first. Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is. A reload brings an open panel back in place, with no morph.
+
+Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, the stretch, the spring dot and the editors' height reveals, and panels simply fade in and out.
 
 ### Reacting to Random, Reset and presets
 
