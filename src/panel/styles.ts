@@ -441,7 +441,7 @@ const css = `
   background:color-mix(in srgb,var(--k-bg) 94%,transparent);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6)}
 .knobs-panel.knobs-page>.knobs-status{position:fixed;z-index:2147480003;left:50%;bottom:calc(var(--k-unit) * 6);translate:-50% 0;max-width:min(480px,80vw);margin:0;padding:calc(var(--k-unit) * 2) calc(var(--k-unit) * 3.5);
   background:var(--k-bg);border:1px solid var(--k-line);border-radius:999px;box-shadow:var(--k-shadow);color:var(--k-text)}
-.knobs-sections{padding:0 var(--k-page-pad);overflow-anchor:none}
+.knobs-sections{padding:0 var(--k-page-pad);overflow-x:clip;overflow-anchor:none}
 .knobs-columns{display:grid;grid-template-columns:repeat(var(--k-cols,1),minmax(0,1fr));gap:var(--k-page-gap);align-items:start;padding-top:calc(var(--k-unit) * 3)}
 .knobs-column{display:flex;flex-direction:column;gap:var(--k-page-gap);min-width:0}
 .knobs-section-head{margin:0 0 calc(var(--k-page-gap) * -.25);padding:0 calc(var(--k-pad) + var(--k-inset) + 1px);font:600 calc(var(--k-font-size) + 3px)/1.25 var(--k-font);letter-spacing:-.015em;color:var(--k-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

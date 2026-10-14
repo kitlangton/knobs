@@ -2,6 +2,7 @@
 // tune server's wire protocol; this file is what the server's page would ship: it maps the
 // phone's descriptors and preset sets onto a page, sends edits back, and follows the phone's
 // state without echoing it.
+import * as knobs from "knobs"
 import {
   createRemoteControls,
   type ControlDescriptor,
@@ -176,6 +177,8 @@ function mount(phone: Phone) {
   ui = customCards(page)
   ui.update(phone)
   ;(window as any).__tune = { remote, page, send }
+  // Tests and capture scripts mount pages of their own here.
+  ;(window as any).__knobs = { knobs, mountPage }
 }
 
 function customCards(p: Page) {

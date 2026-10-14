@@ -329,7 +329,7 @@ export function createPageLayout(
     return m
   }
   const sizeSpring = (from: number, to: number) =>
-    new Spring(from, SIZE.omega, SIZE.zeta, 0.1).set(to)
+    new Spring(from, SIZE.omega, SIZE.zeta, 0.25).set(to)
   function write(node: HTMLElement, m: Motion) {
     const x = m.x.x
     const y = m.y.x
@@ -621,20 +621,38 @@ export function createPageLayout(
   // A card whose content changed at once (rows swapped, a custom card's content) eases to its new
   // height, before the change is painted; the cards below in its column follow. Folds already
   // animating inside it are left to move it. Nothing moves to another column.
+  /** Cards a fold inside was moving when last seen: its final step isn't a sudden change. */
+  const folding = new WeakSet<HTMLElement>()
   function ease(list: readonly HTMLElement[], heights: ReadonlyMap<HTMLElement, number>) {
     const animate = ready && !reduced()
     for (const t of list) {
       const natural = heights.get(t)!
       const drawn = known.get(t)
       known.set(t, natural)
+      const inside = isRevealingIn(t)
+      const settling = folding.has(t)
+      if (inside) folding.add(t)
+      else folding.delete(t)
       if (!animate || leaving.has(t)) continue
       const m = motions.get(t)
       if (m?.h) {
+        // A fold starting inside takes over from an ease that has nearly arrived.
+        if (inside && m.fold === undefined && Math.abs(m.h.x - natural) < 4) {
+          m.h.snap(natural)
+          if (m.x.resting && m.y.resting) settle(t, m)
+          else {
+            delete m.h
+            const transform = t.style.transform
+            clear(t)
+            t.style.transform = transform
+          }
+          continue
+        }
         m.h.set(natural)
         if (m.fold !== undefined) m.fold = natural
         continue
       }
-      if (drawn === undefined || Math.abs(natural - drawn) < 0.5 || isRevealingIn(t)) continue
+      if (drawn === undefined || Math.abs(natural - drawn) < 0.5 || inside || settling) continue
       const mm = motionFor(t)
       mm.h = sizeSpring(drawn, natural)
       write(t, mm)

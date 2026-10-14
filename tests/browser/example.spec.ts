@@ -1362,7 +1362,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   const tune = page.getByRole("region", { name: "iPhone Tune controls" })
   const card = (name: string) => tune.locator(`.knobs-tile[aria-label="${name}"]`)
   // Groups become cards in sections; custom cards join them; the columns follow the width.
-  await expect(tune.locator(".knobs-section-head")).toHaveText([
+  await expect(tune.locator(".knobs-section-head:not([data-continued])")).toHaveText([
     "Playground",
     "Session List",
     "Transcript",
@@ -1370,7 +1370,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   ])
   await expect(card("Spacing")).toBeVisible()
   await expect(tune.locator(".knobs-live")).toHaveCount(2)
-  await expect(tune.locator(".knobs-section").nth(1).locator(".knobs-column")).toHaveCount(4)
+  await expect(tune.locator(".knobs-column")).toHaveCount(4)
 
   // j runs off the end of one card into the next; Tab and ⇧Tab move between groups.
   await page.getByRole("slider", { name: "Room below a header" }).focus()
@@ -1436,5 +1436,184 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await page.goto("/tune.html?gpu")
   await expect(tune.locator(".knobs-tile").first()).toBeVisible()
   await page.waitForTimeout(500)
+  expect(errors).toEqual([])
+})
+
+test("full page columns: sections stack independently, heights ease, reflows glide, keys read down each column", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const tune = page.getByRole("region", { name: "iPhone Tune controls" })
+  await expect(tune.locator(".knobs-column")).toHaveCount(4)
+  // A section to a column, each card right under the one before it; nothing past the right edge.
+  const geometry = () =>
+    page.evaluate(() => {
+      const gap = parseFloat(getComputedStyle(document.querySelector(".knobs-column")!).rowGap)
+      const columns = [...document.querySelectorAll<HTMLElement>(".knobs-column")].map((c) =>
+        [...c.children]
+          .filter((n) => !(n as HTMLElement).hidden)
+          .map((n) => {
+            const r = n.getBoundingClientRect()
+            return {
+              tile: n.classList.contains("knobs-tile"),
+              top: r.top,
+              bottom: r.bottom,
+              right: r.right,
+            }
+          }),
+      )
+      return { gap, columns, width: innerWidth, scroll: document.documentElement.scrollWidth }
+    })
+  const g = await geometry()
+  expect(g.scroll).toBeLessThanOrEqual(g.width)
+  for (const column of g.columns) {
+    for (let i = 1; i < column.length; i++)
+      if (column[i]!.tile && column[i - 1]!.tile)
+        expect(Math.abs(column[i]!.top - column[i - 1]!.bottom - g.gap)).toBeLessThan(1)
+    for (const n of column) expect(n.right).toBeLessThanOrEqual(g.width)
+  }
+  const firstCards = g.columns.map((c) => c.find((n) => n.tile)!.top)
+  for (const top of firstCards) expect(Math.abs(top - firstCards[0]!)).toBeLessThan(1)
+
+  // j and Tab read down a column, then on to the next.
+  await page.getByRole("switch", { name: "Rubber band" }).focus()
+  await page.keyboard.press("j")
+  await expect(page.getByRole("slider", { name: "Entrance fade" })).toBeFocused()
+  await page.keyboard.press("k")
+  await expect(page.getByRole("switch", { name: "Rubber band" })).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("slider", { name: "Entrance fade" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(page.getByRole("slider", { name: "Search morph duration" })).toBeFocused()
+
+  // An editor opening pushes the cards below it in its column, through every step of its fold,
+  // and nothing in the other columns moves. The fold's own clock is stepped by hand.
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.evaluate(() => {
+    const { knobs: k, mountPage } = (window as any).__knobs
+    ;(window as any).__tune.page.dispose()
+    const n = (value: number, group: string, section: string) =>
+      k.knob(value, { min: 0, max: 100, group, section })
+    const controls = k.defineControls(
+      "columns-fixture",
+      {
+        tint: k.color("#5b8cff", { group: "Look", section: "Style" }),
+        glow: n(40, "Look", "Style"),
+        radius: n(12, "Shape", "Style"),
+        border: n(1, "Shape", "Style"),
+        size: n(15, "Type", "Style"),
+        open: k.spring({ duration: 0.4, bounce: 0.1 }, { group: "Springs", section: "Motion" }),
+        close: k.spring({ duration: 0.3, bounce: 0 }, { group: "Springs", section: "Motion" }),
+        delay: n(20, "Timing", "Motion"),
+        stagger: n(30, "Timing", "Motion"),
+        columns: n(3, "Grid", "Layout"),
+        gutter: n(16, "Grid", "Layout"),
+        margin: n(24, "Grid", "Layout"),
+        rows: n(44, "Rows", "Layout"),
+        gap: n(8, "Rows", "Layout"),
+      },
+      { storage: k.memoryStorage() },
+    )
+    const app = document.querySelector<HTMLElement>("#app")!
+    app.replaceChildren()
+    mountPage(controls, app, {
+      title: "Columns",
+      theme: "dark",
+      sections: ["Style", "Motion", "Layout"],
+    })
+  })
+  const fixture = page.getByRole("region", { name: "Columns controls" })
+  await expect(fixture.locator(".knobs-column")).toHaveCount(3)
+  const tops = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll<HTMLElement>(".knobs-tile")].map((t) => [
+          t.dataset.group,
+          t.getBoundingClientRect().top,
+        ]),
+      ),
+    )
+  const before = await tops()
+  await fixture.locator('.knobs-tile[aria-label="Look"] .knobs-x-head').click()
+  const fold = await page.evaluate(() => {
+    const body = document.querySelector<HTMLElement>(
+      '.knobs-tile[aria-label="Look"] .knobs-x-body',
+    )!
+    const a = body.getAnimations()[0]!
+    a.pause()
+    const at = (ms: number) => {
+      a.currentTime = ms
+      return Object.fromEntries(
+        [...document.querySelectorAll<HTMLElement>(".knobs-tile")].map((t) => [
+          t.dataset.group,
+          t.getBoundingClientRect().top,
+        ]),
+      )
+    }
+    const steps = [0, 30, 60, 90, 120, 150].map(at)
+    a.play()
+    return steps
+  })
+  await expect.poll(async () => (await tops()).Shape).toBeGreaterThan(before.Shape! + 40)
+  const after = await tops()
+  const shape = fold.map((f) => f.Shape!)
+  for (let i = 1; i < shape.length; i++)
+    expect(shape[i]!).toBeGreaterThanOrEqual(shape[i - 1]! - 0.01)
+  expect(shape.filter((y) => y > before.Shape! + 1 && y < after.Shape! - 1).length).toBeGreaterThan(
+    2,
+  )
+  for (const f of [...fold, after]) {
+    expect(f.Timing).toBe(before.Timing)
+    expect(f.Grid).toBe(before.Grid)
+    expect(f.Type! - f.Shape!).toBeCloseTo(before.Type! - before.Shape!, 0)
+  }
+
+  // A narrower window drops a column; cards glide from where they were, frame by frame (the
+  // glide's springs can't jump more than a few frames' worth however slow the runner), and the
+  // overlay keeps drawing until they land, then sleeps.
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.goto("/tune.html?gpu")
+  await expect(tune.locator(".knobs-column")).toHaveCount(3)
+  const track = page.evaluate(
+    () =>
+      new Promise<{ cols: string; x: number; y: number; moving: boolean }[]>((resolve) => {
+        const host = document.querySelector<HTMLElement>(".knobs-sections")!
+        const tile = document.querySelector<HTMLElement>('.knobs-tile[aria-label="Size"]')!
+        const frames: { cols: string; x: number; y: number; moving: boolean }[] = []
+        let still = 0
+        const step = () => {
+          const r = tile.getBoundingClientRect()
+          const cols = host.style.getPropertyValue("--k-cols")
+          const moving = [...document.querySelectorAll<HTMLElement>(".knobs-tile")].some(
+            (t) => t.style.transform !== "",
+          )
+          frames.push({ cols, x: r.left, y: r.top, moving })
+          still = cols === "2" && !moving ? still + 1 : 0
+          if (still > 5 || frames.length > 2000) resolve(frames)
+          else requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      }),
+  )
+  await page.setViewportSize({ width: 900, height: 900 })
+  const frames = await track
+  const end = frames[frames.length - 1]!
+  expect(end.cols).toBe("2")
+  const gliding = frames.filter((f) => f.cols === "2" && f.moving)
+  expect(gliding.length).toBeGreaterThan(3)
+  const start = frames.find((f) => f.cols === "2")!
+  expect(
+    new Set(gliding.map((f) => Math.round(f.y))).size,
+    "the card passes through intermediate positions",
+  ).toBeGreaterThan(2)
+  expect(Math.abs(start.y - end.y) + Math.abs(start.x - end.x)).toBeGreaterThan(50)
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 5000 })
+    .toBe(true)
   expect(errors).toEqual([])
 })
