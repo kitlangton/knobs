@@ -8,14 +8,17 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import type { ControlDescriptor, RemoteControls } from "../core/remote.js"
-import { same, type Choice, type Schema, type State, type Values } from "../core/schema.js"
-import type { Controls, MountPanelOptions } from "../core/store.js"
+import {
+  mountPanelAdapter,
+  syncPanelLook,
+  syncPanelValues,
+  type ChoiceKey,
+  type KnobsPanelProps,
+} from "../core/adapter.js"
+import { same, type Schema, type Values } from "../core/schema.js"
+import type { Controls } from "../core/store.js"
 
-type ChoiceKey<S extends Schema> = {
-  [K in keyof S]: S[K] extends Choice ? K : never
-}[keyof S] &
-  string
+export type { KnobsPanelProps }
 
 /**
  * Reactive Solid accessor for a controls store.
@@ -103,19 +106,6 @@ export function Knobs<S extends Schema>(props: {
   return resolved as unknown as JSX.Element
 }
 
-export type KnobsPanelProps<S extends Schema> = MountPanelOptions & {
-  controls: Controls<S>
-  /**
-   * Remote controls only: the descriptors to show. A new array swaps rows in place
-   * (`remote.update`); the same array with new `values` just syncs them.
-   */
-  descriptors?: readonly ControlDescriptor[]
-  /** The values to show, from your own state. Keys in hand keep theirs until let go. */
-  values?: State
-  /** While true, a different item is arriving: values land without springing or rolling. */
-  land?: boolean
-}
-
 /**
  * Mounts an inline `knobs` panel inside a Solid component tree. The panel mounts once per
  * `controls`; `descriptors` and `values` flow into it as updates, so a change touches only the rows
@@ -131,45 +121,14 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Ele
       host.replaceChildren()
       return
     }
-    const dispose = untrack(() =>
-      c.mount(host, {
-        title: props.title,
-        // Theme and density restyle the mounted panel in place (below), so its tokens glide.
-        theme: props.theme,
-        density: props.density,
-        renderer: props.renderer,
-        variants: props.variants,
-        history: props.history,
-        footer: props.footer,
-        header: props.header,
-        keys: props.keys,
-        marks: props.marks,
-        preset: props.preset,
-        copy: props.copy,
-        actions: props.actions,
-        onClose: props.onClose,
-        onReady: props.onReady,
-      }),
-    )
+    const dispose = untrack(() => mountPanelAdapter(host, c, () => props))
     onCleanup(dispose)
   })
   createEffect(() => {
-    const c = props.controls
-    const descriptors = props.descriptors
-    const values = props.values
-    const land = Boolean(props.land)
-    if (!c.enabled || (!descriptors && !values)) return
-    if (descriptors && "update" in c)
-      (c as unknown as RemoteControls).update(descriptors, values, { land })
-    else if (values) c.sync(values as Partial<Values<S>>, { replace: true, land })
+    syncPanelValues(props.controls, props.descriptors, props.values, Boolean(props.land))
   })
   createEffect(() => {
-    const theme = props.theme ?? props.controls.theme
-    const density = props.density ?? props.controls.density
-    const panel = host.firstElementChild as HTMLElement | null
-    if (!panel) return
-    panel.dataset.theme = theme
-    panel.dataset.density = density
+    syncPanelLook(host, props.controls, props.theme, props.density)
   })
   return host as unknown as JSX.Element
 }

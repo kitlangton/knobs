@@ -293,8 +293,10 @@ test("React hydration, nested switcher ownership, saved variants and teardown", 
   await expect(page.locator("[data-inner]")).toHaveText("c")
   await page.getByRole("group", { name: "Saved", exact: true }).focus()
   await page.mouse.move(0, 0)
+  await expect(page.locator("[data-outer-meta]")).toHaveText("2:true")
   await page.keyboard.press("3")
   await expect(page.locator("[data-outer]")).toHaveText("a:7")
+  await expect(page.locator("[data-outer-meta]")).toHaveText("7:true")
   await page.getByRole("group", { name: "Outer", exact: true }).focus()
   await page.getByRole("button", { name: "Tune outer" }).click()
   await expect(page.getByRole("dialog")).toHaveCount(1)
@@ -317,6 +319,23 @@ test("React hydration, nested switcher ownership, saved variants and teardown", 
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.5:solid")
   await remotePanel.getByRole("button", { name: "Reset Spring" }).click()
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.35:solid")
+  // React KnobsPanel: header, preset, marks, keys, onReady, descriptors/values/land
+  const reactEmbed = page.getByRole("region", { name: "react-embed controls" })
+  await expect(reactEmbed).toHaveAttribute("data-preset", "problems")
+  await expect(reactEmbed.locator("header")).toBeHidden()
+  await expect(reactEmbed.locator(".knobs-modified")).toHaveCount(0)
+  await page.getByRole("button", { name: "Focus embed" }).click()
+  const widthSlider = reactEmbed.getByRole("slider", { name: "Width" })
+  await expect(widthSlider).toBeFocused()
+  await expect(widthSlider).toHaveAttribute("aria-valuenow", "140")
+  await page.keyboard.press("Shift+ArrowRight")
+  await expect(widthSlider).toHaveAttribute("aria-valuenow", "170")
+  await page.getByRole("button", { name: "Swap embed" }).click()
+  await expect(reactEmbed.getByRole("slider", { name: "Radius" })).toHaveAttribute(
+    "aria-valuenow",
+    "16",
+  )
+  await expect(reactEmbed.getByRole("slider", { name: "Width" })).toHaveCount(0)
   expect(errors).toEqual([])
 })
 

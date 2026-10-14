@@ -423,4 +423,57 @@ describe("shipping", () => {
     )
     expect(c.enabled).toBe(true)
   })
+
+  it("shares mount options, descriptor/value sync, and look sync across React and Solid adapters", async () => {
+    const { mountPanelAdapter, syncPanelValues } = await import("../src/core/adapter.js")
+    const { problemsPreset } = await import("../src/themes/index.js")
+    let receivedOpts: Record<string, unknown> | undefined
+    const fakePanel = {
+      element: {} as HTMLElement,
+      focus: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const r = createRemoteControls("adapter-test", params(), {
+      ship: async () => ({
+        mountPanel: (_c, _host, opts) => {
+          receivedOpts = opts as Record<string, unknown>
+          return fakePanel
+        },
+        attach: () => () => {},
+      }),
+    })
+    let readyHandle: unknown
+    let copyText = "first"
+    const dispose = mountPanelAdapter({} as HTMLElement, r, () => ({
+      controls: r,
+      header: false,
+      variants: false,
+      marks: false,
+      preset: problemsPreset,
+      keys: { random: false, vim: false, bigStep: 5 },
+      copy: () => copyText,
+      onReady: (p) => (readyHandle = p),
+    }))
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(readyHandle).toBe(fakePanel)
+    expect(receivedOpts).toMatchObject({
+      header: false,
+      variants: false,
+      marks: false,
+      preset: problemsPreset,
+      keys: { random: false, vim: false, bigStep: 5 },
+    })
+    copyText = "updated"
+    expect((receivedOpts?.copy as () => string)()).toBe("updated")
+    syncPanelValues(
+      r,
+      [{ key: "width", kind: "number", default: 10, min: 0, max: 50, step: 5 }],
+      { width: 25 },
+      true,
+    )
+    expect(Object.keys(r.schema)).toEqual(["width"])
+    expect(r.get()).toEqual({ width: 25 })
+    dispose()
+    expect(fakePanel.dispose).toHaveBeenCalledTimes(1)
+  })
 })
