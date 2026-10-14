@@ -194,7 +194,6 @@ export function Section<E extends Schema = {}>({
   title,
   id,
   controls,
-  page,
   level = 2,
   lede,
   children,
@@ -204,9 +203,8 @@ export function Section<E extends Schema = {}>({
   title: ReactNode
   /** The heading anchor; defaults to the slugged title. */
   id?: string
-  /** A store from sectionControls; otherwise one named `${page} · ${title}`. */
+  /** A store from sectionControls; otherwise one named after the title. */
   controls?: SectionControls<E>
-  page?: string
   level?: 1 | 2
   lede?: ReactNode
   children?: ReactNode
@@ -215,7 +213,7 @@ export function Section<E extends Schema = {}>({
 }) {
   const text = typeof title === "string" ? title : (id ?? "section")
   const anchor = id ?? slug(text)
-  const store = controls ?? sectionControls(`${page ?? "Docs"} · ${text}`)
+  const store = controls ?? sectionControls(text)
   const v = useControls(store) as SectionValues
   const ref = useRef<HTMLElement>(null)
   const tokens = sectionTokens(v)

@@ -45,17 +45,17 @@ test("every docs page and example loads without errors", async ({ page }) => {
 test("a section chip opens that section's panel, which restyles the section", async ({ page }) => {
   const errors = trackErrors(page)
   await page.goto("/fields")
-  const section = page.locator('section[data-section="Fields · knob"]')
+  const section = page.locator('section[data-section="knob"]')
   const heading = section.locator("h2")
   await section.scrollIntoViewIfNeeded()
   await expect(section).toHaveAttribute("data-in", "")
   const before = await heading.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
   const box = (await section.boundingBox())!
   await section.hover({ position: { x: box.width - 30, y: 30 } })
-  const chip = page.getByRole("button", { name: "Tune Fields · knob", exact: true })
+  const chip = page.getByRole("button", { name: "Tune knob", exact: true })
   await expect(chip).toBeVisible()
   await chip.click()
-  const panel = page.getByRole("dialog", { name: "Fields · knob controls" })
+  const panel = page.getByRole("dialog", { name: "knob controls", exact: true })
   await expect(panel).toBeVisible()
   const size = panel.getByRole("slider", { name: "Heading size", exact: true })
   await size.focus()
@@ -65,7 +65,7 @@ test("a section chip opens that section's panel, which restyles the section", as
     .poll(() => heading.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)))
     .toBeGreaterThan(before)
   // Other sections keep their own values.
-  await expect(page.locator('section[data-section="Fields · choice"]')).toHaveCSS("--s-size", "1")
+  await expect(page.locator('section[data-section="choice"]')).toHaveCSS("--s-size", "1")
   expect(errors).toEqual([])
 })
 
@@ -89,4 +89,28 @@ test("the site panel opens with T and its tokens apply to the page", async ({ pa
   await expect(panel).toBeHidden()
   await expect(page.getByRole("button", { name: "Tune site tokens" })).toBeFocused()
   expect(errors).toEqual([])
+})
+
+test("Copy link puts the tuning in the hash, and opening it applies the tuning", async ({
+  page,
+  context,
+  browser,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  await page.goto("/panel")
+  await expect(page.locator("main h1")).toBeVisible()
+  await page.keyboard.press("t")
+  const panel = page.getByRole("dialog", { name: "Site tokens controls" })
+  await panel.getByRole("radio", { name: "terminal", exact: true }).click()
+  await panel.getByRole("button", { name: "Copy link", exact: true }).click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("#tune=")
+  const link = await page.evaluate(() => navigator.clipboard.readText())
+
+  const fresh = await browser.newPage({ colorScheme: "light" })
+  await fresh.goto(link)
+  await expect(fresh.locator("html")).toHaveAttribute("data-theme", "dark")
+  await expect(fresh.locator("html")).toHaveCSS("--radius", "2px")
+  // The shared hash is applied once and removed from the address.
+  await expect(fresh).toHaveURL(/\/panel$/)
+  await fresh.close()
 })

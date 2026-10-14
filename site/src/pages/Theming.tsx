@@ -7,8 +7,6 @@ import { Link } from "../router"
 import { copy } from "../site"
 import { Section } from "../section"
 
-const page = "Theming and tokens"
-
 const lookSchema = {
   theme: choice("auto", ["auto", "dark", "light"], { label: "Theme", group: "Mode" }),
   density: choice("default", ["compact", "default", "comfortable"], {
@@ -133,7 +131,6 @@ export default function Theming() {
   return (
     <>
       <Section
-        page={page}
         title="Theming and tokens"
         level={1}
         lede="Panels take a theme, a density and a renderer, and every measurement and colour in them is a CSS custom property you can override."
@@ -145,7 +142,7 @@ export default function Theming() {
         <Specimen />
       </Section>
 
-      <Section page={page} title="Theme and density">
+      <Section title="Theme and density">
         <p>
           <C>theme</C> is <C>"dark"</C>, <C>"light"</C> or <C>"auto"</C>, which follows a{" "}
           <C>data-theme</C> attribute on the root element and then the system setting. Density is{" "}
@@ -163,7 +160,7 @@ export default function Theming() {
         </p>
       </Section>
 
-      <Section page={page} title="Design tokens">
+      <Section title="Design tokens">
         <p>
           Override tokens on <C>:root</C> or on <C>.knobs-panel</C>. Changing a token glides:
           colours, lengths, weights, glass and glow move on the panel's spring, so switching themes
@@ -205,7 +202,7 @@ export default function Theming() {
         </p>
       </Section>
 
-      <Section page={page} title="The WebGPU renderer">
+      <Section title="The WebGPU renderer">
         <p>
           With <C>renderer: "gpu"</C>, or <C>?gpu</C> in the URL, every panel on the page draws into
           one shared WebGPU canvas. It runs the panel springs at 480 Hz with velocity-driven motion
@@ -219,7 +216,7 @@ export default function Theming() {
         </p>
       </Section>
 
-      <Section page={page} title="This site's tokens">
+      <Section title="This site's tokens">
         <p>
           The <strong>Tune</strong> button opens the site's own tokens: theme, an OKLCH accent, type
           scale, spacing, radius and the motion spring. They are CSS custom properties on{" "}

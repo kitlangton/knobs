@@ -5,8 +5,6 @@ import { C, Code } from "../Code"
 import { Demo, demoControls } from "../demos/Demo"
 import { Section } from "../section"
 
-const page = "The panel"
-
 const button = demoControls(
   "button",
   {
@@ -90,7 +88,6 @@ export default function Panel() {
   return (
     <>
       <Section
-        page={page}
         title="The panel"
         level={1}
         lede="Every panel works the same way, whether it floats out of a chip or sits inline. Everything the mouse can do, the keyboard can do too."
@@ -103,7 +100,7 @@ export default function Panel() {
         <ButtonDemo />
       </Section>
 
-      <Section page={page} title="Keyboard">
+      <Section title="Keyboard">
         <div className="table-wrap">
           <table>
             <thead>
@@ -130,7 +127,7 @@ export default function Panel() {
         </p>
       </Section>
 
-      <Section page={page} title="Jump to anything">
+      <Section title="Jump to anything">
         <p>
           Press <kbd>s</kbd> and every row, preset and button gets a short badge, the shortest
           prefix that's unique in that panel. Type a badge to jump there; a preset's badge applies
@@ -138,7 +135,7 @@ export default function Panel() {
         </p>
       </Section>
 
-      <Section page={page} title="Gestures">
+      <Section title="Gestures">
         <ul>
           <li>
             Drag a slider anywhere along its row. <kbd>⌥</kbd>-drag moves at a tenth of the speed,
@@ -154,7 +151,7 @@ export default function Panel() {
         </ul>
       </Section>
 
-      <Section page={page} title="Presets and variants">
+      <Section title="Presets and variants">
         <p>
           Presets ship with your code; variants are values you saved while tuning. Both live in the
           same strip. Click <kbd>+</kbd> or press <kbd>⇧S</kbd> to save the current values as a
@@ -179,7 +176,7 @@ export default function Panel() {
         </p>
       </Section>
 
-      <Section page={page} title="Random, Mutate and locks">
+      <Section title="Random, Mutate and locks">
         <p>
           Random is a die in the header that tumbles when it rolls. It picks new values within the
           ranges people use: springs between 0.2 and 0.9 seconds with bounce up to 0.45, mid-light
@@ -200,7 +197,7 @@ export default function Panel() {
         `}</Code>
       </Section>
 
-      <Section page={page} title="Compare">
+      <Section title="Compare">
         <p>
           Hold <kbd>\</kbd> to see the values from before your last change, in the panel and in your
           component alike, and let go to come back. The title dims while you hold it. Nothing is
@@ -208,7 +205,7 @@ export default function Panel() {
         </p>
       </Section>
 
-      <Section page={page} title="Selections and the row menu">
+      <Section title="Selections and the row menu">
         <p>
           <kbd>⇧</kbd>-click a second row to select a range, or <kbd>⌘</kbd>-click to add or remove
           one. With a selection, <kbd>r</kbd>, <kbd>⌥R</kbd>, <kbd>⌫</kbd>, <kbd>⇧L</kbd> and{" "}
@@ -217,7 +214,7 @@ export default function Panel() {
         </p>
       </Section>
 
-      <Section page={page} title="Undo and history">
+      <Section title="Undo and history">
         <p>
           <kbd>u</kbd> undoes and <kbd>⇧u</kbd> redoes, up to 100 steps. A slider drag, a pad drag
           or a scroll gesture is one entry. Values persist to <C>localStorage</C> under the

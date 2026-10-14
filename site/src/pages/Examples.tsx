@@ -1,7 +1,5 @@
 import { Section } from "../section"
 
-const page = "Examples"
-
 const examples = [
   {
     href: "/examples/studies.html",
@@ -24,7 +22,6 @@ export default function Examples() {
   return (
     <>
       <Section
-        page={page}
         title="Examples"
         level={1}
         lede="The original demo pages, built from the repository's examples folder."

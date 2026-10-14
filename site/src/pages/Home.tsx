@@ -8,8 +8,6 @@ import { Install } from "../Install"
 import { Link } from "../router"
 import { Section } from "../section"
 
-const page = "Overview"
-
 // The quick start's card, live: the same 20 lines as the snippet beside it.
 const card = defineControls(
   "card",
@@ -53,7 +51,6 @@ export default function Home() {
   return (
     <>
       <Section
-        page={page}
         title="knobs"
         level={1}
         className="hero"
@@ -73,10 +70,10 @@ export default function Home() {
           <Field />
         </Demo>
       </Section>
-      <Section page={page} title="Install">
+      <Section title="Install">
         <Install />
       </Section>
-      <Section page={page} title="Quick start">
+      <Section title="Quick start">
         <p>
           Define controls once at module scope, read them with <C>useControls</C>, and wrap the
           element that should carry the chip in <C>{"<Knobs>"}</C>.
@@ -110,7 +107,7 @@ export default function Home() {
           <Link href="/production">Production builds</Link> explains how.
         </p>
       </Section>
-      <Section page={page} title="Where to go next">
+      <Section title="Where to go next">
         <ul className="next-list">
           <li>
             <Link href="/getting-started">Getting started</Link> walks through a first set of

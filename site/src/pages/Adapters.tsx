@@ -4,8 +4,6 @@ import { C, Code } from "../Code"
 import { demoControls } from "../demos/Demo"
 import { Section } from "../section"
 
-const page = "Adapters"
-
 const meter = demoControls("meter", {
   bars: knob(12, { min: 3, max: 32, step: 1 }),
   level: knob(0.6, { min: 0, max: 1, step: 0.01 }),
@@ -53,7 +51,6 @@ export default function Adapters() {
   return (
     <>
       <Section
-        page={page}
         title="Adapters"
         level={1}
         lede="The store is framework-free. The React and Solid adapters are thin layers over subscribe, attach and mount."
@@ -122,7 +119,7 @@ export default function Adapters() {
         </div>
       </Section>
 
-      <Section page={page} title="React">
+      <Section title="React">
         <p>
           Import from <C>knobs/react</C>. <C>useControls</C> uses <C>useSyncExternalStore</C>, so
           values are typed, consistent across a render and safe to server-render. <C>{"<Knobs>"}</C>{" "}
@@ -157,7 +154,7 @@ export default function Adapters() {
         </p>
       </Section>
 
-      <Section page={page} title="Solid">
+      <Section title="Solid">
         <p>
           Import from <C>knobs/solid</C>. <C>useControls</C> returns an accessor.{" "}
           <C>useKnobs(controls)</C> is a ref callback, and <C>knobs</C> works as a <C>use:knobs</C>{" "}
@@ -182,7 +179,7 @@ export default function Adapters() {
         `}</Code>
       </Section>
 
-      <Section page={page} title="Plain DOM">
+      <Section title="Plain DOM">
         <p>
           Without a framework, read with <C>get()</C>, redraw on <C>subscribe</C>, and use{" "}
           <C>attach</C> or <C>mount</C> for panels. Each returns a function that undoes it. The

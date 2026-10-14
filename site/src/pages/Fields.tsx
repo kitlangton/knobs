@@ -17,8 +17,6 @@ import { Demo, demoControls } from "../demos/Demo"
 import { reducedMotion } from "../site"
 import { Section } from "../section"
 
-const page = "Fields"
-
 /** Flips between two states on an interval, for demos that move on their own. */
 function useShuttle(ms: number) {
   const [on, setOn] = useState(false)
@@ -180,7 +178,6 @@ export default function Fields() {
   return (
     <>
       <Section
-        page={page}
         title="Fields"
         level={1}
         lede="A schema is an object of fields. Each field sets a default, a range or options, and the row the panel draws for it."
@@ -261,7 +258,7 @@ export default function Fields() {
         </p>
       </Section>
 
-      <Section page={page} title="knob">
+      <Section title="knob">
         <p>
           A number between <C>min</C> and <C>max</C>, moving in <C>step</C>s, with an optional{" "}
           <C>unit</C> for the readout. Dragging past either end rubber-bands. A faint notch marks
@@ -280,7 +277,7 @@ export default function Fields() {
         </p>
       </Section>
 
-      <Section page={page} title="choice">
+      <Section title="choice">
         <p>
           One of a nonempty list of strings. The value's type is the union of the options, so{" "}
           <C>v.align</C> below is <C>{'"start" | "center" | "end"'}</C>.
@@ -297,7 +294,7 @@ export default function Fields() {
         </p>
       </Section>
 
-      <Section page={page} title="toggle">
+      <Section title="toggle">
         <p>A boolean switch. Changed switches show a small dot, like changed choices.</p>
         <Code>{`
           grid: toggle(true),
@@ -306,7 +303,7 @@ export default function Fields() {
         <ToggleDemo />
       </Section>
 
-      <Section page={page} title="spring">
+      <Section title="spring">
         <p>
           A SwiftUI-style spring: <C>{"{ duration, bounce }"}</C>, the same two numbers as{" "}
           <C>.spring(duration:bounce:)</C>. Duration runs from 0.05 to 2 seconds and bounce from
@@ -329,7 +326,7 @@ export default function Fields() {
         </p>
       </Section>
 
-      <Section page={page} title="color">
+      <Section title="color">
         <p>
           A colour stored as an <C>oklch(L C H)</C> string, which works in CSS as it is. It accepts
           hex, <C>oklch()</C> or <C>{"{ l, c, h }"}</C>. Colours always fit inside sRGB: chroma is
@@ -347,7 +344,7 @@ export default function Fields() {
         </p>
       </Section>
 
-      <Section page={page} title="point">
+      <Section title="point">
         <p>
           A 2D value, <C>{"{ x, y }"}</C>, edited on a pad. Bounds and step take a number or{" "}
           <C>{"{ x, y }"}</C>. y grows downward, as in CSS and UIKit. A drag on the pad is one undo
@@ -359,7 +356,7 @@ export default function Fields() {
         <PointDemo />
       </Section>
 
-      <Section page={page} title="easing">
+      <Section title="easing">
         <p>
           A cubic bezier, <C>[x1, y1, x2, y2]</C>, or one of the named curves: <C>ease</C>,{" "}
           <C>ease-in</C>, <C>ease-out</C>, <C>ease-in-out</C>, <C>linear</C>, <C>smooth</C>,{" "}

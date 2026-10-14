@@ -148,11 +148,6 @@
 :root[data-knobs-scrub] {
   transition-duration: 0ms;
 }
-.sec {
-  transition-property: --s-size, --s-tracking, --s-weight, --s-measure, --s-space, --code-bg;
-  transition-duration: var(--glide-ms);
-  transition-timing-function: var(--glide-ease);
-}
 :root[data-knobs-scrub] .sec {
   transition-duration: 0ms;
 }
@@ -446,7 +441,10 @@ main > * {
   padding-block: calc(var(--u) * 5 * var(--s-space)) calc(var(--u) * 2 * var(--s-space));
   border-radius: calc(var(--radius) + 6px);
   transition-property:
-    background-color, --s-size, --s-tracking, --s-weight, --s-measure, --s-space, --code-bg;
+    background-color, box-shadow, --s-size, --s-tracking, --s-weight, --s-measure, --s-space,
+    --code-bg;
+  transition-duration: var(--glide-ms);
+  transition-timing-function: var(--glide-ease);
 }
 .sec:focus-visible {
   background-color: color-mix(in oklch, var(--accent) 5%, transparent);
@@ -793,9 +791,17 @@ td:first-child {
   font-size: calc(var(--fs) * pow(var(--ratio), 6) * var(--s-size));
   letter-spacing: calc(var(--s-tracking) - 0.03em);
 }
+.hero-demo {
+  align-items: stretch;
+}
 .hero-demo .demo-stage {
-  min-height: 0;
-  aspect-ratio: 4 / 3;
+  min-height: 420px;
+}
+@media (max-width: 860px) {
+  .hero-demo .demo-stage {
+    min-height: 0;
+    aspect-ratio: 1;
+  }
 }
 .field-canvas {
   position: absolute;

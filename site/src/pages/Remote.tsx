@@ -15,8 +15,6 @@ import { C, Code } from "../Code"
 import { copy, registerStore } from "../site"
 import { Section, sectionControls } from "../section"
 
-const page = "Remote and Swift"
-
 const descriptors: ControlDescriptor[] = [
   {
     key: "drawer.spring",
@@ -71,7 +69,7 @@ const defaults: Record<string, Value> = Object.fromEntries(
 )
 
 // The section's own illustration knob: how long the pretend socket takes each way.
-const tryIt = sectionControls(`${page} · Try it`, {
+const tryIt = sectionControls("Try it", {
   latency: knob(120, { min: 0, max: 800, step: 10, unit: "ms", label: "Latency", group: "Socket" }),
 })
 
@@ -189,7 +187,6 @@ export default function Remote() {
   return (
     <>
       <Section
-        page={page}
         title="Remote and Swift"
         level={1}
         lede="When the values live on another device or process, build the controls from descriptors and send changes over your own transport."
@@ -202,7 +199,7 @@ export default function Remote() {
         </p>
       </Section>
 
-      <Section page={page} title="Try it" controls={tryIt}>
+      <Section title="Try it" controls={tryIt}>
         <p>
           The panel drives a pretend phone over a pretend socket with a delay. Each edit goes out as
           a <C>set</C> message; the phone applies it and answers with its full state, which the
@@ -221,7 +218,7 @@ export default function Remote() {
         <SwiftOut />
       </Section>
 
-      <Section page={page} title="Descriptors">
+      <Section title="Descriptors">
         <p>
           A descriptor has a <C>key</C>, a <C>kind</C>, a <C>default</C> and the same metadata as a
           field. Kinds are <C>number</C> (or <C>knob</C>), <C>bool</C> (or <C>toggle</C>),{" "}
@@ -240,7 +237,7 @@ export default function Remote() {
         `}</Code>
       </Section>
 
-      <Section page={page} title="Wire up the socket">
+      <Section title="Wire up the socket">
         <Code>{`
           import { createRemoteControls } from "knobs"
           import { mountPanel } from "knobs/panel"
@@ -269,7 +266,7 @@ export default function Remote() {
         </p>
       </Section>
 
-      <Section page={page} title="Swift codegen">
+      <Section title="Swift codegen">
         <p>
           <C>remote.swift(group?)</C> prints a declaration for every changed value, with the old
           value in a comment. Colours leave as sRGB components, points as <C>CGPoint</C> and easings

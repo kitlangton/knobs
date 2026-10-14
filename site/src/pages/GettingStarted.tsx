@@ -3,13 +3,10 @@ import { Install } from "../Install"
 import { Link } from "../router"
 import { Section } from "../section"
 
-const page = "Getting started"
-
 export default function GettingStarted() {
   return (
     <>
       <Section
-        page={page}
         title="Getting started"
         level={1}
         lede="A set of controls is a typed store with a schema. You read values from it, and a panel edits them."
@@ -19,10 +16,10 @@ export default function GettingStarted() {
           element that draws it, and shows what happens to those controls in a production build.
         </p>
       </Section>
-      <Section page={page} title="Install">
+      <Section title="Install">
         <Install />
       </Section>
-      <Section page={page} title="Define the controls">
+      <Section title="Define the controls">
         <p>
           <C>defineControls</C> takes a stable id, a schema of fields and options. The id names the
           panel and keys its saved values, so keep it the same across reloads. Define controls at
@@ -46,7 +43,7 @@ export default function GettingStarted() {
           <C>{'"inked" | "clean"'}</C>, and <C>splat.locked</C> holds the defaults, frozen.
         </p>
       </Section>
-      <Section page={page} title="Attach a panel">
+      <Section title="Attach a panel">
         <p>
           In React, wrap the element in <C>{"<Knobs>"}</C>. It adds no wrapper DOM: its child must
           be a native element, or a component that forwards its ref to one. Hovering or focusing
@@ -79,7 +76,7 @@ export default function GettingStarted() {
           example on this site is an inline panel.
         </p>
       </Section>
-      <Section page={page} title="Tune, then keep what works">
+      <Section title="Tune, then keep what works">
         <p>
           Drag a slider, or focus a row and use the arrow keys. Random rolls new values, and{" "}
           <kbd>⌥</kbd>-clicking it mutates the current ones a little. When something looks right,
@@ -93,7 +90,7 @@ export default function GettingStarted() {
           where focus was.
         </p>
       </Section>
-      <Section page={page} title="Ship constants">
+      <Section title="Ship constants">
         <p>
           The package has two builds of its core, picked by the standard <C>development</C> export
           condition. Vite's dev server uses the development build. Every production bundler uses the

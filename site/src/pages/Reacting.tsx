@@ -5,8 +5,6 @@ import { C, Code } from "../Code"
 import { Demo, demoControls } from "../demos/Demo"
 import { Section } from "../section"
 
-const page = "Reacting to changes"
-
 interface Entry {
   readonly n: number
   readonly source: ChangeSource
@@ -87,7 +85,6 @@ export default function Reacting() {
   return (
     <>
       <Section
-        page={page}
         title="Reacting to changes"
         level={1}
         lede="onChange tells you what changed and where the change came from, so a page can answer the panel's own commands."
@@ -105,7 +102,7 @@ export default function Reacting() {
         </p>
       </Section>
 
-      <Section page={page} title="Watch the sources">
+      <Section title="Watch the sources">
         <p>
           The log below prints every change to this panel with its source. Drags report{" "}
           <C>coalesce: true</C> on every step after the first; the log skips those.
@@ -113,7 +110,7 @@ export default function Reacting() {
         <LogDemo />
       </Section>
 
-      <Section page={page} title="Sources">
+      <Section title="Sources">
         <div className="table-wrap">
           <table>
             <thead>
@@ -141,7 +138,7 @@ export default function Reacting() {
         </p>
       </Section>
 
-      <Section page={page} title="Subscribing">
+      <Section title="Subscribing">
         <p>
           For rendering, subscribe instead. <C>subscribe</C> fires after every change, including
           undo, presets and compare, and <C>get()</C> returns the current values. Unchanged spring,
