@@ -170,13 +170,15 @@ function buildPanel<S extends Schema>(
   }
 
   const copyValues = () => void copy(controls.code())
-  const commands = [
-    headButton("random", "Random", "r", controls.randomize),
-    headButton("reset", "Reset", "Shift+R", controls.reset),
-    headButton("copy", "Copy", "Shift+C", copyValues),
-  ]
-  for (const b of commands) b.classList.add("knobs-head-cmd")
-  const resetBtn = commands[1]!
+  // Random, Reset and Copy are reachable from hint mode; history, help and close have keys.
+  const command = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
+    const node = headButton(icon, label, shortcut, action)
+    node.classList.add("knobs-head-cmd")
+    return node
+  }
+  command("random", "Random", "r", controls.randomize)
+  const resetBtn = command("reset", "Reset", "Shift+R", controls.reset)
+  command("copy", "Copy", "Shift+C", copyValues)
   const undoButton = iconButton("undo", "Undo", "u", controls.undo)
   const redoButton = iconButton("redo", "Redo", "Shift+u", controls.redo)
   if (showHistory) {

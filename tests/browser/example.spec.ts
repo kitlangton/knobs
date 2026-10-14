@@ -553,4 +553,10 @@ test("group reset appears only while its group differs from defaults", async ({ 
   await filterReset.click()
   await expect(resonance).toHaveAttribute("aria-valuenow", "0.42")
   await expect(filterReset).toBeHidden()
+
+  // Vertical stops end at the custom actions row when there is one.
+  const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
+  await tokens.getByRole("slider", { name: "Drag roll speed" }).focus()
+  await page.keyboard.press("ArrowDown")
+  await expect(tokens.getByRole("button", { name: "Copy CSS" })).toBeFocused()
 })

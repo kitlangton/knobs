@@ -77,7 +77,7 @@ const metaSchema = {
     max: 12,
     step: 1,
     unit: "px",
-    label: "Row gap",
+    label: "Spacing",
     group: "Geometry",
   }),
   radius: knob(8, {
