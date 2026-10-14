@@ -167,11 +167,10 @@ function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   head.tabIndex = 0
   head.setAttribute("role", "button")
   head.setAttribute("aria-expanded", String(Boolean(c.expanded)))
-  head.setAttribute("aria-label", c.display)
   const label = el("span", "knobs-x-label", c.display)
   const sum = el("span", "knobs-x-sum")
-  // The row is named by its label alone; the summary (hex, coordinates, curve name) describes it,
-  // so the name a screen reader announces matches what's visible beside it.
+  // The row takes its name from its label (the summary is hidden from the name) and is described
+  // by its summary (hex, coordinates, curve name), so what's announced matches what's visible.
   sum.id = `knobs-x-sum-${++summaries}`
   sum.setAttribute("aria-hidden", "true")
   head.setAttribute("aria-describedby", sum.id)
