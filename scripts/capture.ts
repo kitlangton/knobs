@@ -25,6 +25,28 @@ const scenes: { name: string; path: string; run(page: Page, mode: string): Promi
     },
   },
   {
+    name: "synth-states",
+    path: "/meta.html",
+    async run(page, mode) {
+      const panel = page.getByRole("region", { name: "synth-voice controls" })
+      await panel.getByRole("slider", { name: "Drive" }).focus()
+      await page.keyboard.press("Shift+ArrowRight")
+      const res = (await panel.getByRole("slider", { name: "Resonance" }).boundingBox())!
+      await page.mouse.move(res.x + res.width * 0.6, res.y + res.height / 2)
+      await sleep(700)
+      await panel.screenshot({ path: `test-results/cap-${mode}-synth-hover-focus.png` })
+      // Held on the default notch mid-drag.
+      const cut = (await panel.getByRole("slider", { name: "Filter cutoff" }).boundingBox())!
+      const at = (v: number) => cut.x + ((v - 80) / (12000 - 80)) * cut.width
+      await page.mouse.move(at(6000), cut.y + cut.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(at(2400) + 2, cut.y + cut.height / 2, { steps: 8 })
+      await sleep(500)
+      await panel.screenshot({ path: `test-results/cap-${mode}-synth-magnet.png` })
+      await page.mouse.up()
+    },
+  },
+  {
     name: "tokens",
     path: "/meta.html",
     async run(page, mode) {
@@ -70,6 +92,16 @@ const scenes: { name: string; path: string; run(page: Page, mode: string): Promi
       await panel.scrollIntoViewIfNeeded()
       await sleep(600)
       await panel.screenshot({ path: `test-results/cap-${mode}-remote.png` })
+      for (const [theme, density] of [
+        ["light", "compact"],
+        ["dark", "comfortable"],
+      ]) {
+        await page.getByRole("button", { name: theme, exact: true }).click()
+        await page.getByRole("button", { name: density, exact: true }).click()
+        await page.mouse.move(5, 5)
+        await sleep(700)
+        await panel.screenshot({ path: `test-results/cap-${mode}-remote-${theme}-${density}.png` })
+      }
     },
   },
 ]

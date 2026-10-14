@@ -241,7 +241,10 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     let dx = abs(local.x - tickX);
     let dy = abs(local.y - size.y * 0.5);
     let tDist = max(dx - 0.5, dy - 3.5);
-    let tCov = covSd(tDist);
+    // Clear of the label (aux.w = its right edge) and the readout zone (aux.x).
+    let clear = clamp((local.x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) *
+      clamp((size.x - p.aux.x - 4.0 - local.x) / 8.0, 0.0, 1.0);
+    let tCov = covSd(tDist) * clear;
     if (tCov > 0.0) {
       let ta = tCov * tickAlpha * 0.22;
       acc = over(acc, vec4f(p.color2.rgb * ta, ta));

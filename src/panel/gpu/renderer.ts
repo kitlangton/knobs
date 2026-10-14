@@ -1096,8 +1096,8 @@ class GpuOverlayManager {
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
-            p3: dragging ? 1 : hovered ? 0.7 : 0,
-            aux: [zone, sl.notchRatio, notch, 0],
+            p3: this.ease(row.row, "ticks", dragging ? 1 : hovered ? 0.7 : 0),
+            aux: [zone, sl.notchRatio, notch, sl.label.getBoundingClientRect().right - rRect.left],
             aux2: withAlpha(tokens.text, rowAlpha),
           })
 

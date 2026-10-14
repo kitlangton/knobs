@@ -121,9 +121,11 @@ export function createSlider(
   number.setAttribute("aria-label", `${display} value`)
   track.append(marks, fill, notch, handle, label, value, number)
   root.append(track)
-  // The fill fades under the readout; the zone follows the readout's width as digits come and go.
+  // The fill fades under the readout (the zone follows its width as digits come and go), and
+  // hover ticks stay clear of both the readout and the label.
   new ResizeObserver(() => {
     if (value.offsetWidth) track.style.setProperty("--k-readout", `${value.offsetWidth}px`)
+    track.style.setProperty("--k-label-end", `${label.offsetLeft + label.offsetWidth}px`)
   }).observe(value)
 
   const places = decimals(field.step)
