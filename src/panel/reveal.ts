@@ -13,6 +13,48 @@ export const isRevealingIn = (root: HTMLElement) => {
   return false
 }
 export const getRevealVersion = () => revealVersion
+export const isRevealing = (node: HTMLElement) => activeNodes.has(node)
+
+/**
+ * Eases an in-flow element from height `from` to the height it has now, after its content
+ * changed, so what's below glides. Read `from` before the change (mid-flight is fine).
+ */
+export function resize(node: HTMLElement, from: number) {
+  const win = node.ownerDocument.defaultView!
+  const prev = running.get(node)
+  if (prev) {
+    running.delete(node)
+    activeNodes.delete(node)
+    prev.cancel()
+  }
+  revealVersion++
+  const to = node.getBoundingClientRect().height
+  if (
+    node.hidden ||
+    Math.abs(to - from) < 0.5 ||
+    win.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    node.style.overflow = ""
+    return
+  }
+  node.style.overflow = "hidden"
+  const ease = win.getComputedStyle(node).getPropertyValue("--k-reveal-ease").trim() || EASE_OUT
+  const animation = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+    duration: 200,
+    easing: ease,
+  })
+  running.set(node, animation)
+  activeNodes.add(node)
+  const settle = () => {
+    if (running.get(node) !== animation) return
+    running.delete(node)
+    activeNodes.delete(node)
+    revealVersion++
+    node.style.overflow = ""
+  }
+  animation.oncancel = settle
+  animation.onfinish = settle
+}
 
 /**
  * Shows or hides an in-flow element by animating its height (and margins/padding) open or shut,

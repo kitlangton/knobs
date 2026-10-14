@@ -29,7 +29,7 @@ This document sketches how the OpenCode iOS Mac tuning page (`scripts/tune-serve
 
 ### The page as a whole: `mountPage`
 
-The tune page is a page of groups, not a panel, so it maps onto `mountPage` (from `knobs/panel`): a sticky header (title, presets, Random, Reset, Copy as Swift, undo/redo), sections of group cards in balanced columns, and custom cards for the Playground, Motion Watch and the review player. `examples/tune.html` is this migration running against a simulated phone that speaks the server's protocol (`examples/tune-phone.ts`); `examples/tune.ts` is the page.
+The tune page is a page of groups, not a panel, so it maps onto `mountPage` (from `knobs/panel`): a sticky header (title, presets, Random, Reset, Copy as Swift, undo/redo), sections of group cards (each section a column, a long one spanning several, short ones stacking when the window is narrow), and custom cards for the Playground, Motion Watch and the review player. `examples/tune.html` is this migration running against a simulated phone that speaks the server's protocol (`examples/tune-phone.ts`); `examples/tune.ts` is the page.
 
 | Tune server today | knobs |
 | --- | --- |
@@ -42,7 +42,7 @@ The tune page is a page of groups, not a panel, so it maps onto `mountPage` (fro
 | `{ type: "resetAll", group }` | `onReset({})` → `resetAll` for everything; a card's reset (`onReset({ group })`) clears the keys behind that card. |
 | Per-group randomize / undo roll | The card's die (`g`, `⌥` mutates) runs locally and sends sets; local undo/redo replaces "undo roll". Keep `{ type: "randomize" }` as a group action if the phone's own dice matter. |
 | Copy as Swift / Copy values | `copy: () => remote.swift()` (Copy and ⇧C); a row's menu copies a selection. |
-| Playground & Slow Motion, Motion Watch, review player | `page.card({ title, section, element })` with `choice` (segmented, e.g. speed chips 0.1×–2×), `toggle`, `actions` and `item`; arbitrary DOM goes in `card.body`. |
+| Playground & Slow Motion, Motion Watch, review player | `page.card({ title, section, element })` with `choice` (segmented, e.g. speed chips 0.1×–2×), `toggle`, `actions` and `item`; jumps that come and go are a keyed `card.list()`, and per-screen scenario buttons an `actions(...).set`, so both animate; arbitrary DOM goes in `card.body`. |
 | `context` (only this screen's groups unless All), `hidden` | Build the descriptors from the groups to show and remount when that set changes, or show everything: a page has room. `/` filters rows live. |
 
 ```ts
