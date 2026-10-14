@@ -624,12 +624,12 @@ test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ pag
   expect(flicked.claimed).toBe(true)
   expect(await now()).toBe(expected(61))
   await expect(row).not.toHaveClass(/knobs-active/)
-  // Past the end it stops at the max and stretches like a drag.
-  await wheel(page, selector, pan([40, 60, 80, 80, 80, 80, 80, 80], 30_000))
+  // Past the end it stops at the max, the fill exactly full: no rubber band, nothing banked.
+  const pastEnd = await wheel(page, selector, pan([40, 60, 80, 80, 80, 80, 80, 80], 30_000), probe)
   expect(await now()).toBe(300)
-  await expect(row).toHaveAttribute("style", /scaleX/)
+  for (const [, fill] of (pastEnd.seen as number[][]).slice(-3)) expect(fill).toBeCloseTo(100, 5)
   await expect(row).not.toHaveClass(/knobs-active/)
-  await expect(row).not.toHaveAttribute("style", /scaleX/)
+  expect(await row.evaluate((el) => (el as HTMLElement).style.transform)).toBe("")
   // Each pan was one undo entry.
   await page.keyboard.press("u")
   await expect.poll(now).toBe(expected(61))
@@ -640,6 +640,67 @@ test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ pag
   await page.mouse.wheel(0, 100)
   await page.keyboard.up("Shift")
   await expect.poll(now).toBe(151)
+
+  // A drag past the end holds there too, and coming back moves at once.
+  await page.mouse.move(xAt(280), y)
+  await page.mouse.down()
+  await page.mouse.move(track.x + track.width + 120, y, { steps: 6 })
+  expect(await now()).toBe(300)
+  const fillOf = () =>
+    row.evaluate((el) =>
+      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--k-fill")),
+    )
+  expect(await fillOf()).toBeCloseTo(100, 5)
+  expect(await row.evaluate((el) => (el as HTMLElement).style.transform)).toBe("")
+  await page.mouse.move(xAt(270), y, { steps: 4 })
+  expect(await now()).toBe(270)
+  await page.mouse.up()
+})
+
+test("stepped sliders resist around their stop, snap past halfway, and land as one undo step", async ({
+  page,
+}) => {
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const voices = synth.getByRole("slider", { name: "Unison voices" })
+  const row = synth.locator('[data-field="voices"]')
+  const box = (await voices.boundingBox())!
+  const y = box.y + box.height / 2
+  // 1…7: stop n sits at (n - 1) / 6 of the width.
+  const at = (ratio: number) => box.x + box.width * ratio
+  const now = async () => Number(await voices.getAttribute("aria-valuenow"))
+  const fill = () =>
+    row.evaluate((el) =>
+      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--k-fill")),
+    )
+  const stop = (n: number) => ((n - 1) / 6) * 100
+  await page.mouse.move(at(2 / 6), y)
+  await page.mouse.down()
+  // 6% of the width past stop 3: the value stays, the fill follows a quarter of the way.
+  await page.mouse.move(at(2 / 6 + 0.06), y, { steps: 4 })
+  expect(await now()).toBe(3)
+  await expect.poll(fill).toBeCloseTo(stop(3) + 6 * 0.25, 0)
+  // Past halfway to the next stop: it snaps there, still pulled back toward the pointer.
+  await page.mouse.move(at(2 / 6 + 0.1), y, { steps: 2 })
+  expect(await now()).toBe(4)
+  await expect.poll(fill).toBeCloseTo(stop(4) + (2 / 6 + 0.1 - 3 / 6) * 100 * 0.25, 0)
+  // Let go: the fill springs onto its stop, and the whole drag is one undo step.
+  await page.mouse.up()
+  await expect.poll(fill).toBeCloseTo(stop(4), 1)
+  await voices.focus()
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(3)
+  await expect.poll(fill).toBeCloseTo(stop(3), 1)
+  // --k-step-resist 0 is a pure snap: the fill never leaves the stop.
+  await synth.evaluate((el) => el.style.setProperty("--k-step-resist", "0"))
+  await page.mouse.move(at(2 / 6), y)
+  await page.mouse.down()
+  await page.mouse.move(at(2 / 6 + 0.06), y, { steps: 4 })
+  await page.waitForTimeout(100)
+  expect(await fill()).toBeCloseTo(stop(3), 1)
+  await page.mouse.up()
 })
 
 test("panning drags the preset and choice pills across their options, one undo entry per gesture", async ({
@@ -770,7 +831,8 @@ test("presets ripple down the rows, reduced motion moves them together, and glas
         ]),
       )
 
-  // default → acid changes every row but detune; each changed row starts 12 ms after the one above.
+  // default → acid changes every row but detune and voices; each changed row starts 12 ms after the
+  // one above.
   await synth.getByRole("radio", { name: "acid" }).click()
   expect(await delays()).toEqual([
     ["cutoff", "0ms"],
@@ -778,6 +840,7 @@ test("presets ripple down the rows, reduced motion moves them together, and glas
     ["drive", "24ms"],
     ["waveform", "36ms"],
     ["detune", ""],
+    ["voices", ""],
     ["chorus", "48ms"],
   ])
   // A single change never waits.
@@ -1391,7 +1454,7 @@ test("design-system geometry contracts: left/right column alignment, concentric 
   page,
 }) => {
   // Six page loads (two renderers × three densities): ~23 s on its own, more on a busy machine.
-  test.setTimeout(60_000)
+  test.setTimeout(90_000)
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
 
@@ -1430,9 +1493,13 @@ test("design-system geometry contracts: left/right column alignment, concentric 
       await splatPanel.evaluate((el) =>
         Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
       )
+      // Settled once the overlay sleeps: on a loaded machine (or CI's software WebGPU) the last
+      // springs can take a while to get there, so this waits as long as the test allows.
       if (mode === "gpu") {
         await expect
-          .poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false))
+          .poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false), {
+            timeout: 20_000,
+          })
           .toBe(true)
       }
 
@@ -1588,13 +1655,25 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   // 1–9 apply the focused group's numbered preset; the phone applies its own and agrees.
   const rowHeight = page.getByRole("slider", { name: "Row height" })
   await rowHeight.focus()
+  // The header peeks the preset's name for a moment: watched as it happens, not raced.
+  await card("Spacing")
+    .locator(".knobs-group-head")
+    .evaluate((head) => {
+      const seen = window as unknown as { __peeked?: boolean }
+      seen.__peeked = false
+      new MutationObserver(() => {
+        if (head.hasAttribute("data-peek")) seen.__peeked = true
+      }).observe(head, { attributes: true, attributeFilter: ["data-peek"] })
+    })
   await page.keyboard.press("2")
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
   await expect(card("Spacing").getByRole("radio", { name: "2 Compact" })).toHaveAttribute(
     "aria-checked",
     "true",
   )
-  await expect(card("Spacing").locator(".knobs-group-head")).toHaveAttribute("data-peek", "")
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __peeked?: boolean }).__peeked))
+    .toBe(true)
   await page.waitForTimeout(400)
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
   await page.keyboard.press("u")
@@ -1849,4 +1928,78 @@ test("full page columns: sections stack independently, heights ease, reflows gli
     .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 5000 })
     .toBe(true)
   expect(errors).toEqual([])
+})
+
+test("a click focuses without a focus wash; keys quiet the hover where the pointer rests until it moves", async ({
+  page,
+}) => {
+  await page.goto("/meta.html")
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const resonance = synth.locator('[data-field="resonance"]')
+  const drive = synth.locator('[data-field="drive"]')
+  const box = (await resonance.boundingBox())!
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2)
+  await expect(synth.getByRole("slider", { name: "Resonance" })).toBeFocused()
+  // Focused by the pointer: hovered, but no keyboard focus wash.
+  expect(await resonance.evaluate((el) => el.matches(":has(:focus-visible)"))).toBe(false)
+  const hoverWash = () => resonance.evaluate((el) => getComputedStyle(el).backgroundColor)
+  await expect.poll(hoverWash).not.toBe("rgba(0, 0, 0, 0)")
+  // ↓ moves the focus (and its wash) on; the row under the still pointer lets its hover go.
+  await page.keyboard.press("ArrowDown")
+  await expect(synth.getByRole("slider", { name: "Drive" })).toBeFocused()
+  expect(await drive.evaluate((el) => el.matches(":has(:focus-visible)"))).toBe(true)
+  await expect(synth).toHaveAttribute("data-keyboard", "")
+  await expect.poll(hoverWash).toBe("rgba(0, 0, 0, 0)")
+  // Moving the pointer hands back to it.
+  await page.mouse.move(box.x + box.width * 0.5 + 6, box.y + box.height / 2)
+  await expect(synth).not.toHaveAttribute("data-keyboard", "")
+  await expect.poll(hoverWash).not.toBe("rgba(0, 0, 0, 0)")
+})
+
+test.describe("haptics", () => {
+  test.use({ hasTouch: true })
+  test("phones tick when a stepped slider crosses a stop and a switch flips; not with haptics off or reduced motion", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __ticks: unknown[] }
+      w.__ticks = []
+      navigator.vibrate = ((pattern: VibratePattern) => {
+        w.__ticks.push(pattern)
+        return true
+      }) as typeof navigator.vibrate
+    })
+    await page.goto("/meta.html")
+    const ticks = () =>
+      page.evaluate(() => (window as unknown as { __ticks: unknown[] }).__ticks.length)
+    const synth = page.getByRole("region", { name: "synth-voice controls" })
+    const voices = synth.getByRole("slider", { name: "Unison voices" })
+    const box = (await voices.boundingBox())!
+    const y = box.y + box.height / 2
+    const at = (ratio: number) => box.x + box.width * ratio
+    const drag = async (from: number, to: number) => {
+      await page.mouse.move(at(from), y)
+      await page.mouse.down()
+      for (let i = 1; i <= 8; i++) {
+        await page.mouse.move(at(from + ((to - from) * i) / 8), y)
+        await page.waitForTimeout(60)
+      }
+      await page.mouse.up()
+    }
+    // Stop 3 to stop 5 crosses two stops: two ticks.
+    await drag(2 / 6, 4 / 6)
+    await expect(voices).toHaveAttribute("aria-valuenow", "5")
+    expect(await ticks()).toBe(2)
+    await synth.getByRole("switch", { name: "Stereo chorus" }).click()
+    expect(await ticks()).toBe(3)
+    // A panel mounted with `haptics: false` stays still.
+    await synth.evaluate((el) => (el.dataset.haptics = "off"))
+    await drag(4 / 6, 2 / 6)
+    expect(await ticks()).toBe(3)
+    await synth.evaluate((el) => delete el.dataset.haptics)
+    // So does reduced motion.
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await drag(2 / 6, 4 / 6)
+    expect(await ticks()).toBe(3)
+  })
 })
