@@ -1598,6 +1598,32 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await page.goto("/tune.html?gpu")
   await expect(tune.locator(".knobs-tile").first()).toBeVisible()
   await page.waitForTimeout(500)
+
+  // At phone width (390 px), the presets wrap onto a second row below the title and buttons, in
+  // both renderers, with no overlap or horizontal overflow.
+  for (const mode of ["dom", "gpu"] as const) {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/tune.html${mode === "gpu" ? "?gpu" : ""}`)
+    await expect(tune.locator(".knobs-tile").first()).toBeVisible()
+    const head = await header.evaluate((h) => {
+      const title = h.querySelector("strong")!.getBoundingClientRect()
+      const tools = h.querySelector(".knobs-page-tools")!.getBoundingClientRect()
+      const presets = h.querySelector(".knobs-presets")!.getBoundingClientRect()
+      return {
+        title,
+        tools,
+        presets,
+        width: innerWidth,
+        scroll: document.documentElement.scrollWidth,
+      }
+    })
+    expect(head.scroll).toBeLessThanOrEqual(head.width)
+    expect(head.title.right).toBeLessThanOrEqual(head.tools.left + 0.5)
+    expect(head.presets.top).toBeGreaterThanOrEqual(
+      Math.max(head.title.bottom, head.tools.bottom) - 0.5,
+    )
+    expect(head.presets.right).toBeLessThanOrEqual(head.width)
+  }
   expect(errors).toEqual([])
 })
 

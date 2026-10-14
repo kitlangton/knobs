@@ -1313,19 +1313,3 @@ td:first-child {
   border: 1px solid var(--line);
   background: var(--bg-raised);
 }
-/* A phone-width page puts the presets on their own row under the title and buttons. */
-@media (max-width: 640px) {
-  .page-demo .knobs-panel.knobs-page > header {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .page-demo .knobs-panel.knobs-page > header > strong {
-    grid-area: 1 / 1;
-  }
-  .page-demo .knobs-panel.knobs-page > header .knobs-page-tools {
-    grid-area: 1 / 2;
-  }
-  .page-demo .knobs-panel.knobs-page > header .knobs-presets {
-    grid-area: 2 / 1 / 3 / 3;
-    max-width: none;
-  }
-}

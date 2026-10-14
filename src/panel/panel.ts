@@ -2016,9 +2016,10 @@ function buildPanel<S extends Schema>(
     const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
     win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
   }
-  const headSize = new ResizeObserver(() =>
-    root.style.setProperty("--k-head-h", `${Math.round(header.getBoundingClientRect().height)}px`),
-  )
+  const headSize = new ResizeObserver(() => {
+    header.toggleAttribute("data-narrow", header.clientWidth > 0 && header.clientWidth < 560)
+    root.style.setProperty("--k-head-h", `${Math.round(header.getBoundingClientRect().height)}px`)
+  })
   // Cards that change size (an editor opening, a custom card's content) move the ones below.
   const tileSizes = new ResizeObserver(() => {
     layoutTick++
