@@ -65,6 +65,8 @@ export interface GpuChoiceRow {
   readonly buttons: readonly HTMLButtonElement[]
   /** The selected pill's edges (px from the tray's left). */
   readonly pill: Edges
+  /** The drop-down button it becomes when the segments don't fit (`data-display="menu"`). */
+  readonly menu?: { readonly button: HTMLButtonElement; readonly valueEl: HTMLElement }
   readonly wave: RowWave
   isModified(): boolean
 }
@@ -172,21 +174,8 @@ export interface GpuActionRow {
   readonly wave: RowWave
   isModified(): boolean
 }
-/** A long choice: a compact button showing the current option, dropping down a menu. */
-export interface GpuSelectRow {
-  readonly kind: "select"
-  readonly key: string
-  readonly display: string
-  readonly row: HTMLElement
-  readonly labelEl: HTMLElement
-  readonly button: HTMLButtonElement
-  readonly valueEl: HTMLElement
-  readonly wave: RowWave
-  isModified(): boolean
-}
 export type GpuRowBinding =
   | GpuActionRow
-  | GpuSelectRow
   | GpuKnobRow
   | GpuChoiceRow
   | GpuToggleRow
@@ -2764,6 +2753,50 @@ class GpuOverlayManager {
             }
           }
           this.drawRowOverlay(row.row, rRect, cardClip, stretchX)
+        } else if (row.kind === "choice" && row.menu && row.row.dataset.display === "menu") {
+          // The same row as a compact drop-down button.
+          this.drawRowHover(row.row, rRect, hovered)
+          this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
+          const b = row.menu.button
+          const valueEl = row.menu.valueEl
+          const br = this.rectOf(b)
+          const open = b.getAttribute("aria-expanded") === "true"
+          const on = this.isHovered(b) || this.isFocused(b) || open
+          const wash = this.wash(b, on)
+          this.pushPrim({
+            x: br.left,
+            y: br.top,
+            w: br.width,
+            h: br.height,
+            color: withAlpha(cssMix(tokens.surfaceHi, tokens.segBg, wash), rowAlpha),
+            color2: tokens.accent,
+            radius: tokens.radiusMd,
+            glowOrBlur: tokens.glowStrength * 8,
+            kind: 1,
+          })
+          const vr = this.rectOf(valueEl)
+          this.drawText(
+            this.fit(
+              valueEl.textContent ?? "",
+              vr.width + 1,
+              tokens.textControl,
+              tokens.labelWeight,
+            ),
+            vr.left,
+            rowCenterY,
+            withAlpha(this.hot(b, on), rowAlpha),
+            { px: tokens.textControl, weight: tokens.labelWeight, clip: cardClip },
+          )
+          const caret = b.querySelector("svg")
+          if (caret)
+            this.drawIcon(
+              "caret",
+              tokens.iconSm - 2,
+              this.rectOf(caret),
+              withAlpha(this.hot(b, on, tokens.dim, tokens.label), rowAlpha),
+              cardClip,
+            )
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "choice") {
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
@@ -2836,48 +2869,6 @@ class GpuOverlayManager {
             withAlpha(this.hot(b, on, tokens.text, tokens.accent), rowAlpha),
             { px: tokens.textControl + 0.5, weight: tokens.labelWeight, clip: cardClip },
           )
-          this.drawRowOverlay(row.row, rRect, cardClip)
-        } else if (row.kind === "select") {
-          this.drawRowHover(row.row, rRect, hovered)
-          this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
-          const b = row.button
-          const br = this.rectOf(b)
-          const open = b.getAttribute("aria-expanded") === "true"
-          const on = this.isHovered(b) || this.isFocused(b) || open
-          const wash = this.wash(b, on)
-          this.pushPrim({
-            x: br.left,
-            y: br.top,
-            w: br.width,
-            h: br.height,
-            color: withAlpha(cssMix(tokens.surfaceHi, tokens.segBg, wash), rowAlpha),
-            color2: tokens.accent,
-            radius: tokens.radiusMd,
-            glowOrBlur: tokens.glowStrength * 8,
-            kind: 1,
-          })
-          const vr = this.rectOf(row.valueEl)
-          this.drawText(
-            this.fit(
-              row.valueEl.textContent ?? "",
-              vr.width + 1,
-              tokens.textControl,
-              tokens.labelWeight,
-            ),
-            vr.left,
-            rowCenterY,
-            withAlpha(this.hot(b, on), rowAlpha),
-            { px: tokens.textControl, weight: tokens.labelWeight, clip: cardClip },
-          )
-          const caret = b.querySelector("svg")
-          if (caret)
-            this.drawIcon(
-              "caret",
-              tokens.iconSm - 2,
-              this.rectOf(caret),
-              withAlpha(this.hot(b, on, tokens.dim, tokens.label), rowAlpha),
-              cardClip,
-            )
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "spring") {
           this.drawSpring(row, rRect, cardClip, rowAlpha, clock)

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Choices · segments or a menu</title>
+    <style>
+      html, body { margin: 0; background: #101012; color: #ddd; font: 13px system-ui; }
+      .lane { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+      #inline { width: 300px; }
+      #inline .knobs-panel { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="lane"><div id="inline"></div></div>
+    <div id="page"></div>
+    <script type="module" src="./choices.ts"></script>
+  </body>
+</html>

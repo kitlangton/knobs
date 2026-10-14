@@ -34,6 +34,11 @@ export interface Choice<T extends string = string> extends FieldMeta {
   readonly options: readonly T[]
   /** What each option reads as, when it isn't the option itself (`{ md: "Medium" }`). */
   readonly labels?: Readonly<Record<string, string>>
+  /**
+   * Segments or a drop-down menu. By default it's segmented while the labels fit with room to
+   * spare and there are at most four options, and a menu otherwise, switching as the width changes.
+   */
+  readonly display?: "menu" | "segmented"
 }
 export interface Toggle extends FieldMeta {
   readonly kind: "toggle"
@@ -148,7 +153,10 @@ export function knob(
 export function choice<const T extends readonly [string, ...string[]]>(
   value: T[number],
   options: T,
-  meta?: FieldMeta & { readonly labels?: Readonly<Partial<Record<T[number], string>>> },
+  meta?: FieldMeta & {
+    readonly labels?: Readonly<Partial<Record<T[number], string>>>
+    readonly display?: "menu" | "segmented"
+  },
 ): Choice<T[number]> {
   if (!options.includes(value) || new Set(options).size !== options.length)
     throw new Error("Invalid choice options/default.")
@@ -167,6 +175,7 @@ export function choice<const T extends readonly [string, ...string[]]>(
       value,
       options: Object.freeze([...options]),
       ...(labels && Object.keys(labels).length ? { labels } : {}),
+      ...(meta?.display ? { display: meta.display } : {}),
     },
     meta,
   )

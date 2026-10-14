@@ -87,7 +87,9 @@ export interface ValueDescriptor extends DescriptorMeta {
   readonly unit?: string
   /** Readout digits after the point (the step's own by default). */
   readonly decimals?: number
-  /** Strings, or `{ id, label }` options; more than four draw as a compact menu. */
+  /** Choices: segments or a drop-down menu (see `Choice.display`); automatic by default. */
+  readonly display?: "menu" | "segmented"
+  /** Strings, or `{ id, label }` options; past four, or when they don't fit, a menu. */
   readonly choices?: readonly (string | ChoiceOption)[]
   readonly options?: readonly (string | ChoiceOption)[]
   readonly swiftType?: string
@@ -186,7 +188,11 @@ export function descriptorToField(d: ControlDescriptor): Field {
       ),
     )
     const def = list.includes(String(d.default)) ? String(d.default) : list[0]!
-    return choice(def, list as [string, ...string[]], { ...meta, labels })
+    return choice(def, list as [string, ...string[]], {
+      ...meta,
+      labels,
+      ...(d.display ? { display: d.display } : {}),
+    })
   }
   if (d.kind === "spring") return spring(d.default as SpringValue, meta)
   if (d.kind === "color")

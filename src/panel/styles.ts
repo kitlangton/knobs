@@ -309,6 +309,7 @@ const css = `
 .knobs-panel .knobs-select{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:62%;height:var(--k-control-h);padding:0 6px 0 10px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-label);font-size:var(--k-text-control);font-weight:var(--k-label-weight);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
 .knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-panel .knobs-row-full .knobs-select{flex:1;max-width:none;justify-content:space-between}
 .knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 2px);height:calc(var(--k-icon-sm) - 2px);color:var(--k-dim)}
 .knobs-menu[data-checks] .knobs-menu-item{padding-left:24px}
 .knobs-menu-item[aria-checked="true"]::before{content:"";position:absolute;left:9px;top:50%;width:7px;height:4px;margin-top:-3.5px;border:solid currentColor;border-width:0 0 1.5px 1.5px;transform:rotate(-45deg)}

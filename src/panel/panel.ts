@@ -30,6 +30,7 @@ import {
   type EditorRow,
   type SubTrack,
 } from "./editors.js"
+import { createChoice, type ChoiceControl } from "./choice.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
@@ -566,7 +567,9 @@ function buildPanel<S extends Schema>(
     slider?: Slider
     buttons?: HTMLButtonElement[]
     editor?: EditorRow
-    select?: HTMLButtonElement
+    choice?: ChoiceControl
+    /** Lets go of observers and open menus when the row leaves. */
+    dispose?(): void
     gpu: GpuRowBinding[]
     /** This row's value, from the store's values (a flat spring composes its two keys). */
     value(values: Record<string, unknown>): unknown
@@ -584,7 +587,6 @@ function buildPanel<S extends Schema>(
     group: string | undefined
     section: string | undefined
   }
-  const COMPACT_CHOICES = 4
   /** A schema as rows: a flat spring's two halves become one row, at the first half's place. */
   const planRows = (schema: Schema): RowSpec[] => {
     const entries = Object.entries(schema as Record<string, Field>)
@@ -639,7 +641,7 @@ function buildPanel<S extends Schema>(
     if (f.kind === "knob" || f.kind === "toggle" || f.kind === "action")
       return `${f.kind}\u0000${where}`
     if (f.kind === "choice")
-      return `${f.options.length > COMPACT_CHOICES ? "select" : "choice"}\u0000${f.options.join("\u0000")}\u0000${where}`
+      return `choice\u0000${f.display ?? "auto"}\u0000${f.options.join("\u0000")}\u0000${where}`
     const { label: _l, shortcut: _s, ...rest } = f
     return `${f.kind}\u0000${JSON.stringify(rest)}\u0000${where}`
   }
@@ -811,122 +813,31 @@ function buildPanel<S extends Schema>(
     label = (text) => {
       rowLabel.firstChild!.textContent = text
     }
-    if (field.kind === "choice" && field.options.length > COMPACT_CHOICES) {
-      // Long lists drop down from a compact button instead of a row of segments.
-      const pick = el("button")
-      pick.type = "button"
-      pick.className = "knobs-select"
-      pick.setAttribute("aria-haspopup", "menu")
-      pick.setAttribute("aria-label", display)
-      if (field.shortcut) pick.setAttribute("aria-keyshortcuts", field.shortcut)
-      const text = el("span")
-      text.className = "knobs-select-value"
-      pick.append(text, iconSvg(doc, "caret"))
-      const open = (keyboard: boolean) => {
-        const f = this_.field as Choice
-        const current = String(controls.get()[key])
-        const r = pick.getBoundingClientRect()
-        menu?.close(false)
-        pick.setAttribute("aria-expanded", "true")
-        menu = openMenu(
-          doc,
-          root,
-          f.options.map((value) => ({
-            label: choiceLabel(f, value),
-            checked: value === current,
-            run: () => run(() => set(value)),
-          })),
-          { x: r.left, y: r.bottom + 4 },
-          {
-            keyboard,
-            returnTo: pick,
-            active: f.options.indexOf(current),
-            minWidth: r.width,
-            onClose: () => {
-              menu = undefined
-              pick.setAttribute("aria-expanded", "false")
-            },
-          },
-        )
-      }
-      pick.onclick = (event) => open(event.detail === 0)
-      onSwipe(pick, (direction) => {
-        const f = this_.field as Choice
-        const at = f.options.indexOf(String(controls.get()[key]))
-        const next = f.options[Math.max(0, Math.min(f.options.length - 1, at + direction))]
-        if (next !== undefined && next !== controls.get()[key]) run(() => set(next))
-      })
-      row.append(pick)
-      const this_: Row = {
-        ...base,
-        row,
-        labelEl: rowLabel,
-        input: pick,
-        select: pick,
-        gpu: [
-          {
-            kind: "select",
-            key,
-            display,
-            row,
-            labelEl: rowLabel,
-            button: pick,
-            valueEl: text,
-            wave,
-            isModified,
-          },
-        ],
-        value: plain,
-        set,
-        retune(next) {
-          retuneBase(this, next)
-          pick.setAttribute("aria-label", this.display)
-          text.textContent = choiceLabel(next.field as Choice, String(controls.get()[key]))
-        },
-      }
-      return this_
-    }
     if (field.kind === "choice") {
-      const seg = el("div")
-      seg.className = "knobs-seg"
-      const segPill = el("span")
-      segPill.className = "knobs-seg-pill"
-      segPill.setAttribute("aria-hidden", "true")
-      seg.append(segPill)
-      seg.setAttribute("role", "radiogroup")
-      seg.setAttribute("aria-label", display)
-      if (field.shortcut) seg.setAttribute("aria-keyshortcuts", field.shortcut)
-      const buttons = field.options.map((value) => {
-        const b = el("button", choiceLabel(field, value))
-        b.type = "button"
-        b.tabIndex = -1
-        b.dataset.value = value
-        b.setAttribute("role", "radio")
-        b.onclick = () =>
-          run(() => {
-            set(value)
-            seg.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-          })
-        seg.append(b)
-        return b
+      // Segments while they fit, a menu when they don't (or there are many): see choice.ts.
+      const items = (f: Choice) =>
+        f.options.map((value) => ({ value, label: choiceLabel(f, value) }))
+      const control = createChoice(doc, row, {
+        label: display,
+        items: items(field),
+        display: field.display,
+        value: () => String(controls.get()[key]),
+        choose: (value) => run(() => set(value)),
+        wake: () => wakeGpu(),
       })
-      seg.tabIndex = 0
-      // A sideways swipe moves one option per gesture, stopping at the ends.
-      onSwipe(seg, (direction) => {
-        const at = field.options.indexOf(String(controls.get()[key]))
-        const next = field.options[Math.max(0, Math.min(field.options.length - 1, at + direction))]
-        if (next !== undefined && next !== controls.get()[key]) run(() => set(next))
-      })
-      new ResizeObserver(() =>
-        placeSegPill(seg, buttons, String(controls.get()[key]), true),
-      ).observe(seg)
-      row.append(seg)
-      return {
+      if (field.shortcut) {
+        control.seg.setAttribute("aria-keyshortcuts", field.shortcut)
+        control.menu.setAttribute("aria-keyshortcuts", field.shortcut)
+      }
+      const choiceRow: Row = {
         ...base,
         row,
         labelEl: rowLabel,
-        input: seg,
-        buttons,
+        get input() {
+          return control.focusTarget()
+        },
+        buttons: [...control.buttons],
+        choice: control,
         gpu: [
           {
             kind: "choice",
@@ -934,9 +845,10 @@ function buildPanel<S extends Schema>(
             display,
             row,
             labelEl: rowLabel,
-            segEl: seg,
-            buttons,
+            segEl: control.seg,
+            buttons: control.buttons,
             pill: new Edges(),
+            menu: { button: control.menu, valueEl: control.menuValue },
             wave,
             isModified,
           },
@@ -945,11 +857,13 @@ function buildPanel<S extends Schema>(
         set,
         retune(next) {
           retuneBase(this, next)
-          seg.setAttribute("aria-label", this.display)
-          const f = next.field as Choice
-          buttons.forEach((b, i) => (b.textContent = choiceLabel(f, f.options[i]!)))
+          control.seg.setAttribute("aria-label", this.display)
+          control.menu.setAttribute("aria-label", this.display)
+          control.relabel(items(next.field as Choice))
         },
+        dispose: () => control.dispose(),
       }
+      return choiceRow
     }
     const toggle = el("button")
     toggle.type = "button"
@@ -1010,6 +924,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
   const dropGpu = (row: Row) => {
+    row.dispose?.()
     for (const g of row.gpu) {
       const at = gpuRows.indexOf(g)
       if (at >= 0) gpuRows.splice(at, 1)
@@ -1472,12 +1387,8 @@ function buildPanel<S extends Schema>(
       if (row.row.classList.contains("knobs-modified") !== modified)
         row.row.classList.toggle("knobs-modified", modified)
       if (row.slider) row.slider.update(Number(value), delay, instant)
-      else if (row.buttons) placeSegPill(row.input, row.buttons, String(value), instant)
-      else if (row.select) {
-        const text = row.select.firstElementChild as HTMLElement
-        const label = choiceLabel(row.field as Choice, String(value))
-        if (text.textContent !== label) text.textContent = label
-      } else if (row.editor) row.editor.update(value as Value, delay, instant)
+      else if (row.choice) row.choice.show(String(value), instant)
+      else if (row.editor) row.editor.update(value as Value, delay, instant)
       else if (row.field.kind === "toggle")
         row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
