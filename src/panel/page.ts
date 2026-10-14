@@ -1,7 +1,7 @@
 import type { MountPanelOptions } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { placeSegPill } from "./seg.js"
-import { onSwipe } from "./swipe.js"
+import { panOptions } from "./swipe.js"
 
 export interface MountPageOptions extends MountPanelOptions {
   /** Section order; sections not listed follow in the order they first appear. */
@@ -335,11 +335,9 @@ export function createCustomCard(
         seg.append(b)
         return b
       })
-      const step = (direction: number, wrap: boolean) => {
+      const step = (direction: number) => {
         const at = list.findIndex((x) => x.value === value)
-        const next = wrap
-          ? (at + direction + list.length) % list.length
-          : Math.max(0, Math.min(list.length - 1, at + direction))
+        const next = (at + direction + list.length) % list.length
         if (list[next]) choose(list[next]!.value)
       }
       seg.addEventListener("keydown", (event) => {
@@ -347,9 +345,17 @@ export function createCustomCard(
         if (!d || event.metaKey || event.altKey) return
         event.preventDefault()
         event.stopPropagation()
-        step(d, true)
+        step(d)
       })
-      onSwipe(seg, (direction) => step(direction, false))
+      panOptions(seg, {
+        box: seg,
+        pill,
+        buttons: () => buttons,
+        selected: () => list.findIndex((x) => x.value === value),
+        select: (i) => choose(list[i]!.value),
+        rest: () => placeSegPill(seg, buttons, value),
+        wake: () => hooks.wake(),
+      })
       new ResizeObserver(() => placeSegPill(seg, buttons, value, true)).observe(seg)
       row.append(seg)
       inset().append(row)
