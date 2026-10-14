@@ -969,6 +969,16 @@ td:first-child {
   background: var(--accent);
 }
 
+.keyboard td kbd {
+  background: var(--kbd-bg);
+  box-shadow:
+    inset 0 0 0 1px var(--kbd-edge),
+    0 1px 0 var(--kbd-edge);
+  white-space: pre;
+}
+.keyboard tbody tr:nth-child(even) {
+  background: var(--row-stripe);
+}
 .sec-body :is(p, li, td) kbd {
   font-size: 0.78em;
   padding: 0.18em 0.42em;
@@ -1267,4 +1277,7 @@ td:first-child {
   .theming-demo .demo-stage {
     order: -1;
   }
+}
+:root[data-motion="on"] {
+  scroll-behavior: smooth;
 }

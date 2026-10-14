@@ -5,7 +5,29 @@ import { C, Code } from "../Code"
 import { demoControls } from "../demos/Demo"
 import { Link } from "../router"
 import { copy } from "../site"
-import { Section } from "../section"
+import { Section, sectionControls } from "../section"
+
+// The opening section's illustration knobs: what the specimen panel sits on, to judge its glass.
+const backdrops = {
+  aurora: `radial-gradient(circle at 25% 20%, oklch(0.7 0.16 var(--stage-hue) / var(--stage-glow)), transparent 55%), radial-gradient(circle at 80% 85%, oklch(0.7 0.15 calc(var(--stage-hue) + 80) / var(--stage-glow)), transparent 50%)`,
+  grid: `linear-gradient(oklch(0.6 0.12 var(--stage-hue) / calc(var(--stage-glow) * 0.5)) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(90deg, oklch(0.6 0.12 var(--stage-hue) / calc(var(--stage-glow) * 0.5)) 1px, transparent 1px) 0 0 / 22px 22px`,
+  plain: "none",
+}
+const opening = sectionControls(
+  "Theming and tokens",
+  {
+    backdrop: choice("aurora", ["aurora", "grid", "plain"], { label: "Backdrop", group: "Stage" }),
+    hue: knob(250, { min: 0, max: 360, step: 1, unit: "°", label: "Hue", group: "Stage" }),
+    glow: knob(0.4, { min: 0, max: 1, step: 0.05, label: "Glow", group: "Stage" }),
+  },
+  {
+    tokens: (v) => ({
+      "--stage-pattern": backdrops[v.backdrop],
+      "--stage-hue": String(v.hue),
+      "--stage-glow": String(v.glow),
+    }),
+  },
+)
 
 const lookSchema = {
   theme: choice("auto", ["auto", "dark", "light"], { label: "Theme", group: "Mode" }),
@@ -13,7 +35,7 @@ const lookSchema = {
     label: "Density",
     group: "Mode",
   }),
-  renderer: choice("dom", ["dom", "gpu"], { label: "Renderer", group: "Mode" }),
+  renderer: choice("auto", ["auto", "dom", "gpu"], { label: "Renderer", group: "Mode" }),
   accent: color("oklch(0.72 0.15 250)", { label: "Accent", group: "Tokens" }),
   glass: knob(0.6, { min: 0, max: 1, step: 0.05, label: "Glass", group: "Tokens" }),
   radius: knob(8, { min: 0, max: 18, step: 1, unit: "px", label: "Radius", group: "Tokens" }),
@@ -132,12 +154,14 @@ export default function Theming() {
     <>
       <Section
         title="Theming and tokens"
+        controls={opening}
         level={1}
         lede="Panels take a theme, a density and a renderer, and every measurement and colour in them is a CSS custom property you can override."
       >
         <p>
           The panel on the left tunes the panel on the right: its theme, density and renderer props,
-          and a handful of its tokens written onto the panel element.
+          and a handful of its tokens written onto the panel element. This section's own chip
+          changes the backdrop behind the specimen, so you can judge its glass.
         </p>
         <Specimen />
       </Section>

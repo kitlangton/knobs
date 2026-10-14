@@ -94,10 +94,12 @@ export function navigate(href: string) {
   const url = new URL(href, location.href)
   if (url.origin !== location.origin) return void location.assign(href)
   const samePage = normalize(url.pathname) === normalize(location.pathname)
-  history.pushState(null, "", url.pathname + url.hash)
+  // Flags like ?gpu stay on as you move between pages.
+  const search = url.search || location.search
+  history.pushState(null, "", url.pathname + search + url.hash)
   for (const cb of listeners) cb()
   if (url.hash) requestAnimationFrame(() => scrollToHash(url.hash))
-  else if (!samePage) scrollTo({ top: 0 })
+  else if (!samePage) scrollTo({ top: 0, behavior: "instant" })
 }
 
 export function scrollToHash(hash: string) {

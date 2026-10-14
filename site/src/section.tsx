@@ -136,29 +136,38 @@ export function sectionTokens(v: SectionValues): Record<string, string> {
 type SectionControls<E extends Schema> = Controls<typeof sectionSchema & E>
 const registry = new Map<string, SectionControls<Schema>>()
 const replays = new Map<string, () => void>()
+const tokenMaps = new Map<string, (v: SectionValues) => Record<string, string>>()
 const motionKeys = new Set(["entrance", "stagger", "rise", "blur"])
 
 /**
  * The store for one section, created on first use and kept for the session. `extra` adds the
- * section's own illustration knobs beneath the shared typography, layout, code and motion ones.
+ * section's own illustration knobs beneath the shared typography, layout, code and motion ones,
+ * and `tokens` turns their values into more custom properties on the section.
  */
 export function sectionControls<E extends Schema = {}>(
   id: string,
   extra?: E,
-  presets?: Record<string, Partial<Values<typeof sectionSchema & E>>>,
+  options: {
+    presets?: Record<string, Partial<Values<typeof sectionSchema & E>>>
+    tokens?: (values: Values<E>) => Record<string, string>
+  } = {},
 ): SectionControls<E> {
   const existing = registry.get(id)
   if (existing) return existing as unknown as SectionControls<E>
   let timer: ReturnType<typeof setTimeout> | undefined
+  const allTokens = (v: Values<typeof sectionSchema & E>) => ({
+    ...sectionTokens(v as SectionValues),
+    ...options.tokens?.(v as Values<E>),
+  })
   const controls = defineControls(id, { ...sectionSchema, ...extra } as typeof sectionSchema & E, {
     enabled: true,
     theme: "auto",
-    presets: { ...sectionPresets, ...presets } as never,
+    presets: { ...sectionPresets, ...options.presets } as never,
     actions: [
       {
         label: "Copy CSS",
         run: (v) => {
-          const body = Object.entries(sectionTokens(v as SectionValues))
+          const body = Object.entries(allTokens(v))
             .map(([k, val]) => `  ${k}: ${val};`)
             .join("\n")
           return copy(`[data-section="${id}"] {\n${body}\n}`, "Copied this section's CSS.")
@@ -175,6 +184,7 @@ export function sectionControls<E extends Schema = {}>(
     },
   })
   registry.set(id, controls as unknown as SectionControls<Schema>)
+  tokenMaps.set(id, allTokens as (v: SectionValues) => Record<string, string>)
   registerStore(controls as unknown as Controls<Schema>)
   return controls
 }
@@ -216,7 +226,7 @@ export function Section<E extends Schema = {}>({
   const store = controls ?? sectionControls(text)
   const v = useControls(store) as SectionValues
   const ref = useRef<HTMLElement>(null)
-  const tokens = sectionTokens(v)
+  const tokens = (tokenMaps.get(store.id) ?? sectionTokens)(v)
   const Heading: ElementType = level === 1 ? "h1" : "h2"
 
   useLayoutEffect(() => {

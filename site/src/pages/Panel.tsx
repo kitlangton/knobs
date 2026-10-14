@@ -1,9 +1,9 @@
-import { color, knob, spring, springCss, choice } from "knobs"
+import { choice, color, knob, spring, springCss, toggle } from "knobs"
 import { useControls } from "knobs/react"
 import { useState } from "react"
 import { C, Code } from "../Code"
 import { Demo, demoControls } from "../demos/Demo"
-import { Section } from "../section"
+import { Section, sectionControls } from "../section"
 
 const button = demoControls(
   "button",
@@ -60,6 +60,32 @@ function ButtonDemo() {
   )
 }
 
+// The keyboard section's own illustration knobs: how its keycaps and table rows are drawn.
+const keycaps = {
+  flat: {
+    "--kbd-bg": "color-mix(in oklch, var(--fg) 8%, transparent)",
+    "--kbd-edge": "transparent",
+  },
+  raised: { "--kbd-bg": "var(--bg)", "--kbd-edge": "var(--line)" },
+  outline: {
+    "--kbd-bg": "transparent",
+    "--kbd-edge": "color-mix(in oklch, var(--fg) 22%, transparent)",
+  },
+}
+const keyboard = sectionControls(
+  "Keyboard",
+  {
+    keycaps: choice("raised", ["flat", "raised", "outline"], { label: "Keycaps", group: "Table" }),
+    stripes: toggle(false, { label: "Striped rows", group: "Table" }),
+  },
+  {
+    tokens: (v) => ({
+      ...keycaps[v.keycaps],
+      "--row-stripe": v.stripes ? "color-mix(in oklch, var(--fg) 3%, transparent)" : "transparent",
+    }),
+  },
+)
+
 const keys: [string, string][] = [
   ["↑ ↓ or j k", "Move between presets, rows and custom actions"],
   ["← → or h l", "Adjust a slider, cycle a choice, flip a switch (⇧ for ×10 steps)"],
@@ -100,7 +126,7 @@ export default function Panel() {
         <ButtonDemo />
       </Section>
 
-      <Section title="Keyboard">
+      <Section title="Keyboard" controls={keyboard} className="keyboard">
         <div className="table-wrap">
           <table>
             <thead>
