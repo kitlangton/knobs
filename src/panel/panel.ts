@@ -1977,8 +1977,12 @@ function buildPanel<S extends Schema>(
     },
     true,
   )
-  for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
-    root.addEventListener(type, endScrub, true)
+  root.addEventListener("lostpointercapture", endScrub, true)
+  // A drag that starts in the panel can end anywhere (over the page, outside the window), so the
+  // release is heard on the document; otherwise the flag would outlive the drag and every later
+  // token change would skip its glide.
+  for (const type of ["pointerup", "pointercancel"]) doc.addEventListener(type, endScrub, true)
+  doc.defaultView?.addEventListener("blur", endScrub)
   root.addEventListener("focusin", raise)
 
   // A page scrolls the window: focus that lands out of view (or under the header) glides into it,
@@ -2225,6 +2229,9 @@ function buildPanel<S extends Schema>(
       headSize.disconnect()
       win?.removeEventListener("scroll", onScroll)
       win?.removeEventListener("scrollend", onScrollEnd)
+      for (const type of ["pointerup", "pointercancel"])
+        doc.removeEventListener(type, endScrub, true)
+      doc.defaultView?.removeEventListener("blur", endScrub)
       endScrub()
       hintCtrl.stop()
       modeObserver.disconnect()

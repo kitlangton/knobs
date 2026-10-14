@@ -2,7 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Controls, Schema } from "knobs"
 import { App } from "./App"
-import { applySite, readSharedTuning, registerStore, releaseStuckScrub, site } from "./site"
+import { applySite, readSharedTuning, registerStore, site } from "./site"
 import "./styles.css"
 
 // The site used to have a page per topic; those addresses now land on the matching section.
@@ -22,7 +22,6 @@ const target = moved[location.pathname.replace(/\/+$/, "")]
 if (target) history.replaceState(null, "", `/${location.search}#${target}`)
 
 readSharedTuning()
-releaseStuckScrub()
 registerStore(site as unknown as Controls<Schema>)
 applySite(site.get())
 

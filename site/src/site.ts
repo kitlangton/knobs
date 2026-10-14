@@ -144,17 +144,6 @@ export function applySite(v: SiteValues) {
   for (const [k, val] of siteTokens(v, glide)) root.style.setProperty(k, val)
 }
 
-/**
- * knobs marks a drag with data-knobs-scrub and clears it on a pointerup inside the panel, so a
- * drag released outside the panel leaves it set and every later change skips its transition.
- * Clearing it on any pointerup works around that until the library listens on the document.
- */
-export function releaseStuckScrub() {
-  const clear = () => document.documentElement.removeAttribute("data-knobs-scrub")
-  for (const type of ["pointerup", "pointercancel"]) addEventListener(type, clear, true)
-  addEventListener("blur", clear)
-}
-
 // Sharing: "Copy link" writes every modified store into the hash as `#tune=<base64url json>`.
 // Plain `#anchor` hashes keep working, and a shared hash is applied once and then removed.
 const stores = new Map<string, Controls<Schema>>()
