@@ -9,6 +9,7 @@ export class Spring {
     public x: number,
     public omega = 24,
     public zeta = 0.86,
+    public eps = 0.005,
   ) {
     this.target = x
   }
@@ -51,7 +52,9 @@ export class Spring {
     return this.x
   }
   get resting() {
-    return !this.next && Math.abs(this.x - this.target) < 0.005 && Math.abs(this.v) < 0.02
+    return (
+      !this.next && Math.abs(this.x - this.target) < this.eps && Math.abs(this.v) < this.eps * 4
+    )
   }
 }
 

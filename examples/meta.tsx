@@ -123,7 +123,7 @@ const metaSchema = {
     label: "Focus glow",
     group: "Typography & Motion",
   }),
-  roll: knob(420, {
+  roll: knob(320, {
     min: 0,
     max: 1000,
     step: 20,
@@ -140,7 +140,7 @@ const metaSchema = {
     group: "Typography & Motion",
   }),
   motion: spring(
-    { duration: 0.24, bounce: 0.16 },
+    { duration: 0.21, bounce: 0.12 },
     { label: "Panel spring", group: "Typography & Motion" },
   ),
   reveal: easing([0.2, 0.8, 0.2, 1], { label: "Reveal curve", group: "Typography & Motion" }),

@@ -112,7 +112,7 @@ export interface DieSpin {
   /** Extra whole turns per roll. */
   readonly turns: number
 }
-export const DIE_SPIN: DieSpin = { spring: { duration: 0.42, bounce: 0.36 }, turns: 1 }
+export const DIE_SPIN: DieSpin = { spring: { duration: 0.38, bounce: 0.3 }, turns: 1 }
 
 /** The canvas box around a die of `size` px: room for the corners while it tumbles and lifts. */
 export const dieBox = (size: number) => Math.ceil(size * 1.6)
@@ -120,8 +120,8 @@ export const dieBox = (size: number) => Math.ceil(size * 1.6)
 export const dieSamples = (size: number) => (size <= 40 ? 3 : 2)
 
 export class DieMotion {
-  readonly rx = new Spring(0)
-  readonly ry = new Spring(0)
+  readonly rx = new Spring(0, 24, 0.86, 0.25)
+  readonly ry = new Spring(0, 24, 0.86, 0.25)
   value = 5
   turns = DIE_SPIN.turns
 
@@ -305,19 +305,25 @@ export function createDieCanvas(doc: Document, size: number) {
   const inset = (size - box) / 2
   canvas.style.cssText = `width:${box}px;height:${box}px;margin:${inset}px;display:block;pointer-events:none`
   const ctx = canvas.getContext("2d")!
+  let img: ImageData | undefined
+  let hit: Uint8Array | undefined
   return {
     canvas,
     render(view: DieView, look: DieLook, rgba: readonly [number, number, number, number]) {
       const dpr = doc.defaultView?.devicePixelRatio ?? 1
       const w = Math.round(box * dpr)
-      if (canvas.width !== w) canvas.width = canvas.height = w
-      const img = ctx.createImageData(w, w)
+      if (canvas.width !== w || !img || !hit) {
+        canvas.width = canvas.height = w
+        img = ctx.createImageData(w, w)
+        hit = new Uint8Array(w * w)
+      } else {
+        img.data.fill(0)
+      }
       const trace = dieTracer(size, view, look)
       const s = dieSamples(size)
       const at = (i: number, j: number, a: number, b: number) =>
         trace((i + a) / dpr - box / 2, (j + b) / dpr - box / 2)
       // One ray per pixel finds the die; only pixels on or beside it are supersampled.
-      const hit = new Uint8Array(w * w)
       for (let j = 0; j < w; j++)
         for (let i = 0; i < w; i++) hit[j * w + i] = at(i, j, 0.5, 0.5) === MISS ? 0 : 1
       for (let j = 0; j < w; j++)
@@ -389,15 +395,13 @@ export function createHeaderDie(doc: Document, onFrame: () => void) {
     if (!rolling) path.setAttribute("d", facePath(motion.value))
   }
   show(false)
+  let cachedColor: readonly [number, number, number, number] = [255, 255, 255, 1]
   const gpu = () => node.closest('[data-gpu-active="true"]') !== null
   const tick = (now: number) => {
     view = motion.step((now - last) / 1000)
     last = now
     if (!gpu()) {
-      const [r, g, b, a] = getComputedStyle(node)
-        .color.match(/[\d.]+/g)!
-        .map(Number)
-      traced.render(view, DIE_LOOK, [r!, g!, b!, a ?? 1])
+      traced.render(view, DIE_LOOK, cachedColor)
     }
     onFrame()
     if (motion.resting) {
@@ -416,6 +420,12 @@ export function createHeaderDie(doc: Document, onFrame: () => void) {
         show(false)
         onFrame()
         return
+      }
+      if (!gpu()) {
+        const m = getComputedStyle(node).color.match(/[\d.]+/g)
+        if (m && m.length >= 3) {
+          cachedColor = [Number(m[0]), Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : 1]
+        }
       }
       motion.roll()
       show(true)

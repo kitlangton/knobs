@@ -820,17 +820,25 @@ class GpuOverlayManager {
 
   /** Springs a per-object scalar toward `target`; keeps the frame loop awake until it settles. */
   /** Omitting `target` keeps the current one. */
-  private ease(key: object, slot: string, target?: number, omega = 26, zeta = 1): number {
+  private ease(
+    key: object,
+    slot: string,
+    target?: number,
+    omega = 28,
+    zeta = 1,
+    eps = 0.005,
+  ): number {
     let slots = this.eased.get(key)
     if (!slots) this.eased.set(key, (slots = new Map()))
     let sp = slots.get(slot)
     if (!sp) {
-      sp = new Spring(target ?? 0, omega, zeta)
+      sp = new Spring(target ?? 0, omega, zeta, eps)
       slots.set(slot, sp)
     }
     target ??= sp.target
     sp.omega = omega
     sp.zeta = zeta
+    sp.eps = eps
     sp.set(target).step(this.curDt)
     if (!sp.resting) this.easeMoving = true
     return sp.x
@@ -2096,7 +2104,9 @@ class GpuOverlayManager {
             row.row,
             "zone",
             vRect.width > 0 ? rRect.right - vRect.left : undefined,
-            18,
+            28,
+            1,
+            0.1,
           )
           const notch = this.ease(
             row.row,

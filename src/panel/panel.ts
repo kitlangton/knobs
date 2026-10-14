@@ -549,7 +549,8 @@ function buildPanel<S extends Schema>(
       root.style.getPropertyValue("--k-cascade") ||
       getComputedStyle(root).getPropertyValue("--k-cascade")
     const ms = parseFloat(raw)
-    return Number.isFinite(ms) ? Math.max(0, ms) : 12
+    const base = Number.isFinite(ms) ? Math.max(0, ms) : 12
+    return changedCount > 8 ? Math.min(base, Math.floor(96 / (changedCount - 1))) : base
   }
   function update() {
     if (!controls.enabled) {
@@ -574,7 +575,7 @@ function buildPanel<S extends Schema>(
         delay = moving ? 0 : turn * stagger
         turn++
         row.wave.at = now + delay
-        row.wave.until = row.wave.at + 400
+        row.wave.until = row.wave.at + 280
         row.row.style.setProperty("--k-delay", `${delay}ms`)
       }
       row.row.classList.toggle("knobs-modified", !same(value, controls.locked[row.key]))
@@ -842,6 +843,11 @@ function buildPanel<S extends Schema>(
       unregisterGpu = undefined
       wakeGpu = () => {}
       root.dataset.renderer = "dom"
+      const cur = controls.get()
+      for (const r of rows) {
+        if (r.slider) r.slider.update(Number(cur[r.key]), 0)
+        else if (r.editor) r.editor.update(cur[r.key], 0)
+      }
     } else {
       root.dataset.renderer = "dom"
     }
@@ -873,7 +879,7 @@ function buildPanel<S extends Schema>(
             { opacity: 1, transform: "none" },
             { opacity: 0, transform: "translateY(3px) scale(.985)" },
           ],
-          { duration: 150, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
+          { duration: 120, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" },
         )
         .finished.then(
           () => this.dispose(),

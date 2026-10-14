@@ -153,12 +153,12 @@ export function createSlider(
   const roller = createRollingNumber(digits, {
     value: field.value,
     format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
-    duration: 420,
+    duration: 320,
     motionBlur: true,
   })
   // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
   let cachedRollAt = -Infinity
-  let cachedStepRoll = 420
+  let cachedStepRoll = 320
   let cachedDragRoll = 0
   const rollMs = (drag: boolean) => {
     const now = performance.now()
@@ -167,7 +167,7 @@ export function createSlider(
       const cs = getComputedStyle(root)
       const sRaw = parseFloat(cs.getPropertyValue("--k-roll"))
       const dRaw = parseFloat(cs.getPropertyValue("--k-drag-roll"))
-      cachedStepRoll = Number.isFinite(sRaw) ? Math.max(0, sRaw) : 420
+      cachedStepRoll = Number.isFinite(sRaw) ? Math.max(0, sRaw) : 320
       cachedDragRoll = Number.isFinite(dRaw) ? Math.max(0, dRaw) : 0
     }
     return drag ? cachedDragRoll : cachedStepRoll
@@ -290,9 +290,10 @@ export function createSlider(
       })
     }
     clearTimeout(rollTimer)
-    if (gpu && digitsStr.length === lastRollerLen) rollTimer = setTimeout(roll, 80)
-    else if (delay > 0 && animateDom) rollTimer = setTimeout(roll, delay)
-    else roll()
+    if (!gpu || digitsStr.length !== lastRollerLen) {
+      if (delay > 0 && animateDom) rollTimer = setTimeout(roll, delay)
+      else roll()
+    }
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)
@@ -425,7 +426,7 @@ export function createSlider(
     const held = nearDefault(raw, factor)
     if (held !== magnet) {
       magnet = held
-      settleUntil = performance.now() + 200
+      settleUntil = held ? performance.now() + 80 : 0
       root.classList.toggle("knobs-magnet", held)
       if (held) pop()
     }

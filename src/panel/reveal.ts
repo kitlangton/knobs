@@ -67,7 +67,7 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   // --k-reveal-ease retunes the opening curve (the meta page's "Reveal curve").
   const ease = cs.getPropertyValue("--k-reveal-ease").trim() || EASE_OUT
   const animation = node.animate([current, show ? open : closed], {
-    duration: show ? 240 : 170,
+    duration: show ? 180 : 130,
     easing: show ? ease : EASE_IN,
   })
   running.set(node, animation)

@@ -3,10 +3,10 @@ import { Spring } from "../core/spring.js"
 export { Spring, springEasing } from "../core/spring.js"
 
 /** The slider fill, and its rubber band springing back from past an end. */
-export const FILL = { omega: 26, zeta: 0.84 }
-export const RELEASE = { omega: 30, zeta: 0.6 }
-export const LEAD = { omega: 30, zeta: 0.82 }
-export const TRAIL = { omega: 21, zeta: 1 }
+export const FILL = { omega: 30, zeta: 0.88 }
+export const RELEASE = { omega: 32, zeta: 0.65 }
+export const LEAD = { omega: 34, zeta: 0.86 }
+export const TRAIL = { omega: 25, zeta: 1 }
 /** How far the trailing edge lags at a `--k-blur` strength (0 keeps both edges together). */
 export const trailScale = (blur: number) => 0.6 + 0.4 * clamp(blur, 0, 2)
 
@@ -19,8 +19,8 @@ export class Edges {
   readonly start: Spring
   readonly end: Spring
   constructor(start = 0, end = 0) {
-    this.start = new Spring(start, LEAD.omega, LEAD.zeta)
-    this.end = new Spring(end, LEAD.omega, LEAD.zeta)
+    this.start = new Spring(start, LEAD.omega, LEAD.zeta, 0.05)
+    this.end = new Spring(end, LEAD.omega, LEAD.zeta, 0.05)
   }
   to(start: number, end: number, delay = 0, trail = 1) {
     const pending = start !== this.start.target || end !== this.end.target

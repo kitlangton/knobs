@@ -193,7 +193,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   const fill =
     Number.isFinite(duration) && Number.isFinite(bounce)
       ? springMotion({ duration: duration!, bounce: bounce! })
-      : { omega: 26, zeta: 0.84 }
+      : { omega: 30, zeta: 0.88 }
 
   const fontFamily =
     style.fontFamily ||
