@@ -11,7 +11,16 @@ export {
   type HintResolution,
 } from "./hints.js"
 export { Spring, VelocityTracker } from "./motion.js"
-export { createPanel, mountPanel, type Panel } from "./panel.js"
+export { createPanel, mountPage, mountPanel, type Panel } from "./panel.js"
+export {
+  balancedRuns,
+  type MountPageOptions,
+  type Page,
+  type PageAction,
+  type PageCard,
+  type PageCardOptions,
+  type PageControl,
+} from "./page.js"
 export {
   createPresetStrip,
   nextPresetIndex,

@@ -21,9 +21,19 @@ import { iconSvg, type IconName } from "./icons.js"
 import { Edges } from "./motion.js"
 import { morphFromChip, type PanelMorph } from "./morph.js"
 import { openMenu, type Menu } from "./menu.js"
+import {
+  createCustomCard,
+  createPageLayout,
+  matchesFilter,
+  type MountPageOptions,
+  type Page,
+  type PageCardOptions,
+  type PageLayout,
+} from "./page.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
+import { placeSegPill } from "./seg.js"
 import { createSlider, type Slider } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { injectStyles } from "./styles.js"
@@ -62,6 +72,8 @@ interface InternalPanelOptions extends MountPanelOptions {
   readonly restored?: boolean
   /** The chip a floating panel grows out of and collapses back into. */
   readonly chip?: HTMLElement
+  /** A full page: sections of group cards under a sticky header (see `mountPage`). */
+  readonly page?: MountPageOptions
 }
 
 function buildPanel<S extends Schema>(
@@ -78,9 +90,14 @@ function buildPanel<S extends Schema>(
     return node
   }
   const inline = Boolean(options.inline)
+  const page = options.page
   const close = options.close ?? options.onClose
-  const root = el("aside")
-  root.className = inline ? "knobs-panel knobs-inline" : "knobs-panel"
+  const root: HTMLElement = el(page ? "div" : "aside")
+  root.className = page
+    ? "knobs-panel knobs-inline knobs-page"
+    : inline
+      ? "knobs-panel knobs-inline"
+      : "knobs-panel"
   root.dataset.controls = controls.id
   root.dataset.theme = options.theme ?? controls.theme
   root.dataset.density = options.density ?? controls.density
@@ -162,12 +179,18 @@ function buildPanel<S extends Schema>(
   popGrid.className = "knobs-popover-grid"
   for (const [k, desc] of [
     ["↑↓ / j k", "Move between rows"],
-    ["Tab", "Next control"],
+    ...((page
+      ? [
+          ["Tab / ⇧Tab", "Next / previous group"],
+          ["1–9", "Group preset"],
+          ...(page.filter !== false ? [["/", "Filter rows"]] : []),
+        ]
+      : [["Tab", "Next control"]]) as [string, string][]),
     ["←→ / h l", "Adjust value (⇧ ×10)"],
     ["⌥ drag", "Fine adjust"],
     ["[ / ]", "Cycle presets"],
     ["s", "Jump to anything by code"],
-    ["0–9 / Enter", "Edit number inline"],
+    [page ? "Enter" : "0–9 / Enter", "Edit number inline"],
     ["⌫", "Reset row · delete saved preset"],
     ["r / ⇧R", "Random / Reset all"],
     ["⌥R", "Mutate: small changes"],
@@ -195,7 +218,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  const copyValues = () => void copy(controls.code())
+  const copyValues = () => void copy(options.copy ? options.copy() : controls.code())
   // Random, Reset and Copy are reachable from hint mode; history, help and close have keys.
   const command = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
     const node = headButton(icon, label, shortcut, action)
@@ -235,9 +258,25 @@ function buildPanel<S extends Schema>(
   const dismiss = close ? headButton("close", `Close ${controls.id}`, "", close) : undefined
   if (dismiss && !showFooter) dismiss.classList.add("knobs-head-split")
   const titleEl = el("strong", titleText ? readableTitle(titleText) : "")
-  header.append(titleEl, headActions)
-
   const presetStrip = createPresetStrip(doc, controls, showVariants, run, () => wakeGpu())
+  // A page's header is one sticky bar: title, then the presets, then the tools.
+  const tools = el("div")
+  tools.className = "knobs-page-tools"
+  const filterEl = el("input")
+  if (page) {
+    if (page.filter !== false) {
+      filterEl.type = "search"
+      filterEl.className = "knobs-filter"
+      filterEl.placeholder = "Filter"
+      filterEl.spellcheck = false
+      filterEl.setAttribute("aria-label", "Filter rows")
+      filterEl.setAttribute("aria-keyshortcuts", "/")
+      filterEl.tabIndex = -1
+      tools.append(filterEl)
+    }
+    tools.append(headActions)
+    header.append(titleEl, presetStrip.element, tools)
+  } else header.append(titleEl, headActions)
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
@@ -251,7 +290,48 @@ function buildPanel<S extends Schema>(
   const groupDice = new Map<string, { button: HTMLButtonElement; die: HeaderDie }>()
   const gpuGroups: GpuGroupBinding[] = []
   const gpuRows: GpuRowBinding[] = []
-  const cardFor = (group: string | undefined) => {
+  // A page gives each group its own card (a tile) in its section's columns.
+  let layout: PageLayout | undefined
+  let layoutTick = 0
+  const tiles = new Map<string, HTMLElement>()
+  const gpuTiles: HTMLElement[] = []
+  if (page) {
+    body.className = "knobs-sections"
+    layout = createPageLayout(doc, body, {
+      order: page.sections ?? [],
+      columnWidth: page.columnWidth ?? 300,
+      onLayout: () => {
+        layoutTick++
+        // Rows follow the page: down each column, then on to the next.
+        rows.sort((a, b) =>
+          a.row.compareDocumentPosition(b.row) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+        )
+        clearSelection()
+        wakeGpu()
+      },
+    })
+  }
+  const cardFor = (group: string | undefined, section?: string) => {
+    if (layout) {
+      const id = group ?? `\u0000${section ?? ""}`
+      const known = tiles.get(id)
+      if (known) return known
+      const tile = el("div")
+      tile.className = "knobs-tile"
+      if (group) {
+        tile.dataset.group = group
+        tile.setAttribute("aria-label", group)
+        tile.append(groupHead(group))
+      }
+      const inner = el("div")
+      inner.className = "knobs-card"
+      tile.append(inner)
+      cards.push(inner)
+      gpuTiles.push(tile)
+      layout.add(tile, section ?? "")
+      tiles.set(id, inner)
+      return inner
+    }
     if (card && group === currentGroup) return card
     currentGroup = group
     if (group) body.append(groupHead(group))
@@ -267,6 +347,7 @@ function buildPanel<S extends Schema>(
     gHead.className = "knobs-group-head"
     gHead.dataset.group = groupName
     const gLabel = el("span", groupName)
+    gLabel.className = "knobs-group-label"
     const gRight = el("span")
     const gBtns: HTMLButtonElement[] = []
     for (const act of allActions.filter((a) => a.group === groupName)) {
@@ -291,16 +372,88 @@ function buildPanel<S extends Schema>(
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
     groupDice.set(groupName, { button: gRandom, die: gDie })
+    // On a page, the group's numbered presets sit in its header; hovering one shows its name
+    // where the title is.
+    const presets = page ? (controls.groupPresets[groupName] ?? []).slice(0, 9) : []
+    let chips: { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges } | undefined
+    const gPeek = el("span")
+    gPeek.className = "knobs-peek"
+    gPeek.setAttribute("aria-hidden", "true")
+    if (presets.length) {
+      const seg = el("div")
+      seg.className = "knobs-seg knobs-chips"
+      seg.setAttribute("role", "radiogroup")
+      seg.setAttribute("aria-label", `${groupName} presets`)
+      const pill = el("span")
+      pill.className = "knobs-seg-pill"
+      pill.setAttribute("aria-hidden", "true")
+      seg.append(pill)
+      const buttons = presets.map((preset, i) => {
+        const b = el("button", String(i + 1))
+        b.type = "button"
+        b.tabIndex = -1
+        b.dataset.value = String(i)
+        b.setAttribute("role", "radio")
+        b.setAttribute("aria-label", `${i + 1} ${preset.name}`)
+        b.setAttribute("aria-keyshortcuts", String(i + 1))
+        b.onclick = () => run(() => applyGroupPreset(groupName, i))
+        b.onpointerenter = () => peek(groupName, preset.name)
+        b.onpointerleave = () => peek(groupName, null)
+        seg.append(b)
+        return b
+      })
+      new ResizeObserver(() =>
+        placeSegPill(seg, buttons, String(controls.matchingGroupPreset(groupName)), true),
+      ).observe(seg)
+      chips = { seg, buttons, pill: new Edges() }
+      groupChips.set(groupName, chips)
+      gRight.append(seg)
+    }
     gRight.append(gReset, gRandom)
-    gHead.append(gLabel, gRight)
+    if (page) {
+      const gTitle = el("span")
+      gTitle.className = "knobs-group-title"
+      gTitle.append(gLabel, gPeek)
+      gHead.append(gTitle, gRight)
+    } else gHead.append(gLabel, gRight)
     gpuGroups.push({
       element: gHead,
       labelEl: gLabel,
       buttons: gBtns,
       reset: gReset,
       die: { button: gRandom, die: gDie },
+      ...(page ? { title: true, peek: gPeek } : {}),
+      ...(chips ? { presets: chips } : {}),
     })
     return gHead
+  }
+  const groupChips = new Map<
+    string,
+    { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges }
+  >()
+  const peekTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Shows a preset's name in place of its group's title (null brings the title back). */
+  const peek = (group: string, name: string | null, linger = 0) => {
+    const head = groupChips.get(group)?.seg.closest<HTMLElement>(".knobs-group-head")
+    if (!head) return
+    clearTimeout(peekTimers.get(group))
+    const label = head.querySelector<HTMLElement>(".knobs-peek")!
+    if (name !== null) {
+      label.textContent = name
+      head.dataset.peek = ""
+    } else delete head.dataset.peek
+    if (name !== null && linger)
+      peekTimers.set(
+        group,
+        setTimeout(() => peek(group, null), linger),
+      )
+    wakeGpu()
+  }
+  const applyGroupPreset = (group: string, index: number) => {
+    const preset = controls.groupPresets[group]?.[index]
+    if (!preset) return
+    controls.groupPreset(group, index)
+    peek(group, preset.name, 1100)
   }
 
   // A reload (Vite's included) brings back open editors and the focused stop, per tab.
@@ -324,7 +477,7 @@ function buildPanel<S extends Schema>(
     set(value: unknown, options?: { coalesce?: boolean }): void
   }
   const rows = Object.entries(controls.schema as Record<string, Field>).map(([key, field]): Row => {
-    const host = cardFor(field.group)
+    const host = cardFor(field.group, field.section)
     // When this row's current motion starts and roughly ends, for the preset cascade.
     const wave = { at: 0, until: 0 }
     const display = field.label ?? key
@@ -576,7 +729,7 @@ function buildPanel<S extends Schema>(
     void copy(controls.code("ts", Object.fromEntries(keys.map((k) => [k, values[k]])) as Values<S>))
   }
   const focusRow = (i: number) =>
-    rows[i]?.input.focus({ preventScroll: false, focusVisible: false } as FocusOptions)
+    rows[i]?.input.focus({ preventScroll: Boolean(page), focusVisible: false } as FocusOptions)
 
   let menu: Menu | undefined
   const showMenu = (at: { x: number; y: number }, keyboard: boolean, from?: number) => {
@@ -650,6 +803,7 @@ function buildPanel<S extends Schema>(
       say("Copied.")
     } catch {
       text.value = value
+      if (page) togglePopover(true)
       reveal(text, true)
       apply.hidden = true
       positioned?.constrain()
@@ -688,49 +842,17 @@ function buildPanel<S extends Schema>(
     popover.append(transfer)
   }
 
-  root.append(header)
-  if (showFooter) root.append(popover)
-  root.append(presetStrip.element, body)
-  if (panelActions.length > 0) root.append(customActions)
-  root.append(text, apply, status)
-
-  // The selected choice's background is one pill that slides between options (the GPU renderer
-  // springs its own copy). The first placement doesn't animate.
-  function placeSegPill(
-    seg: HTMLElement,
-    buttons: readonly HTMLButtonElement[],
-    value: string,
-    resized = false,
-  ) {
-    let active: HTMLButtonElement | undefined
-    for (const b of buttons) {
-      const on = b.dataset.value === value
-      b.setAttribute("aria-checked", String(on))
-      if (on) active = b
-    }
-    const pill = seg.querySelector<HTMLElement>(".knobs-seg-pill")
-    if (!pill || !active) return
-    // Placed by its edges, so the edge facing the move can lead (see .knobs-seg-pill). A resize
-    // (a token gliding) carries the pill with its option instead of animating it.
-    const now = performance.now()
-    const sliding = now < Number(pill.dataset.slideUntil ?? 0)
-    const first = !pill.dataset.placed || (resized && pill.dataset.value === value && !sliding)
-    pill.dataset.value = value
-    const left = active.offsetLeft
-    const at = parseFloat(pill.style.left)
-    if (first) pill.style.transition = "none"
-    else if (left !== at && !resized) {
-      pill.dataset.dir = left > at ? "right" : "left"
-      pill.dataset.slideUntil = String(now + 400)
-    }
-    pill.style.left = `${left}px`
-    pill.style.right = `${seg.clientWidth - left - active.offsetWidth}px`
-    if (first) {
-      pill.dataset.placed = "true"
-      // Restored a frame later rather than by forcing layout, which a gliding token would do
-      // on every frame.
-      doc.defaultView?.requestAnimationFrame(() => (pill.style.transition = ""))
-    }
+  if (page) {
+    // The shortcuts float under the header's tools; the clipboard fallback and imports open in them.
+    if (panelActions.length > 0) tools.insertBefore(customActions, headActions)
+    popover.append(text, apply)
+    root.append(header, body, popover, status)
+  } else {
+    root.append(header)
+    if (showFooter) root.append(popover)
+    root.append(presetStrip.element, body)
+    if (panelActions.length > 0) root.append(customActions)
+    root.append(text, apply, status)
   }
 
   // Changes that move several rows at once (presets, reset, random, undo) ripple down the panel:
@@ -814,6 +936,8 @@ function buildPanel<S extends Schema>(
     if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
+    for (const [group, c] of groupChips)
+      placeSegPill(c.seg, c.buttons, String(controls.matchingGroupPreset(group)))
     presetStrip.update()
     shown = values
     initialized = true
@@ -825,10 +949,20 @@ function buildPanel<S extends Schema>(
     node.isConnected && !node.closest("[hidden]") && node.getClientRects().length > 0
   const hintCtrl = createHintController(doc, root, () => wakeGpu())
 
+  /** On a page, hints go to what's on screen below the header (and the header itself). */
+  const onScreen = (node: HTMLElement) => {
+    if (!page || header.contains(node)) return true
+    const r = node.getBoundingClientRect()
+    return (
+      r.bottom > header.getBoundingClientRect().bottom + 4 && r.top < (win?.innerHeight ?? 0) - 4
+    )
+  }
+  const win = doc.defaultView
   const collectHintTargets = (): HintTarget[] => {
     const targets: HintTarget[] = []
     const add = (node: HTMLElement, label: string, activate: () => void, labelEl?: HTMLElement) => {
-      if (!label || !visible(node) || (node as HTMLButtonElement).disabled) return
+      if (!label || !visible(node) || (node as HTMLButtonElement).disabled || !onScreen(node))
+        return
       targets.push({ key: label, display: label, el: node, labelEl, activate })
     }
     for (const r of rows) add(r.row, r.display, () => r.input.focus(), r.labelEl)
@@ -840,12 +974,36 @@ function buildPanel<S extends Schema>(
           presetStrip.element.focus({ preventScroll: true })
         })
     })
+    // A page's group dice, resets and numbered presets have keys (g, ⌫, 1–9) instead.
     for (const b of root.querySelectorAll<HTMLButtonElement>(
-      ".knobs-head-cmd, .knobs-group-head button, .knobs-custom-actions button, .knobs-preset-save, .knobs-popover button",
+      page
+        ? ".knobs-head-cmd, .knobs-group-head button:not(.knobs-group-die,.knobs-group-reset,.knobs-chips button), .knobs-custom-actions button, .knobs-preset-save"
+        : ".knobs-head-cmd, .knobs-group-head button, .knobs-custom-actions button, .knobs-preset-save, .knobs-popover button",
     )) {
       add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
     }
+    // Controls in custom cards, by their label (or their card's title).
+    if (page)
+      for (const stop of body.querySelectorAll<HTMLElement>(
+        ".knobs-live [data-knobs-stop]:not(.knobs-custom-actions)",
+      )) {
+        const label =
+          stop.getAttribute("aria-label") ??
+          stop.closest(".knobs-row")?.querySelector(":scope > span")?.textContent ??
+          stop.closest<HTMLElement>(".knobs-live")?.dataset.card ??
+          ""
+        add(stop, label, () => stop.focus())
+      }
     return targets
+  }
+  /** A page's ↑↓ stops: every row and custom control, down each column, then the next. */
+  const pageStops = () => {
+    const nodes: HTMLElement[] = []
+    for (const r of rows) nodes.push(...(r.editor?.stops() ?? [r.input]))
+    nodes.push(...body.querySelectorAll<HTMLElement>("[data-knobs-stop]"))
+    return nodes
+      .filter(visible)
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
   }
 
   const actionBarButtons = () =>
@@ -858,6 +1016,11 @@ function buildPanel<S extends Schema>(
         contains: (n) => presetStrip.element.contains(n),
         focus: (o) => presetStrip.element.focus(o),
       })
+    if (page) {
+      for (const stop of pageStops())
+        list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
+      return list
+    }
     for (const r of rows)
       for (const stop of r.editor?.stops() ?? [r.input])
         list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
@@ -879,6 +1042,69 @@ function buildPanel<S extends Schema>(
       ),
     ].filter((n) => n.tabIndex >= 0 && visible(n) && !(n as HTMLButtonElement).disabled)
 
+  // `/` filters a page's rows live: a group (or section) that matches keeps all its rows, cards
+  // with nothing left fold away, and the columns re-balance.
+  let filterReturn: HTMLElement | null = null
+  function applyFilter() {
+    if (!layout) return
+    const query = filterEl.value.trim()
+    root.toggleAttribute("data-filtering", Boolean(query))
+    for (const r of rows) {
+      const show = !query || matchesFilter(query, r.display, r.key, r.field.group, r.field.section)
+      if (r.row.hidden === show) r.row.hidden = !show
+    }
+    for (const inner of tiles.values()) {
+      const tile = inner.parentElement!
+      const empty = ![...inner.children].some((c) => !(c as HTMLElement).hidden)
+      if (tile.hidden !== empty) tile.hidden = empty
+    }
+    for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
+      const hide = Boolean(query) && !matchesFilter(query, tile.dataset.card)
+      if (tile.hidden !== hide) tile.hidden = hide
+    }
+    layout.pack(true)
+  }
+  function openFilter() {
+    if (!(doc.activeElement === filterEl)) filterReturn = doc.activeElement as HTMLElement | null
+    filterEl.dataset.open = ""
+    filterEl.tabIndex = 0
+    filterEl.focus({ preventScroll: true })
+    filterEl.select()
+    wakeGpu()
+  }
+  function closeFilter(clear: boolean) {
+    if (clear && filterEl.value) {
+      filterEl.value = ""
+      applyFilter()
+    }
+    if (filterEl.value) return
+    delete filterEl.dataset.open
+    filterEl.tabIndex = -1
+    if (doc.activeElement === filterEl) {
+      const back = filterReturn?.isConnected && visible(filterReturn) ? filterReturn : null
+      if (back) back.focus({ preventScroll: true })
+      else filterEl.blur()
+    }
+    wakeGpu()
+  }
+  if (page && page.filter !== false) {
+    filterEl.addEventListener("input", applyFilter)
+    filterEl.addEventListener("keydown", (event) => {
+      if (event.isComposing) return
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        closeFilter(true)
+      } else if (event.key === "Enter" || event.key === "ArrowDown") {
+        // On to the first row that's left.
+        event.preventDefault()
+        event.stopPropagation()
+        pageStops()[0]?.focus({ preventScroll: true })
+      }
+    })
+    filterEl.addEventListener("blur", () => setTimeout(() => closeFilter(false)))
+  }
+
   /** The group of the focused row or group header. */
   const focusedGroup = (target: HTMLElement) =>
     rows[rowAt(target)]?.field.group ??
@@ -887,7 +1113,11 @@ function buildPanel<S extends Schema>(
     if (event.isComposing || event.metaKey || event.ctrlKey) return
     const target = event.target as HTMLElement
     const typing =
-      target === text || (target instanceof HTMLInputElement && target.type === "number")
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target.isContentEditable ||
+      (target instanceof HTMLInputElement &&
+        !["range", "checkbox", "radio", "button"].includes(target.type))
     if (event.altKey) {
       // ⌥R and ⌥G mutate (by code: ⌥ changes the character on macOS).
       if (typing || hintCtrl.isActive || (event.code !== "KeyR" && event.code !== "KeyG")) return
@@ -912,12 +1142,40 @@ function buildPanel<S extends Schema>(
         clearSelection()
         return
       }
+      if (page && filterEl.value && !typing) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeFilter(true)
+        return
+      }
       if (close) {
         event.preventDefault()
         event.stopPropagation()
         close()
         return
       }
+    }
+    if (event.key === "Tab" && page && !typing) {
+      // Tab and ⇧Tab go from group to group.
+      event.preventDefault()
+      const cardsNow = [...body.querySelectorAll<HTMLElement>(".knobs-tile")].filter(visible)
+      const nodes = pageStops()
+      const step = event.shiftKey ? -1 : 1
+      let at = cardsNow.indexOf(target.closest<HTMLElement>(".knobs-tile")!)
+      for (let n = 0; n < cardsNow.length; n++) {
+        at =
+          at < 0
+            ? step > 0
+              ? 0
+              : cardsNow.length - 1
+            : (at + step + cardsNow.length) % cardsNow.length
+        const first = nodes.find((node) => cardsNow[at]!.contains(node))
+        if (first) {
+          first.focus({ preventScroll: true })
+          break
+        }
+      }
+      return
     }
     if (event.key === "Tab" && !inline) {
       const list = focusables()
@@ -962,11 +1220,26 @@ function buildPanel<S extends Schema>(
     }
     if (key === "f") {
       event.preventDefault()
-      rows[0]?.input.focus()
+      rows.find((r) => visible(r.input))?.input.focus(page ? { preventScroll: true } : undefined)
       return
+    }
+    if (key === "/" && page && page.filter !== false) {
+      event.preventDefault()
+      openFilter()
+      return
+    }
+    if (page && /^[1-9]$/.test(key)) {
+      // A page's digits pick the focused group's numbered preset (where it has them).
+      const group = focusedGroup(target)
+      if (group && groupChips.has(group)) {
+        event.preventDefault()
+        run(() => applyGroupPreset(group, Number(key) - 1))
+        return
+      }
     }
     if (key === "s") {
       event.preventDefault()
+      hintScrollY = win?.scrollY ?? 0
       hintCtrl.start(collectHintTargets())
       return
     }
@@ -1031,7 +1304,7 @@ function buildPanel<S extends Schema>(
       const at = list.findIndex((stop) => stop.contains(target))
       const next =
         at < 0 ? (down ? 0 : list.length - 1) : (at + (down ? 1 : -1) + list.length) % list.length
-      list[next]?.focus()
+      list[next]?.focus(page ? { preventScroll: true } : undefined)
     } else if ((left || right) && barIndex >= 0) {
       event.preventDefault()
       event.stopPropagation()
@@ -1168,6 +1441,66 @@ function buildPanel<S extends Schema>(
   for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
     root.addEventListener(type, endScrub, true)
   root.addEventListener("focusin", raise)
+
+  // A page scrolls the window: focus that lands out of view (or under the header) glides into it,
+  // retargeting from where the last glide was headed so held keys don't fall behind.
+  let scrollGoal: number | undefined
+  let hintScrollY = 0
+  const onScroll = () => {
+    if (!win) return
+    const scrolled = body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 1
+    if (header.hasAttribute("data-scrolled") !== scrolled)
+      header.toggleAttribute("data-scrolled", scrolled)
+    if (hintCtrl.isActive && Math.abs(win.scrollY - hintScrollY) > 24) hintCtrl.stop()
+  }
+  const onScrollEnd = () => (scrollGoal = undefined)
+  const bringIntoView = (top: HTMLElement, bottom: HTMLElement) => {
+    if (!win) return
+    const margin = 12
+    const headBottom = header.getBoundingClientRect().bottom
+    const base = scrollGoal ?? win.scrollY
+    const docTop = top.getBoundingClientRect().top + win.scrollY
+    const docBottom = bottom.getBoundingClientRect().bottom + win.scrollY
+    let goal = base
+    if (docTop < base + headBottom + margin) goal = docTop - headBottom - margin
+    else if (docBottom > base + win.innerHeight - margin)
+      goal = Math.min(docTop - headBottom - margin, docBottom - win.innerHeight + margin)
+    goal = Math.max(0, Math.min(goal, doc.documentElement.scrollHeight - win.innerHeight))
+    if (Math.abs(goal - base) < 1) return
+    scrollGoal = goal
+    const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
+    win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
+  }
+  // Cards that change size (an editor opening, a custom card's content) move the ones below.
+  const tileSizes = new ResizeObserver(() => {
+    layoutTick++
+    wakeGpu()
+  })
+  if (page) {
+    win?.addEventListener("scroll", onScroll, { passive: true })
+    win?.addEventListener("scrollend", onScrollEnd)
+    root.addEventListener("focusin", (event) => {
+      const t = event.target as HTMLElement
+      if (header.contains(t) || popover.contains(t) || !body.contains(t)) return
+      const item =
+        t.closest<HTMLElement>(".knobs-card > *") ??
+        t.closest<HTMLElement>("[data-knobs-stop]") ??
+        t
+      // A card's first row brings the card's header along.
+      const tile = t.closest<HTMLElement>(".knobs-tile")
+      const firstRow = tile?.querySelector(".knobs-card > :not([hidden])")
+      bringIntoView(tile && firstRow === item ? tile : item, item)
+    })
+    for (const tile of body.querySelectorAll<HTMLElement>(".knobs-tile")) tileSizes.observe(tile)
+    // The floating shortcuts sit just under the header, however tall it is.
+    new ResizeObserver(() =>
+      root.style.setProperty(
+        "--k-head-h",
+        `${Math.round(header.getBoundingClientRect().height)}px`,
+      ),
+    ).observe(header)
+    layout?.pack(true)
+  }
   const unsubscribe = controls.subscribe(update)
   update()
   positioned =
@@ -1210,6 +1543,15 @@ function buildPanel<S extends Schema>(
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,
     morph: morph?.frame,
+    ...(layout
+      ? {
+          page: {
+            tiles: gpuTiles,
+            sections: () => layout!.sections,
+            layoutKey: () => layoutTick,
+          },
+        }
+      : {}),
   }
   let unregisterGpu: (() => void) | undefined
   const requestedMode = options.renderer ?? controls.renderer ?? "auto"
@@ -1283,6 +1625,11 @@ function buildPanel<S extends Schema>(
     },
     dispose() {
       clearTimeout(statusTimer)
+      for (const t of peekTimers.values()) clearTimeout(t)
+      layout?.dispose()
+      tileSizes.disconnect()
+      win?.removeEventListener("scroll", onScroll)
+      win?.removeEventListener("scrollend", onScrollEnd)
       endScrub()
       hintCtrl.stop()
       modeObserver.disconnect()
@@ -1299,7 +1646,26 @@ function buildPanel<S extends Schema>(
       root.remove()
     },
   }
-  return panel
+  if (!layout) return panel
+  const pageLayout = layout
+  const pageApi: Page = Object.assign(panel, {
+    card(cardOptions: PageCardOptions) {
+      const card = createCustomCard(doc, cardOptions, {
+        wake: () => wakeGpu(),
+        remove: (tile) => {
+          tileSizes.unobserve(tile)
+          pageLayout.remove(tile)
+          pageLayout.pack(true)
+        },
+      })
+      pageLayout.add(card.element, cardOptions.section ?? "")
+      tileSizes.observe(card.element)
+      if (filterEl.value) applyFilter()
+      else pageLayout.pack(true)
+      return card
+    },
+  })
+  return pageApi
 }
 
 export function createPanel<S extends Schema>(
@@ -1325,4 +1691,17 @@ export function mountPanel<S extends Schema>(
     ...options,
     inline: true,
   })
+}
+
+/**
+ * A full page of controls: sections of group cards in balanced columns under a sticky header
+ * (title, presets, Random, Reset, Copy, undo and redo). Groups show their numbered presets;
+ * `page.card()` adds cards of your own.
+ */
+export function mountPage<S extends Schema>(
+  controls: Controls<S>,
+  container: HTMLElement,
+  options: MountPageOptions = {},
+): Page {
+  return buildPanel(controls, container, { ...options, inline: true, page: options }) as Page
 }

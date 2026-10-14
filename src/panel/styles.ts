@@ -33,6 +33,7 @@ const COLOR_TOKENS = [
   "toggle-track",
   "toggle-thumb",
   "rim",
+  "page",
 ]
 const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "font-size"]
 const NUMBER_TOKENS = ["label-weight", "blur", "glow", "glass", "glass-tone"]
@@ -55,7 +56,7 @@ const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.5);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
   --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
-  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;
+  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;--k-page:#e6e6eb;
   color-scheme:light;`
 
 const defaultsCss = `
@@ -67,7 +68,7 @@ const defaultsCss = `
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
   --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-toggle-thumb:var(--k-bg);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
-  --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;
+  --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;--k-page:#101012;
   --k-unit:4px;--k-density:1;--k-width:288px;--k-row:round(calc(32px * var(--k-density)),2px);--k-pad:round(calc(10px * var(--k-density)),2px);--k-inset:var(--k-pad);--k-gap:round(calc(var(--k-unit) * var(--k-density)),1px);--k-radius:round(calc(8px * var(--k-density)),2px);--k-panel-radius:calc(var(--k-radius) + var(--k-unit));
   --k-font-size:round(calc(12px * var(--k-density)),.5px);--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
@@ -278,8 +279,9 @@ const css = `
 /* Segmented choice */
 .knobs-seg{position:relative;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:var(--k-tray-pad);height:var(--k-control-h);padding:var(--k-tray-pad);max-width:76%;background:var(--k-seg-bg);border-radius:var(--k-radius-md)}
 .knobs-seg-pill{position:absolute;top:var(--k-tray-pad);bottom:var(--k-tray-pad);left:0;right:100%;border-radius:var(--k-radius-sm);background:var(--k-pill-bg);box-shadow:0 1px 2px rgba(0,0,0,.12);pointer-events:none;
-  transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY}}
-.knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY}}
+  transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY},opacity .15s}
+.knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY},opacity .15s}
+.knobs-seg-pill[data-off]{opacity:0}
 .knobs-seg button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 7px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:var(--k-radius-sm);transition:background .15s,color .15s}
 .knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}
@@ -397,21 +399,74 @@ const css = `
 
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-.knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
-  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip){
+.knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible):not(.knobs-live *){outline-color:transparent!important;box-shadow:none!important}
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
+  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
-  .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*),
+  .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*):not(.knobs-live *),
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::before,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
-.knobs-panel[data-gpu-active="true"] .knobs-card>::before,
-.knobs-panel[data-gpu-active="true"] .knobs-card>::after,
-.knobs-panel[data-gpu-active="true"] .knobs-row>span:first-child::after{opacity:0!important}
+.knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
+.knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::after,
+.knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after{opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
 .knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
+
+/* Page: sections of cards in balanced columns, under a sticky glass header. The page scrolls the
+   window, so nothing here may become a scroll container or a containing block for the fixed
+   popover and status. Custom cards (.knobs-live) are drawn by the DOM in both renderers. */
+.knobs-panel.knobs-page{width:auto;max-width:none;min-height:100dvh;padding:0 0 calc(var(--k-unit) * 16);border:0;border-radius:0;box-shadow:none;overflow:visible;background:var(--k-page);-webkit-backdrop-filter:none;backdrop-filter:none;
+  --k-page-pad:calc(var(--k-unit) * 8);--k-page-gap:calc(var(--k-unit) * 4)}
+.knobs-panel.knobs-page[data-gpu-active="true"]{background:var(--k-page)!important}
+.knobs-panel.knobs-page>header{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:var(--k-page-gap);min-height:calc(var(--k-row) + var(--k-unit) * 6);padding:calc(var(--k-unit) * 2.5) var(--k-page-pad);
+  background:color-mix(in srgb,var(--k-page) 84%,transparent);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);border-bottom:1px solid transparent;transition:border-color .2s}
+.knobs-panel.knobs-page>header[data-scrolled]{border-bottom-color:var(--k-line)}
+.knobs-panel.knobs-page>header strong{font-size:calc(var(--k-font-size) + 3px);letter-spacing:-.015em;padding-left:calc(var(--k-pad) + var(--k-inset) + 1px)}
+.knobs-page>header .knobs-presets{margin:0;min-width:0;max-width:min(640px,46vw)}
+.knobs-page>header .knobs-presets-track{display:flex;flex-wrap:wrap}
+.knobs-page>header .knobs-preset-chip{flex:0 0 var(--k-preset-min,58px)}
+.knobs-page-tools{display:flex;align-items:center;justify-content:flex-end;min-width:0}
+.knobs-page-tools .knobs-head-actions{margin-right:calc((var(--k-icon-size) - var(--k-icon-btn)) / 2 + var(--k-pad) + var(--k-inset) - var(--k-unit))}
+.knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions{display:flex;gap:var(--k-tray-pad);margin:0 calc(var(--k-unit) * 2) 0 0}
+.knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions button{height:var(--k-icon-btn);min-height:0;padding:0 8px;background:transparent;border-radius:999px}
+.knobs-panel .knobs-filter{width:0;height:var(--k-control-h);padding:0;margin:0;opacity:0;pointer-events:none;background:var(--k-seg-bg);border-radius:var(--k-radius-md);font-size:var(--k-text-control);color:var(--k-text);-webkit-appearance:none;appearance:none;
+  transition:width ${LEAD_T},padding ${LEAD_T},margin ${LEAD_T},opacity .18s}
+.knobs-panel .knobs-filter::-webkit-search-cancel-button{display:none}
+.knobs-panel .knobs-filter::placeholder{color:var(--k-dim)}
+.knobs-panel .knobs-filter[data-open]{width:min(200px,22vw);padding:0 10px;margin-right:calc(var(--k-unit) * 2);opacity:1;pointer-events:auto}
+.knobs-panel.knobs-page>.knobs-popover{position:fixed;z-index:2147480003;top:calc(var(--k-head-h,56px) + var(--k-unit) * 2);right:var(--k-page-pad);width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - var(--k-head-h,56px) - 32px);overflow:auto;margin:0;padding:var(--k-pad) var(--k-inset);
+  background:color-mix(in srgb,var(--k-bg) 94%,transparent);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6)}
+.knobs-panel.knobs-page>.knobs-status{position:fixed;z-index:2147480003;left:50%;bottom:calc(var(--k-unit) * 6);translate:-50% 0;max-width:min(480px,80vw);margin:0;padding:calc(var(--k-unit) * 2) calc(var(--k-unit) * 3.5);
+  background:var(--k-bg);border:1px solid var(--k-line);border-radius:999px;box-shadow:var(--k-shadow);color:var(--k-text)}
+.knobs-sections{padding:0 var(--k-page-pad)}
+.knobs-section{padding-top:calc(var(--k-unit) * 7)}
+.knobs-section:first-child{padding-top:calc(var(--k-unit) * 3)}
+.knobs-section-head{margin:0 0 calc(var(--k-unit) * 3);padding:0 calc(var(--k-pad) + var(--k-inset) + 1px);font:600 calc(var(--k-font-size) + 3px)/1.25 var(--k-font);letter-spacing:-.015em;color:var(--k-text)}
+.knobs-columns{display:grid;grid-template-columns:repeat(var(--k-cols,1),minmax(0,1fr));gap:var(--k-page-gap);align-items:start}
+.knobs-column{display:flex;flex-direction:column;gap:var(--k-page-gap);min-width:0}
+.knobs-tile{position:relative;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
+.knobs-tile>.knobs-card{margin:0}
+.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-section-gap);min-height:var(--k-icon-btn);color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+.knobs-group-title{display:grid;flex:1;min-width:0}
+.knobs-group-title>*{grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .15s}
+.knobs-peek{opacity:0;pointer-events:none}
+.knobs-group-head[data-peek] .knobs-group-label{opacity:0}
+.knobs-group-head[data-peek] .knobs-peek{opacity:1}
+.knobs-group-head .knobs-chips.knobs-seg{flex:none;height:20px;max-width:none;gap:0;margin-right:var(--k-unit)}
+.knobs-group-head .knobs-chips button{width:18px;height:100%;padding:0;font-size:var(--k-text-meta);font-weight:500;font-variant-numeric:tabular-nums;border-radius:var(--k-radius-sm);background:transparent}
+.knobs-group-head .knobs-chips button[aria-checked="true"]{color:var(--k-text)}
+.knobs-tile-body{display:flex;flex-direction:column;gap:var(--k-section-gap)}
+.knobs-tile-body>.knobs-card{margin:0}
+.knobs-panel .knobs-tile-body>.knobs-custom-actions{margin:0}
+.knobs-row-full .knobs-seg{flex:1;max-width:none}
+.knobs-row-full .knobs-seg button{flex:1}
+.knobs-item[role="button"]{cursor:pointer}
+.knobs-card>.knobs-item:focus-visible{outline:none}
+.knobs-card>.knobs-item:focus-visible::after{opacity:1}
+.knobs-item-detail{flex:none;color:var(--k-dim);font-size:var(--k-text-control);font-variant-numeric:tabular-nums;white-space:nowrap}
 `
 export function injectStyles(doc: Document) {
   const content = rolling + DRIVERS + defaultsCss + aliased(css)

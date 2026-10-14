@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iPhone Tune</title>
+    <style>
+      html { background: #101012; }
+      @media (prefers-color-scheme: light) { html { background: #e6e6eb; } }
+      html:has(.knobs-page[data-theme="dark"]) { background: #101012; }
+      html:has(.knobs-page[data-theme="light"]) { background: #e6e6eb; }
+      body { margin: 0; }
+      .tune-count { color: var(--k-dim); font: 500 var(--k-text-meta, 11px) / 1 var(--k-font); font-variant-numeric: tabular-nums; padding-right: 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./tune.ts"></script>
+  </body>
+</html>

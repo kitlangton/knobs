@@ -176,6 +176,16 @@ export interface GpuGroupBinding {
   readonly reset: HTMLButtonElement
   /** The group's Random die. */
   readonly die?: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
+  /** On a page: the header reads as a card title rather than a small-caps label. */
+  readonly title?: boolean
+  /** On a page: a preset's name, shown in place of the title while its chip is hovered. */
+  readonly peek?: HTMLElement
+  /** On a page: the group's numbered presets. */
+  readonly presets?: {
+    readonly seg: HTMLElement
+    readonly buttons: readonly HTMLButtonElement[]
+    readonly pill: Edges
+  }
 }
 
 export interface GpuPanelBinding {
@@ -198,6 +208,17 @@ export interface GpuPanelBinding {
   isPopoverOpen(): boolean
   /** While the panel grows out of (or into) its chip: the shape at a frame time. */
   readonly morph?: (now: number) => MorphFrame | undefined
+  /** A full page (see `mountPage`): no panel card; a sticky header the body scrolls under. */
+  readonly page?: {
+    /** Group cards the overlay draws (custom cards stay in the DOM). */
+    readonly tiles: readonly HTMLElement[]
+    readonly sections: () => readonly {
+      readonly element: HTMLElement
+      readonly head: HTMLElement | null
+    }[]
+    /** Changes whenever cards move, so cached rects are dropped. */
+    readonly layoutKey: () => number
+  }
 }
 
 export interface KnobsGpuDiagnostics {
@@ -267,6 +288,14 @@ function getEffectiveClipRect(
     maxY = Math.min(maxY, r.bottom)
   }
   return [minX, minY, Math.max(minX, maxX), Math.max(minY, maxY)]
+}
+
+/** The nearest sibling a filter hasn't hidden, before (-1) or after (1). */
+const shownSibling = (el: Element, dir: -1 | 1) => {
+  let n = dir < 0 ? el.previousElementSibling : el.nextElementSibling
+  while (n && (n as HTMLElement).hidden)
+    n = dir < 0 ? n.previousElementSibling : n.nextElementSibling
+  return n
 }
 
 /** Element-relative x,y pairs moved onto the viewport. */
@@ -1099,8 +1128,8 @@ class GpuOverlayManager {
       : row.closest<HTMLElement>(".knobs-card > *")
     if (!item) return [0, 0, 0, 0]
     const inner = item !== row
-    const first = !item.previousElementSibling && !(inner && row.previousElementSibling) ? r : 0
-    const last = !item.nextElementSibling && !(inner && row.nextElementSibling) && !open ? r : 0
+    const first = !shownSibling(item, -1) && !(inner && shownSibling(row, -1)) ? r : 0
+    const last = !shownSibling(item, 1) && !(inner && shownSibling(row, 1)) && !open ? r : 0
     return inner ? [first, 0, 0, last] : [first, first, last, last]
   }
 
@@ -1129,7 +1158,7 @@ class GpuOverlayManager {
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     const t = this.curTokens
     // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
-    const prev = row.previousElementSibling
+    const prev = shownSibling(row, -1)
     const joined =
       row.classList.contains("knobs-selected") && prev?.classList.contains("knobs-selected")
     const sep = this.ease(
@@ -1222,6 +1251,75 @@ class GpuOverlayManager {
       p3: die.size,
       aux: [DIE_LOOK.perspective, DIE_LOOK.lift, Math.cos(DIE_LOOK.bevel * d2r), DIE_LOOK.fill],
     })
+  }
+
+  /**
+   * A page group's numbered presets: a tray of digits with the matching one's pill, which slides
+   * between presets and fades when none matches (as .knobs-seg-pill[data-off]). Returns whether
+   * anything still moves.
+   */
+  private drawChips(
+    chips: NonNullable<GpuGroupBinding["presets"]>,
+    hinting: boolean,
+    reducedMotion: boolean,
+  ): boolean {
+    const t = this.curTokens
+    const sr = this.rectOf(chips.seg)
+    if (sr.width <= 0) return false
+    this.pushPrim({
+      x: sr.left,
+      y: sr.top,
+      w: sr.width,
+      h: sr.height,
+      color: t.segBg,
+      color2: t.accent,
+      radius: t.radiusMd,
+      glowOrBlur: t.glowStrength * 8,
+      kind: 1,
+    })
+    let moving = false
+    const active = chips.buttons.find((b) => b.getAttribute("aria-checked") === "true")
+    const shown = this.ease(chips.seg, "pill", active ? 1 : 0, 30)
+    const pe = chips.pill
+    if (active) {
+      const ar = this.rectOf(active)
+      const left = ar.left - sr.left
+      const right = left + ar.width
+      this.carry(pe, active, left, right)
+      // Coming back from no match, it appears where it lands instead of sliding there.
+      if (reducedMotion || shown < 0.05 || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
+      else {
+        pe.to(left, right, 0, trailScale(t.blurStrength)).step(this.curDt)
+        if (!pe.resting) moving = true
+      }
+    }
+    if (shown > 0.005) {
+      const pad = t.trayPad
+      this.pushPrim({
+        x: sr.left + pe.start.x,
+        y: sr.top + pad,
+        w: Math.max(8, pe.end.x - pe.start.x),
+        h: Math.max(8, sr.height - pad * 2),
+        color: withAlpha(t.pillBg, shown),
+        color2: [0, 0, 0, 0],
+        radius: t.radiusSm,
+        glowOrBlur: t.glowStrength * 0.6,
+        kind: 3,
+        blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * t.blurStrength, -6, 6),
+      })
+    }
+    for (const b of chips.buttons) {
+      const br = this.rectOf(b)
+      const on = b.getAttribute("aria-checked") === "true" || this.isHovered(b) || this.isFocused(b)
+      this.drawText(
+        b.textContent ?? "",
+        br.left + br.width * 0.5,
+        br.top + br.height * 0.5,
+        withAlpha(this.hot(b, on), this.missed(b, hinting)),
+        { px: t.textMeta, weight: 500, align: "center" },
+      )
+    }
+    return moving
   }
 
   /** Text that fits `maxW`, ellipsized like `text-overflow: ellipsis`. */
@@ -1823,6 +1921,7 @@ class GpuOverlayManager {
       }
 
       const rawTokens = readPanelTokens(panel.root, this.styleVersion)
+      const pageB = panel.page
       this.curPanelRect = pRect
       this.curPanelScrollTop = panel.root.scrollTop
       this.curPanelHovered = panel.root.matches(":hover")
@@ -1832,7 +1931,8 @@ class GpuOverlayManager {
           Math.round(pRect.height * 4) * 13 +
           Math.round(rawTokens.fontSize * 10) * 7 +
           rawTokens.labelWeight * 3 +
-          Math.round(rawTokens.inset * 4)) *
+          Math.round(rawTokens.inset * 4) +
+          (pageB ? pageB.layoutKey() * 7919 : 0)) *
           100 +
           (revealVer % 100)) |
         0
@@ -1872,31 +1972,34 @@ class GpuOverlayManager {
       const pillFill = tokens.pillBg
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
-      // lying over another firms up, since the canvas can't blur what it drew below.
+      // lying over another firms up, since the canvas can't blur what it drew below. A page has no
+      // card: its background and glass header are the DOM's, under the canvas.
+      if (pageB) this.placeBackdrop(panel)
       const covers = drawn.some(
         (r) =>
           r.left < card.right && r.right > card.left && r.top < card.bottom && r.bottom > card.top,
       )
-      drawn.push(card)
+      if (!pageB) drawn.push(card)
       const glass = tokens.glass * (1 - this.ease(panel.root, "solid", covers ? 1 : 0, 18))
-      this.placeBackdrop(panel, card, outerClip, cardRadius, glass, tokens.glassTone)
+      if (!pageB) this.placeBackdrop(panel, card, outerClip, cardRadius, glass, tokens.glassTone)
       // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
       const shadow = tokens.isLight ? 0.16 : 0.48
-      this.pushPrim({
-        x: card.left,
-        y: card.top,
-        w: card.width,
-        h: card.height,
-        clip: outerClip,
-        color: withAlpha(tokens.bg, 1 - glass * 0.2 * shown),
-        color2: tokens.line,
-        radius: cardRadius,
-        strokeWidth: 1,
-        glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
-        kind: 0,
-        p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
-        aux2: shown < 1 ? withAlpha(tokens.rim, shown) : tokens.rim,
-      })
+      if (!pageB)
+        this.pushPrim({
+          x: card.left,
+          y: card.top,
+          w: card.width,
+          h: card.height,
+          clip: outerClip,
+          color: withAlpha(tokens.bg, 1 - glass * 0.2 * shown),
+          color2: tokens.line,
+          radius: cardRadius,
+          strokeWidth: 1,
+          glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
+          kind: 0,
+          p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
+          aux2: shown < 1 ? withAlpha(tokens.rim, shown) : tokens.rim,
+        })
       if (morph && this.maskCount < MAX_MASKS) {
         this.masks.set(
           [morph.x, morph.y, morph.w, morph.h, morph.radius, morph.fadeTop, morph.fadeBottom, 0],
@@ -1911,7 +2014,7 @@ class GpuOverlayManager {
         panelClip[2] - 1,
         panelClip[3] - 1,
       ]
-      if (panel.isPopoverOpen()) {
+      if (panel.isPopoverOpen() && !pageB) {
         const pop = panel.root.querySelector<HTMLElement>(".knobs-popover:not([hidden])")
         if (pop)
           bodyClip = [
@@ -1921,21 +2024,27 @@ class GpuOverlayManager {
             bodyClip[3],
           ]
       }
-      this.curClip = bodyClip
+      // A page's header sticks while the body scrolls under it: its rects are read fresh, and the
+      // body is clipped to below it.
+      const headClip = bodyClip
+      const bypass = this.curBypassRectCache
+      if (pageB) this.curBypassRectCache = true
+      this.curClip = headClip
 
       // 2. Header
       {
         this.curSubHovered = this.curPanelHovered && panel.header.matches(":hover")
         const tRect = this.rectOf(panel.titleEl)
-        const px = tokens.textTitle
+        const px = pageB ? tokens.fontSize + 3 : tokens.textTitle
+        const indent = pageB ? tokens.pad + tokens.inset + 1 : 0
         // Dims while compare is held, like the DOM's 0.2 s opacity transition.
         const comparing = panel.root.hasAttribute("data-comparing")
         this.drawText(
-          this.fit(panel.titleEl.textContent ?? "", tRect.width, px, 600),
-          tRect.left,
+          this.fit(panel.titleEl.textContent ?? "", tRect.width - indent, px, 600),
+          tRect.left + indent,
           tRect.top + tRect.height * 0.5,
           withAlpha(tokens.text, this.ease(panel.titleEl, "compare", comparing ? 0.4 : 1, 26)),
-          { px, weight: 600, clip: panelClip, track: -0.01 },
+          { px, weight: 600, clip: panelClip, track: pageB ? -0.015 : -0.01 },
         )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue
@@ -1994,7 +2103,7 @@ class GpuOverlayManager {
           p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
         })
 
-        const stripClip = intersectClip(bodyClip, [
+        const stripClip = intersectClip(headClip, [
           psRect.left,
           psRect.top,
           psRect.right,
@@ -2086,21 +2195,94 @@ class GpuOverlayManager {
         }
       }
 
+      if (pageB) {
+        // A page's own actions sit in its header, quiet until hovered.
+        this.curSubHovered = this.curPanelHovered
+        for (const btn of panel.actionButtons)
+          if (!btn.hidden && btn.isConnected)
+            this.drawButton(btn, activeEl, hinting, 999, tokens.textControl, false)
+        this.curBypassRectCache = bypass
+        const hr = this.rectOf(panel.header)
+        if (hr.height > 0)
+          bodyClip = intersectClip(bodyClip, [bodyClip[0], hr.bottom, bodyClip[2], bodyClip[3]])
+        this.curClip = bodyClip
+
+        // Section headings, then the group cards (custom cards are the DOM's).
+        for (const section of pageB.sections()) {
+          const head = section.head
+          if (!head || section.element.hidden) continue
+          const sr = this.rectOf(head)
+          if (sr.width <= 0 || sr.bottom < bodyClip[1] || sr.top > bodyClip[3]) continue
+          const indent = tokens.pad + tokens.inset + 1
+          const px = tokens.fontSize + 3
+          this.drawText(
+            this.fit(head.textContent ?? "", sr.width - indent * 2, px, 600),
+            sr.left + indent,
+            sr.top + sr.height * 0.5,
+            tokens.text,
+            { px, weight: 600, track: -0.015 },
+          )
+        }
+        for (const tile of pageB.tiles) {
+          const tr = this.rectOf(tile)
+          if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
+          this.pushPrim({
+            x: tr.left,
+            y: tr.top,
+            w: tr.width,
+            h: tr.height,
+            color: tokens.bg,
+            color2: tokens.line,
+            radius: tokens.panelRadius,
+            strokeWidth: 1,
+            glowOrBlur: 0,
+            kind: 0,
+            p0: 0,
+            aux2: tokens.rim,
+          })
+        }
+      }
+
       // 4. Group headers
       if (bodyRevealing) this.curBypassRectCache = true
       const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
       this.curSubHovered = bodyHovered
       for (const g of panel.groups) {
         const gr = this.rectOf(g.element)
-        if (gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
+        if (gr.width <= 0 || gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
         const lr = this.rectOf(g.labelEl)
-        this.drawText(
-          (g.labelEl.textContent ?? "").toUpperCase(),
-          lr.left,
-          lr.top + lr.height * 0.5,
-          tokens.dim,
-          { px: Math.max(9, tokens.textCap), weight: 600, track: 0.04 },
-        )
+        if (g.title) {
+          // A page card's title; a hovered (or just applied) preset's name crossfades over it.
+          const peek = g.peek
+            ? this.ease(g.element, "peek", "peek" in g.element.dataset ? 1 : 0, 30)
+            : 0
+          const px = tokens.textTitle
+          const cy = lr.top + lr.height * 0.5
+          if (peek < 0.995)
+            this.drawText(
+              this.fit(g.labelEl.textContent ?? "", lr.width, px, 600),
+              lr.left,
+              cy,
+              withAlpha(tokens.text, 1 - peek),
+              { px, weight: 600, track: -0.01 },
+            )
+          if (g.peek && peek > 0.005)
+            this.drawText(
+              this.fit(g.peek.textContent ?? "", lr.width, px, 600),
+              lr.left,
+              cy,
+              withAlpha(tokens.text, peek),
+              { px, weight: 600, track: -0.01 },
+            )
+        } else
+          this.drawText(
+            (g.labelEl.textContent ?? "").toUpperCase(),
+            lr.left,
+            lr.top + lr.height * 0.5,
+            tokens.dim,
+            { px: Math.max(9, tokens.textCap), weight: 600, track: 0.04 },
+          )
+        if (g.presets) anyMoving = this.drawChips(g.presets, hinting, reducedMotion) || anyMoving
         for (const gb of g.buttons) {
           this.drawButton(
             gb,
@@ -2171,7 +2353,7 @@ class GpuOverlayManager {
       for (const card of panel.cards) {
         const cr = this.rectOf(card)
         cardRects.set(card, cr)
-        if (cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
+        if (cr.width <= 0 || cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
         this.pushPrim({
           x: cr.left,
           y: cr.top,
@@ -2186,7 +2368,7 @@ class GpuOverlayManager {
       for (const row of panel.rows) {
         this.curSubHovered = bodyHovered
         const rRect = this.rectOf(row.row)
-        if (rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
+        if (rRect.width <= 0 || rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
         const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
         const hovered = this.isHovered(row.row)
@@ -2542,7 +2724,7 @@ class GpuOverlayManager {
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered
-      for (const btn of panel.actionButtons) {
+      for (const btn of pageB ? [] : panel.actionButtons) {
         if (!btn.hidden && this.doc.body.contains(btn)) {
           this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.textControl, true)
         }

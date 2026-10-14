@@ -12,7 +12,7 @@ const port = Number(process.env.PORT) || 5178
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
 export default defineConfig(({ command, mode }) => ({
   root: "examples",
-  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html", "die.html"] },
+  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html", "die.html", "tune.html"] },
   server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
   build: {
     outDir: mode === "site" ? "site" : "dist",
@@ -23,6 +23,7 @@ export default defineConfig(({ command, mode }) => ({
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
         die: resolve(import.meta.dirname, "die.html"),
+        tune: resolve(import.meta.dirname, "tune.html"),
       },
     },
   },
