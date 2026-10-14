@@ -990,7 +990,7 @@ class GpuOverlayManager {
         this.ease(lock, "shown", 0)
       }
       room = 14 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
-      const shown = this.ease(lock, "shown", on, 28, 0.62)
+      const shown = this.ease(lock, "shown", on, 20, 0.6)
       if (shown > 0.005) {
         const lr = this.rectOf(lock)
         const cy = lr.height > 0 ? lr.top + lr.height / 2 : rowCenterY
@@ -2389,7 +2389,6 @@ class GpuOverlayManager {
             radius: Math.max(2, tokens.radius - 2),
             glowOrBlur: tokens.glowStrength * 8,
             kind: 1,
-            p1: this.isFocused(row.segEl) ? 1 : 0,
           })
 
           const activeBtn = row.buttons.find((b) => b.getAttribute("aria-checked") === "true")
