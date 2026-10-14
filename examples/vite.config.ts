@@ -12,7 +12,7 @@ const port = Number(process.env.PORT) || 5178
 export default defineConfig(({ command }) => ({
   root: "examples",
   optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html"] },
-  server: { host: "127.0.0.1", port, strictPort: true },
+  server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
   build: {
     outDir: "dist",
     rollupOptions: {
