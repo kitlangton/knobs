@@ -1,4 +1,50 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
+
+type Wheel = { dx: number; dy?: number; t: number }
+/**
+ * Dispatches wheel events in one burst with their own timestamps (`t`, ms), so a slow runner's
+ * timers can't split or join gestures. Returns whether every event was claimed, and `probe` (an
+ * expression run in the page) after each event.
+ */
+const wheel = (page: Page, selector: string, events: readonly Wheel[], probe = "null") =>
+  page.evaluate(
+    ({ selector, events, probe }) => {
+      const el = document.querySelector(selector)!
+      const read = new Function(`return ${probe}`)
+      let claimed = 0
+      const seen: unknown[] = []
+      for (const { dx, dy = 0, t } of events) {
+        const e = new WheelEvent("wheel", {
+          deltaX: dx,
+          deltaY: dy,
+          bubbles: true,
+          cancelable: true,
+        })
+        Object.defineProperty(e, "timeStamp", { value: t })
+        el.dispatchEvent(e)
+        if (e.defaultPrevented) claimed++
+        seen.push(read())
+      }
+      return { claimed: claimed === events.length, seen }
+    },
+    { selector, events, probe },
+  )
+/**
+ * Finger travel (px, rightwards positive) as a trackpad pan from `start` ms, one event per 8 ms.
+ * Natural scrolling sends deltas against the fingers.
+ */
+const pan = (fingers: readonly number[], start: number): Wheel[] =>
+  fingers.map((d, i) => ({ dx: -d, t: start + i * 8 }))
+/** The fingers lifting after `pan`: a 25 ms pause, the spike that covers it, then fading momentum. */
+const lift = (fingers: readonly number[], start: number): Wheel[] => {
+  const last = fingers.at(-1)!
+  const sign = Math.sign(last)
+  let t = start + (fingers.length - 1) * 8 + 25
+  const out: Wheel[] = [{ dx: -Math.round((last / 8) * 25 * 0.75), t }]
+  for (let m = Math.abs(last / 8) * 16.7; m >= 0.6; m *= 0.92)
+    out.push({ dx: -sign * Math.max(1, Math.round(m)), t: (t += 16.7) })
+  return out
+}
 
 test("hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
   page,
@@ -201,7 +247,7 @@ test("production ships constants, with no panel chunks or hover UI", async ({ pa
   page.on("response", (response) => {
     if (response.url().endsWith(".js")) scripts.push(response.url())
   })
-  await page.goto("http://127.0.0.1:5179/")
+  await page.goto(`http://127.0.0.1:${Number(process.env.PREVIEW_PORT) || 5179}/`)
   await expect(page.locator("[data-study]")).toHaveCount(4)
   await page.evaluate(() =>
     localStorage.setItem(
@@ -479,7 +525,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await page.keyboard.press("Escape")
 })
 
-test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", async ({ page }) => {
+test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ page }) => {
   await page.goto("/")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -522,26 +568,64 @@ test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", asy
   expect(fine).toBeGreaterThan(150)
   expect(fine).toBeLessThanOrEqual(150 + Math.ceil((60 / track.width) * 300 * 0.1) + 1)
 
-  // Horizontal scrolling nudges by steps as one undo entry; vertical scrolling is left alone.
+  // A sideways trackpad pan moves the value 1:1 with the fingers at the fill's scale, from the
+  // first event, as one undo entry; vertical scrolling is left alone.
+  await count.focus()
+  await page.keyboard.type("150")
+  await page.keyboard.press("Enter")
   await page.mouse.move(xAt(100), y)
-  const before = await now()
   await page.mouse.wheel(0, 120)
-  expect(await now()).toBe(before)
-  await page.mouse.wheel(16, 0)
-  await expect.poll(now).toBeGreaterThan(before)
-  await page.keyboard.press("u")
-  await expect.poll(now).toBe(before)
-  // One trackpad gesture: a quick burst of sideways wheel events.
-  await count.evaluate((el) => {
-    for (let i = 0; i < 6; i++)
-      el.dispatchEvent(new WheelEvent("wheel", { deltaX: 8, bubbles: true, cancelable: true }))
+  expect(await now()).toBe(150)
+  const row = panel.locator('[data-field="count"]')
+  const expected = (px: number) => Math.round(150 + (px / track.width) * 300)
+  const selector = '[aria-label="splat controls"] [data-field="count"] [role="slider"]'
+  // In hand like a drag: the fill sits on the value with no easing.
+  const probe = `(() => {
+    const row = document.querySelector('[aria-label="splat controls"] [data-field="count"]')
+    return [
+      Number(row.querySelector('[role="slider"]').getAttribute("aria-valuenow")),
+      parseFloat(row.querySelector(".knobs-fill").style.getPropertyValue("--k-fill")),
+      row.classList.contains("knobs-active") && !row.classList.contains("knobs-animate"),
+    ]
+  })()`
+  const fingers = [4, 8, 12, 12, 12]
+  const panned = await wheel(page, selector, pan(fingers, 10_000), probe)
+  expect(panned.claimed).toBe(true)
+  let travelled = 0
+  panned.seen.forEach((seen, i) => {
+    travelled += fingers[i]!
+    const v = expected(travelled)
+    expect(seen).toEqual([v, expect.closeTo((v / 300) * 100, 5), true])
   })
-  await expect.poll(now).toBeGreaterThan(before + 10)
+  // Still fingers end it.
+  await expect(row).not.toHaveClass(/knobs-active/)
   await page.keyboard.press("u")
-  await expect.poll(now).toBe(before)
+  await expect.poll(now).toBe(150)
+  // A flick: the value stops where the fingers lifted, ignoring the momentum.
+  const flick = [3, 8, 14, 18, 18]
+  const flicked = await wheel(page, selector, [...pan(flick, 20_000), ...lift(flick, 20_000)])
+  expect(flicked.claimed).toBe(true)
+  expect(await now()).toBe(expected(61))
+  await expect(row).not.toHaveClass(/knobs-active/)
+  // Past the end it stops at the max and stretches like a drag.
+  await wheel(page, selector, pan([40, 60, 80, 80, 80, 80, 80, 80], 30_000))
+  expect(await now()).toBe(300)
+  await expect(row).toHaveAttribute("style", /scaleX/)
+  await expect(row).not.toHaveClass(/knobs-active/)
+  await expect(row).not.toHaveAttribute("style", /scaleX/)
+  // Each pan was one undo entry.
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(expected(61))
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(150)
+  // ⇧ + wheel (a mouse) steps once per notch.
+  await page.keyboard.down("Shift")
+  await page.mouse.wheel(0, 100)
+  await page.keyboard.up("Shift")
+  await expect.poll(now).toBe(151)
 })
 
-test("sideways swipes step presets and choices once per gesture, as one undo entry each", async ({
+test("panning drags the preset and choice pills across their options, one undo entry per gesture", async ({
   page,
 }) => {
   await page.goto("/meta.html")
@@ -550,55 +634,80 @@ test("sideways swipes step presets and choices once per gesture, as one undo ent
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   const strip = synth.getByRole("radiogroup", { name: "Preset or variant" })
   const waveform = synth.getByRole("radiogroup", { name: "Waveform" })
-  // A trackpad flick: rising deltas, then a long fading momentum tail, all as one stream. Sent in
-  // one burst: real timers can stall past the gesture gap on a slow CI runner.
-  const flick = (sign: number) =>
-    page.evaluate((sign) => {
-      const el = document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!
-      const deltas = [4, 12, 26, 40, ...Array.from({ length: 40 }, (_, i) => 40 * 0.9 ** (i + 1))]
-      let blocked = 0
-      for (const d of deltas) {
-        const e = new WheelEvent("wheel", { deltaX: d * sign, bubbles: true, cancelable: true })
-        el.dispatchEvent(e)
-        if (e.defaultPrevented) blocked++
-      }
-      return blocked === deltas.length
-    }, sign)
+  const stripSelector = '[aria-label="synth-voice controls"] .knobs-presets'
   const checked = () => strip.locator('[aria-checked="true"]').textContent()
-  expect(await checked()).toBe("default")
-  expect(await flick(1)).toBe(true)
-  expect(await checked()).toBe("warm")
-  await page.waitForTimeout(300)
-  await flick(1)
-  expect(await checked()).toBe("acid")
-  await page.waitForTimeout(300)
-  await flick(-1)
-  expect(await checked()).toBe("warm")
+  const pillLeft = () =>
+    strip
+      .locator(".knobs-presets-pill")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  await expect(strip.getByRole("radio", { name: "default" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  const chips = await strip
+    .locator(".knobs-preset-chip:not(.knobs-preset-save)")
+    .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).offsetLeft))
+  const spacing = chips[1]! - chips[0]!
+
+  // The pill follows the fingers from the first event; the selection changes past halfway, and
+  // when the fingers lift the momentum is ignored and the pill springs into its slot.
+  const probe = `(() => {
+    const strip = document.querySelector('${stripSelector}')
+    const pill = strip.querySelector(".knobs-presets-pill")
+    return [strip.querySelector('[aria-checked="true"]').textContent, parseFloat(pill.style.left), pill.style.transition]
+  })()`
+  const flick = [3, 6, 9, 9, 8]
+  const flicked = await wheel(
+    page,
+    stripSelector,
+    [...pan(flick, 10_000), ...lift(flick, 10_000)],
+    probe,
+  )
+  expect(flicked.claimed).toBe(true)
+  const seen = flicked.seen as [string, number, string][]
+  expect(seen.slice(0, 5)).toEqual([
+    ["default", expect.closeTo(chips[0]! + 3, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 9, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 18, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 27, 0), "none"],
+    ["warm", expect.closeTo(chips[0]! + 35, 0), "none"],
+  ])
+  expect(seen.slice(5)).toEqual(seen.slice(5).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
   await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
   await synth.getByRole("button", { name: "Undo" }).click()
-  expect(await checked()).toBe("acid")
+  expect(await checked()).toBe("default")
 
-  // Over a segmented choice it steps the options, stopping at the ends.
+  // One long pan crosses several options, as one undo entry.
+  const long = [4, 8, 12, 16, 16, 16, 16, 16, 16, 12]
+  expect(long.reduce((a, b) => a + b) / spacing).toBeGreaterThan(1.5)
+  expect(long.reduce((a, b) => a + b) / spacing).toBeLessThan(2.5)
+  await wheel(page, stripSelector, [...pan(long, 20_000), ...lift(long, 20_000)])
+  expect(await checked()).toBe("acid")
+  // A short flick back is one more.
+  const back = [-5, -8, -11, -11]
+  await wheel(page, stripSelector, [...pan(back, 30_000), ...lift(back, 30_000)])
+  expect(await checked()).toBe("warm")
+  await synth.getByRole("button", { name: "Undo" }).click()
+  expect(await checked()).toBe("acid")
+  await synth.getByRole("button", { name: "Undo" }).click()
+  expect(await checked()).toBe("default")
+  // Past the last option it holds there.
+  await wheel(page, stripSelector, pan([60, 80, 80, 80, 80, 80, 80], 40_000))
+  expect(await checked()).toBe("glass")
+  expect(await pillLeft()).toBeLessThan(chips[3]! + spacing / 2)
+
+  // Over a segmented choice too, stopping at the ends.
   const option = () => waveform.locator('[aria-checked="true"]').textContent()
-  const before = await option()
-  await page.evaluate(() => {
-    const el = document.querySelector(
-      '[aria-label="synth-voice controls"] [role="radiogroup"][aria-label="Waveform"]',
-    )!
-    for (const d of [10, 20, 30, 20, 10, 5, 2])
-      el.dispatchEvent(new WheelEvent("wheel", { deltaX: -d, bubbles: true, cancelable: true }))
-  })
-  const options = ["sine", "tri", "saw", "pulse"]
-  expect(await option()).toBe(options[Math.max(0, options.indexOf(before!) - 1)])
+  const waveSelector =
+    '[aria-label="synth-voice controls"] [role="radiogroup"][aria-label="Waveform"]'
+  await wheel(page, waveSelector, pan([-30, -60, -60, -60, -60], 50_000))
+  expect(await option()).toBe("sine")
+  await wheel(page, waveSelector, [...pan(flick, 60_000), ...lift(flick, 60_000)])
+  expect(await option()).toBe("tri")
 
   // Vertical scrolling over the strip is left to the page.
-  const vertical = await page.evaluate(() => {
-    const e = new WheelEvent("wheel", { deltaX: 2, deltaY: 40, bubbles: true, cancelable: true })
-    document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!.dispatchEvent(e)
-    return e.defaultPrevented
-  })
-  expect(vertical).toBe(false)
+  expect((await wheel(page, stripSelector, [{ dx: 2, dy: 40, t: 70_000 }])).claimed).toBe(false)
 })
 
 test("group reset appears only while its group differs from defaults", async ({ page }) => {
@@ -768,6 +877,18 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await page.keyboard.press("End")
   const fitted = (await values()).tint
   expect(fitted).toMatch(/^oklch\(0\.7 0\.1[5-9]\d* 41\)$/)
+  // A sideways pan over a strip scrubs it 1:1, as one undo step.
+  const hue = panel.getByRole("slider", { name: "Tint hue" })
+  const hueBox = (await hue.boundingBox())!
+  const hueSelector = '[aria-label="motion controls"] [aria-label="Tint hue"]'
+  expect((await wheel(page, hueSelector, pan([5, 10, 10, 5], 10_000))).claimed).toBe(true)
+  const turned = 41 + Math.round((30 / (hueBox.width - hueBox.height)) * 360)
+  await expect
+    .poll(async () => (await values()).tint)
+    .toMatch(new RegExp(`^oklch\\(0\\.7 0\\.1\\d* ${turned}\\)$`))
+  await expect(panel.locator(".knobs-strip").first()).not.toHaveClass(/knobs-active/)
+  await page.keyboard.press("u")
+  await expect.poll(async () => (await values()).tint).toBe(fitted)
   await page.keyboard.press("Escape")
 
   // A pad drag, however long, is one undo step; arrows nudge the puck.
@@ -793,6 +914,24 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await pad.focus()
   await page.keyboard.press("ArrowUp")
   expect((await values()).target).toEqual({ x: 0.55, y: -0.37 })
+  // A pan that starts sideways moves the puck in both axes with the fingers, as one undo step.
+  const padSelector = '[aria-label="motion controls"] .knobs-pad'
+  const fingers = [
+    { dx: -6, dy: -2, t: 20_000 },
+    { dx: -8, dy: -6, t: 20_008 },
+    { dx: -6, dy: -12, t: 20_016 },
+  ]
+  expect((await wheel(page, padSelector, fingers)).claimed).toBe(true)
+  const round = (v: number) => Math.round(v * 100) / 100
+  await expect
+    .poll(async () => (await values()).target)
+    .toEqual({
+      x: round(0.55 + (20 / (box.width - 20)) * 2),
+      y: round(-0.37 + (20 / (box.height - 20)) * 2),
+    })
+  await expect(pad).not.toHaveClass(/knobs-active/)
+  await page.keyboard.press("u")
+  await expect.poll(async () => (await values()).target).toEqual({ x: 0.55, y: -0.37 })
 
   // Hint mode reaches each row with one code.
   await page.keyboard.press("j")
