@@ -21,6 +21,7 @@ import {
 } from "knobs"
 import { Knobs, KnobsPanel, useControls, VariantSwitcher } from "knobs/react"
 import "./style.css"
+import { KnobsHint } from "./hint"
 
 const splat = defineControls(
   "splat",
@@ -507,6 +508,7 @@ function App() {
         <span>RANDOMIZE · RESET · SAVE · SWITCH · COPY</span>
         <span>Explore in development. Ship constants.</span>
       </footer>
+      <KnobsHint />
     </main>
   )
 }

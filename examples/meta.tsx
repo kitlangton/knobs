@@ -17,6 +17,7 @@ import {
 } from "knobs"
 import { Knobs, KnobsPanel, useControls } from "knobs/react"
 import "./style.css"
+import { KnobsHint } from "./hint"
 
 const metaSchema = {
   theme: choice("dark", ["dark", "light", "auto"], {
@@ -447,6 +448,7 @@ function MetaApp() {
           </div>
         </div>
       </section>
+      <KnobsHint />
     </main>
   )
 }

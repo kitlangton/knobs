@@ -35,7 +35,7 @@ function Card() {
         >
           Press me
         </button>
-        <span className="demo-caption">Hover this box for its ⚙ knobs chip</span>
+        <span className="demo-caption">Hover this box for its ⚙ chip</span>
       </div>
     </Knobs>
   )
