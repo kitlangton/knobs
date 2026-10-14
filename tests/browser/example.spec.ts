@@ -890,6 +890,9 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   const tint = panel.getByRole("button", { name: "Tint", exact: true })
   await expect(tint).toBeFocused()
   await page.keyboard.press("Space")
+  await panel.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+  )
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "Tint hue" })).toBeFocused()
   await page.keyboard.press("ArrowRight")
@@ -910,6 +913,40 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await expect(panel.locator(".knobs-strip").first()).not.toHaveClass(/knobs-active/)
   await page.keyboard.press("u")
   await expect.poll(async () => (await values()).tint).toBe(fitted)
+  // Reset back to default (oklch(0.7 0.16 40)): scrubbing H or L through narrow-gamut regions
+  // keeps the C thumb steady at 0.16 while the C strip's veil moves to show the out-of-gamut part.
+  await page.keyboard.press("Shift+R")
+  const chromaStrip = panel.getByRole("slider", { name: "Tint chroma" })
+  const lightnessStrip = panel.getByRole("slider", { name: "Tint lightness" })
+  const chromaThumbLeft = () =>
+    chromaStrip
+      .locator(".knobs-strip-thumb")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  const chromaVeilLeft = () =>
+    chromaStrip
+      .locator(".knobs-strip-veil")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  const initialThumb = await chromaThumbLeft()
+  const initialVeil = await chromaVeilLeft()
+  // Drag H into cyan-blue (~200°), where maxChroma(0.7, 200) < 0.16: the veil moves left of the
+  // thumb, while the C thumb stays at its requested chroma.
+  const hBox = (await hue.boundingBox())!
+  await page.mouse.move(hBox.x + hBox.width * 0.2, hBox.y + hBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hBox.x + hBox.width * 0.56, hBox.y + hBox.height / 2, { steps: 6 })
+  expect(await chromaThumbLeft()).toBeCloseTo(initialThumb, 2)
+  await expect(chromaStrip).toHaveAttribute("aria-valuenow", "0.16")
+  expect(await chromaVeilLeft()).toBeLessThan(initialThumb)
+  expect(await chromaVeilLeft()).not.toBeCloseTo(initialVeil, 1)
+  await page.mouse.up()
+  // Scrub L into high lightness (~92%), where gamut narrows further: C thumb still stays put.
+  const lBox = (await lightnessStrip.boundingBox())!
+  await page.mouse.move(lBox.x + lBox.width * 0.7, lBox.y + lBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(lBox.x + lBox.width * 0.92, lBox.y + lBox.height / 2, { steps: 5 })
+  expect(await chromaThumbLeft()).toBeCloseTo(initialThumb, 2)
+  await expect(chromaStrip).toHaveAttribute("aria-valuenow", "0.16")
+  await page.mouse.up()
   await page.keyboard.press("Escape")
 
   // A pad drag, however long, is one undo step; arrows nudge the puck.

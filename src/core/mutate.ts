@@ -1,4 +1,4 @@
-import { parseColor } from "./color.js"
+import { maxChroma, parseColor } from "./color.js"
 import { EASING_Y } from "./easing.js"
 import {
   SPRING,
@@ -82,17 +82,17 @@ function shift(field: ValueField, value: Value, random: () => number): unknown {
     }
     case "color": {
       const c = parseColor(value) ?? { l: 0.7, c: 0.1, h: 0 }
-      return {
-        h: (c.h + signed(random) * between(MUTATE.hue[0], MUTATE.hue[1], random()) + 360) % 360,
-        c: Math.max(0, c.c + signed(random) * MUTATE.chroma * random()),
-        l: Math.min(
-          1,
-          Math.max(
-            0,
-            c.l + signed(random) * between(MUTATE.lightness[0], MUTATE.lightness[1], random()),
-          ),
+      const max0 = maxChroma(c.l, c.h)
+      const rel0 = max0 > 1e-4 ? Math.min(1, Math.max(0, c.c / max0)) : 0.5
+      const h = (c.h + signed(random) * between(MUTATE.hue[0], MUTATE.hue[1], random()) + 360) % 360
+      const l = Math.min(
+        1,
+        Math.max(
+          0,
+          c.l + signed(random) * between(MUTATE.lightness[0], MUTATE.lightness[1], random()),
         ),
-      }
+      )
+      return { l, c: nudge(rel0, 0, 1, 0.01, random) * maxChroma(l, h), h }
     }
     case "easing":
       return (value as readonly number[]).map((v, i) => {

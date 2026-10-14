@@ -375,9 +375,9 @@ const css = `
 .knobs-strip-label{color:var(--k-dim);font-size:var(--k-text-cap);font-weight:600;text-align:left}
 .knobs-strip-read{text-align:right}
 .knobs-strip-track{position:relative;height:var(--k-track-h);border-radius:999px;box-shadow:inset 0 0 0 1px var(--k-line);cursor:ew-resize;touch-action:none}
-.knobs-strip-veil{position:absolute;top:0;bottom:0;right:0;border-radius:0 999px 999px 0;background:color-mix(in srgb,var(--k-bg) 62%,transparent);pointer-events:none}
 .knobs-strip-thumb{position:absolute;top:50%;left:0;width:calc(var(--k-row) - 12px);height:calc(var(--k-row) - 12px);margin:calc(6px - var(--k-row) / 2);border-radius:50%;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.4);pointer-events:none;transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease)}
-.knobs-strip:is(.knobs-active,:has(:focus-visible)) .knobs-strip-thumb{transition:background-color .2s,scale .2s var(--k-ease);scale:1.1}
+.knobs-strip.knobs-active .knobs-strip-thumb{transition:background-color .2s,scale .2s var(--k-ease)}
+.knobs-strip:is(.knobs-active,:has(:focus-visible)) .knobs-strip-thumb{scale:1.1}
 .knobs-pad,.knobs-ease{position:relative;border-radius:var(--k-radius-md);background:var(--k-seg-bg);touch-action:none}
 .knobs-pad{height:calc(var(--k-row) * 4);cursor:crosshair;overflow:hidden}
 .knobs-pad>i{position:absolute;left:0;top:0;pointer-events:none;transition:translate ${FILL_T} ${DELAY},scale .2s var(--k-ease)}

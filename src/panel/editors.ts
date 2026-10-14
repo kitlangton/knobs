@@ -297,6 +297,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     track.focus({ preventScroll: true })
     dragRect = track.getBoundingClientRect()
     dragging = true
+    line.classList.add("knobs-active")
     fine = event.altKey
     anchorX = event.clientX
     anchorValue = current
@@ -379,6 +380,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     gpu,
     update(value: number) {
       const first = !thumb.style.left
+      if (!first && current === value) return
       current = value
       read.textContent = o.format(value)
       track.setAttribute("aria-valuenow", String(value))
@@ -588,10 +590,20 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
   let shown: Oklch = parseColor(c.field.value)!
   // Hue and lightness moves keep the chroma you asked for, even where sRGB has to trim it.
   let want = shown.c
+  let sending = false
   const g = gesture(c)
   const send = (patch: Partial<Oklch>) => {
     if (patch.c !== undefined) want = patch.c
-    g.set({ ...shown, c: want, ...patch })
+    sending = true
+    try {
+      g.set({ ...shown, c: want, ...patch })
+    } finally {
+      sending = false
+    }
+    if (patch.c !== undefined) {
+      strips[1]!.update(want)
+      c.wake()
+    }
   }
   const strips = [
     strip(c, {
@@ -664,13 +676,14 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     gpu: [gpu],
     update(value) {
       shown = parseColor(value)!
-      if (Math.abs(Math.min(want, maxChroma(shown.l, shown.h)) - shown.c) > 0.001) want = shown.c
+      if (!sending && Math.abs(Math.min(want, maxChroma(shown.l, shown.h)) - shown.c) > 0.001)
+        want = shown.c
       const rgb = rgbCss(oklchToRgb(shown))
       swatch.style.backgroundColor = rgb
       hex.textContent = colorHex(shown).toUpperCase()
       const [hs, cs, ls] = strips
       hs!.update(shown.h)
-      cs!.update(shown.c)
+      cs!.update(want)
       ls!.update(shown.l)
       const { l, c: ch, h } = shown
       const hc = Math.max(ch, 0.06)
