@@ -84,6 +84,14 @@ export function mixColor(a: Rgba, b: Rgba, t: number): Rgba {
   ]
 }
 
+/** CSS `color-mix(in srgb, a p, b)`, interpolated with premultiplied alpha like the browser. */
+export function cssMix(a: Rgba, b: Rgba, p: number): Rgba {
+  const alpha = a[3] * p + b[3] * (1 - p)
+  if (alpha <= 0) return [0, 0, 0, 0]
+  const ch = (i: number) => (a[i]! * a[3] * p + b[i]! * b[3] * (1 - p)) / alpha
+  return [ch(0), ch(1), ch(2), alpha]
+}
+
 export interface PanelThemeTokens {
   readonly bg: Rgba
   readonly surface: Rgba

@@ -28,7 +28,7 @@ export interface Slider {
   fillSpring: Spring
   /** Spring driving rubber-band stretch in px (-MAX..+MAX). */
   stretchSpring: Spring
-  /** Spring driving handle visibility/scale [0..1]. */
+  /** Spring driving handle visibility/scale [0..1] (the GPU renderer sets its target). */
   handleSpring: Spring
   /** Per-character springs for GPU rolling number digits. */
   /** Readout characters keyed by place from the right, so 99 → 100 keeps the 9s in place. */
@@ -37,6 +37,10 @@ export interface Slider {
   velocity: VelocityTracker
   /** Number of tick marks along the track. */
   tickCount: number
+  /** Where the default value sits along the track [0..1]. */
+  notchRatio: number
+  /** Whether a drag is currently held on the default by the notch's magnet. */
+  isMagnetized(): boolean
   /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
   getDigitsText(): string
   /** Optional unit string (e.g. "px", "s"). */
@@ -59,8 +63,9 @@ const decimals = (step: number) => {
 /**
  * A DialKit-style slider: the whole row is the track, the fill is a full-height block,
  * the handle is a hairline that only shows on hover, and the label + value sit on the
- * track itself. Dragging follows the pointer exactly; a click snaps to the nearest step
- * (or nearest 10% when there are many steps) with a short spring-like ease.
+ * track itself. Dragging follows the pointer exactly (⌥ for 1/10 speed) and the default's notch
+ * pulls it in from a few px away; a click snaps to the nearest step (or nearest 10% when there
+ * are many steps) with a short spring-like ease. Horizontal scrolling nudges the value.
  */
 export function createSlider(
   doc: Document,
@@ -91,6 +96,7 @@ export function createSlider(
     marks.append(mark)
   }
   const fill = el("div", "knobs-fill")
+  const notch = el("i", "knobs-notch")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
   label.textContent = display
@@ -113,8 +119,12 @@ export function createSlider(
   number.step = String(field.step)
   number.hidden = true
   number.setAttribute("aria-label", `${display} value`)
-  track.append(marks, fill, handle, label, value, number)
+  track.append(marks, fill, notch, handle, label, value, number)
   root.append(track)
+  // The fill fades under the readout; the zone follows the readout's width as digits come and go.
+  new ResizeObserver(() => {
+    if (value.offsetWidth) track.style.setProperty("--k-readout", `${value.offsetWidth}px`)
+  }).observe(value)
 
   const places = decimals(field.step)
   const fmtDigits = (v: number) => v.toFixed(places)
@@ -143,6 +153,8 @@ export function createSlider(
       Math.max(field.min, field.min + Math.round((v - field.min) / field.step) * field.step),
     )
 
+  const notchRatio = ratioOf(field.value)
+  notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
   const fillSpring = new Spring(ratioOf(field.value), 26, 0.84)
   const stretchSpring = new Spring(0, 32, 0.78)
   const handleSpring = new Spring(0, 28, 0.88)
@@ -206,10 +218,14 @@ export function createSlider(
   }
 
   let current = field.value
+  // Entering or leaving the notch's magnet eases the last few px instead of jumping.
+  let settleUntil = 0
+  const settling = () => dragging && performance.now() < settleUntil
   const paint = (v: number, animate: boolean) => {
     root.classList.toggle("knobs-animate", animate)
+    root.classList.toggle("knobs-settle", settling())
     const p = pct(v)
-    fill.style.width = `${p}%`
+    fill.style.setProperty("--k-fill", `${p}%`)
     handle.style.left = `${p}%`
     // Dodge the text when the handle would sit on top of it.
     handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
@@ -220,7 +236,7 @@ export function createSlider(
     const r = ratioOf(v)
     velocity.add(r, 0)
     const ms = !initialized ? 0 : rollMs(dragging)
-    if (!initialized || dragging) fillSpring.snap(r)
+    if (!initialized || (dragging && !settling())) fillSpring.snap(r)
     else fillSpring.set(r)
     syncDigits(fmtDigits(v), Math.sign(v - previous), ms)
     initialized = true
@@ -236,41 +252,37 @@ export function createSlider(
     onMotionWake?.()
   }
 
+  const span = field.max - field.min
   const valueAt = (clientX: number) => {
     const rect = track.getBoundingClientRect()
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    return field.min + t * (field.max - field.min)
+    return field.min + t * span
   }
+  // Within MAGNET px of the default (at the pointer's current speed), the value sits on it.
+  const MAGNET = 4
+  const nearDefault = (v: number, factor = 1) =>
+    track.offsetWidth > 0 &&
+    Math.abs(v - field.value) <= (MAGNET / track.offsetWidth) * span * factor
   // Clicks snap: to the step when steps are few, otherwise magnetically to deciles.
   const snap = (v: number) => {
+    if (nearDefault(v)) return field.value
     if (steps <= 10) return quantize(v)
-    const span = field.max - field.min
     const decile = Math.round(((v - field.min) / span) * 10) / 10
     const near = Math.abs((v - field.min) / span - decile) < 0.03125
     return quantize(near ? field.min + decile * span : v)
   }
 
   let dragging = false
-  let hovered = false
   let startX = 0
   let moved = false
   let fromValue = false
-
-  const syncHandleTarget = () => {
-    const focused = track.matches(":focus-visible")
-    handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
-    onMotionWake?.()
-  }
-  root.addEventListener("pointerenter", () => {
-    hovered = true
-    syncHandleTarget()
-  })
-  root.addEventListener("pointerleave", () => {
-    hovered = false
-    syncHandleTarget()
-  })
-  track.addEventListener("focus", syncHandleTarget)
-  track.addEventListener("blur", syncHandleTarget)
+  let magnet = false
+  // ⌥ switches to relative 1/10-speed dragging, re-anchored whenever ⌥ changes so nothing jumps.
+  let relative = false
+  let fine = false
+  let anchorX = 0
+  let anchorValue = 0
+  let raw = 0
 
   track.onpointerdown = (event) => {
     const target = event.target as Node | null
@@ -281,37 +293,68 @@ export function createSlider(
     dragging = true
     moved = false
     startX = event.clientX
+    fine = relative = event.altKey
+    anchorX = startX
+    anchorValue = raw = current
     velocity.reset()
     root.classList.add("knobs-active")
     track.focus({ preventScroll: true })
-    syncHandleTarget()
+    onMotionWake?.()
   }
   const MAX_STRETCH = 8
-  const stretch = (clientX: number) => {
-    const rect = track.getBoundingClientRect()
-    const over =
-      clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
-    const dead = Math.max(0, over - 24)
+  // `over` is how far (px) the pointer has pulled past an end: negative left, positive right.
+  const stretch = (over: number) => {
+    const width = track.offsetWidth
+    const dead = Math.max(0, Math.abs(over) - 24)
     const amount = MAX_STRETCH * Math.sqrt(Math.min(dead / 200, 1))
-    const signed = clientX < rect.left ? -amount : amount
-    stretchSpring.snap(signed)
+    stretchSpring.snap(over < 0 ? -amount : amount)
     root.style.transform = amount
-      ? `translateX(${clientX < rect.left ? -amount : 0}px) scaleX(${1 + amount / rect.width})`
+      ? `translateX(${over < 0 ? -amount : 0}px) scaleX(${1 + amount / width})`
       : ""
-    root.style.transformOrigin = clientX < rect.left ? "right" : "left"
+    root.style.transformOrigin = over < 0 ? "right" : "left"
     onMotionWake?.()
   }
   track.onpointermove = (event) => {
     if (!dragging) return
-    if (!moved && Math.abs(event.clientX - startX) < 3) return
+    if (!moved && !relative && Math.abs(event.clientX - startX) < 3) return
+    if (event.altKey !== fine) {
+      fine = event.altKey
+      relative = true
+      anchorX = event.clientX
+      anchorValue = raw
+    }
     const first = !moved
     moved = true
-    set(quantize(valueAt(event.clientX)), { coalesce: !first })
-    stretch(event.clientX)
+    const rect = track.getBoundingClientRect()
+    const factor = fine ? 0.1 : 1
+    let over: number
+    if (relative) {
+      raw = anchorValue + ((event.clientX - anchorX) / rect.width) * span * factor
+      const bound = Math.min(field.max, Math.max(field.min, raw))
+      over = span > 0 ? ((raw - bound) / span) * (rect.width / factor) : 0
+    } else {
+      raw = valueAt(event.clientX)
+      over =
+        event.clientX < rect.left
+          ? event.clientX - rect.left
+          : event.clientX > rect.right
+            ? event.clientX - rect.right
+            : 0
+    }
+    const held = nearDefault(raw, factor)
+    if (held !== magnet) {
+      magnet = held
+      settleUntil = performance.now() + 200
+      root.classList.toggle("knobs-magnet", held)
+    }
+    set(held ? field.value : quantize(raw), { coalesce: !first })
+    stretch(over)
   }
   const release = (event: PointerEvent) => {
     if (!dragging) return
     dragging = false
+    magnet = false
+    root.classList.remove("knobs-magnet", "knobs-settle")
     stretchSpring.set(0)
     root.classList.remove("knobs-active")
     root.classList.add("knobs-release")
@@ -323,10 +366,45 @@ export function createSlider(
       if (fromValue) edit()
       else set(snap(valueAt(event.clientX)))
     }
-    syncHandleTarget()
+    onMotionWake?.()
   }
   track.onpointerup = release
   track.onpointercancel = release
+
+  // Horizontal scrolling (or ⇧ + wheel) nudges by steps; one gesture is one undo step.
+  // Vertical scrolling is left alone so the page and panel still scroll.
+  let wheelAt = 0
+  let wheelRaw = 0
+  let wheelValue = 0
+  let wheelCommitted = false
+  track.addEventListener(
+    "wheel",
+    (event) => {
+      let dx = event.deltaX
+      if (event.shiftKey && dx === 0) dx = event.deltaY
+      else if (Math.abs(dx) <= Math.abs(event.deltaY)) return
+      if (!dx || dragging || !number.hidden) return
+      event.preventDefault()
+      const now = performance.now()
+      // A pause, or any other change (an undo, a key), starts a new gesture.
+      if (now - wheelAt > 250 || current !== wheelValue) {
+        wheelRaw = wheelValue = current
+        wheelCommitted = false
+      }
+      wheelAt = now
+      const px = dx * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1)
+      wheelRaw = Math.min(
+        field.max,
+        Math.max(field.min, wheelRaw + (px / track.offsetWidth) * span * 0.5),
+      )
+      const next = quantize(wheelRaw)
+      if (next === current) return
+      set(next, { coalesce: wheelCommitted })
+      wheelValue = next
+      wheelCommitted = true
+    },
+    { passive: false },
+  )
 
   const edit = () => {
     number.value = String(current)
@@ -384,6 +462,8 @@ export function createSlider(
     digitPlaces,
     velocity,
     tickCount: count,
+    notchRatio,
+    isMagnetized: () => magnet,
     getDigitsText: () => fmtDigits(current),
     getUnitText: () => field.unit ?? "",
     isDragging: () => dragging,

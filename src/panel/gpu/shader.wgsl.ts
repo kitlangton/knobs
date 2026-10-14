@@ -1,15 +1,17 @@
-export const FLOATS_PER_PRIM = 32
+export const FLOATS_PER_PRIM = 40
 
 export const panelWgsl = /* wgsl */ `
 struct Prim {
   rect: vec4f,    // x, y, w, h in viewport CSS px
   clip: vec4f,    // minX, minY, maxX, maxY in viewport CSS px
-  uv: vec4f,      // u0, v0, u1, v1 (atlas UVs or aux)
+  uv: vec4f,      // u0, v0, u1, v1 (atlas UVs), or corner radii tl, tr, br, bl when motion.w = 1
   color: vec4f,   // primary r, g, b, a
   color2: vec4f,  // secondary r, g, b, a (border / handle / thumb / glow)
   look: vec4f,    // radius, strokeWidth, glowOrBlur, kind
-  motion: vec4f,  // blurX, blurY, stretchX, stretchOrigin
+  motion: vec4f,  // blurX, blurY, stretchX, cornersInUv
   extra: vec4f,   // kind-specific params
+  aux: vec4f,     // kind-specific params
+  aux2: vec4f,    // kind-specific color
 }
 
 struct View {
@@ -46,7 +48,9 @@ struct Out {
     r.z += p.motion.z;
   }
 
-  let padGlow = select(p.look.z * 1.6, p.look.z * 2.2 + 8.0, p.look.w == 0.0);
+  // Shadows and the pill/switch glows reach ~14px past their shapes.
+  let wide = p.look.w == 0.0 || p.look.w == 3.0 || p.look.w == 4.0;
+  let padGlow = select(p.look.z * 1.6, p.look.z * 2.2 + 8.0, wide);
   let pad = vec2f(padGlow + 2.0) + abs(p.motion.xy) * 0.65;
   let screenPx = (r.xy - pad) + c * (r.zw + pad * 2.0);
 
@@ -62,6 +66,20 @@ fn roundedBox(p: vec2f, size: vec2f, r: f32) -> f32 {
   let rad = min(r, min(size.x, size.y) * 0.5);
   let q = abs(p - size * 0.5) - size * 0.5 + rad;
   return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - rad;
+}
+
+// Per-corner radii (tl, tr, br, bl), e.g. the first and last rows of a grouped card.
+fn roundedBox4(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
+  let c = p - size * 0.5;
+  let top = select(radii.x, radii.y, c.x > 0.0);
+  let bottom = select(radii.w, radii.z, c.x > 0.0);
+  let rad = min(select(top, bottom, c.y > 0.0), min(size.x, size.y) * 0.5);
+  let q = abs(c) - size * 0.5 + rad;
+  return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - rad;
+}
+
+fn radiiOf(p: Prim) -> vec4f {
+  return select(vec4f(p.look.x), p.uv, p.motion.w > 0.5);
 }
 
 fn covSd(dist: f32) -> f32 {
@@ -117,8 +135,7 @@ fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 
 // kind 1: Control surface (slider track, button, preset strip, segmented tray)
 fn shadeTrack(p: Prim, local: vec2f, size: vec2f) -> vec4f {
-  let r = p.look.x;
-  let dist = roundedBox(local, size, r);
+  let dist = roundedBox4(local, size, radiiOf(p));
   var out = vec4f(0.0);
 
   // Focus ring + optical glow
@@ -158,14 +175,13 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let fillX = fillRatio * size.x;
   var out = vec4f(0.0);
 
-  // Fill block
+  // Accent-tinted fill; its leading 24px brighten toward the edge (look.y = edge alpha), and the
+  // whole fill fades to 40% under the readout (aux.x = readout zone width from the right).
   let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
-    // Subtle gradient brightening near the leading edge of the fill
-    let edgeProx = exp(-max(0.0, fillX - local.x) / 28.0) * 0.18;
-    let fillRgb = clamp(p.color.rgb + vec3f(edgeProx * 0.15), vec3f(0.0), vec3f(1.0));
-    let fillA = clamp(p.color.a + edgeProx * 0.06, 0.0, 1.0);
-    out = vec4f(fillRgb * fillA, fillA) * fillCov;
+    let edge = (1.0 - clamp((fillX - local.x) / 24.0, 0.0, 1.0)) * p.look.y;
+    let zone = mix(0.4, 1.0, clamp((size.x - p.aux.x - local.x) / 16.0, 0.0, 1.0));
+    out = over(premul(p.color), vec4f(p.color2.rgb * edge, edge)) * fillCov * zone;
   }
 
   // Handle pill at fillX
@@ -173,7 +189,8 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   if (handleScale > 0.01) {
     let dodge = select(1.0, 0.28, fillRatio < 0.22 || fillRatio > 0.78);
     let hScaleY = select(1.0, 0.76, fillRatio < 0.22 || fillRatio > 0.78);
-    let hw = max(1.5, 3.0 * handleScale);
+    // Like the CSS handle: 3px wide at rest, scaled from 25% width as it appears.
+    let hw = 3.0 * clamp(0.25 + handleScale * 1.15, 0.25, 1.0);
     let hh = max(6.0, (size.y - 12.0) * hScaleY);
     let hp = local - vec2f(fillX - hw * 0.5, (size.y - hh) * 0.5);
     let hDist = roundedBox(hp, vec2f(hw, hh), hw * 0.5);
@@ -193,8 +210,7 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 
 // kind 2: Slider fill + tick marks + hairline handle with horizontal motion blur
 fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
-  let r = p.look.x;
-  let trackDist = roundedBox(local, size, r);
+  let trackDist = roundedBox4(local, size, radiiOf(p));
   let trackCov = covSd(trackDist);
   if (trackCov <= 0.0) { return vec4f(0.0); }
 
@@ -230,6 +246,14 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
       let ta = tCov * tickAlpha * 0.22;
       acc = over(acc, vec4f(p.color2.rgb * ta, ta));
     }
+  }
+
+  // Default notch: a 1×5 px tick rising from the bottom edge (aux.y = position, aux.z = opacity).
+  if (p.aux.z > 0.005) {
+    let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
+    let nCov = covSd(roundedBox(local - vec2f(nx - 0.5, size.y - 5.0), vec2f(1.0, 6.0), 0.5));
+    let na = nCov * p.aux2.a * p.aux.z;
+    acc = over(acc, vec4f(p.aux2.rgb * na, na));
   }
 
   return acc * trackCov;

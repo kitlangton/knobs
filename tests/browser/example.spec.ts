@@ -27,8 +27,9 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await page.getByRole("button", { name: "Close halftone" }).click()
   const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
 
-  // Verify no per-field shortcut suffixes are rendered in labels
+  // Verify no per-field shortcut suffixes are rendered in labels; ids read as titles
   await expect(panel.locator(".knobs-label").first()).toHaveText("seed")
+  await expect(panel.locator("header strong")).toHaveText("Splat")
 
   // Verify ? shortcuts popover in header replaces permanent footer
   const helpBtn = panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })
@@ -70,11 +71,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
     "true",
   )
 
-  await panel
-    .locator(".knobs-actions")
-    .first()
-    .getByRole("button", { name: "Copy", exact: true })
-    .click()
+  await panel.locator("header").getByRole("button", { name: "Copy", exact: true }).click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("count:")
   await page.reload()
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
@@ -102,7 +99,8 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
   await presetStrip.getByRole("radio", { name: "Variant 2" }).click()
   await page.keyboard.press("Backspace")
   await expect(presetStrip.getByRole("radio", { name: "Variant 2" })).toHaveCount(0)
-  await panel.getByRole("button", { name: "Reset", exact: true }).click()
+  // Nothing differs from the defaults, so there is nothing to reset.
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
 
   const count = panel.getByRole("slider", { name: "count", exact: true })
   await count.focus()
@@ -159,11 +157,7 @@ test("three hover chips, independent panels, persistence, clipboard, keyboard, h
       value: () => Promise.reject(new Error("unavailable")),
     }),
   )
-  await panel
-    .locator(".knobs-actions")
-    .first()
-    .getByRole("button", { name: "Copy", exact: true })
-    .click()
+  await page.keyboard.press("Shift+C")
   await expect(panel.getByRole("textbox", { name: "Import or copy text" })).toHaveValue(/count: 42/)
   await expect(panel.getByRole("status")).toContainText("Copy the selected text")
   const header = panel.locator("header")
@@ -399,27 +393,30 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const seed = panel.getByRole("slider", { name: "seed", exact: true })
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
-  // Phosphor icons in the header
-  await expect(panel.locator("header .knobs-icon")).toHaveCount(4)
+  // Random, Reset and Copy are Phosphor icons in the header with undo/redo, help and close
+  await expect(panel.locator("header .knobs-icon")).toHaveCount(7)
+  await expect(panel.locator(".knobs-actions")).toHaveCount(0)
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
 
-  // ↑/↓ walk presets → rows → action bar; ←/→ move along the action bar
+  // ↑/↓ walk presets → rows, wrapping (no custom actions here)
+  const grain = panel.getByRole("switch", { name: "grain" })
   await seed.focus()
   await page.keyboard.press("ArrowUp")
   await expect(strip).toBeFocused()
   await page.keyboard.press("ArrowUp")
-  await expect(random).toBeFocused()
-  await page.keyboard.press("ArrowRight")
-  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeFocused()
-  await page.keyboard.press("ArrowUp")
-  await expect(panel.getByRole("switch", { name: "grain" })).toBeFocused()
+  await expect(grain).toBeFocused()
+  await page.keyboard.press("ArrowDown")
+  await expect(strip).toBeFocused()
 
-  // Tab wraps inside the floating panel
-  await panel.getByRole("button", { name: "Copy", exact: true }).focus()
+  // Tab wraps inside the floating panel; disabled Reset/Undo/Redo are skipped
+  await grain.focus()
   await page.keyboard.press("Tab")
-  // Undo/Redo are disabled on a fresh panel, so the wrap lands on the first enabled control.
-  await expect(panel.getByRole("button", { name: "Keyboard shortcuts" })).toBeFocused()
-  await page.keyboard.press("Shift+Tab")
+  await expect(random).toBeFocused()
+  await page.keyboard.press("Tab")
   await expect(panel.getByRole("button", { name: "Copy", exact: true })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await page.keyboard.press("Shift+Tab")
+  await expect(grain).toBeFocused()
 
   // ⇧R resets everything; ⇧S saves a preset; ⌫ on the strip deletes it; export lives in "?"
   await seed.focus()
@@ -477,4 +474,83 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await expect(panel.getByRole("slider", { name: "count" })).toHaveAttribute("aria-valuenow", "98")
   await count.locator(".knobs-value").click()
   await expect(count.locator(".knobs-number")).toBeVisible()
+  await page.keyboard.press("Escape")
+})
+
+test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", async ({ page }) => {
+  await page.goto("/")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const study = page.locator('[data-study="splat"]')
+  const bounds = (await study.boundingBox())!
+  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
+  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  const count = panel.getByRole("slider", { name: "count", exact: true })
+  const track = (await count.boundingBox())!
+  const y = track.y + track.height / 2
+  const xAt = (v: number) => track.x + (v / 300) * track.width
+  const now = async () => Number(await count.getAttribute("aria-valuenow"))
+
+  // The notch marks the default; dragging within a few px of it lands exactly on it.
+  await expect(panel.locator('[data-field="count"] .knobs-notch')).toHaveCount(1)
+  await page.mouse.move(xAt(200), y)
+  await page.mouse.down()
+  await page.mouse.move(xAt(150), y, { steps: 4 })
+  await page.mouse.move(xAt(98) + 3, y, { steps: 4 })
+  await expect(panel.locator('[data-field="count"]')).toHaveClass(/knobs-magnet/)
+  expect(await now()).toBe(98)
+  await page.mouse.move(xAt(98) + 14, y, { steps: 2 })
+  expect(await now()).toBeGreaterThan(100)
+  await page.mouse.up()
+
+  // ⌥-drag moves at a tenth of the speed, relative to where it started.
+  await count.focus()
+  await page.keyboard.type("150")
+  await page.keyboard.press("Enter")
+  await page.mouse.move(xAt(220), y)
+  await page.keyboard.down("Alt")
+  await page.mouse.down()
+  await page.mouse.move(xAt(220) + 60, y, { steps: 6 })
+  const fine = await now()
+  await page.mouse.up()
+  await page.keyboard.up("Alt")
+  expect(fine).toBeGreaterThan(150)
+  expect(fine).toBeLessThanOrEqual(150 + Math.ceil((60 / track.width) * 300 * 0.1) + 1)
+
+  // Horizontal scrolling nudges by steps as one undo entry; vertical scrolling is left alone.
+  await page.mouse.move(xAt(100), y)
+  const before = await now()
+  await page.mouse.wheel(0, 120)
+  expect(await now()).toBe(before)
+  await page.mouse.wheel(16, 0)
+  await expect.poll(now).toBeGreaterThan(before)
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(before)
+  // One trackpad gesture: a quick burst of sideways wheel events.
+  await count.evaluate((el) => {
+    for (let i = 0; i < 6; i++)
+      el.dispatchEvent(new WheelEvent("wheel", { deltaX: 8, bubbles: true, cancelable: true }))
+  })
+  await expect.poll(now).toBeGreaterThan(before + 10)
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(before)
+})
+
+test("group reset appears only while its group differs from defaults", async ({ page }) => {
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  await expect(synth.locator("header strong")).toHaveText("Synth voice")
+  const filterReset = synth.getByRole("button", { name: "Reset Filter" })
+  await expect(filterReset).toBeHidden()
+  const resonance = synth.getByRole("slider", { name: "Resonance", exact: true })
+  await resonance.focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(filterReset).toBeVisible()
+  await expect(synth.getByRole("button", { name: "Reset Oscillator" })).toBeHidden()
+  await filterReset.click()
+  await expect(resonance).toHaveAttribute("aria-valuenow", "0.42")
+  await expect(filterReset).toBeHidden()
 })

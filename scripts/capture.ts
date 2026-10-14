@@ -32,6 +32,46 @@ const scenes: { name: string; path: string; run(page: Page, mode: string): Promi
       await panel.screenshot({ path: `test-results/cap-${mode}-tokens.png` })
     },
   },
+  {
+    name: "light",
+    path: "/meta.html",
+    async run(page, mode) {
+      const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
+      await tokens.getByRole("radio", { name: "light" }).click()
+      const panel = page.getByRole("region", { name: "synth-voice controls" })
+      await panel.getByRole("radio", { name: "acid" }).click()
+      await sleep(800)
+      await panel.screenshot({ path: `test-results/cap-${mode}-light-synth.png` })
+      await tokens.screenshot({ path: `test-results/cap-${mode}-light-tokens.png` })
+    },
+  },
+  {
+    name: "splat",
+    path: "/",
+    async run(page, mode) {
+      const study = page.locator('[data-study="splat"]')
+      const b = (await study.boundingBox())!
+      await study.hover({ position: { x: b.width - 20, y: 60 } })
+      await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+      const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+      await panel.waitFor()
+      await panel.getByRole("slider", { name: "count" }).focus()
+      await page.keyboard.press("Shift+ArrowRight")
+      await page.mouse.move(5, 5)
+      await sleep(900)
+      await panel.screenshot({ path: `test-results/cap-${mode}-splat.png` })
+    },
+  },
+  {
+    name: "remote",
+    path: "/",
+    async run(page, mode) {
+      const panel = page.getByRole("region", { name: "remote-tune controls" })
+      await panel.scrollIntoViewIfNeeded()
+      await sleep(600)
+      await panel.screenshot({ path: `test-results/cap-${mode}-remote.png` })
+    },
+  },
 ]
 
 try {

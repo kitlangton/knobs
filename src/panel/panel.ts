@@ -26,6 +26,19 @@ export interface Panel {
 }
 let layer = 2147480001
 
+/** "synth-voice" → "Synth voice", "knobsTokens" → "Knobs tokens"; titles with spaces are kept. */
+export function readableTitle(id: string): string {
+  if (/\s/.test(id)) return id
+  const words = id
+    .replace(/([a-z0-9])([A-Z][a-z])/g, "$1-$2")
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => (/^[A-Z][a-z0-9]*$/.test(word) ? word.toLowerCase() : word))
+  const first = words[0] ?? ""
+  if (/^[a-z0-9]+$/.test(first)) words[0] = first.charAt(0).toUpperCase() + first.slice(1)
+  return words.join(" ")
+}
+
 interface InternalPanelOptions extends MountPanelOptions {
   readonly inline?: boolean
   readonly anchor?: HTMLElement
@@ -102,8 +115,9 @@ function buildPanel<S extends Schema>(
   const showFooter = options.footer !== false
 
   const header = el("header")
-  let titleEl: HTMLElement | null = null
   const headerButtons: { button: HTMLButtonElement; icon: IconName }[] = []
+  const headActions = el("div")
+  headActions.className = "knobs-head-actions"
   const iconButton = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
     const node = button("", action)
     node.append(iconSvg(doc, icon))
@@ -111,9 +125,13 @@ function buildPanel<S extends Schema>(
     if (shortcut) node.setAttribute("aria-keyshortcuts", shortcut)
     return node
   }
-
-  const undoButton = iconButton("undo", "Undo", "u", controls.undo)
-  const redoButton = iconButton("redo", "Redo", "Shift+u", controls.redo)
+  const place = (node: HTMLButtonElement, icon: IconName) => {
+    headActions.append(node)
+    headerButtons.push({ button: node, icon })
+    return node
+  }
+  const headButton = (icon: IconName, label: string, shortcut: string, action: () => unknown) =>
+    place(iconButton(icon, label, shortcut, action), icon)
 
   const popover = el("div")
   popover.className = "knobs-popover"
@@ -126,11 +144,13 @@ function buildPanel<S extends Schema>(
     ["↑↓ / j k", "Move between rows"],
     ["Tab", "Next control"],
     ["←→ / h l", "Adjust value (⇧ ×10)"],
+    ["⌥ drag", "Fine adjust"],
     ["[ / ]", "Cycle presets"],
     ["s", "Jump to anything by code"],
     ["0–9 / Enter", "Edit number inline"],
     ["⌫", "Reset row · delete saved preset"],
     ["r / ⇧R", "Random / Reset all"],
+    ["⇧C", "Copy values"],
     ...(showVariants ? ([["⇧S", "Save as preset"]] as [string, string][]) : []),
     ["u / ⇧u", "Undo / Redo"],
     ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
@@ -149,28 +169,28 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  let dismiss: HTMLButtonElement | undefined
-  if (titleText !== false) {
-    titleEl = el("strong", titleText)
-    const headActions = el("div")
-    headActions.className = "knobs-head-actions"
-    if (showHistory) {
-      headActions.append(undoButton, redoButton)
-      headerButtons.push({ button: undoButton, icon: "undo" }, { button: redoButton, icon: "redo" })
-    }
-    if (showFooter) {
-      helpButton = iconButton("help", "Keyboard shortcuts", "?", () => togglePopover())
-      helpButton.setAttribute("aria-expanded", "false")
-      headActions.append(helpButton)
-      headerButtons.push({ button: helpButton, icon: "help" })
-    }
-    if (close) {
-      dismiss = iconButton("close", `Close ${controls.id}`, "", close)
-      headActions.append(dismiss)
-      headerButtons.push({ button: dismiss, icon: "close" })
-    }
-    header.append(titleEl, headActions)
+  const copyValues = () => void copy(controls.code())
+  const commands = [
+    headButton("random", "Random", "r", controls.randomize),
+    headButton("reset", "Reset", "Shift+R", controls.reset),
+    headButton("copy", "Copy", "Shift+C", copyValues),
+  ]
+  for (const b of commands) b.classList.add("knobs-head-cmd")
+  const resetBtn = commands[1]!
+  const undoButton = iconButton("undo", "Undo", "u", controls.undo)
+  const redoButton = iconButton("redo", "Redo", "Shift+u", controls.redo)
+  if (showHistory) {
+    place(undoButton, "undo").classList.add("knobs-head-split")
+    place(redoButton, "redo")
   }
+  if (showFooter) {
+    helpButton = headButton("help", "Keyboard shortcuts", "?", () => togglePopover())
+    helpButton.setAttribute("aria-expanded", "false")
+    if (!showHistory) helpButton.classList.add("knobs-head-split")
+  }
+  const dismiss = close ? headButton("close", `Close ${controls.id}`, "", close) : undefined
+  const titleEl = el("strong", titleText ? readableTitle(titleText) : "")
+  header.append(titleEl, headActions)
 
   const presetStrip = createPresetStrip(doc, controls, showVariants, run, () => wakeGpu())
   const allActions: readonly ControlAction<Values<S>>[] = [
@@ -178,36 +198,53 @@ function buildPanel<S extends Schema>(
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
   ]
   const body = el("div")
+  // Rows share one inset-grouped card per group (and per run of ungrouped rows).
+  let card: HTMLElement | undefined
   let currentGroup: string | undefined
+  const cards: HTMLElement[] = []
   const groupResetButtons = new Map<string, HTMLButtonElement>()
   const gpuGroups: GpuGroupBinding[] = []
   const gpuRows: GpuRowBinding[] = []
+  const cardFor = (group: string | undefined) => {
+    if (card && group === currentGroup) return card
+    currentGroup = group
+    if (group) body.append(groupHead(group))
+    card = el("div")
+    card.className = "knobs-card"
+    body.append(card)
+    cards.push(card)
+    return card
+  }
+
+  function groupHead(groupName: string) {
+    const gHead = el("div")
+    gHead.className = "knobs-group-head"
+    gHead.dataset.group = groupName
+    const gLabel = el("span", groupName)
+    const gRight = el("span")
+    const gBtns: HTMLButtonElement[] = []
+    for (const act of allActions.filter((a) => a.group === groupName)) {
+      const b = button(act.label, () => act.run(controls.get(), controls))
+      gBtns.push(b)
+      gRight.append(b)
+    }
+    // Shown only while something in the group differs from its defaults.
+    const gReset = iconButton("reset", `Reset ${groupName}`, "", () => {
+      controls.resetGroup(groupName)
+      if (doc.activeElement === gReset)
+        rows.find((r) => r.field.group === groupName)?.input.focus({ preventScroll: true })
+    })
+    gReset.className = "knobs-group-reset"
+    gReset.dataset.hint = `${groupName} reset`
+    groupResetButtons.set(groupName, gReset)
+    gRight.append(gReset)
+    gHead.append(gLabel, gRight)
+    gpuGroups.push({ element: gHead, labelEl: gLabel, buttons: gBtns, reset: gReset })
+    return gHead
+  }
 
   const rows = Object.entries(controls.schema).map(([key, field]) => {
-    if (field.group && field.group !== currentGroup) {
-      currentGroup = field.group
-      const groupName = currentGroup
-      const gHead = el("div")
-      gHead.className = "knobs-group-head"
-      gHead.dataset.group = groupName
-      const gLabel = el("span", groupName)
-      const gRight = el("span")
-      const gBtns: HTMLButtonElement[] = []
-      for (const act of allActions.filter((a) => a.group === groupName)) {
-        const b = button(act.label, () => act.run(controls.get(), controls))
-        gBtns.push(b)
-        gRight.append(b)
-      }
-      const gReset = button("Reset", () => controls.resetGroup(groupName))
-      gReset.setAttribute("aria-label", `Reset ${groupName}`)
-      gReset.dataset.hint = `${groupName} reset`
-      groupResetButtons.set(groupName, gReset)
-      gBtns.push(gReset)
-      gRight.append(gReset)
-      gHead.append(gLabel, gRight)
-      body.append(gHead)
-      gpuGroups.push({ element: gHead, labelEl: gLabel, buttons: gBtns })
-    }
+    const host = cardFor(field.group)
     const display = field.label ?? key
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
@@ -220,7 +257,7 @@ function buildPanel<S extends Schema>(
         if ((event.target as HTMLElement).closest(".knobs-value,.knobs-number")) return
         run(() => controls.resetKey(key))
       }
-      body.append(slider.element)
+      host.append(slider.element)
       gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, isModified })
       return {
         key,
@@ -267,7 +304,7 @@ function buildPanel<S extends Schema>(
       seg.tabIndex = 0
       new ResizeObserver(() => placeSegPill(seg, buttons, String(controls.get()[key]))).observe(seg)
       row.append(seg)
-      body.append(row)
+      host.append(row)
       gpuRows.push({
         kind: "choice",
         key,
@@ -301,7 +338,7 @@ function buildPanel<S extends Schema>(
     toggle.append(el("i"))
     toggle.onclick = () => run(() => set(!controls.get()[key]))
     row.append(toggle)
-    body.append(row)
+    host.append(row)
     gpuRows.push({
       kind: "toggle",
       key,
@@ -348,16 +385,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  const actions = el("div")
-  actions.className = "knobs-actions"
-  const randomBtn = button("Random", controls.randomize)
-  const resetBtn = button("Reset", controls.reset)
-  const copyBtn = button("Copy", () => void copy(controls.code()))
-  randomBtn.setAttribute("aria-keyshortcuts", "r")
-  resetBtn.setAttribute("aria-keyshortcuts", "Shift+R")
-  const gpuActionButtons: HTMLButtonElement[] = [randomBtn, resetBtn, copyBtn]
-  actions.append(randomBtn, resetBtn, copyBtn)
-
+  const gpuActionButtons: HTMLButtonElement[] = []
   const panelActions = allActions.filter((a) => !a.group)
   const customActions = el("div")
   customActions.className = "knobs-custom-actions"
@@ -385,9 +413,9 @@ function buildPanel<S extends Schema>(
     popover.append(transfer)
   }
 
-  if (titleText !== false) root.append(header)
+  root.append(header)
   if (showFooter) root.append(popover)
-  root.append(presetStrip.element, body, actions)
+  root.append(presetStrip.element, body)
   if (panelActions.length > 0) root.append(customActions)
   root.append(text, apply, status)
 
@@ -427,10 +455,13 @@ function buildPanel<S extends Schema>(
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
     for (const [groupName, gReset] of groupResetButtons) {
-      gReset.disabled = !rows.some(
+      const shown = rows.some(
         (r) => r.field.group === groupName && values[r.key] !== controls.locked[r.key],
       )
+      gReset.disabled = !shown
+      gReset.dataset.shown = String(shown)
     }
+    resetBtn.disabled = !rows.some((r) => values[r.key] !== controls.locked[r.key])
     undoButton.disabled = !controls.canUndo
     redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
@@ -459,7 +490,7 @@ function buildPanel<S extends Schema>(
         })
     })
     for (const b of root.querySelectorAll<HTMLButtonElement>(
-      ".knobs-group-head button, .knobs-actions button, .knobs-custom-actions button, .knobs-preset-save, .knobs-popover button",
+      ".knobs-head-cmd, .knobs-group-head button, .knobs-custom-actions button, .knobs-preset-save, .knobs-popover button",
     )) {
       add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
     }
@@ -467,11 +498,7 @@ function buildPanel<S extends Schema>(
   }
 
   const actionBarButtons = () =>
-    [
-      ...root.querySelectorAll<HTMLButtonElement>(
-        ".knobs-actions button, .knobs-custom-actions button",
-      ),
-    ].filter((b) => visible(b) && !b.disabled)
+    [...customActions.querySelectorAll("button")].filter((b) => visible(b) && !b.disabled)
   let lastActionButton: HTMLButtonElement | undefined
   const stops = () => {
     const list: { contains(node: Node): boolean; focus(): void }[] = []
@@ -482,13 +509,13 @@ function buildPanel<S extends Schema>(
       })
     for (const r of rows)
       list.push({ contains: (n) => r.row.contains(n), focus: () => r.input.focus() })
-    list.push({
-      contains: (n) => actionBarButtons().some((b) => b === n),
-      focus: () => {
-        const bar = actionBarButtons()
-        ;(lastActionButton && bar.includes(lastActionButton) ? lastActionButton : bar[0])?.focus()
-      },
-    })
+    const bar = actionBarButtons()
+    if (bar.length)
+      list.push({
+        contains: (n) => bar.some((b) => b === n),
+        focus: () =>
+          (lastActionButton && bar.includes(lastActionButton) ? lastActionButton : bar[0])?.focus(),
+      })
     return list
   }
   const focusables = () =>
@@ -561,6 +588,11 @@ function buildPanel<S extends Schema>(
     if (key === "r" || key === "R") {
       event.preventDefault()
       run(key === "R" ? controls.reset : controls.randomize)
+      return
+    }
+    if (key === "C") {
+      event.preventDefault()
+      copyValues()
       return
     }
     if (key === "S" && showVariants) {
@@ -643,11 +675,12 @@ function buildPanel<S extends Schema>(
     root,
     body,
     inline,
-    header: titleText !== false ? header : null,
+    header,
     titleEl,
     headerButtons,
     presetStrip,
     groups: gpuGroups,
+    cards,
     rows: gpuRows,
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,

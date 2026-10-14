@@ -20,6 +20,7 @@ import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
 import { computeHintPrefixes } from "../src/panel/hints.js"
+import { readableTitle } from "../src/panel/panel.js"
 import {
   nextPresetIndex,
   resolveActivePresetEntry,
@@ -544,5 +545,17 @@ describe("metadata, per-key/group reset, sync, remote descriptors and Solid", ()
       { renderer: "dom" },
     )
     expect(remote.renderer).toBe("dom")
+  })
+})
+
+describe("panel titles", () => {
+  it("reads ids as words without touching titles that already have spaces", () => {
+    expect(readableTitle("synth-voice")).toBe("Synth voice")
+    expect(readableTitle("knobs-tokens")).toBe("Knobs tokens")
+    expect(readableTitle("knobsTokens")).toBe("Knobs tokens")
+    expect(readableTitle("splat")).toBe("Splat")
+    expect(readableTitle("phone_tune")).toBe("Phone tune")
+    expect(readableTitle("iOS-tune")).toBe("iOS tune")
+    expect(readableTitle("Drawer motion")).toBe("Drawer motion")
   })
 })

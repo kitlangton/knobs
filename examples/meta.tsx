@@ -198,10 +198,20 @@ export function formatTokensCss(v: MetaValues): string {
   return [":root {", ...tokensFor(v).map(([k, val]) => `  ${k}: ${val};`), "}"].join("\n")
 }
 
+// Tokens go on the panels too, so they win over the built-in light theme's own values.
 function applyTokensToDocument(v: MetaValues) {
   const root = document.documentElement
   root.dataset.knobsTheme = resolveThemeIsLight(v.theme) ? "light" : "dark"
-  for (const [k, val] of tokensFor(v)) root.style.setProperty(k, val)
+  let style = document.querySelector<HTMLStyleElement>("style[data-meta-tokens]")
+  if (!style) {
+    style = document.createElement("style")
+    style.dataset.metaTokens = ""
+    document.head.append(style)
+  }
+  const body = tokensFor(v)
+    .map(([k, val]) => `${k}:${val};`)
+    .join("")
+  style.textContent = `:root,:root .knobs-panel,:root .knobs-chip{${body}}`
 }
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {
