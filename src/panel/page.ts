@@ -1025,7 +1025,7 @@ export function createCustomCard(
           const r = from.get(b)!
           b.dataset.gone = ""
           b.tabIndex = -1
-          b.disabled = true
+          b.inert = true
           if (list.length)
             b.style.cssText = `position:absolute;left:${r.left - box.left}px;top:${r.top - box.top}px;width:${r.width}px;height:${r.height}px;margin:0`
           b.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(.97)" }], {

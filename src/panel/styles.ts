@@ -371,9 +371,10 @@ const css = `
 
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
-.knobs-panel .knobs-custom-actions button{height:var(--k-action-h);min-height:24px;padding:0 8px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,transform .12s}
+.knobs-panel .knobs-custom-actions button{height:var(--k-action-h);min-height:24px;padding:0 8px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,opacity .15s,transform .12s}
 .knobs-panel .knobs-custom-actions button:is(:hover:not([disabled]),:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-custom-actions button:active:not([disabled]){transform:scale(.97)}
+.knobs-panel .knobs-tile-body>.knobs-custom-actions button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 
 /* Variants Disclosure Drawer */
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
