@@ -93,6 +93,9 @@ export function Field() {
     let curveKey = ""
     let curve = lut([0, 0, 0.58, 1])
     const fills = new Map<number, string>()
+    // Colour eases toward its target (hue the short way round) so Random and presets glide;
+    // a drag in the panel follows exactly.
+    let shown: { l: number; c: number; h: number; spread: number } | undefined
 
     const resize = () => {
       const box = el.getBoundingClientRect()
@@ -127,10 +130,32 @@ export function Field() {
       const ox = v.origin.x * w
       const oy = v.origin.y * h
       const reach = v.reach * Math.max(w, h)
-      const tint = parseColor(v.tint) ?? { l: 0.66, c: 0.19, h: 256 }
+      const target = { ...(parseColor(v.tint) ?? { l: 0.66, c: 0.19, h: 256 }), spread: v.spread }
+      const scrub = document.documentElement.hasAttribute("data-knobs-scrub")
+      if (!shown || still || scrub || dt === 0) shown = { ...target }
+      else {
+        const k = 1 - Math.exp(-dt * 9)
+        const dh = ((((target.h - shown.h) % 360) + 540) % 360) - 180
+        shown = {
+          l: shown.l + (target.l - shown.l) * k,
+          c: shown.c + (target.c - shown.c) * k,
+          h: shown.h + dh * k,
+          spread: shown.spread + (target.spread - shown.spread) * k,
+        }
+      }
+      const settling =
+        Math.abs(target.l - shown.l) > 0.002 ||
+        Math.abs(target.c - shown.c) > 0.002 ||
+        Math.abs(((((target.h - shown.h) % 360) + 540) % 360) - 180) > 0.5 ||
+        Math.abs(target.spread - shown.spread) > 0.5
+      const tint = {
+        l: Math.round(shown.l * 1000) / 1000,
+        c: Math.round(shown.c * 1000) / 1000,
+        h: shown.h,
+      }
       const t = now / 1000
       const pulse = v.pulse && !still
-      let moving = false
+      let moving = settling
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
       const offsetY = (h - rows * cell) / 2
@@ -162,12 +187,13 @@ export function Field() {
           }
           const size = Math.max(0, radius[i])
           if (size < 0.3) continue
-          const hue = Math.round(tint.h + v.spread * (Math.min(1, amp) - 0.5))
-          let fill = fills.get(hue)
+          const hue = Math.round(tint.h + shown.spread * (Math.min(1, amp) - 0.5))
+          const key = hue * 1e6 + tint.l * 1e3 + tint.c
+          let fill = fills.get(key)
           if (!fill) {
             fill = `oklch(${tint.l} ${tint.c} ${hue})`
             if (fills.size > 720) fills.clear()
-            fills.set(hue, fill)
+            fills.set(key, fill)
           }
           ctx.fillStyle = fill
           ctx.globalAlpha = 0.35 + Math.min(1, Math.max(0, amp)) * 0.65

@@ -5,11 +5,8 @@ export function Install() {
   return (
     <>
       <p>
-        knobs isn't on npm yet; the <code className="ic">knobs</code> name there belongs to an
-        unrelated package. Until it's published, build it from source and link it into your app. The
-        core has no runtime dependencies, the panel's only one is{" "}
-        <code className="ic">@kitlangton/rolling-number</code>, and React and Solid are optional
-        peers.
+        knobs isn't on npm yet, and the <code className="ic">knobs</code> name there belongs to
+        another package, so build it from source and link it. React and Solid are optional.
       </p>
       <Code lang="sh" title="Terminal">{`
         git clone https://github.com/kitlangton/knobs

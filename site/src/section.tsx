@@ -206,6 +206,7 @@ export function Section<E extends Schema = {}>({
   controls,
   level = 2,
   lede,
+  kicker,
   children,
   className,
   style,
@@ -217,6 +218,8 @@ export function Section<E extends Schema = {}>({
   controls?: SectionControls<E>
   level?: 1 | 2
   lede?: ReactNode
+  /** A small label above the heading that opens a run of related sections. */
+  kicker?: string
   children?: ReactNode
   className?: string
   style?: CSSProperties
@@ -272,6 +275,7 @@ export function Section<E extends Schema = {}>({
         aria-labelledby={anchor}
         style={{ ...(tokens as CSSProperties), ...style }}
       >
+        {kicker && <p className="kicker">{kicker}</p>}
         <Heading id={anchor} className={level === 1 ? "sec-title page-title" : "sec-title"}>
           {title}
         </Heading>

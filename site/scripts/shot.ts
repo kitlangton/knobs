@@ -1,5 +1,6 @@
 // Headless screenshots of the docs site: bun site/scripts/shot.ts <base> <out-prefix> [paths...]
-// Each path is captured at 1440×900 and 390×844 in light and dark. Console errors are printed.
+// Each path (such as / or /#theming) is captured at 1440×900 and 390×844 in light and dark.
+// Console errors are printed.
 import { chromium } from "@playwright/test"
 
 const [base = "http://127.0.0.1:5196", prefix = "/tmp/knobs-docs", ...paths] = process.argv.slice(2)
@@ -30,7 +31,7 @@ for (const path of paths.length ? paths : ["/"]) {
       })
       await page.goto(base + path, { waitUntil: "networkidle" })
       await page.waitForTimeout(1600)
-      const name = path === "/" ? "home" : path.replace(/^\/|\/$/g, "").replace(/\//g, "-")
+      const name = path === "/" ? "top" : path.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")
       const file = `${prefix}-${name}-${size.name}-${scheme}.png`
       await page.screenshot({ path: file })
       console.log(file)
