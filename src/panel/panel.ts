@@ -230,9 +230,10 @@ function buildPanel<S extends Schema>(
   if (showFooter) {
     helpButton = headButton("help", "Keyboard shortcuts", "?", () => togglePopover())
     helpButton.setAttribute("aria-expanded", "false")
-    if (!showHistory) helpButton.classList.add("knobs-head-split")
+    helpButton.classList.add("knobs-head-split")
   }
   const dismiss = close ? headButton("close", `Close ${controls.id}`, "", close) : undefined
+  if (dismiss && !showFooter) dismiss.classList.add("knobs-head-split")
   const titleEl = el("strong", titleText ? readableTitle(titleText) : "")
   header.append(titleEl, headActions)
 

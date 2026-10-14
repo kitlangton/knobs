@@ -374,7 +374,7 @@ export function facePath(value: number): string {
 }
 
 /** Icon size of the header die (px), matching the other header icons. */
-export const HEADER_DIE = 15
+export const HEADER_DIE = 14
 /** A group's die, beside its reset icon. */
 export const GROUP_DIE = 13
 

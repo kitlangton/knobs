@@ -93,8 +93,8 @@ const css = `
   --k-control-h:calc(var(--k-row) - var(--k-unit) * 2);
   --k-action-h:calc(var(--k-row) - var(--k-unit));
   --k-track-h:calc(var(--k-row) - 14px);
-  --k-icon-btn:24px;
-  --k-icon-size:15px;
+  --k-icon-btn:22px;
+  --k-icon-size:14px;
   --k-icon-sm:13px;
   --k-radius-md:max(0px,calc(var(--k-radius) - var(--k-tray-pad)));
   --k-radius-sm:max(0px,calc(var(--k-radius) - var(--k-tray-pad) * 2));
@@ -234,31 +234,30 @@ const css = `
 .knobs-locked .knobs-lock{width:15px}
 .knobs-locked .knobs-lock>svg{opacity:1;transform:none;transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1)}
 
-/* Slider: an accent-tinted fill with a brighter leading edge that fades under the readout */
+/* Slider: an accent-tinted fill with a brighter leading edge and centerline scale ticks */
 .knobs-track{position:absolute;inset:0;overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
 .knobs-panel .knobs-track:focus-visible{outline:none;box-shadow:none}
 .knobs-marks{position:absolute;inset:0;pointer-events:none;
   -webkit-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px));
   mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px))}
-.knobs-marks i{position:absolute;top:50%;width:1px;height:7px;border-radius:999px;transform:translate(-50%,-50%);background:transparent;transition:background .2s}
+.knobs-marks>i{position:absolute;top:50%;width:1px;height:7px;border-radius:999px;transform:translate(-50%,-50%);background:transparent;transition:background .2s}
 .knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-surface-hi));
   background:linear-gradient(to left,color-mix(in srgb,var(--k-accent) min(calc(var(--k-glow) * (20% + var(--k-speed) * 40%)),100%),transparent),transparent calc(24px + var(--k-speed) * 24px)) 0 0/var(--k-fill) 100% no-repeat,linear-gradient(var(--k-fill-tint),var(--k-fill-tint)) 0 0/var(--k-fill) 100% no-repeat;
-  -webkit-mask:linear-gradient(to left,rgb(0 0 0/.4) calc(var(--k-inset) + var(--k-readout)),#000 calc(var(--k-inset) + var(--k-readout) + 16px));
-  mask:linear-gradient(to left,rgb(0 0 0/.4) calc(var(--k-inset) + var(--k-readout)),#000 calc(var(--k-inset) + var(--k-readout) + 16px));transition:--k-fill-mix .15s}
+  transition:--k-fill-mix .15s}
 .knobs-active .knobs-fill{--k-fill-mix:30%}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
-.knobs-notch{position:absolute;bottom:0;width:1px;height:5px;margin-left:-.5px;border-radius:1px 1px 0 0;background:var(--k-text);opacity:0;pointer-events:none;transition:opacity .2s}
-.knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.3}
-.knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.5}
-.knobs-magnet .knobs-notch{opacity:.9}
+.knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
+.knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
+.knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
+.knobs-magnet .knobs-notch{opacity:.95;height:11px}
 .knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:-1.5px;border-radius:999px;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
   opacity:0;transform:translateY(-50%) scaleX(.25);transition:opacity .15s,transform .22s var(--k-ease)}
 .knobs-slider:hover .knobs-handle,.knobs-track:focus-visible~.knobs-handle,.knobs-track:focus-visible .knobs-handle{opacity:.65;transform:translateY(-50%) scaleX(1)}
 .knobs-active .knobs-handle{opacity:.95;transform:translateY(-50%) scaleX(1)}
 .knobs-slider:hover .knobs-handle.knobs-dodge,.knobs-active .knobs-handle.knobs-dodge{opacity:.18;transform:translateY(-50%) scaleX(1) scaleY(.75)}
-.knobs-slider:hover .knobs-marks i{background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
-.knobs-active .knobs-marks i{background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
+.knobs-slider:is(:hover,:has(:focus-visible)) .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
+.knobs-active .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
 /* Drag speed eases quickly while dragging and fades gently after; the rubber band springs back. */
 .knobs-card>.knobs-slider{transition:background .15s,--k-speed .35s ease-out}
 .knobs-card>.knobs-slider.knobs-active{transition:background .15s,--k-speed .12s ease-out}

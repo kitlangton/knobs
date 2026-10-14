@@ -103,16 +103,25 @@ export function createSlider(
   track.setAttribute("aria-label", display)
   track.setAttribute("aria-valuemin", String(field.min))
   track.setAttribute("aria-valuemax", String(field.max))
+  const ratioOf = (v: number) =>
+    field.max === field.min
+      ? 0
+      : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
+  const notchRatio = ratioOf(field.value)
   const marks = el("div", "knobs-marks")
   const steps = (field.max - field.min) / field.step
   const count = steps <= 10 ? Math.round(steps) + 1 : 11
   for (let i = 0; i < count; i++) {
+    const r = i / (count - 1)
+    if (Math.abs(r - notchRatio) < 0.025) continue
     const mark = el("i")
-    mark.style.left = `${(i / (count - 1)) * 100}%`
+    mark.style.left = `${r * 100}%`
     marks.append(mark)
   }
-  const fill = el("div", "knobs-fill")
   const notch = el("i", "knobs-notch")
+  notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
+  marks.append(notch)
+  const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
   label.textContent = display
@@ -135,10 +144,9 @@ export function createSlider(
   number.step = String(field.step)
   number.hidden = true
   number.setAttribute("aria-label", `${display} value`)
-  track.append(marks, fill, notch, handle, label, value, number)
+  track.append(fill, marks, handle, label, value, number)
   root.append(track)
-  // The fill fades under the readout (the zone follows its width as digits come and go), and
-  // hover ticks stay clear of both the readout and the label.
+  // Hover ticks and the default notch stay clear of both the readout and the label.
   let trackWidth = 0
   const ro = new ResizeObserver(() => {
     trackWidth = track.offsetWidth
@@ -174,10 +182,6 @@ export function createSlider(
     }
     return drag ? cachedDragRoll : cachedStepRoll
   }
-  const ratioOf = (v: number) =>
-    field.max === field.min
-      ? 0
-      : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
   const pct = (v: number) => ratioOf(v) * 100
   const quantize = (v: number) =>
     Math.min(
@@ -185,9 +189,7 @@ export function createSlider(
       Math.max(field.min, field.min + Math.round((v - field.min) / field.step) * field.step),
     )
 
-  const notchRatio = ratioOf(field.value)
-  notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
-  const fillSpring = new Spring(ratioOf(field.value), FILL.omega, FILL.zeta)
+  const fillSpring = new Spring(notchRatio, FILL.omega, FILL.zeta)
   const stretchSpring = new Spring(0, RELEASE.omega, RELEASE.zeta)
   const handleSpring = new Spring(0, 28, 0.88)
   const digitPlaces: DigitPlace[] = []

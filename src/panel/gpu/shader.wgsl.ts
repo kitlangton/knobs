@@ -198,15 +198,13 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let fillX = fillRatio * size.x;
   var out = vec4f(0.0);
 
-  // Accent-tinted fill; its leading 24px brighten toward the edge (look.y = edge alpha), and the
-  // whole fill fades to 40% under the readout (aux.x = readout zone width from the right).
+  // Accent-tinted fill; its leading 24px brighten toward the edge (look.y = edge alpha).
   // Drag speed (look.x, 0..1) widens the bright edge to 48px.
   let speed = clamp(p.look.x, 0.0, 1.0);
   let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
     let edge = (1.0 - clamp((fillX - local.x) / (24.0 + 24.0 * speed), 0.0, 1.0)) * p.look.y;
-    let zone = mix(0.4, 1.0, clamp((size.x - p.aux.x - local.x) / 16.0, 0.0, 1.0));
-    out = over(premul(p.color), vec4f(p.color2.rgb * edge, edge)) * fillCov * zone;
+    out = over(premul(p.color), vec4f(p.color2.rgb * edge, edge)) * fillCov;
   }
 
   // Handle pill at fillX
@@ -256,32 +254,34 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     acc = acc / f32(n);
   }
 
-  // Tick marks on hover/drag
+  // Tick marks and default-value notch on the centerline, clear of the label (aux.w) and readout (aux.x).
+  let clear = clamp((local.x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) *
+    clamp((size.x - p.aux.x - 4.0 - local.x) / 8.0, 0.0, 1.0);
+  let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
   let tickAlpha = clamp(p.extra.w, 0.0, 1.0);
   let tickCount = p.extra.z;
-  if (tickAlpha > 0.01 && tickCount >= 2.0) {
+  if (tickAlpha > 0.01 && tickCount >= 2.0 && clear > 0.0) {
     let span = max(1.0, size.x);
     let u = clamp(local.x / span, 0.0, 1.0);
     let stepU = 1.0 / (tickCount - 1.0);
     let nearestIdx = round(u / stepU);
     let tickX = nearestIdx * stepU * span;
-    let dx = abs(local.x - tickX);
-    let dy = abs(local.y - size.y * 0.5);
-    let tDist = max(dx - 0.5, dy - 3.5);
-    // Clear of the label (aux.w = its right edge) and the readout zone (aux.x).
-    let clear = clamp((local.x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) *
-      clamp((size.x - p.aux.x - 4.0 - local.x) / 8.0, 0.0, 1.0);
-    let tCov = covSd(tDist) * clear;
-    if (tCov > 0.0) {
-      let ta = tCov * tickAlpha * 0.22;
-      acc = over(acc, vec4f(p.color2.rgb * ta, ta));
+    if (p.aux.z <= 0.005 || abs(tickX - nx) >= 3.0) {
+      let dx = abs(local.x - tickX);
+      let dy = abs(local.y - size.y * 0.5);
+      let tDist = max(dx - 0.5, dy - 3.5);
+      let tCov = covSd(tDist) * clear;
+      if (tCov > 0.0) {
+        let ta = tCov * tickAlpha * 0.22;
+        acc = over(acc, vec4f(p.color2.rgb * ta, ta));
+      }
     }
   }
 
-  // Default notch: a 1×5 px tick rising from the bottom edge (aux.y = position, aux.z = opacity).
-  if (p.aux.z > 0.005) {
-    let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
-    let nCov = covSd(roundedBox(local - vec2f(nx - 0.5, size.y - 5.0), vec2f(1.0, 6.0), 0.5));
+  // Default notch: a slightly taller, brighter centerline tick among the scale ticks.
+  if (p.aux.z > 0.005 && clear > 0.0) {
+    let nh = select(9.0, 11.0, p.aux.z > 0.8);
+    let nCov = covSd(roundedBox(local - vec2f(nx - 0.75, (size.y - nh) * 0.5), vec2f(1.5, nh), 0.75)) * clear;
     let na = nCov * p.aux2.a * p.aux.z;
     acc = over(acc, vec4f(p.aux2.rgb * na, na));
   }

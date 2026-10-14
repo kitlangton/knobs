@@ -2289,12 +2289,12 @@ class GpuOverlayManager {
             "notch",
             // Only while the slider is in hand: at rest a stray tick reads as an artifact.
             sl.isMagnetized()
-              ? 0.9
+              ? 0.95
               : !(hovered || focused || dragging)
                 ? 0
                 : row.isModified()
-                  ? 0.5
-                  : 0.3,
+                  ? 0.55
+                  : 0.38,
             22,
           )
 
@@ -2322,9 +2322,9 @@ class GpuOverlayManager {
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
-            p3: this.ease(row.row, "ticks", dragging ? 1 : hovered ? 0.7 : 0),
+            p3: this.ease(row.row, "ticks", dragging ? 1 : hovered || focused ? 0.7 : 0),
             aux: [zone, sl.notchRatio, notch, lRect.right - rRect.left],
-            aux2: withAlpha(tokens.text, rowAlpha),
+            aux2: withAlpha(tokens.accent, rowAlpha),
           })
 
           this.drawRowLabel(
