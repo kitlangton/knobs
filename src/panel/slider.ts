@@ -138,10 +138,14 @@ export function createSlider(
   root.append(track)
   // The fill fades under the readout (the zone follows its width as digits come and go), and
   // hover ticks stay clear of both the readout and the label.
-  new ResizeObserver(() => {
+  let trackWidth = 0
+  const ro = new ResizeObserver(() => {
+    trackWidth = track.offsetWidth
     if (value.offsetWidth) track.style.setProperty("--k-readout", `${value.offsetWidth}px`)
     track.style.setProperty("--k-label-end", `${label.offsetLeft + label.offsetWidth}px`)
-  }).observe(value)
+  })
+  ro.observe(value)
+  ro.observe(track)
 
   const places = decimals(field.step)
   const fmtDigits = (v: number) => v.toFixed(places)
@@ -153,11 +157,20 @@ export function createSlider(
     motionBlur: true,
   })
   // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
+  let cachedRollAt = -Infinity
+  let cachedStepRoll = 420
+  let cachedDragRoll = 0
   const rollMs = (drag: boolean) => {
-    const raw = parseFloat(
-      getComputedStyle(root).getPropertyValue(drag ? "--k-drag-roll" : "--k-roll"),
-    )
-    return Number.isFinite(raw) ? Math.max(0, raw) : drag ? 0 : 420
+    const now = performance.now()
+    if (now - cachedRollAt > 16) {
+      cachedRollAt = now
+      const cs = getComputedStyle(root)
+      const sRaw = parseFloat(cs.getPropertyValue("--k-roll"))
+      const dRaw = parseFloat(cs.getPropertyValue("--k-drag-roll"))
+      cachedStepRoll = Number.isFinite(sRaw) ? Math.max(0, sRaw) : 420
+      cachedDragRoll = Number.isFinite(dRaw) ? Math.max(0, dRaw) : 0
+    }
+    return drag ? cachedDragRoll : cachedStepRoll
   }
   const ratioOf = (v: number) =>
     field.max === field.min
@@ -235,6 +248,7 @@ export function createSlider(
   }
 
   let current = field.value
+  let lastRollerLen = fmtDigits(field.value).length
   // Entering or leaving the notch's magnet eases the last few px instead of jumping.
   let settleUntil = 0
   const settling = () => dragging && performance.now() < settleUntil
@@ -256,17 +270,28 @@ export function createSlider(
     const ms = !initialized ? 0 : rollMs(dragging)
     if (!initialized || (dragging && !settling())) fillSpring.snap(r)
     else fillSpring.set(r, delay)
-    syncDigits(fmtDigits(v), Math.sign(v - previous), ms, ms > 0 ? delay : 0)
+    const digitsStr = fmtDigits(v)
+    syncDigits(digitsStr, Math.sign(v - previous), ms, ms > 0 ? delay : 0)
     initialized = true
     // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
     // Never take rolling-number's unanimated path: its finish() resets the reels, so the next
     // change would jump instead of rolling. A 1 ms roll is a snap that keeps it warm.
-    // In GPU mode the canvas draws the readout, so the hidden DOM reel just snaps.
+    // In GPU mode the canvas draws the readout, so the hidden DOM reel only needs immediate updates
+    // when the character count changes (for readout width).
     const gpu = root.closest('[data-gpu-active="true"]') !== null
-    const roll = () =>
-      roller.update({ value: v, animated: true, duration: ms > 0 && !gpu ? ms : 1 })
+    const animateDom = ms > 0 && !gpu
+    const roll = () => {
+      lastRollerLen = digitsStr.length
+      roller.update({
+        value: v,
+        animated: true,
+        duration: animateDom ? ms : 1,
+        motionBlur: animateDom,
+      })
+    }
     clearTimeout(rollTimer)
-    if (delay > 0 && ms > 0 && !gpu) rollTimer = setTimeout(roll, delay)
+    if (gpu && digitsStr.length === lastRollerLen) rollTimer = setTimeout(roll, 80)
+    else if (delay > 0 && animateDom) rollTimer = setTimeout(roll, delay)
     else roll()
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
@@ -274,9 +299,9 @@ export function createSlider(
     onMotionWake?.()
   }
 
+  const getTrackWidth = () => trackWidth || (trackWidth = track.offsetWidth)
   const span = field.max - field.min
-  const valueAt = (clientX: number) => {
-    const rect = track.getBoundingClientRect()
+  const valueAt = (clientX: number, rect = track.getBoundingClientRect()) => {
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return field.min + t * span
   }
@@ -284,7 +309,7 @@ export function createSlider(
   // The DOM eases --k-speed with a transition; the GPU renderer eases speed() itself.
   let speedTimer: ReturnType<typeof setTimeout> | undefined
   const speed = () =>
-    dragging ? clamp((Math.abs(velocity.velocity[0]) * track.offsetWidth - 150) / 1350, 0, 1) : 0
+    dragging ? clamp((Math.abs(velocity.velocity[0]) * getTrackWidth() - 150) / 1350, 0, 1) : 0
   const glow = (value: number) => {
     root.style.setProperty("--k-speed", value.toFixed(3))
     clearTimeout(speedTimer)
@@ -303,9 +328,10 @@ export function createSlider(
 
   // Within MAGNET px of the default (at the pointer's current speed), the value sits on it.
   const MAGNET = 4
-  const nearDefault = (v: number, factor = 1) =>
-    track.offsetWidth > 0 &&
-    Math.abs(v - field.value) <= (MAGNET / track.offsetWidth) * span * factor
+  const nearDefault = (v: number, factor = 1) => {
+    const w = getTrackWidth()
+    return w > 0 && Math.abs(v - field.value) <= (MAGNET / w) * span * factor
+  }
   // Clicks snap: to the step when steps are few, otherwise magnetically to deciles. Landing on
   // the default or a decile pops the readout.
   const snap = (v: number) => {
@@ -321,6 +347,7 @@ export function createSlider(
   }
 
   let dragging = false
+  let dragRect: DOMRect | undefined
   let startX = 0
   let moved = false
   let fromValue = false
@@ -338,6 +365,8 @@ export function createSlider(
     event.preventDefault()
     fromValue = Boolean(target && value.contains(target))
     track.setPointerCapture(event.pointerId)
+    dragRect = track.getBoundingClientRect()
+    trackWidth = dragRect.width
     dragging = true
     moved = false
     startX = event.clientX
@@ -351,11 +380,15 @@ export function createSlider(
   }
   const MAX_STRETCH = 8
   // `over` is how far (px) the pointer has pulled past an end: negative left, positive right.
+  let prevStretch = 0
   const stretch = (over: number) => {
-    const width = track.offsetWidth
+    const width = getTrackWidth()
     const dead = Math.max(0, Math.abs(over) - 24)
     const amount = MAX_STRETCH * Math.sqrt(Math.min(dead / 200, 1))
-    stretchSpring.snap(over < 0 ? -amount : amount)
+    const signed = over < 0 ? -amount : amount
+    stretchSpring.snap(signed)
+    if (signed === 0 && prevStretch === 0) return
+    prevStretch = signed
     root.style.transform = amount
       ? `translateX(${over < 0 ? -amount : 0}px) scaleX(${1 + amount / width})`
       : ""
@@ -373,7 +406,7 @@ export function createSlider(
     }
     const first = !moved
     moved = true
-    const rect = track.getBoundingClientRect()
+    const rect = dragRect ?? (dragRect = track.getBoundingClientRect())
     const factor = fine ? 0.1 : 1
     let over: number
     if (relative) {
@@ -381,7 +414,7 @@ export function createSlider(
       const bound = Math.min(field.max, Math.max(field.min, raw))
       over = span > 0 ? ((raw - bound) / span) * (rect.width / factor) : 0
     } else {
-      raw = valueAt(event.clientX)
+      raw = valueAt(event.clientX, rect)
       over =
         event.clientX < rect.left
           ? event.clientX - rect.left
@@ -402,8 +435,11 @@ export function createSlider(
   }
   const release = (event: PointerEvent) => {
     if (!dragging) return
+    const rect = dragRect
     dragging = false
+    dragRect = undefined
     magnet = false
+    prevStretch = 0
     glow(0)
     root.classList.remove("knobs-magnet", "knobs-settle")
     stretchSpring.set(0)
@@ -415,7 +451,7 @@ export function createSlider(
     })
     if (!moved) {
       if (fromValue) edit()
-      else set(snap(valueAt(event.clientX)))
+      else set(snap(valueAt(event.clientX, rect)))
     }
     onMotionWake?.()
   }

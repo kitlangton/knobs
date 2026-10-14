@@ -122,8 +122,12 @@ export function createPresetStrip<S extends Schema>(
   let entries: PresetEntry<Values<S>>[] = []
   let buttons: HTMLButtonElement[] = []
   let signature = ""
+  let lastVariantsRef: readonly unknown[] | null = null
   let lastAppliedId: string | null = null
   let activeState: ActivePresetState = { activeId: "p:default", activeIndex: 0, isCustom: false }
+  let prevActiveId = ""
+  let prevActiveIndex = -2
+  let prevIsCustom = false
   let initializedPill = false
 
   function buildEntries(): PresetEntry<Values<S>>[] {
@@ -193,6 +197,18 @@ export function createPresetStrip<S extends Schema>(
     if (lastAppliedId !== null && activeState.activeId !== lastAppliedId) {
       lastAppliedId = null
     }
+    if (
+      !snap &&
+      initializedPill &&
+      activeState.activeId === prevActiveId &&
+      activeState.activeIndex === prevActiveIndex &&
+      activeState.isCustom === prevIsCustom
+    ) {
+      return
+    }
+    prevActiveId = activeState.activeId
+    prevActiveIndex = activeState.activeIndex
+    prevIsCustom = activeState.isCustom
     root.dataset.activePreset = activeState.activeId
     root.dataset.value = activeState.activeId
     for (let i = 0; i < buttons.length; i++) {
@@ -231,6 +247,12 @@ export function createPresetStrip<S extends Schema>(
 
   function update() {
     run(() => {
+      const variantsRef = showVariants ? controls.variants.list() : null
+      if (signature !== "" && variantsRef === lastVariantsRef) {
+        syncSelection(false)
+        return
+      }
+      lastVariantsRef = variantsRef
       const nextEntries = buildEntries()
       const nextSig = JSON.stringify(nextEntries.map((e) => [e.id, e.label]))
       const shouldShow = nextEntries.length > 1 || showVariants

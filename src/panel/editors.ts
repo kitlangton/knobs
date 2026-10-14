@@ -469,12 +469,16 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     gpu: [...knobRows, gpu],
     update(value, delay) {
       const v = value as SpringValue
-      const changed = !same(v, shown)
+      const prev = shown
+      const changed = !same(v, prev)
       shown = v
-      parts.forEach((p) => {
-        p.slider.update(p.get(), delay)
-        p.slider.element.classList.toggle("knobs-modified", p.get() !== p.field.value)
-      })
+      for (const [i, p] of parts.entries()) {
+        const key = i === 0 ? "duration" : "bounce"
+        if (!initialized || v[key] !== prev[key]) {
+          p.slider.update(v[key], delay)
+          p.slider.element.classList.toggle("knobs-modified", v[key] !== p.field.value)
+        }
+      }
       if (!changed && initialized) return
       draw(!initialized || dragging())
       if (initialized) {

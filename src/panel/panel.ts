@@ -540,12 +540,15 @@ function buildPanel<S extends Schema>(
   // each changed row starts --k-cascade ms after the one above. A row already in motion retargets
   // at once instead of pausing, so switching again mid-wave stays smooth.
   let shown = controls.get()
-  const cascade = (values: Values<S>) => {
-    const changed = rows.filter((r) => !same(values[r.key], shown[r.key]))
-    if (changed.length < 2) return 0
+  let initialized = false
+  const cascade = (changedCount: number) => {
+    if (changedCount < 2) return 0
     const win = doc.defaultView
     if (!win || win.matchMedia("(prefers-reduced-motion: reduce)").matches) return 0
-    const ms = parseFloat(getComputedStyle(root).getPropertyValue("--k-cascade"))
+    const raw =
+      root.style.getPropertyValue("--k-cascade") ||
+      getComputedStyle(root).getPropertyValue("--k-cascade")
+    const ms = parseFloat(raw)
     return Number.isFinite(ms) ? Math.max(0, ms) : 12
   }
   function update() {
@@ -554,13 +557,19 @@ function buildPanel<S extends Schema>(
       return
     }
     const values = controls.get()
-    const stagger = cascade(values)
+    let changedCount = 0
+    if (initialized) {
+      for (const r of rows) if (!same(values[r.key], shown[r.key])) changedCount++
+    }
+    const stagger = initialized ? cascade(changedCount) : 0
     const now = performance.now()
     let turn = 0
     for (const row of rows) {
       const value = values[row.key]
+      const rowChanged = !initialized || !same(value, shown[row.key])
+      if (!rowChanged) continue
       let delay = 0
-      if (!same(value, shown[row.key])) {
+      if (initialized) {
         const moving = row.wave.at <= now && now < row.wave.until
         delay = moving ? 0 : turn * stagger
         turn++
@@ -574,19 +583,27 @@ function buildPanel<S extends Schema>(
       else if (row.editor) row.editor.update(value, delay)
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
-    for (const [groupName, gReset] of groupResetButtons) {
-      const shown = rows.some(
-        (r) => r.field.group === groupName && !same(values[r.key], controls.locked[r.key]),
-      )
-      gReset.disabled = !shown
-      gReset.dataset.shown = String(shown)
+    if (!initialized || changedCount > 0) {
+      let anyMod = false
+      for (const [groupName, gReset] of groupResetButtons) {
+        const groupMod = rows.some(
+          (r) => r.field.group === groupName && !same(values[r.key], controls.locked[r.key]),
+        )
+        if (groupMod) anyMod = true
+        if (gReset.disabled !== !groupMod) gReset.disabled = !groupMod
+        const s = String(groupMod)
+        if (gReset.dataset.shown !== s) gReset.dataset.shown = s
+      }
+      const totalMod =
+        anyMod || rows.some((r) => !r.field.group && !same(values[r.key], controls.locked[r.key]))
+      if (resetBtn.disabled !== !totalMod) resetBtn.disabled = !totalMod
     }
-    resetBtn.disabled = !rows.some((r) => !same(values[r.key], controls.locked[r.key]))
-    undoButton.disabled = !controls.canUndo
-    redoButton.disabled = !controls.canRedo
+    if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
+    if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     presetStrip.update()
     shown = values
+    initialized = true
 
     wakeGpu()
   }
