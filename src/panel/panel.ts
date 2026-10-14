@@ -1882,6 +1882,31 @@ function buildPanel<S extends Schema>(
     }
   }
 
+  // Keys take over from the pointer: until it moves again, the row it rests on shows no hover wash
+  // (see keyboardQuietsHover in styles.ts), so the only wash is the keyboard's focus.
+  let pointerAt = ""
+  const keyboardOn = (on: boolean) => {
+    if ("keyboard" in root.dataset === on) return
+    if (on) root.dataset.keyboard = ""
+    else delete root.dataset.keyboard
+    wakeGpu()
+  }
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      if (!["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(event.key)) keyboardOn(true)
+    },
+    true,
+  )
+  root.addEventListener("pointermove", (event) => {
+    // Scrolling under a still pointer sends moves too; only a real move hands back to the pointer.
+    const at = `${event.screenX},${event.screenY}`
+    if (at === pointerAt) return
+    pointerAt = at
+    keyboardOn(false)
+  })
+  root.addEventListener("pointerdown", () => keyboardOn(false), true)
+
   const raise = () => {
     if (!inline) {
       root.style.zIndex = String(++layer)

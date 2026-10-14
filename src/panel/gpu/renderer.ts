@@ -2015,7 +2015,8 @@ class GpuOverlayManager {
       const pageB = panel.page
       this.curPanelRect = pRect
       this.curPanelScrollTop = panel.root.scrollTop
-      this.curPanelHovered = panel.root.matches(":hover")
+      // Keys quiet hover until the pointer moves (data-keyboard), as in the DOM.
+      this.curPanelHovered = panel.root.matches(":hover") && !("keyboard" in panel.root.dataset)
       this.curLayoutKey =
         ((this.layoutVersion * 31 +
           Math.round(pRect.width * 4) * 17 +

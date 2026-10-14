@@ -278,7 +278,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     if (event.button !== 0) return
     event.preventDefault()
     track.setPointerCapture(event.pointerId)
-    track.focus({ preventScroll: true })
+    track.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     dragRect = track.getBoundingClientRect()
     dragging = true
     line.classList.add("knobs-active")
@@ -764,7 +764,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     if (event.button !== 0) return
     event.preventDefault()
     pad.setPointerCapture(event.pointerId)
-    pad.focus({ preventScroll: true })
+    pad.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     dragRect = pad.getBoundingClientRect()
     dragging = true
     fine = event.altKey
@@ -1007,7 +1007,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       if (event.button !== 0) return
       event.preventDefault()
       h.setPointerCapture(event.pointerId)
-      h.focus({ preventScroll: true })
+      h.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
       const r = box.getBoundingClientRect()
       dragRect = r
       const [hx, hy] = map(shown[i * 2]!, shown[i * 2 + 1]!)

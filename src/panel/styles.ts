@@ -548,8 +548,15 @@ export function injectPreset(doc: Document, preset: TokenPreset) {
   style.textContent = content
   doc.head.append(style)
 }
+/**
+ * Keys move a panel's focus wash; the pointer resting where it last was mustn't keep a hover wash
+ * of its own meanwhile. Typing marks the panel `data-keyboard` until the pointer moves again, and
+ * no hover state matches inside it.
+ */
+const keyboardQuietsHover = (css: string) =>
+  css.replaceAll(":hover", ":hover:where(:not([data-keyboard] *))")
 export function injectStyles(doc: Document) {
-  const content = rolling + DRIVERS + defaultsCss + aliased(css)
+  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(aliased(css))
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content
