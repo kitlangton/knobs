@@ -1000,3 +1000,223 @@ describe("locks, mutate and compare", () => {
     expect(onSet).toHaveBeenLastCalledWith("b", 9, { source: "compare" })
   })
 })
+
+describe("sections and group presets", () => {
+  const tuned = () => ({
+    rise: knob(6, { min: 0, max: 24, step: 1, group: "Arrivals", section: "Transcript" }),
+    fade: knob(0.25, { min: 0.05, max: 0.8, step: 0.01, group: "Arrivals", section: "Transcript" }),
+    stagger: toggle(false, { group: "Arrivals", section: "Transcript" }),
+    font: choice("body", ["body", "callout"], { group: "Rows", section: "Session list" }),
+  })
+
+  it("keeps section metadata on fields and descriptors", () => {
+    const fields = tuned()
+    expect(fields.rise.section).toBe("Transcript")
+    expect(fields.font.section).toBe("Session list")
+    expect(spring({}, { section: "Motion" }).section).toBe("Motion")
+    expect(knob(1, { min: 0, max: 2 }).section).toBeUndefined()
+    const schema = fromDescriptors([
+      { key: "a.b", kind: "number", default: 1, min: 0, max: 2, group: "B", section: "A" },
+      { key: "a.c", kind: "bool", default: true, group: "B" },
+    ])
+    expect(schema["a.b"]!.section).toBe("A")
+    expect(schema["a.c"]!.section).toBeUndefined()
+  })
+
+  it("applies numbered group presets over every key they cover, matches and undoes them", () => {
+    const presets: { group: string; index: number; name: string }[] = []
+    const sources: string[] = []
+    const c = defineControls("group-presets", tuned(), {
+      enabled: true,
+      storage: null,
+      groupPresets: {
+        Arrivals: [
+          { name: "Today", values: {} },
+          { name: "Brisk", values: { rise: 4, fade: 0.15 } },
+          { name: "Soft", values: { fade: 0.5, stagger: true } },
+        ],
+      },
+      onPreset: (target) => presets.push(target),
+      onChange: (_patch, _values, meta) => sources.push(`${meta.source}:${meta.group ?? ""}`),
+    })
+    // Every preset spans the union of named keys; "Today" is the defaults.
+    expect(c.groupPresets.Arrivals!.map((p) => p.values)).toEqual([
+      { rise: 6, fade: 0.25, stagger: false },
+      { rise: 4, fade: 0.15, stagger: false },
+      { rise: 6, fade: 0.5, stagger: true },
+    ])
+    expect(c.matchingGroupPreset("Arrivals")).toBe(0)
+    c.groupPreset("Arrivals", 2)
+    expect(c.get()).toMatchObject({ rise: 6, fade: 0.5, stagger: true })
+    expect(c.matchingGroupPreset("Arrivals")).toBe(2)
+    c.groupPreset("Arrivals", 1)
+    expect(c.get()).toMatchObject({ rise: 4, fade: 0.15, stagger: false })
+    expect(presets).toEqual([
+      { group: "Arrivals", index: 2, name: "Soft" },
+      { group: "Arrivals", index: 1, name: "Brisk" },
+    ])
+    expect(sources).toEqual(["preset:Arrivals", "preset:Arrivals"])
+    c.set({ rise: 5 })
+    expect(c.matchingGroupPreset("Arrivals")).toBe(-1)
+    expect(c.matchingGroupPreset("Rows")).toBe(-1)
+    c.undo()
+    expect(c.matchingGroupPreset("Arrivals")).toBe(1)
+    c.undo()
+    expect(c.matchingGroupPreset("Arrivals")).toBe(2)
+    expect(() => c.groupPreset("Arrivals", 7)).toThrow()
+  })
+
+  it("lets a remote peer apply its own group presets, and holds local edits against stale echoes", () => {
+    vi.useFakeTimers()
+    try {
+      const sent: unknown[] = []
+      const remote = createRemoteControls(
+        "iphone",
+        [
+          {
+            key: "t.rise",
+            kind: "number",
+            default: 6,
+            min: 0,
+            max: 24,
+            step: 1,
+            group: "Arrivals",
+          },
+          {
+            key: "t.fade",
+            kind: "number",
+            default: 0.25,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            group: "Arrivals",
+          },
+        ],
+        {
+          groupPresets: {
+            Arrivals: [
+              { name: "Today", values: {} },
+              { name: "Brisk", values: { "t.rise": 4 } },
+            ],
+          },
+          onSet: (key, value) => sent.push({ type: "set", key, value }),
+          onPreset: ({ group, index }) => sent.push({ type: "preset", group, index }),
+        },
+      )
+      remote.groupPreset("Arrivals", 1)
+      expect(remote.get()["t.rise"]).toBe(4)
+      // The phone applies its own preset: no per-key sets go out.
+      expect(sent).toEqual([{ type: "preset", group: "Arrivals", index: 1 }])
+
+      // A drag sends 10; the phone's state still says 8 when it crosses in flight.
+      remote.set({ "t.rise": 10 })
+      expect(sent.at(-1)).toEqual({ type: "set", key: "t.rise", value: 10 })
+      remote.sync({ "t.rise": 8, "t.fade": 0.5 }, { replace: true })
+      expect(remote.get()).toEqual({ "t.rise": 10, "t.fade": 0.5 })
+      // Once the window passes, the peer's latest state stands (it may have clamped the value).
+      vi.advanceTimersByTime(700)
+      expect(remote.get()).toEqual({ "t.rise": 8, "t.fade": 0.5 })
+      expect(sent).toHaveLength(2)
+
+      // Without onPreset, a preset reaches the peer as ordinary sets.
+      const plain: unknown[] = []
+      const other = createRemoteControls(
+        "plain",
+        [{ key: "x", kind: "number", default: 1, min: 0, max: 2, step: 1, group: "G" }],
+        {
+          groupPresets: { G: [{ name: "Two", values: { x: 2 } }] },
+          onSet: (key, value) => plain.push([key, value]),
+        },
+      )
+      other.groupPreset("G", 0)
+      expect(plain).toEqual([["x", 2]])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("page layout", () => {
+  it("splits cards into balanced runs that keep their order down each column", async () => {
+    const { balancedRuns } = await import("../src/panel/page.js")
+    expect(balancedRuns([100, 100, 100, 100], 2)).toEqual([2, 2])
+    expect(balancedRuns([300, 100, 100, 100], 2, 10)).toEqual([1, 3])
+    expect(balancedRuns([50, 60], 4)).toEqual([1, 1])
+    expect(balancedRuns([], 3)).toEqual([])
+    expect(balancedRuns([80, 400, 90, 120, 60], 3)).toEqual([1, 1, 3])
+  })
+
+  it("gives sections their own columns, keeps reading order and makes the tallest column shortest", async () => {
+    const { pageColumns } = await import("../src/panel/page.js")
+    const cards = (section: number, ...heights: number[]) =>
+      heights.map((height) => ({ height, section }))
+    // The tune page: Playground, Session List, Transcript, Composer.
+    const items = [
+      ...cards(0, 300, 100),
+      ...cards(1, 300, 200, 250),
+      ...cards(2, 250, 280, 250, 250),
+      ...cards(3, 210, 240, 210),
+    ]
+    const options = { gap: 16, space: 12, label: () => 30 }
+    const starts = (n: number) => pageColumns(items, n, options).map((c) => c.start)
+    // One section per column when they fit; the longest takes two; short ones stack.
+    expect(starts(4)).toEqual([0, 2, 5, 9])
+    expect(starts(5)).toEqual([0, 2, 5, 7, 9])
+    expect(starts(3)).toEqual([0, 5, 9])
+    expect(starts(1)).toEqual([0])
+    // Labels top each column (blank where a section continues) and each stacked section.
+    const three = pageColumns(items, 3, options)
+    expect(three[0]!.entries).toEqual([
+      { kind: "label", section: 0, continued: false },
+      { kind: "card", index: 0 },
+      { kind: "card", index: 1 },
+      { kind: "label", section: 1, continued: false },
+      { kind: "card", index: 2 },
+      { kind: "card", index: 3 },
+      { kind: "card", index: 4 },
+    ])
+    expect(three[0]!.height).toBe(30 + 16 + 400 + 16 + (30 + 12 + 16) + 750 + 3 * 16)
+    expect(pageColumns(items, 5, options)[3]!.entries[0]).toEqual({
+      kind: "label",
+      section: 2,
+      continued: true,
+    })
+    expect(pageColumns([], 3, options)).toEqual([])
+
+    // Against every valid split of small random pages: order kept, tallest as short as can be.
+    let seed = 7
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    for (let round = 0; round < 200; round++) {
+      const m = 1 + Math.floor(random() * 7)
+      const page: { height: number; section: number }[] = []
+      let section = 0
+      for (let i = 0; i < m; i++) {
+        if (i > 0 && random() < 0.4) section++
+        page.push({ height: 40 + Math.floor(random() * 300), section })
+      }
+      const n = 1 + Math.floor(random() * 4)
+      const got = pageColumns(page, n, options)
+      expect(
+        got.flatMap((c) => c.entries.filter((e) => e.kind === "card").map((e) => e.index)),
+      ).toEqual(page.map((_, i) => i))
+      expect(got.length).toBe(Math.min(n, m))
+      let best = Infinity
+      const k = Math.min(n, m)
+      const sec = page.map((p) => p.section)
+      const valid = (i: number, j: number) =>
+        sec[i] === sec[j - 1] ||
+        ((i === 0 || sec[i - 1] !== sec[i]) && (j === m || sec[j] !== sec[j - 1]))
+      const height = (i: number, j: number) => pageColumns(page.slice(i, j), 1, options)[0]!.height
+      const walk = (i: number, left: number, tallest: number) => {
+        if (left === 0) {
+          if (i === m) best = Math.min(best, tallest)
+          return
+        }
+        for (let j = i + 1; j <= m - left + 1; j++)
+          if (valid(i, j)) walk(j, left - 1, Math.max(tallest, height(i, j)))
+      }
+      walk(0, k, 0)
+      expect(Math.max(...got.map((c) => c.height))).toBeCloseTo(best, 5)
+    }
+  })
+})

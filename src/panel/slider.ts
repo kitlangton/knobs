@@ -1,6 +1,6 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
-import { GESTURE_GAP, sideways } from "./swipe.js"
+import { keyPrefs } from "./prefs.js"
 import {
   clamp,
   FILL,
@@ -12,6 +12,7 @@ import {
   Spring,
   VelocityTracker,
 } from "./motion.js"
+import { OVERSHOOT, onPan } from "./swipe.js"
 
 export interface DigitPlace {
   ch: string
@@ -47,9 +48,9 @@ export interface Slider {
   /** Velocity tracker on normalized fill ratio for drag motion blur. */
   velocity: VelocityTracker
   /** Number of tick marks along the track. */
-  tickCount: number
+  readonly tickCount: number
   /** Where the default value sits along the track [0..1]. */
-  notchRatio: number
+  readonly notchRatio: number
   /** Whether a drag is currently held on the default by the notch's magnet. */
   isMagnetized(): boolean
   /** Drag speed mapped to 0..1 for the fill's leading-edge glow (0 once the pointer rests). */
@@ -64,8 +65,15 @@ export interface Slider {
   isDragging(): boolean
   /** Whether the inline number input is open. */
   isEditing(): boolean
-  /** `delay` (ms) holds this row's motion for its turn in a preset cascade. */
-  update(value: number, delay?: number): void
+  /**
+   * `delay` (ms) holds this row's motion for its turn in a preset cascade; `instant` places the
+   * value without springing or rolling (a different item arrived).
+   */
+  update(value: number, delay?: number, instant?: boolean): void
+  /** Takes a new range, step, label or unit in place, keeping the DOM (see `RemoteControls.update`). */
+  retune(field: KnobField): void
+  /** The field it currently draws. */
+  readonly field: KnobField
   /** Open the inline editor (used when a digit is typed on the track). */
   edit(): void
 }
@@ -81,69 +89,80 @@ const decimals = (step: number) => {
  * the handle is a hairline that only shows on hover, and the label + value sit on the
  * track itself. Dragging follows the pointer exactly (⌥ for 1/10 speed) and the default's notch
  * pulls it in from a few px away; a click snaps to the nearest step (or nearest 10% when there
- * are many steps) with a short spring-like ease. Horizontal scrolling nudges the value.
+ * are many steps) with a short spring-like ease. A sideways trackpad pan moves it like a drag.
  */
 export function createSlider(
   doc: Document,
   key: string,
-  field: KnobField,
+  initialField: KnobField,
   set: (value: number, options?: { coalesce?: boolean }) => void,
   onMotionWake?: () => void,
 ): Slider {
+  let field = initialField
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
     const node = doc.createElement(tag)
     if (cls) node.className = cls
     return node
   }
-  const display = field.label ?? key
   const root = el("div", "knobs-slider")
   const track = el("div", "knobs-track")
   track.tabIndex = 0
   track.setAttribute("role", "slider")
-  track.setAttribute("aria-label", display)
-  track.setAttribute("aria-valuemin", String(field.min))
-  track.setAttribute("aria-valuemax", String(field.max))
   const ratioOf = (v: number) =>
     field.max === field.min
       ? 0
       : Math.min(1, Math.max(0, (v - field.min) / (field.max - field.min)))
-  const notchRatio = ratioOf(field.value)
+  let notchRatio = 0
+  let steps = 0
+  let count = 0
+  let span = 0
   const marks = el("div", "knobs-marks")
-  const steps = (field.max - field.min) / field.step
-  const count = steps <= 10 ? Math.round(steps) + 1 : 11
-  for (let i = 0; i < count; i++) {
-    const r = i / (count - 1)
-    if (Math.abs(r - notchRatio) < 0.025) continue
-    const mark = el("i")
-    mark.style.left = `${r * 100}%`
-    marks.append(mark)
-  }
   const notch = el("i", "knobs-notch")
-  notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
-  marks.append(notch)
   const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
-  label.textContent = display
   const value = el("button", "knobs-value")
   value.type = "button"
   value.tabIndex = -1
-  value.setAttribute("aria-label", `Edit ${display}`)
   const digits = el("span", "knobs-digits")
   value.append(digits)
-  if (field.unit) {
-    const unit = el("span", "knobs-unit")
-    unit.textContent = field.unit
-    value.append(unit)
-  }
+  const unit = el("span", "knobs-unit")
   const number = el("input", "knobs-number")
   number.type = "number"
   number.name = `${key}-value`
-  number.min = String(field.min)
-  number.max = String(field.max)
-  number.step = String(field.step)
   number.hidden = true
-  number.setAttribute("aria-label", `${display} value`)
+  /** Lays out everything that follows from the field: marks, notch, labels and limits. */
+  const shape = () => {
+    const display = field.label ?? key
+    track.setAttribute("aria-label", display)
+    track.setAttribute("aria-valuemin", String(field.min))
+    track.setAttribute("aria-valuemax", String(field.max))
+    notchRatio = ratioOf(field.value)
+    span = field.max - field.min
+    steps = span / field.step
+    count = steps <= 10 ? Math.round(steps) + 1 : 11
+    const ticks: HTMLElement[] = []
+    for (let i = 0; i < count; i++) {
+      const r = i / (count - 1)
+      if (Math.abs(r - notchRatio) < 0.025) continue
+      const mark = el("i")
+      mark.style.left = `${r * 100}%`
+      ticks.push(mark)
+    }
+    notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
+    marks.replaceChildren(...ticks, notch)
+    if (label.textContent !== display) label.textContent = display
+    value.setAttribute("aria-label", `Edit ${display}`)
+    unit.textContent = field.unit ?? ""
+    if (field.unit) {
+      if (!unit.isConnected) value.append(unit)
+    } else unit.remove()
+    number.min = String(field.min)
+    number.max = String(field.max)
+    number.step = String(field.step)
+    number.setAttribute("aria-label", `${display} value`)
+  }
+  shape()
   track.append(fill, marks, handle, label, value, number)
   root.append(track)
   // Hover ticks and the default notch stay clear of both the readout and the label.
@@ -157,22 +176,25 @@ export function createSlider(
   ro.observe(track)
   ro.observe(label)
 
-  const places = decimals(field.step)
+  let places = field.decimals ?? decimals(field.step)
   const fmtDigits = (v: number) => v.toFixed(places)
   const fmt = (v: number) => `${fmtDigits(v)}${field.unit ? ` ${field.unit}` : ""}`
-  const roller = createRollingNumber(digits, {
-    value: field.value,
-    format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
-    duration: 320,
-    motionBlur: true,
-  })
+  const makeRoller = (at: number) =>
+    createRollingNumber(digits, {
+      value: at,
+      format: { minimumFractionDigits: places, maximumFractionDigits: places, useGrouping: false },
+      duration: 320,
+      motionBlur: true,
+    })
+  let roller = makeRoller(field.value)
   // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
   let cachedRollAt = -Infinity
   let cachedStepRoll = 320
   let cachedDragRoll = 0
   const rollMs = (drag: boolean) => {
     const now = performance.now()
-    if (now - cachedRollAt > 16) {
+    // Read once per press while dragging: a style read per pointer move would force a restyle.
+    if (now - cachedRollAt > 16 && !dragging) {
       cachedRollAt = now
       const cs = getComputedStyle(root)
       const sRaw = parseFloat(cs.getPropertyValue("--k-roll"))
@@ -183,6 +205,8 @@ export function createSlider(
     return drag ? cachedDragRoll : cachedStepRoll
   }
   const pct = (v: number) => ratioOf(v) * 100
+  /** Few enough stops that a drag glides from one to the next instead of tracking the pointer. */
+  const stepped = () => steps <= 10
   const quantize = (v: number) =>
     Math.min(
       field.max,
@@ -256,7 +280,7 @@ export function createSlider(
   let rollerDirty = false
   // Entering or leaving the notch's magnet eases the last few px instead of jumping.
   let settleUntil = 0
-  const settling = () => dragging && performance.now() < settleUntil
+  const settling = () => inHand() && performance.now() < settleUntil
   const paint = (v: number, animate: boolean) => {
     root.classList.toggle("knobs-animate", animate)
     root.classList.toggle("knobs-settle", settling())
@@ -264,11 +288,16 @@ export function createSlider(
     fill.style.setProperty("--k-fill", `${p}%`)
     handle.style.left = `${p}%`
     // Dodge the text when the handle would sit on top of it.
-    handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
+    handle.classList.toggle("knobs-dodge", p < 28 || p > 76)
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
+  const slotX = (slot: HTMLElement) =>
+    parseFloat(/translateX\(([-\d.]+)px\)/.exec(slot.style.transform)?.[1] ?? "0")
   const fastPatchDigits = (text: string): boolean => {
-    const slots = digits.querySelectorAll<HTMLElement>(".rn-slot")
+    // Slots are placed by transform, not DOM order: a place added mid-drag (99 → 100) is last.
+    const slots = [...digits.querySelectorAll<HTMLElement>(".rn-slot")].sort(
+      (a, b) => slotX(a) - slotX(b),
+    )
     if (slots.length !== text.length) return false
     for (let i = 0; i < slots.length; i++) {
       const faces = slots[i]!.querySelectorAll<HTMLElement>(".rn-face")
@@ -279,13 +308,13 @@ export function createSlider(
     if (sem) sem.textContent = text
     return true
   }
-  const update = (v: number, delay = 0) => {
+  const update = (v: number, delay = 0, instant = false) => {
     const previous = current
     current = v
     const r = ratioOf(v)
     velocity.add(r, 0)
-    const ms = !initialized ? 0 : rollMs(dragging)
-    if (!initialized || (dragging && !settling())) fillSpring.snap(r)
+    const ms = !initialized || instant ? 0 : rollMs(inHand())
+    if (!initialized || instant || (inHand() && !settling() && !stepped())) fillSpring.snap(r)
     else fillSpring.set(r, delay)
     const digitsStr = fmtDigits(v)
     syncDigits(digitsStr, Math.sign(v - previous), ms, ms > 0 ? delay : 0)
@@ -297,6 +326,7 @@ export function createSlider(
     // when the character count changes (for readout width).
     const gpu = root.closest('[data-gpu-active="true"]') !== null
     const animateDom = ms > 0 && !gpu
+    if (instant) delay = 0
     const roll = () => {
       rollerDirty = false
       lastRollerLen = digitsStr.length
@@ -311,7 +341,7 @@ export function createSlider(
     if (gpu && digitsStr.length === lastRollerLen) {
       rollerDirty = true
     } else if (
-      dragging &&
+      inHand() &&
       !animateDom &&
       digitsStr.length === lastRollerLen &&
       fastPatchDigits(digitsStr)
@@ -324,12 +354,24 @@ export function createSlider(
     }
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
-    if (number.hidden) paint(v, !dragging)
+    if (number.hidden) paint(v, !instant && (!inHand() || stepped()))
+    onMotionWake?.()
+  }
+  const retune = (next: KnobField) => {
+    if (next === field) return
+    const placesBefore = places
+    field = next
+    shape()
+    places = field.decimals ?? decimals(field.step)
+    if (places !== placesBefore) {
+      digits.replaceChildren()
+      roller = makeRoller(current)
+      lastRollerLen = fmtDigits(current).length
+    }
     onMotionWake?.()
   }
 
   const getTrackWidth = () => trackWidth || (trackWidth = track.offsetWidth)
-  const span = field.max - field.min
   const valueAt = (clientX: number, rect = track.getBoundingClientRect()) => {
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return field.min + t * span
@@ -338,7 +380,7 @@ export function createSlider(
   // The DOM eases --k-speed with a transition; the GPU renderer eases speed() itself.
   let speedTimer: ReturnType<typeof setTimeout> | undefined
   const speed = () =>
-    dragging ? clamp((Math.abs(velocity.velocity[0]) * getTrackWidth() - 150) / 1350, 0, 1) : 0
+    inHand() ? clamp((Math.abs(velocity.velocity[0]) * getTrackWidth() - 150) / 1350, 0, 1) : 0
   const glow = (value: number) => {
     root.style.setProperty("--k-speed", value.toFixed(3))
     clearTimeout(speedTimer)
@@ -376,6 +418,9 @@ export function createSlider(
   }
 
   let dragging = false
+  // A trackpad pan holds the slider like a drag does.
+  let panning = false
+  const inHand = () => dragging || panning
   let dragRect: DOMRect | undefined
   let startX = 0
   let moved = false
@@ -393,6 +438,8 @@ export function createSlider(
     if (event.button !== 0 || (target && number.contains(target))) return
     event.preventDefault()
     fromValue = Boolean(target && value.contains(target))
+    cachedRollAt = -Infinity
+    rollMs(false)
     track.setPointerCapture(event.pointerId)
     dragRect = track.getBoundingClientRect()
     trackWidth = dragRect.width
@@ -451,6 +498,12 @@ export function createSlider(
             ? event.clientX - rect.right
             : 0
     }
+    set(magnetize(raw, factor) ? field.value : quantize(raw), { coalesce: !first })
+    glow(speed())
+    stretch(over)
+  }
+  /** Whether `raw` is close enough to the default for its magnet to hold it there. */
+  const magnetize = (raw: number, factor = 1) => {
     const held = nearDefault(raw, factor)
     if (held !== magnet) {
       magnet = held
@@ -458,15 +511,10 @@ export function createSlider(
       root.classList.toggle("knobs-magnet", held)
       if (held) pop()
     }
-    set(held ? field.value : quantize(raw), { coalesce: !first })
-    glow(speed())
-    stretch(over)
+    return held
   }
-  const release = (event: PointerEvent) => {
-    if (!dragging) return
-    const rect = dragRect
-    dragging = false
-    dragRect = undefined
+  /** The end of a drag or pan: the rubber band springs back. */
+  const letGo = () => {
     magnet = false
     prevStretch = 0
     glow(0)
@@ -478,49 +526,81 @@ export function createSlider(
     root.addEventListener("transitionend", () => root.classList.remove("knobs-release"), {
       once: true,
     })
-    if (!moved) {
-      if (fromValue) edit()
-      else set(snap(valueAt(event.clientX, rect)))
-    } else if (rollerDirty && root.closest('[data-gpu-active="true"]') === null) {
+  }
+  const settleDigits = () => {
+    if (rollerDirty && root.closest('[data-gpu-active="true"]') === null) {
       rollerDirty = false
       roller.update({ value: current, animated: true, duration: 1, motionBlur: false })
     }
+  }
+  const release = (event: PointerEvent) => {
+    if (!dragging) return
+    const rect = dragRect
+    dragging = false
+    dragRect = undefined
+    letGo()
+    if (!moved) {
+      if (fromValue) edit()
+      else set(snap(valueAt(event.clientX, rect)))
+    } else settleDigits()
     onMotionWake?.()
   }
   track.onpointerup = release
   track.onpointercancel = release
 
-  // Horizontal scrolling (or ⇧ + wheel) nudges by steps; one gesture is one undo step.
+  // A sideways trackpad pan is a drag by other means: the value follows the fingers 1:1 at the
+  // fill's scale from the first event, stretches at the ends, and lands as one undo step; the
+  // momentum after the fingers lift is ignored. A wheel notch (or ⇧ + wheel) steps once.
   // Vertical scrolling is left alone so the page and panel still scroll.
-  let wheelAt = 0
-  let wheelRaw = 0
-  let wheelValue = 0
-  let wheelCommitted = false
-  track.addEventListener(
-    "wheel",
-    (event) => {
-      const px = sideways(event)
-      if (!px || dragging || !number.hidden) return
-      event.preventDefault()
-      const now = performance.now()
-      // A pause, or any other change (an undo, a key), starts a new gesture.
-      if (now - wheelAt > GESTURE_GAP || current !== wheelValue) {
-        wheelRaw = wheelValue = current
-        wheelCommitted = false
+  let panRaw = 0
+  let panValue = 0
+  let panCommitted = false
+  /** Between a pan's first move and its end (`panning` lets go a little sooner, at the lift). */
+  let panGesture = false
+  const panLift = () => {
+    if (!panning) return
+    panning = false
+    letGo()
+    settleDigits()
+    onMotionWake?.()
+  }
+  onPan(track, {
+    accept: () => !dragging && number.hidden,
+    move(dx) {
+      const width = getTrackWidth()
+      if (!width || span <= 0) return
+      if (!panning) {
+        panning = true
+        velocity.reset()
+        root.classList.add("knobs-active")
       }
-      wheelAt = now
-      wheelRaw = Math.min(
-        field.max,
-        Math.max(field.min, wheelRaw + (px / track.offsetWidth) * span * 0.5),
-      )
-      const next = quantize(wheelRaw)
-      if (next === current) return
-      set(next, { coalesce: wheelCommitted })
-      wheelValue = next
-      wheelCommitted = true
+      // A new gesture, or any other change (an undo, a key), anchors the pan as a new undo step.
+      if (!panGesture || current !== panValue) {
+        panGesture = true
+        panRaw = panValue = current
+        panCommitted = false
+      }
+      const reach = (OVERSHOOT / width) * span
+      panRaw = clamp(panRaw + (dx / width) * span, field.min - reach, field.max + reach)
+      const next = magnetize(panRaw) ? field.value : quantize(panRaw)
+      if (next !== current) {
+        set(next, { coalesce: panCommitted })
+        panCommitted = true
+      }
+      panValue = current
+      glow(speed())
+      stretch(((panRaw - clamp(panRaw, field.min, field.max)) / span) * width)
     },
-    { passive: false },
-  )
+    lift: panLift,
+    end() {
+      panLift()
+      panGesture = false
+    },
+    step(direction) {
+      const next = quantize(current + direction * field.step)
+      if (next !== current) set(next)
+    },
+  })
 
   const edit = () => {
     number.value = String(current)
@@ -558,7 +638,7 @@ export function createSlider(
   }
   track.onkeydown = (event) => {
     if (event.target !== track) return
-    if (event.key === "Enter" && number.hidden) {
+    if (event.key === "Enter" && number.hidden && keyPrefs(track).edit) {
       event.preventDefault()
       edit()
     } else if (event.key === "Home" || event.key === "End") {
@@ -577,8 +657,16 @@ export function createSlider(
     handleSpring,
     digitPlaces,
     velocity,
-    tickCount: count,
-    notchRatio,
+    get tickCount() {
+      return count
+    },
+    get notchRatio() {
+      return notchRatio
+    },
+    get field() {
+      return field
+    },
+    retune,
     isMagnetized: () => magnet,
     speed,
     get poppedAt() {
@@ -586,7 +674,7 @@ export function createSlider(
     },
     getDigitsText: () => fmtDigits(current),
     getUnitText: () => field.unit ?? "",
-    isDragging: () => dragging,
+    isDragging: inHand,
     isEditing: () => !number.hidden,
     update,
     edit,

@@ -8,7 +8,7 @@ Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon but
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps; the same swipe over the preset strip or a choice moves one preset or option per gesture. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, and the momentum after you lift is ignored, so it stops where your fingers did. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
 
@@ -140,8 +140,8 @@ Panels and switchers are keyboard-first:
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
-| `⌥` + drag | Fine-tune a slider at 1/10 speed; scrolling sideways over it nudges by steps (one undo entry per gesture) |
-| Swipe sideways | Over the preset strip or a choice: the next or previous one, once per gesture (`⇧` + wheel too) |
+| `⌥` + drag | Fine-tune a slider at 1/10 speed |
+| Pan sideways (two fingers) | Moves a slider, colour strip, pad or easing handle 1:1 with the fingers; over the preset strip or a choice, drags the pill through the options. One undo entry per gesture; momentum is ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
@@ -226,7 +226,194 @@ Colours leave as sRGB components (the OKLCH value is already inside sRGB). Point
 
 **Migrating an app's Tune page:** the Swift side needs `Tunable` to support `Color`, `CGPoint` and `UnitCurve` (decoding the socket's `"oklch(L C H)"`/hex string, `{ x, y }` and `[x1, y1, x2, y2]`), and a `TunableSpring` that reads `{ duration, bounce }` from one key rather than two. Until then, keep sending a spring as paired `.duration`/`.bounce` number descriptors; the panel and codegen handle both. Nothing in other repositories changes until you opt in.
 
-See [`docs/migration.md`](./docs/migration.md) for full migration sketches for the OpenCode iOS Tune Page and Problems board config panels.
+See [`docs/migration.md`](./docs/migration.md) for the OpenCode iOS Tune Page and the Problems rewrite, and [Embedding in an app](#embedding-in-an-app) below.
+
+## Embedding in an app
+
+Panels can be part of a product, not just a dev tool: an app's parameter column, a prototype's
+settings, a settings sheet. The app owns the values; the panel shows them and reports intents.
+
+```tsx
+import { createRemoteControls, type ControlDescriptor } from "knobs"
+import { KnobsPanel, useModified } from "knobs/solid"
+import { problemsPreset } from "knobs/themes"
+
+const params = createRemoteControls("parameters", [], {
+  ship: () => import("knobs/panel"), // live in production builds too (see Shipping)
+  nullDefaults: false,               // onSet sends values as they are
+  onSet: (key, value) => save(key, value),
+  onReset: ({ key, group }) => clear(key ?? group), // {} resets everything
+  onAction: (key) => run(key),
+})
+const modified = useModified(params) // a "modified" dot beside your own heading
+
+<KnobsPanel
+  controls={params}
+  descriptors={descriptors()}   // a new array swaps rows in place; the same array only syncs values
+  values={values()}             // your state, optimistic edits and server echoes included
+  land={switchingItem()}        // another item arrived: values land without springing
+  header={false}
+  preset={problemsPreset}
+  keys={{ random: false, undo: false, vim: false, edit: false, bigStep: 5, wrap: false }}
+  onReady={(panel) => (focusPanel = () => panel.focus())}
+/>
+```
+
+Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(remote, el, options)`.
+
+- **Descriptor swaps.** `remote.update(descriptors, values, { land? })` keeps the panel. Rows whose
+  key persists keep their DOM and spring to the new value (a new range retunes in place); new rows
+  reveal and missing ones fold, in the cascade's turn. Undo history belongs to one descriptor set:
+  it starts over when the descriptors change shape or `land` is set.
+- **One rule for incoming values.** A key is *held* while it's in hand (dragged, or open in the
+  inline editor) and, on remote controls, for 600 ms after it last changed here (`echo`). `sync`
+  and `update` leave held keys alone; when the hold ends, the newest value that arrived lands.
+  `controls.hold(key, on)` holds keys for controls of your own.
+- **Flat springs.** `{ key: "spring", kind: "spring", bind: { duration: "d", bounce: "b" } }`
+  draws two flat number keys as one spring card. Their own number descriptors, if present, give
+  ranges and labels. `onSet` reports `"d"` and `"b"` separately; values stay flat. Locally:
+  `defineControls("m", { ...flatSpring({ duration: 0.45, bounce: 0.3 }, { label: "Spring" }) })`.
+- **Actions and settings.** `{ kind: "action" }` (or `action("Replay")` locally) is a button row
+  that calls `onAction(key)`. Choices take `{ id, label }` options. `fromSettings(groups, home)` maps
+  a hosted prototype's settings sections (choices, switches, buttons, titled sections becoming
+  groups) to descriptors and values, with what the prototype first reported as each default.
+- **Choices** are segmented while their labels fit with room to spare and there are at most four,
+  and a drop-down menu otherwise. They switch both ways as the width changes; `display: "menu" |
+  "segmented"` fixes one. On a menu row, ←/→ step through the options, and Enter or Space opens
+  the menu (↑↓, a letter, Enter, Esc).
+- **Keys stay scoped.** An inline panel hears keys only while focus is inside it. Keys it handles
+  are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
+  focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
+  command that's off loses its header button too, and the `?` popover and row menu list only what's
+  on. `vim: false` drops j/k/h/l, `edit: false` leaves digits and Enter to the page, `bigStep` sets
+  ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
+- **Marks.** `marks: false` (on the store or the mount) hides modified dots, readout marks, group
+  resets and Reset, for values that belong to someone else. A command that's off takes its marks
+  too: with `reset: false` rows show nothing to reset, and group resets follow `resetAll`.
+- **Reading values.** `useValue(controls, key)` and `useModified(controls, key?)` change only when
+  their answer does; a panel update touches only the rows that changed.
+
+### Shipping
+
+Stores are dev tools by default: a production build (the package's default export condition)
+locks them to their defaults, mounts nothing and leaves the panel out of the bundle. `ship` makes a
+store product UI:
+
+```ts
+createRemoteControls("parameters", descriptors, { ship: () => import("knobs/panel") })
+defineControls("settings", schema, { ship: () => import("knobs/panel") })
+```
+
+A shipped store stays live in production (`enabled` defaults to true) and mounts from the module you
+name, which your bundler splits into its own chunk. The core never imports the panel itself.
+Stores without `ship` are unchanged.
+
+### Styling and tokens
+
+Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a preset:
+`mountPanel(c, el, { preset })` with a `TokenPreset` (`{ name, dark, light?, css? }`), or
+`presetCss(preset)` in your own stylesheet with `data-preset` on the panel. `problemsPreset` (from
+`knobs/themes`) is the Problems viewer's parameter column. Every token it sets works on its own:
+
+| Token | Default | What it does |
+| --- | --- | --- |
+| `--k-row-gap` | `0px` | Above 0, each row is its own bar, this far apart; a spring stacks its curve over its sliders |
+| `--k-hover-in` / `--k-hover-out` | `150` / `150` | Hover washes in and out (ms) |
+| `--k-chrome` | `1` | `0` drops an inline panel's card: background, border and rim |
+| `--k-fill-base`, `--k-fill-rest-mix`, `--k-fill-hover-mix`, `--k-fill-active-mix` | surface-hi, 20%, rest, 30% | The fill: accent mixed into the base at rest, hovered and dragged |
+| `--k-handle`, `--k-handle-rest`, `--k-handle-inset` | accent, `0`, `0px` | The handle's colour, its opacity at rest (a quarter, and shorter, near the ends), and how far inside the fill's edge it sits |
+| `--k-value-font`, `--k-unit-gap`, `--k-unit-color` | font, `.28em`, dim | The readout's face, and the unit's spacing and colour (`currentColor` matches the value) |
+| `--k-readout-mark` | `0` | `1`: a modified value takes `--k-modified` behind a small dot |
+| `--k-group-transform`, `--k-group-size`, `--k-group-color`, `--k-group-tracking`, `--k-group-inset` | uppercase, text-cap, dim, `.04em`, inset | Group headings |
+| `--k-group-divider`, `--k-group-divider-gap` | transparent, `0px` | A hairline above every group but the first, and the room under it |
+| `--k-curve-inset`, `--k-curve-guide`, `--k-curve-dot` | `6px`, `solid`, `1` | The spring curve's side inset; `dashed` draws one dashed line at rest instead of two; `0` hides the running dot |
+
+Stable class hooks: `.knobs-panel` (with `data-preset`, `data-theme`, `data-density`,
+`data-rows`, `data-landing`), `.knobs-card`, `.knobs-group-head`, `.knobs-row`, `.knobs-slider`,
+`.knobs-spring`, `.knobs-seg`, `.knobs-select`, `.knobs-action`, `.knobs-modified`, and
+`[data-field="<key>"]` on every row. Both renderers draw every token above.
+
+## Full page
+
+When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
+
+Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
+
+```ts
+import { createRemoteControls } from "knobs"
+import { mountPage } from "knobs/panel"
+
+const tune = createRemoteControls("iphone-tune", descriptors, {
+  values: phone.values,
+  // Numbered presets per group: 1, 2, 3… in the card's header. Keys a preset leaves out are at
+  // their defaults, so { name: "Today", values: {} } is the shipped look.
+  groupPresets: {
+    Rhythm: [
+      { name: "Today", values: {} },
+      { name: "Compact", values: { "transcript.row.flowHalf": 6, "transcript.row.turnHalf": 9 } },
+    ],
+  },
+  onSet: (key, value) => send({ type: "set", key, value }),
+  // The peer applies its own preset (and sends back its state) instead of getting a set per key.
+  onPreset: ({ group, index }) => send({ type: "preset", key: presetSetKey[group], index }),
+})
+
+const page = mountPage(tune, document.querySelector("#app")!, {
+  title: "iPhone Tune",
+  sections: ["Playground", "Session List", "Transcript"], // order; others follow as they appear
+  columnWidth: 300, // the narrowest a column gets (px)
+  copy: () => tune.swift(), // what Copy and ⇧C put on the clipboard
+})
+```
+
+Fields and descriptors take a `section` beside their `group` (`knob(44, { min: 28, max: 72, group: "Spacing", section: "Session List" })`); panels ignore it. `defineControls` takes `groupPresets` and `onPreset` too, and every store has `groupPresets`, `groupPreset(group, index)` (one undo step, `source: "preset"` with its `group`) and `matchingGroupPreset(group)`. Hovering a numbered chip shows its preset's name where the card's title is; applying one by key shows it briefly.
+
+**Custom cards** sit in the same grid, in the same material, for anything that isn't a field: a playground switcher, a list of motion jumps, a video player. Small primitives come with them, each built from the panel's own rows; `set` shows a value that arrived from elsewhere without calling `onChange`:
+
+```ts
+const playground = page.card({ title: "Playground & Slow Motion", section: "Playground" })
+const screen = playground.choice({
+  options: [{ value: "transcript", label: "Transcript" }, { value: "composer", label: "Composer" }],
+  value: "transcript",
+  onChange: (v) => send({ type: "playground", playground: v }),
+}) // no label: the segments span the card
+const speed = playground.choice({
+  label: "Speed",
+  options: ["0.1", "0.25", "0.5", "1", "2"].map((v) => ({ value: v, label: `${v}×` })),
+  value: "1",
+  onChange: (v) => send({ type: "slowmo", scale: Number(v) }),
+})
+playground.actions([{ label: "Live arrival", run: () => replay("liveArrival") }])
+playground.toggle({ label: "Reduce motion", value: false, onChange: (on) => setReduceMotion(on) })
+
+const watch = page.card({ title: "Motion Watch", section: "Playground" })
+watch.item({ label: "Layout jump · toolRow", detail: "14.2 pt · f212", onSelect: () => inspect(jump) })
+watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `remove()` drops the card
+speed.set("0.25") // the phone changed it
+```
+
+Content that changes over time animates if you update it in place. `card.list()` keeps rows by key: `set` updates the rows that stay, folds new ones open and removed ones shut (rows replaced by others cross-fade while the card eases to its new height). `actions(...).set` swaps buttons the same way, keyed by label, and the row folds away while it's empty. `card.show(element, visible)` folds anything in the card open or shut.
+
+```ts
+const jumps = watch.list()
+jumps.set(phone.jumps.map((j) => ({ key: j.id, label: j.title, detail: j.detail, onSelect: () => replay(j.id) })))
+const scenarios = playground.actions([])
+scenarios.set(screen === "composer" ? [{ label: "Call", run: call }, { label: "Dictation", run: dictate }] : [])
+```
+
+On a page, the keyboard spans every card:
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
+| `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits) |
+| `1`–`9` | Apply the focused group's numbered preset (in groups without them, digits still edit numbers; `Enter` always does) |
+| `/` | Filter rows by label, group or section, live; rows fold shut, cards with nothing left fold away and the rest glide into re-balanced columns; `Esc` clears |
+| `s` | Hints for what's on screen, custom cards included |
+
+Focus that lands off screen (or under the header) glides into view, retargeting from where the last glide was headed so held keys don't fall behind. The rest (`[` `]`, `r`, `g`, `⇧L`, selection, the row menu, hold `\`) works as in a panel.
+
+Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header, and follows every frame of a glide or fold; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling and layout motion wake the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
 
 ## Theming, Density & WebGPU Renderer
 
@@ -307,7 +494,7 @@ The package has two core exports selected through the standard `development` con
 
 | Function | Behavior |
 | --- | --- |
-| `knob(value, { min, max, step?, unit?, shortcut?, label?, group? })` | Numeric slider control with rolling readout and inline editor. |
+| `knob(value, { min, max, step?, unit?, shortcut?, label?, group?, section? })` | Numeric slider control with rolling readout and inline editor. |
 | `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
 | `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
@@ -316,13 +503,18 @@ The package has two core exports selected through the standard `development` con
 | `easing([x1, y1, x2, y2] \| name, meta?)` | Cubic bezier with a mini curve, a handle editor and named curves. |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
-| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen. |
+| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
+| `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
+| `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
+| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element })` adds custom cards. |
 
 ### Store (`Controls<S>`)
 
 - `controls.get()` / `controls.getServerSnapshot()` / `controls.locked`
 - `controls.set(patch, { coalesce? })`
-- `controls.sync(values, { replace? })` — apply external state without recording undo or emitting a local change
+- `controls.sync(values, { replace?, land? })` — apply external state without recording undo or emitting a local change; held keys keep theirs
+- `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
+- `controls.action(key)` — press an action row
 - `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
 - `controls.isModified(key?)` / `controls.modified()`
 - `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
@@ -330,6 +522,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
 - `controls.preset(id)` / `controls.matchingPreset()`
+- `controls.groupPresets` / `controls.groupPreset(group, index)` / `controls.matchingGroupPreset(group)`
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel

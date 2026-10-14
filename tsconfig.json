@@ -13,7 +13,8 @@
       "knobs": ["./src/index.ts"],
       "knobs/react": ["./src/react/index.ts"],
       "knobs/solid": ["./src/solid/index.ts"],
-      "knobs/panel": ["./src/panel/index.ts"]
+      "knobs/panel": ["./src/panel/index.ts"],
+      "knobs/themes": ["./src/themes/index.ts"]
     }
   },
   "include": ["src", "tests", "examples", "scripts", "site", "*.ts"]

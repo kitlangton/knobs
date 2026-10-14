@@ -1,7 +1,8 @@
+import { arrowOf } from "./prefs.js"
 import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
-import { onSwipe } from "./swipe.js"
+import { livePill, panOptions } from "./swipe.js"
 
 export interface PresetEntry<V = Record<string, unknown>> {
   readonly id: string
@@ -88,6 +89,7 @@ export function createPresetStrip<S extends Schema>(
   run: (action: () => unknown) => void,
   onAfterChange?: () => void,
 ): PresetStrip {
+  const wake = () => onAfterChange?.()
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
     const node = doc.createElement(tag)
     if (cls) node.className = cls
@@ -158,6 +160,8 @@ export function createPresetStrip<S extends Schema>(
   }
 
   function measurePill(snap = false) {
+    // A pan holds the pill with the fingers until it ends.
+    if (livePill(track)) return
     const idx = activeState.activeIndex
     const btn = idx >= 0 ? buttons[idx] : undefined
     if (!btn || activeState.isCustom) {
@@ -380,11 +384,11 @@ export function createPresetStrip<S extends Schema>(
 
   root.onkeydown = (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return
-    if (event.key === "ArrowLeft" || event.key === "h") {
+    if (arrowOf(event) === -1) {
       event.preventDefault()
       event.stopPropagation()
       cycle(-1)
-    } else if (event.key === "ArrowRight" || event.key === "l") {
+    } else if (arrowOf(event) === 1) {
       event.preventDefault()
       event.stopPropagation()
       cycle(1)
@@ -410,17 +414,17 @@ export function createPresetStrip<S extends Schema>(
     }
   }
 
-  // A sideways swipe moves one chip per gesture, stopping at the ends.
-  onSwipe(root, (direction) => {
-    if (entries.length === 0) return
-    const at = resolveActivePresetEntry(entries, controls.get(), lastAppliedId).activeIndex
-    const next =
-      at < 0
-        ? direction > 0
-          ? 0
-          : entries.length - 1
-        : Math.max(0, Math.min(entries.length - 1, at + direction))
-    if (next !== at) selectAt(next)
+  // A sideways pan drags the pill across the chips, as one undo step, stopping at the ends.
+  panOptions(root, {
+    box: track,
+    pill,
+    buttons: () => buttons,
+    selected: () => resolveActivePresetEntry(entries, controls.get(), lastAppliedId).activeIndex,
+    select: (i, coalesce) => selectAt(i, coalesce),
+    rest: () => measurePill(),
+    wake,
+    minWidth: 20,
+    rows: true,
   })
 
   void doc.fonts?.ready.then(fitColumns)

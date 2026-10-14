@@ -1,4 +1,50 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
+
+type Wheel = { dx: number; dy?: number; t: number }
+/**
+ * Dispatches wheel events in one burst with their own timestamps (`t`, ms), so a slow runner's
+ * timers can't split or join gestures. Returns whether every event was claimed, and `probe` (an
+ * expression run in the page) after each event.
+ */
+const wheel = (page: Page, selector: string, events: readonly Wheel[], probe = "null") =>
+  page.evaluate(
+    ({ selector, events, probe }) => {
+      const el = document.querySelector(selector)!
+      const read = new Function(`return ${probe}`)
+      let claimed = 0
+      const seen: unknown[] = []
+      for (const { dx, dy = 0, t } of events) {
+        const e = new WheelEvent("wheel", {
+          deltaX: dx,
+          deltaY: dy,
+          bubbles: true,
+          cancelable: true,
+        })
+        Object.defineProperty(e, "timeStamp", { value: t })
+        el.dispatchEvent(e)
+        if (e.defaultPrevented) claimed++
+        seen.push(read())
+      }
+      return { claimed: claimed === events.length, seen }
+    },
+    { selector, events, probe },
+  )
+/**
+ * Finger travel (px, rightwards positive) as a trackpad pan from `start` ms, one event per 8 ms.
+ * Natural scrolling sends deltas against the fingers.
+ */
+const pan = (fingers: readonly number[], start: number): Wheel[] =>
+  fingers.map((d, i) => ({ dx: -d, t: start + i * 8 }))
+/** The fingers lifting after `pan`: a 25 ms pause, the spike that covers it, then fading momentum. */
+const lift = (fingers: readonly number[], start: number): Wheel[] => {
+  const last = fingers.at(-1)!
+  const sign = Math.sign(last)
+  let t = start + (fingers.length - 1) * 8 + 25
+  const out: Wheel[] = [{ dx: -Math.round((last / 8) * 25 * 0.75), t }]
+  for (let m = Math.abs(last / 8) * 16.7; m >= 0.6; m *= 0.92)
+    out.push({ dx: -sign * Math.max(1, Math.round(m)), t: (t += 16.7) })
+  return out
+}
 
 test("hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
   page,
@@ -201,7 +247,7 @@ test("production ships constants, with no panel chunks or hover UI", async ({ pa
   page.on("response", (response) => {
     if (response.url().endsWith(".js")) scripts.push(response.url())
   })
-  await page.goto("http://127.0.0.1:5179/")
+  await page.goto(`http://127.0.0.1:${Number(process.env.PREVIEW_PORT) || 5179}/`)
   await expect(page.locator("[data-study]")).toHaveCount(4)
   await page.evaluate(() =>
     localStorage.setItem(
@@ -396,7 +442,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
   // Random, Reset and Copy are Phosphor icons in the header with undo/redo, help and close
-  await expect(panel.locator("header .knobs-icon")).toHaveCount(7)
+  await expect(panel.locator("header :is(.knobs-icon, .knobs-die-icon)")).toHaveCount(7)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
   await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
 
@@ -479,7 +525,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await page.keyboard.press("Escape")
 })
 
-test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", async ({ page }) => {
+test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ page }) => {
   await page.goto("/")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -522,26 +568,64 @@ test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", asy
   expect(fine).toBeGreaterThan(150)
   expect(fine).toBeLessThanOrEqual(150 + Math.ceil((60 / track.width) * 300 * 0.1) + 1)
 
-  // Horizontal scrolling nudges by steps as one undo entry; vertical scrolling is left alone.
+  // A sideways trackpad pan moves the value 1:1 with the fingers at the fill's scale, from the
+  // first event, as one undo entry; vertical scrolling is left alone.
+  await count.focus()
+  await page.keyboard.type("150")
+  await page.keyboard.press("Enter")
   await page.mouse.move(xAt(100), y)
-  const before = await now()
   await page.mouse.wheel(0, 120)
-  expect(await now()).toBe(before)
-  await page.mouse.wheel(16, 0)
-  await expect.poll(now).toBeGreaterThan(before)
-  await page.keyboard.press("u")
-  await expect.poll(now).toBe(before)
-  // One trackpad gesture: a quick burst of sideways wheel events.
-  await count.evaluate((el) => {
-    for (let i = 0; i < 6; i++)
-      el.dispatchEvent(new WheelEvent("wheel", { deltaX: 8, bubbles: true, cancelable: true }))
+  expect(await now()).toBe(150)
+  const row = panel.locator('[data-field="count"]')
+  const expected = (px: number) => Math.round(150 + (px / track.width) * 300)
+  const selector = '[aria-label="splat controls"] [data-field="count"] [role="slider"]'
+  // In hand like a drag: the fill sits on the value with no easing.
+  const probe = `(() => {
+    const row = document.querySelector('[aria-label="splat controls"] [data-field="count"]')
+    return [
+      Number(row.querySelector('[role="slider"]').getAttribute("aria-valuenow")),
+      parseFloat(row.querySelector(".knobs-fill").style.getPropertyValue("--k-fill")),
+      row.classList.contains("knobs-active") && !row.classList.contains("knobs-animate"),
+    ]
+  })()`
+  const fingers = [4, 8, 12, 12, 12]
+  const panned = await wheel(page, selector, pan(fingers, 10_000), probe)
+  expect(panned.claimed).toBe(true)
+  let travelled = 0
+  panned.seen.forEach((seen, i) => {
+    travelled += fingers[i]!
+    const v = expected(travelled)
+    expect(seen).toEqual([v, expect.closeTo((v / 300) * 100, 5), true])
   })
-  await expect.poll(now).toBeGreaterThan(before + 10)
+  // Still fingers end it.
+  await expect(row).not.toHaveClass(/knobs-active/)
   await page.keyboard.press("u")
-  await expect.poll(now).toBe(before)
+  await expect.poll(now).toBe(150)
+  // A flick: the value stops where the fingers lifted, ignoring the momentum.
+  const flick = [3, 8, 14, 18, 18]
+  const flicked = await wheel(page, selector, [...pan(flick, 20_000), ...lift(flick, 20_000)])
+  expect(flicked.claimed).toBe(true)
+  expect(await now()).toBe(expected(61))
+  await expect(row).not.toHaveClass(/knobs-active/)
+  // Past the end it stops at the max and stretches like a drag.
+  await wheel(page, selector, pan([40, 60, 80, 80, 80, 80, 80, 80], 30_000))
+  expect(await now()).toBe(300)
+  await expect(row).toHaveAttribute("style", /scaleX/)
+  await expect(row).not.toHaveClass(/knobs-active/)
+  await expect(row).not.toHaveAttribute("style", /scaleX/)
+  // Each pan was one undo entry.
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(expected(61))
+  await page.keyboard.press("u")
+  await expect.poll(now).toBe(150)
+  // ⇧ + wheel (a mouse) steps once per notch.
+  await page.keyboard.down("Shift")
+  await page.mouse.wheel(0, 100)
+  await page.keyboard.up("Shift")
+  await expect.poll(now).toBe(151)
 })
 
-test("sideways swipes step presets and choices once per gesture, as one undo entry each", async ({
+test("panning drags the preset and choice pills across their options, one undo entry per gesture", async ({
   page,
 }) => {
   await page.goto("/meta.html")
@@ -550,55 +634,82 @@ test("sideways swipes step presets and choices once per gesture, as one undo ent
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   const strip = synth.getByRole("radiogroup", { name: "Preset or variant" })
   const waveform = synth.getByRole("radiogroup", { name: "Waveform" })
-  // A trackpad flick: rising deltas, then a long fading momentum tail, all as one stream.
-  const flick = (sign: number) =>
-    page.evaluate(async (sign) => {
-      const el = document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!
-      const deltas = [4, 12, 26, 40, ...Array.from({ length: 40 }, (_, i) => 40 * 0.9 ** (i + 1))]
-      let blocked = 0
-      for (const d of deltas) {
-        const e = new WheelEvent("wheel", { deltaX: d * sign, bubbles: true, cancelable: true })
-        el.dispatchEvent(e)
-        if (e.defaultPrevented) blocked++
-        await new Promise((r) => setTimeout(r, 8))
-      }
-      return blocked === deltas.length
-    }, sign)
+  const stripSelector = '[aria-label="synth-voice controls"] .knobs-presets'
   const checked = () => strip.locator('[aria-checked="true"]').textContent()
-  expect(await checked()).toBe("default")
-  expect(await flick(1)).toBe(true)
-  expect(await checked()).toBe("warm")
-  await page.waitForTimeout(300)
-  await flick(1)
-  expect(await checked()).toBe("acid")
-  await page.waitForTimeout(300)
-  await flick(-1)
-  expect(await checked()).toBe("warm")
+  const pillLeft = () =>
+    strip
+      .locator(".knobs-presets-pill")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  await expect(strip.getByRole("radio", { name: "default" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  const chips = await strip
+    .locator(".knobs-preset-chip:not(.knobs-preset-save)")
+    .evaluateAll((bs) => bs.map((b) => (b as HTMLElement).offsetLeft))
+  const spacing = chips[1]! - chips[0]!
+
+  // The pill follows the fingers from the first event; the selection changes past halfway, and
+  // when the fingers lift the momentum is ignored and the pill springs into its slot.
+  const probe = `(() => {
+    const strip = document.querySelector('${stripSelector}')
+    const pill = strip.querySelector(".knobs-presets-pill")
+    return [strip.querySelector('[aria-checked="true"]').textContent, parseFloat(pill.style.left), pill.style.transition]
+  })()`
+  const flick = [3, 6, 9, 9, 8]
+  const flicked = await wheel(
+    page,
+    stripSelector,
+    [...pan(flick, 10_000), ...lift(flick, 10_000)],
+    probe,
+  )
+  expect(flicked.claimed).toBe(true)
+  const seen = flicked.seen as [string, number, string][]
+  expect(seen.slice(0, 5)).toEqual([
+    ["default", expect.closeTo(chips[0]! + 3, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 9, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 18, 0), "none"],
+    ["default", expect.closeTo(chips[0]! + 27, 0), "none"],
+    ["warm", expect.closeTo(chips[0]! + 35, 0), "none"],
+  ])
+  // The spike and the momentum after it confirm the lift; meanwhile nothing moves.
+  expect(seen.slice(5, 8)).toEqual(seen.slice(5, 8).map(() => seen[4]))
+  expect(seen.slice(8)).toEqual(seen.slice(8).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
   await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
   await synth.getByRole("button", { name: "Undo" }).click()
-  expect(await checked()).toBe("acid")
+  expect(await checked()).toBe("default")
 
-  // Over a segmented choice it steps the options, stopping at the ends.
+  // One long pan crosses several options, as one undo entry.
+  const long = [4, 8, 12, 16, 16, 16, 16, 16, 16, 12]
+  expect(long.reduce((a, b) => a + b) / spacing).toBeGreaterThan(1.5)
+  expect(long.reduce((a, b) => a + b) / spacing).toBeLessThan(2.5)
+  await wheel(page, stripSelector, [...pan(long, 20_000), ...lift(long, 20_000)])
+  expect(await checked()).toBe("acid")
+  // A short flick back is one more.
+  const back = [-5, -8, -11, -11]
+  await wheel(page, stripSelector, [...pan(back, 30_000), ...lift(back, 30_000)])
+  expect(await checked()).toBe("warm")
+  await synth.getByRole("button", { name: "Undo" }).click()
+  expect(await checked()).toBe("acid")
+  await synth.getByRole("button", { name: "Undo" }).click()
+  expect(await checked()).toBe("default")
+  // Past the last option it holds there.
+  await wheel(page, stripSelector, pan([60, 80, 80, 80, 80, 80, 80], 40_000))
+  expect(await checked()).toBe("glass")
+  expect(await pillLeft()).toBeLessThan(chips[3]! + spacing / 2)
+
+  // Over a segmented choice too, stopping at the ends.
   const option = () => waveform.locator('[aria-checked="true"]').textContent()
-  const before = await option()
-  await page.evaluate(() => {
-    const el = document.querySelector(
-      '[aria-label="synth-voice controls"] [role="radiogroup"][aria-label="Waveform"]',
-    )!
-    for (const d of [10, 20, 30, 20, 10, 5, 2])
-      el.dispatchEvent(new WheelEvent("wheel", { deltaX: -d, bubbles: true, cancelable: true }))
-  })
-  const options = ["sine", "tri", "saw", "pulse"]
-  expect(await option()).toBe(options[Math.max(0, options.indexOf(before!) - 1)])
+  const waveSelector =
+    '[aria-label="synth-voice controls"] [role="radiogroup"][aria-label="Waveform"]'
+  await wheel(page, waveSelector, pan([-30, -60, -60, -60, -60], 50_000))
+  expect(await option()).toBe("sine")
+  await wheel(page, waveSelector, [...pan(flick, 60_000), ...lift(flick, 60_000)])
+  expect(await option()).toBe("tri")
 
   // Vertical scrolling over the strip is left to the page.
-  const vertical = await page.evaluate(() => {
-    const e = new WheelEvent("wheel", { deltaX: 2, deltaY: 40, bubbles: true, cancelable: true })
-    document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!.dispatchEvent(e)
-    return e.defaultPrevented
-  })
-  expect(vertical).toBe(false)
+  expect((await wheel(page, stripSelector, [{ dx: 2, dy: 40, t: 70_000 }])).claimed).toBe(false)
 })
 
 test("group reset appears only while its group differs from defaults", async ({ page }) => {
@@ -768,6 +879,18 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await page.keyboard.press("End")
   const fitted = (await values()).tint
   expect(fitted).toMatch(/^oklch\(0\.7 0\.1[5-9]\d* 41\)$/)
+  // A sideways pan over a strip scrubs it 1:1, as one undo step.
+  const hue = panel.getByRole("slider", { name: "Tint hue" })
+  const hueBox = (await hue.boundingBox())!
+  const hueSelector = '[aria-label="motion controls"] [aria-label="Tint hue"]'
+  expect((await wheel(page, hueSelector, pan([5, 10, 10, 5], 10_000))).claimed).toBe(true)
+  const turned = 41 + Math.round((30 / (hueBox.width - hueBox.height)) * 360)
+  await expect
+    .poll(async () => (await values()).tint)
+    .toMatch(new RegExp(`^oklch\\(0\\.7 0\\.1\\d* ${turned}\\)$`))
+  await expect(panel.locator(".knobs-strip").first()).not.toHaveClass(/knobs-active/)
+  await page.keyboard.press("u")
+  await expect.poll(async () => (await values()).tint).toBe(fitted)
   await page.keyboard.press("Escape")
 
   // A pad drag, however long, is one undo step; arrows nudge the puck.
@@ -793,6 +916,24 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await pad.focus()
   await page.keyboard.press("ArrowUp")
   expect((await values()).target).toEqual({ x: 0.55, y: -0.37 })
+  // A pan that starts sideways moves the puck in both axes with the fingers, as one undo step.
+  const padSelector = '[aria-label="motion controls"] .knobs-pad'
+  const fingers = [
+    { dx: -6, dy: -2, t: 20_000 },
+    { dx: -8, dy: -6, t: 20_008 },
+    { dx: -6, dy: -12, t: 20_016 },
+  ]
+  expect((await wheel(page, padSelector, fingers)).claimed).toBe(true)
+  const round = (v: number) => Math.round(v * 100) / 100
+  await expect
+    .poll(async () => (await values()).target)
+    .toEqual({
+      x: round(0.55 + (20 / (box.width - 20)) * 2),
+      y: round(-0.37 + (20 / (box.height - 20)) * 2),
+    })
+  await expect(pad).not.toHaveClass(/knobs-active/)
+  await page.keyboard.press("u")
+  await expect.poll(async () => (await values()).target).toEqual({ x: 0.55, y: -0.37 })
 
   // Hint mode reaches each row with one code.
   await page.keyboard.press("j")
@@ -1347,5 +1488,275 @@ test("design-system geometry contracts: left/right column alignment, concentric 
       expect(Math.abs(m.radii.menuDiff)).toBeLessThanOrEqual(0.5)
     }
   }
+  expect(errors).toEqual([])
+})
+
+test("full page: cards in columns under a sticky header, keys across cards, numbered presets and custom cards", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const tune = page.getByRole("region", { name: "iPhone Tune controls" })
+  const card = (name: string) => tune.locator(`.knobs-tile[aria-label="${name}"]`)
+  // Groups become cards in sections; custom cards join them; the columns follow the width.
+  await expect(tune.locator(".knobs-section-head:not([data-continued])")).toHaveText([
+    "Playground",
+    "Session List",
+    "Transcript",
+    "Composer",
+  ])
+  await expect(card("Spacing")).toBeVisible()
+  await expect(tune.locator(".knobs-live")).toHaveCount(2)
+  await expect(tune.locator(".knobs-column")).toHaveCount(4)
+
+  // j runs off the end of one card into the next; Tab and ⇧Tab move between groups.
+  await page.getByRole("slider", { name: "Room below a header" }).focus()
+  await page.keyboard.press("j")
+  await expect(page.getByRole("slider", { name: "Fade below the title" })).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("slider", { name: "Search morph duration" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(page.getByRole("slider", { name: "Fade below the title" })).toBeFocused()
+  await page.keyboard.press("k")
+  await expect(page.getByRole("slider", { name: "Room below a header" })).toBeFocused()
+
+  // 1–9 apply the focused group's numbered preset; the phone applies its own and agrees.
+  const rowHeight = page.getByRole("slider", { name: "Row height" })
+  await rowHeight.focus()
+  await page.keyboard.press("2")
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
+  await expect(card("Spacing").getByRole("radio", { name: "2 Compact" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await expect(card("Spacing").locator(".knobs-group-head")).toHaveAttribute("data-peek", "")
+  await page.waitForTimeout(400)
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
+  await page.keyboard.press("u")
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "44")
+  await expect(card("Spacing").getByRole("radio", { name: "1 Today" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+
+  // A custom card's controls round-trip through the phone.
+  // Five speeds are more than a row of segments holds: a menu.
+  const speed = card("Playground & Slow Motion").getByRole("button", { name: "Speed" })
+  await speed.click()
+  await page.getByRole("menu").getByRole("menuitemradio", { name: "0.25×" }).click()
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => (window as any).__tune.remote.get()["drawer.row.height"])).toBe(
+    44,
+  )
+  await expect(speed).toHaveText("0.25×")
+  await speed.focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(speed).toHaveText("0.5×")
+
+  // `/` filters rows live and Esc brings them back.
+  await rowHeight.focus()
+  await page.keyboard.press("/")
+  await page.keyboard.type("corner")
+  await expect(tune.locator(".knobs-tile:visible")).toHaveCount(3)
+  await expect(rowHeight).toBeHidden()
+  await page.keyboard.press("Escape")
+  await expect(rowHeight).toBeVisible()
+
+  // The header stays put while the page scrolls under it.
+  const header = tune.locator(":scope > header")
+  await page.mouse.move(700, 500)
+  await page.mouse.wheel(0, 700)
+  await expect(header).toHaveAttribute("data-scrolled", "")
+  expect((await header.boundingBox())!.y).toBe(0)
+  await page.mouse.wheel(0, -2000)
+  await expect(header).not.toHaveAttribute("data-scrolled", "")
+
+  // The GPU overlay draws the page too.
+  await page.goto("/tune.html?gpu")
+  await expect(tune.locator(".knobs-tile").first()).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(errors).toEqual([])
+})
+
+test("full page columns: sections stack independently, heights ease, reflows glide, keys read down each column", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const tune = page.getByRole("region", { name: "iPhone Tune controls" })
+  await expect(tune.locator(".knobs-column")).toHaveCount(4)
+  // A section to a column, each card right under the one before it; nothing past the right edge.
+  const geometry = () =>
+    page.evaluate(() => {
+      const gap = parseFloat(getComputedStyle(document.querySelector(".knobs-column")!).rowGap)
+      const columns = [...document.querySelectorAll<HTMLElement>(".knobs-column")].map((c) =>
+        [...c.children]
+          .filter((n) => !(n as HTMLElement).hidden)
+          .map((n) => {
+            const r = n.getBoundingClientRect()
+            return {
+              tile: n.classList.contains("knobs-tile"),
+              top: r.top,
+              bottom: r.bottom,
+              right: r.right,
+            }
+          }),
+      )
+      return { gap, columns, width: innerWidth, scroll: document.documentElement.scrollWidth }
+    })
+  const g = await geometry()
+  expect(g.scroll).toBeLessThanOrEqual(g.width)
+  for (const column of g.columns) {
+    for (let i = 1; i < column.length; i++)
+      if (column[i]!.tile && column[i - 1]!.tile)
+        expect(Math.abs(column[i]!.top - column[i - 1]!.bottom - g.gap)).toBeLessThan(1)
+    for (const n of column) expect(n.right).toBeLessThanOrEqual(g.width)
+  }
+  const firstCards = g.columns.map((c) => c.find((n) => n.tile)!.top)
+  for (const top of firstCards) expect(Math.abs(top - firstCards[0]!)).toBeLessThan(1)
+
+  // j and Tab read down a column, then on to the next.
+  await page.getByRole("switch", { name: "Rubber band" }).focus()
+  await page.keyboard.press("j")
+  await expect(page.getByRole("slider", { name: "Entrance fade" })).toBeFocused()
+  await page.keyboard.press("k")
+  await expect(page.getByRole("switch", { name: "Rubber band" })).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("slider", { name: "Entrance fade" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(page.getByRole("slider", { name: "Search morph duration" })).toBeFocused()
+
+  // An editor opening pushes the cards below it in its column, through every step of its fold,
+  // and nothing in the other columns moves. The fold's own clock is stepped by hand.
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.evaluate(() => {
+    const { knobs: k, mountPage } = (window as any).__knobs
+    ;(window as any).__tune.page.dispose()
+    const n = (value: number, group: string, section: string) =>
+      k.knob(value, { min: 0, max: 100, group, section })
+    const controls = k.defineControls(
+      "columns-fixture",
+      {
+        tint: k.color("#5b8cff", { group: "Look", section: "Style" }),
+        glow: n(40, "Look", "Style"),
+        radius: n(12, "Shape", "Style"),
+        border: n(1, "Shape", "Style"),
+        size: n(15, "Type", "Style"),
+        open: k.spring({ duration: 0.4, bounce: 0.1 }, { group: "Springs", section: "Motion" }),
+        close: k.spring({ duration: 0.3, bounce: 0 }, { group: "Springs", section: "Motion" }),
+        delay: n(20, "Timing", "Motion"),
+        stagger: n(30, "Timing", "Motion"),
+        columns: n(3, "Grid", "Layout"),
+        gutter: n(16, "Grid", "Layout"),
+        margin: n(24, "Grid", "Layout"),
+        rows: n(44, "Rows", "Layout"),
+        gap: n(8, "Rows", "Layout"),
+      },
+      { storage: k.memoryStorage() },
+    )
+    const app = document.querySelector<HTMLElement>("#app")!
+    app.replaceChildren()
+    mountPage(controls, app, {
+      title: "Columns",
+      theme: "dark",
+      sections: ["Style", "Motion", "Layout"],
+    })
+  })
+  const fixture = page.getByRole("region", { name: "Columns controls" })
+  await expect(fixture.locator(".knobs-column")).toHaveCount(3)
+  const tops = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll<HTMLElement>(".knobs-tile")].map((t) => [
+          t.dataset.group,
+          t.getBoundingClientRect().top,
+        ]),
+      ),
+    )
+  const before = await tops()
+  await fixture.locator('.knobs-tile[aria-label="Look"] .knobs-x-head').click()
+  const fold = await page.evaluate(() => {
+    const body = document.querySelector<HTMLElement>(
+      '.knobs-tile[aria-label="Look"] .knobs-x-body',
+    )!
+    const a = body.getAnimations()[0]!
+    a.pause()
+    const at = (ms: number) => {
+      a.currentTime = ms
+      return Object.fromEntries(
+        [...document.querySelectorAll<HTMLElement>(".knobs-tile")].map((t) => [
+          t.dataset.group,
+          t.getBoundingClientRect().top,
+        ]),
+      )
+    }
+    const steps = [0, 30, 60, 90, 120, 150].map(at)
+    a.play()
+    return steps
+  })
+  await expect.poll(async () => (await tops()).Shape).toBeGreaterThan(before.Shape! + 40)
+  const after = await tops()
+  const shape = fold.map((f) => f.Shape!)
+  for (let i = 1; i < shape.length; i++)
+    expect(shape[i]!).toBeGreaterThanOrEqual(shape[i - 1]! - 0.01)
+  expect(shape.filter((y) => y > before.Shape! + 1 && y < after.Shape! - 1).length).toBeGreaterThan(
+    2,
+  )
+  for (const f of [...fold, after]) {
+    expect(f.Timing).toBe(before.Timing)
+    expect(f.Grid).toBe(before.Grid)
+    expect(f.Type! - f.Shape!).toBeCloseTo(before.Type! - before.Shape!, 0)
+  }
+
+  // A narrower window drops a column; cards glide from where they were, frame by frame (the
+  // glide's springs can't jump more than a few frames' worth however slow the runner), and the
+  // overlay keeps drawing until they land, then sleeps.
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.goto("/tune.html?gpu")
+  await expect(tune.locator(".knobs-column")).toHaveCount(3)
+  const track = page.evaluate(
+    () =>
+      new Promise<{ cols: string; x: number; y: number; moving: boolean }[]>((resolve) => {
+        const host = document.querySelector<HTMLElement>(".knobs-sections")!
+        const tile = document.querySelector<HTMLElement>('.knobs-tile[aria-label="Size"]')!
+        const frames: { cols: string; x: number; y: number; moving: boolean }[] = []
+        let still = 0
+        const step = () => {
+          const r = tile.getBoundingClientRect()
+          const cols = host.style.getPropertyValue("--k-cols")
+          const moving = [...document.querySelectorAll<HTMLElement>(".knobs-tile")].some(
+            (t) => t.style.transform !== "",
+          )
+          frames.push({ cols, x: r.left, y: r.top, moving })
+          still = cols === "2" && !moving ? still + 1 : 0
+          if (still > 5 || frames.length > 2000) resolve(frames)
+          else requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      }),
+  )
+  await page.setViewportSize({ width: 900, height: 900 })
+  const frames = await track
+  const end = frames[frames.length - 1]!
+  expect(end.cols).toBe("2")
+  const gliding = frames.filter((f) => f.cols === "2" && f.moving)
+  expect(gliding.length).toBeGreaterThan(3)
+  const start = frames.find((f) => f.cols === "2")!
+  expect(
+    new Set(gliding.map((f) => Math.round(f.y))).size,
+    "the card passes through intermediate positions",
+  ).toBeGreaterThan(2)
+  expect(Math.abs(start.y - end.y) + Math.abs(start.x - end.x)).toBeGreaterThan(50)
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 5000 })
+    .toBe(true)
   expect(errors).toEqual([])
 })

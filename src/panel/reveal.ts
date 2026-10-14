@@ -13,13 +13,55 @@ export const isRevealingIn = (root: HTMLElement) => {
   return false
 }
 export const getRevealVersion = () => revealVersion
+export const isRevealing = (node: HTMLElement) => activeNodes.has(node)
+
+/**
+ * Eases an in-flow element from height `from` to the height it has now, after its content
+ * changed, so what's below glides. Read `from` before the change (mid-flight is fine).
+ */
+export function resize(node: HTMLElement, from: number) {
+  const win = node.ownerDocument.defaultView!
+  const prev = running.get(node)
+  if (prev) {
+    running.delete(node)
+    activeNodes.delete(node)
+    prev.cancel()
+  }
+  revealVersion++
+  const to = node.getBoundingClientRect().height
+  if (
+    node.hidden ||
+    Math.abs(to - from) < 0.5 ||
+    win.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    node.style.overflow = ""
+    return
+  }
+  node.style.overflow = "hidden"
+  const ease = win.getComputedStyle(node).getPropertyValue("--k-reveal-ease").trim() || EASE_OUT
+  const animation = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+    duration: 200,
+    easing: ease,
+  })
+  running.set(node, animation)
+  activeNodes.add(node)
+  const settle = () => {
+    if (running.get(node) !== animation) return
+    running.delete(node)
+    activeNodes.delete(node)
+    revealVersion++
+    node.style.overflow = ""
+  }
+  animation.oncancel = settle
+  animation.onfinish = settle
+}
 
 /**
  * Shows or hides an in-flow element by animating its height (and margins/padding) open or shut,
  * so the content below glides instead of jumping. Interruptible: reversing mid-flight continues
  * from the current height.
  */
-export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
+export function reveal(node: HTMLElement, show: boolean, after?: () => void, delay = 0) {
   const win = node.ownerDocument.defaultView!
   const leaving = node.dataset.leaving === "true"
   if (show && !node.hidden && !leaving) return after?.()
@@ -44,6 +86,7 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   const height = node.getBoundingClientRect().height
   const open: Keyframe = {
     height: `${height}px`,
+    minHeight: "0px",
     marginTop: cs.marginTop,
     marginBottom: cs.marginBottom,
     paddingTop: cs.paddingTop,
@@ -54,6 +97,7 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   const scaled = (v: string) => `${(parseFloat(v) || 0) * f}px`
   const current: Keyframe = {
     height: `${fromHeight}px`,
+    minHeight: "0px",
     marginTop: scaled(cs.marginTop),
     marginBottom: scaled(cs.marginBottom),
     paddingTop: scaled(cs.paddingTop),
@@ -62,6 +106,7 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   }
   const closed: Keyframe = {
     height: "0px",
+    minHeight: "0px",
     marginTop: "0px",
     marginBottom: "0px",
     paddingTop: "0px",
@@ -75,6 +120,9 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   const animation = node.animate([current, show ? open : closed], {
     duration: show ? 180 : 130,
     easing: show ? ease : EASE_IN,
+    // A turn in a cascade: hold the starting frame until it comes.
+    delay,
+    fill: "backwards",
   })
   running.set(node, animation)
   activeNodes.add(node)

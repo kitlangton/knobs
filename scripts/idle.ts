@@ -1,7 +1,8 @@
 // Checks the GPU frame loop goes to sleep after interactions settle.
 import { chromium } from "@playwright/test"
 import { spawn } from "node:child_process"
-const port = 5196
+// --port=N when 5196 is taken.
+const port = Number(process.argv.find((a) => a.startsWith("--port="))?.split("=")[1]) || 5196
 const server = spawn("bunx", ["vite", "--config", "examples/vite.config.ts"], {
   env: { ...process.env, PORT: String(port) },
   stdio: "ignore",
@@ -60,6 +61,20 @@ try {
   await page.mouse.move(count.x + count.width * 0.5, count.y + count.height / 2)
   for (let i = 0; i < 4; i++) await page.mouse.wheel(12, 0)
   await report("wheel")
+  // A trackpad flick across the preset strip: the pill follows the fingers, then springs home.
+  await page.evaluate(() => {
+    const el = document.querySelector('[aria-label="splat controls"] .knobs-presets')!
+    let t = performance.now()
+    const send = (dx: number, dt: number) => {
+      const e = new WheelEvent("wheel", { deltaX: dx, bubbles: true, cancelable: true })
+      Object.defineProperty(e, "timeStamp", { value: (t += dt) })
+      el.dispatchEvent(e)
+    }
+    for (const d of [3, 6, 9, 12, 12]) send(-d, 8)
+    send(-28, 25)
+    for (let m = 25; m >= 0.6; m *= 0.92) send(-Math.round(m), 16.7)
+  })
+  await report("preset pan")
   await panel.getByRole("button", { name: "Copy", exact: true }).click()
   await report("status")
   await sleep(3500)
@@ -135,6 +150,35 @@ try {
   await report("easing chip")
   await page.keyboard.press("Escape")
   await report("collapse")
+
+  // The full page: scrolling wakes the overlay, and it sleeps again once the page is still.
+  await page.goto(`http://127.0.0.1:${port}/tune.html?gpu`)
+  await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  await report("page open")
+  await page.mouse.move(700, 500)
+  await page.mouse.wheel(0, 600)
+  await report("page scroll")
+  await page.getByRole("slider", { name: "Row height" }).focus()
+  await page.keyboard.press("3")
+  await report("page preset")
+  await page.keyboard.press("Tab")
+  await page.keyboard.press("Tab")
+  await page.keyboard.press("Tab")
+  await report("page tab")
+  await page.keyboard.press("/")
+  await page.keyboard.type("radius")
+  await report("page filter")
+  await page.keyboard.press("Escape")
+  await report("page filter off")
+  const playground = page.locator('.knobs-tile[aria-label="Playground & Slow Motion"]')
+  await playground.getByRole("radio", { name: "Off", exact: true }).click()
+  await report("page card folds")
+  await playground.getByRole("radio", { name: "Composer", exact: true }).click()
+  await report("page card unfolds")
+  await page.setViewportSize({ width: 900, height: 900 })
+  await report("page reflow")
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await report("page reflow back")
   await browser.close()
 } finally {
   server.kill()

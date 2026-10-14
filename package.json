@@ -28,6 +28,10 @@
     "./panel": {
       "types": "./dist/types/panel/index.d.ts",
       "default": "./dist/panel.js"
+    },
+    "./themes": {
+      "types": "./dist/types/themes/index.d.ts",
+      "default": "./dist/themes.js"
     }
   },
   "scripts": {

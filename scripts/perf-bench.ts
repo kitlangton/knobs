@@ -836,6 +836,41 @@ async function runSuite(
     }),
   )
 
+  // 10. The full page (tune.html): wheel scrolling under the sticky header, keys across cards and
+  // a numbered group preset.
+  await page.goto(`${baseUrl}/tune.html${q}`)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  // A throttled page is still settling its first paint for a while after it appears.
+  await sleep(1500)
+  benchmarks.push(
+    await measureScenario(page, cdp, "page_scroll_keys", mode, throttle, async () => {
+      await page.mouse.move(700, 500)
+      for (let i = 0; i < 12; i++) {
+        await page.mouse.wheel(0, 60)
+        await sleep(16)
+      }
+      for (let i = 0; i < 12; i++) {
+        await page.mouse.wheel(0, -60)
+        await sleep(16)
+      }
+      await page.getByRole("slider", { name: "Row height" }).focus()
+      for (let i = 0; i < 10; i++) {
+        await page.keyboard.press("j")
+        await sleep(40)
+      }
+      await page.keyboard.press("Tab")
+      await page.keyboard.press("Tab")
+      await sleep(120)
+      await page.getByRole("slider", { name: "Row height" }).focus()
+      await page.keyboard.press("3")
+      await sleep(300)
+      await page.keyboard.press("1")
+      await sleep(300)
+    }),
+  )
+
   const latency = await measureLatency(page, cdp, baseUrl, mode, throttle)
 
   await context.close()

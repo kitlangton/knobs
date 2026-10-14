@@ -29,8 +29,10 @@ import type {
   GpuStrip,
   RowWave,
 } from "./gpu/renderer.js"
+import { arrowOf, bigOf } from "./prefs.js"
 import { reveal } from "./reveal.js"
 import { createSlider, type Slider } from "./slider.js"
+import { onPan } from "./swipe.js"
 
 /** What a row needs from the panel. */
 export interface RowContext<F> {
@@ -45,6 +47,8 @@ export interface RowContext<F> {
   wake(): void
   /** Opens a disclosure row's editor at once, as it was before a reload. */
   readonly expanded?: boolean
+  /** A flat spring's two number fields: their ranges, labels and units replace the defaults. */
+  readonly parts?: { readonly duration: Knob; readonly bounce: Knob }
   onExpand?(open: boolean): void
 }
 
@@ -63,7 +67,10 @@ export interface EditorRow {
   readonly input: HTMLElement
   /** Every ↑↓ stop in the row, in order (an open editor's parts follow its head). */
   stops(): HTMLElement[]
-  update(value: Value, delay: number): void
+  /** `instant` places the value without motion (a different item arrived). */
+  update(value: Value, delay: number, instant?: boolean): void
+  /** A flat spring's halves changed range or label (see `RowContext.parts`). */
+  retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
   readonly tracks: readonly SubTrack[]
   readonly gpu: readonly GpuRowBinding[]
 }
@@ -130,12 +137,7 @@ function factory(doc: Document) {
   return { el, svg }
 }
 
-const arrow = (event: KeyboardEvent) =>
-  event.key === "ArrowLeft" || event.key === "h"
-    ? -1
-    : event.key === "ArrowRight" || event.key === "l"
-      ? 1
-      : 0
+const arrow = arrowOf
 const plainKey = (event: KeyboardEvent) => !event.metaKey && !event.ctrlKey && !event.isComposing
 
 /** A size kept current by a ResizeObserver, so layout reads stay out of the frame loop. */
@@ -316,6 +318,34 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   }
   track.onpointerup = release
   track.onpointercancel = release
+  // A sideways pan scrubs like a drag: 1:1 with the fingers, as one undo step.
+  let panAt: number | undefined
+  onPan(track, {
+    accept: () => !dragging,
+    move(dx) {
+      // Read the box directly when a pan lands before the size has been measured.
+      const w = size.w || track.clientWidth
+      const h = size.h || track.clientHeight
+      if (!w) return
+      if (panAt === undefined) {
+        panAt = current
+        o.start()
+        line.classList.add("knobs-active")
+        c.wake()
+      }
+      panAt = clamp(panAt + (dx / Math.max(1, w - h)) * span, o.min, o.max)
+      o.set(quantize(panAt, false))
+    },
+    end() {
+      panAt = undefined
+      line.classList.remove("knobs-active")
+      c.wake()
+    },
+    step(direction) {
+      o.start()
+      o.set(quantize(current + direction * o.step, false))
+    },
+  })
   track.addEventListener("keydown", (event) => {
     if (!plainKey(event)) return
     const dir = arrow(event)
@@ -324,7 +354,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     event.preventDefault()
     event.stopPropagation()
     o.start()
-    const by = o.step * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1)
+    const by = o.step * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)
     o.set(edge ?? quantize(current + dir * by, event.altKey))
   })
   const gpu: GpuStrip = {
@@ -363,13 +393,13 @@ const SPRING_WINDOW = 1.2
 const SPRING_Y: readonly [number, number] = [-0.05, 1.6]
 
 /** The step response over a fixed 1.2 s window in a w×h box, as x,y pairs (px). */
-export function springCurve(value: SpringValue, w: number, h: number, pad = 6) {
+export function springCurve(value: SpringValue, w: number, h: number, pad = 6, padX = pad) {
   const { omega, zeta } = springMotion(value)
   const ys = springResponse(omega, zeta, SPRING_WINDOW, SPRING_WINDOW / 60)
   const out: number[] = []
   ys.forEach((y, i) => {
     out.push(
-      pad + (i / (ys.length - 1)) * (w - pad * 2),
+      padX + (i / (ys.length - 1)) * (w - padX * 2),
       pad + ((SPRING_Y[1] - y) / (SPRING_Y[1] - SPRING_Y[0])) * (h - pad * 2),
     )
   })
@@ -385,25 +415,33 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   row.dataset.field = c.key
   const tracksEl = el("div", "knobs-spring-tracks")
   const current = () => c.get() as SpringValue
-  const parts = (["duration", "bounce"] as const).map((part) => {
-    const field: Knob = {
+  const fieldFor = (part: "duration" | "bounce"): Knob =>
+    c.parts?.[part] ?? {
       kind: "knob",
       ...SPRING[part],
       value: c.field.value[part],
       label: part === "duration" ? c.display : "Bounce",
       ...(part === "duration" ? { unit: "s" } : {}),
     }
+  const parts = (["duration", "bounce"] as const).map((part) => {
     const set = (v: number, options?: { coalesce?: boolean }) =>
       c.set({ ...current(), [part]: v }, options)
-    const slider = createSlider(c.doc, `${c.key}-${part}`, field, set, c.wake)
+    const slider = createSlider(c.doc, `${c.key}-${part}`, fieldFor(part), set, c.wake)
     slider.element.classList.add("knobs-sub")
-    slider.track.setAttribute("aria-label", `${c.display} ${part}`)
+    if (!c.parts) slider.track.setAttribute("aria-label", `${c.display} ${part}`)
     slider.element.ondblclick = (event) => {
       if (!(event.target as HTMLElement).closest(".knobs-value,.knobs-number"))
-        set(c.field.value[part])
+        set(slider.field.value)
     }
     tracksEl.append(slider.element)
-    const track: SubTrack = { slider, field, get: () => current()[part], set: (v) => set(v) }
+    const track: SubTrack = {
+      slider,
+      get field() {
+        return slider.field
+      },
+      get: () => current()[part],
+      set: (v) => set(v),
+    }
     return track
   })
   const box = el("div", "knobs-spring-curve")
@@ -419,15 +457,35 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   let shown = c.field.value
   let dotRun: { at: number; frames: number[]; ms: number } | null = null
   let pending = false
-  const points = () => (size.w ? springCurve(shown, size.w, size.h) : [])
+  // --k-curve-inset and --k-curve-guide, read when the box resizes (never per frame).
+  const look = { inset: 6, dashed: false }
+  const readLook = () => {
+    const cs = getComputedStyle(box)
+    const inset = parseFloat(cs.getPropertyValue("--k-curve-inset"))
+    look.inset = Number.isFinite(inset) ? inset : 6
+    look.dashed = cs.getPropertyValue("--k-curve-guide").trim() === "dashed"
+  }
+  const guideYs = () => (look.dashed ? [1] : [0, 1]).map((y) => springGuideY(y, size.h))
+  const points = () => (size.w ? springCurve(shown, size.w, size.h, 6, look.inset) : [])
   const draw = (instant: boolean) => {
     if (!size.w) return
     plot.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`)
-    const g = [0, 1].map((y) => springGuideY(y, size.h))
-    guides.setAttribute("d", g.map((y) => `M6 ${y.toFixed(2)}H${size.w - 6}`).join(""))
+    const i = look.inset
+    guides.setAttribute(
+      "d",
+      guideYs()
+        .map((y) => `M${i} ${y.toFixed(2)}H${size.w - i}`)
+        .join(""),
+    )
+    if (look.dashed) guides.setAttribute("stroke-dasharray", "4 4")
+    else guides.removeAttribute("stroke-dasharray")
+    guides.classList.toggle("knobs-guide-dashed", look.dashed)
     place([curve], instant, () => setPath(curve, points()))
   }
-  const size = measure(box, () => draw(true))
+  const size = measure(box, () => {
+    readLook()
+    draw(true)
+  })
   const dragging = () => parts.some((p) => p.slider.isDragging())
   // The dot runs the curve in real time: x is time, y the spring's position.
   const play = (delay: number) => {
@@ -460,7 +518,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     row,
     box,
     curve: points,
-    guides: () => (size.w ? [0, 1].map((y) => springGuideY(y, size.h)) : []),
+    guides: () => (size.w ? guideYs() : []),
     dot: () => dotRun,
     snap: dragging,
     wave: c.wave,
@@ -473,7 +531,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     row: p.slider.element,
     slider: p.slider,
     wave: c.wave,
-    isModified: () => p.get() !== p.field.value,
+    isModified: () => c.isModified() && p.get() !== p.field.value,
   }))
   return {
     row,
@@ -482,21 +540,33 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     stops: () => parts.map((p) => p.slider.track),
     tracks: parts,
     gpu: [...knobRows, gpu],
-    update(value, delay) {
+    retune(next) {
+      parts[0]!.slider.retune(next.duration)
+      parts[1]!.slider.retune(next.bounce)
+      for (const [i, p] of parts.entries())
+        p.slider.element.classList.toggle(
+          "knobs-modified",
+          shown[i === 0 ? "duration" : "bounce"] !== p.field.value && c.isModified(),
+        )
+    },
+    update(value, delay, instant = false) {
       const v = value as SpringValue
       const prev = shown
       const changed = !same(v, prev)
       shown = v
       for (const [i, p] of parts.entries()) {
         const key = i === 0 ? "duration" : "bounce"
-        if (!initialized || v[key] !== prev[key]) {
-          p.slider.update(v[key], delay)
-          p.slider.element.classList.toggle("knobs-modified", v[key] !== p.field.value)
+        if (!initialized || instant || v[key] !== prev[key]) {
+          p.slider.update(v[key], delay, instant)
+          p.slider.element.classList.toggle(
+            "knobs-modified",
+            v[key] !== p.field.value && c.isModified(),
+          )
         }
       }
       if (!changed && initialized) return
-      draw(!initialized || dragging())
-      if (initialized) {
+      draw(!initialized || instant || dragging())
+      if (initialized && !instant) {
         if (dragging()) pending = true
         else play(delay)
       }
@@ -562,7 +632,9 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     event.stopPropagation()
     g.start()
     send({
-      h: (((shown.h + dir * (event.shiftKey ? 10 : event.altKey ? 0.1 : 1)) % 360) + 360) % 360,
+      h:
+        (((shown.h + dir * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)) % 360) + 360) %
+        360,
     })
   })
   const gpu: GpuColorRow = {
@@ -707,6 +779,42 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   }
   pad.onpointerup = release
   pad.onpointercancel = release
+  // A pan that starts sideways moves the puck with the fingers in both axes, as one undo step.
+  let panAt: Point | undefined
+  onPan(
+    pad,
+    {
+      accept: () => !dragging,
+      move(dx, dy) {
+        const w = size.w || pad.clientWidth
+        const h = size.h || pad.clientHeight
+        if (!w) return
+        if (!panAt) {
+          panAt = shown
+          g.start()
+          pad.classList.add("knobs-active")
+          c.wake()
+        }
+        const spanX = f.max.x - f.min.x
+        const spanY = f.max.y - f.min.y
+        panAt = {
+          x: clamp(panAt.x + (dx / (w - PAD_INSET * 2)) * spanX, f.min.x, f.max.x),
+          y: clamp(panAt.y + (dy / (h - PAD_INSET * 2)) * spanY, f.min.y, f.max.y),
+        }
+        g.set(panAt)
+      },
+      end() {
+        panAt = undefined
+        pad.classList.remove("knobs-active")
+        c.wake()
+      },
+      step(direction) {
+        g.start()
+        g.set({ x: shown.x + direction * f.step.x, y: shown.y })
+      },
+    },
+    { axes: "xy" },
+  )
   pad.ondblclick = () => c.set(f.value)
   // Arrows move the puck about 1% of the range (⇧ 10%, ⌥ one step); j and k still leave the pad.
   pad.addEventListener("keydown", (event) => {
@@ -719,7 +827,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
       const step = f.step[axis]
       if (event.altKey) return step
       const unit = Math.max(1, Math.round((f.max[axis] - f.min[axis]) / step / 100)) * step
-      return unit * (event.shiftKey ? 10 : 1)
+      return unit * bigOf(event)
     }
     g.start()
     g.set({ x: shown.x + dx * by("x"), y: shown.y + dy * by("y") })
@@ -730,7 +838,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     event.preventDefault()
     event.stopPropagation()
     g.start()
-    g.set({ x: shown.x + dir * f.step.x * (event.shiftKey ? 10 : 1), y: shown.y })
+    g.set({ x: shown.x + dir * f.step.x * bigOf(event), y: shown.y })
   })
   const gpu: GpuPointRow = {
     kind: "point",
@@ -938,6 +1046,49 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       move(i, shown[i * 2]! + dx * by, shown[i * 2 + 1]! + dy * by)
     })
   })
+  // A pan that starts sideways moves the hovered (or focused) handle with the fingers.
+  let panned = -1
+  let panAt: [number, number] = [0, 0]
+  const panTarget = () => {
+    const hovered = handles.findIndex((h) => h.matches(":hover"))
+    return hovered >= 0 ? hovered : handles.findIndex((h) => h === c.doc.activeElement)
+  }
+  onPan(
+    box,
+    {
+      accept: () => dragging < 0 && panTarget() >= 0,
+      move(dx, dy) {
+        const w = size.w || box.clientWidth
+        const h = size.h || box.clientHeight
+        if (!w) return
+        if (panned < 0) {
+          panned = panTarget()
+          if (panned < 0) return
+          panAt = [shown[panned * 2]!, shown[panned * 2 + 1]!]
+          g.start()
+          box.classList.add("knobs-active")
+          c.wake()
+        }
+        panAt = [
+          clamp(panAt[0] + dx / (w - EASE_PAD.x * 2), 0, 1),
+          clamp(panAt[1] - (dy / (h - EASE_PAD.y * 2)) * spanY, range[0], range[1]),
+        ]
+        move(panned, ...panAt)
+      },
+      end() {
+        panned = -1
+        box.classList.remove("knobs-active")
+        c.wake()
+      },
+      step(direction) {
+        const i = panTarget()
+        if (i < 0) return
+        g.start()
+        move(i, shown[i * 2]! + direction * 0.01, shown[i * 2 + 1]!)
+      },
+    },
+    { axes: "xy" },
+  )
   const cycle = (dir: number) => {
     const i = chipButtons.findIndex((b) => b.getAttribute("aria-checked") === "true")
     const next = i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length
@@ -988,9 +1139,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       handles.forEach((h, i) =>
         h.setAttribute("aria-valuetext", `x ${shown[i * 2]}, y ${shown[i * 2 + 1]}`),
       )
-      layout(first || dragging >= 0)
-      if (miniSize.h)
-        place([miniPath], first || dragging >= 0, () => setPath(miniPath, miniPoints()))
+      const held = dragging >= 0 || panned >= 0
+      layout(first || held)
+      if (miniSize.h) place([miniPath], first || held, () => setPath(miniPath, miniPoints()))
     },
   }
 }

@@ -5,7 +5,17 @@ import type { SpringValue } from "./spring.js"
 export interface FieldMeta {
   readonly label?: string
   readonly group?: string
+  /** A page region the field's group sits in (see `mountPage`); panels ignore it. */
+  readonly section?: string
   readonly shortcut?: string
+}
+/** Marks a knob as half of a flat spring: two number keys drawn as one spring card. */
+export interface SpringPart {
+  /** Shared by both halves; the card sits where the first of them is. */
+  readonly id: string
+  readonly part: "duration" | "bounce"
+  /** The card's title (taken from the duration half). */
+  readonly label?: string
 }
 export interface Knob extends FieldMeta {
   readonly kind: "knob"
@@ -14,11 +24,21 @@ export interface Knob extends FieldMeta {
   readonly max: number
   readonly step: number
   readonly unit?: string
+  /** Digits after the point in the readout; the step's own by default. */
+  readonly decimals?: number
+  readonly spring?: SpringPart
 }
 export interface Choice<T extends string = string> extends FieldMeta {
   readonly kind: "choice"
   readonly value: T
   readonly options: readonly T[]
+  /** What each option reads as, when it isn't the option itself (`{ md: "Medium" }`). */
+  readonly labels?: Readonly<Record<string, string>>
+  /**
+   * Segments or a drop-down menu. By default it's segmented while the labels fit with room to
+   * spare and there are at most four options, and a menu otherwise, switching as the width changes.
+   */
+  readonly display?: "menu" | "segmented"
 }
 export interface Toggle extends FieldMeta {
   readonly kind: "toggle"
@@ -48,7 +68,20 @@ export interface EasingField extends FieldMeta {
   readonly kind: "easing"
   readonly value: Bezier
 }
-export type Field = Knob | Choice | Toggle | SpringField | ColorField | PointField | EasingField
+/** A button row. It holds no value: pressing it calls `run` and the store's `onAction(key)`. */
+export interface ActionField extends FieldMeta {
+  readonly kind: "action"
+  readonly run?: () => void
+}
+export type ValueField =
+  | Knob
+  | Choice
+  | Toggle
+  | SpringField
+  | ColorField
+  | PointField
+  | EasingField
+export type Field = ValueField | ActionField
 export type Schema = Readonly<Record<string, Field>>
 export type FieldValue<F extends Field> = F extends Knob
   ? number
@@ -65,6 +98,7 @@ export type FieldValue<F extends Field> = F extends Knob
             : F extends EasingField
               ? Bezier
               : never
+/** Action keys map to `never`: they hold no value and are absent at runtime. */
 export type Values<S extends Schema> = {
   readonly [K in keyof S]: FieldValue<S[K]>
 }
@@ -81,12 +115,17 @@ function checkShortcut(shortcut?: string) {
   if (shortcut !== undefined && !/^[a-z]$/i.test(shortcut))
     throw new Error("Shortcut must be a letter.")
 }
+/** The keys that hold values (every field but actions). */
+export function valueKeys(schema: Schema): string[] {
+  return Object.keys(schema).filter((k) => schema[k]!.kind !== "action")
+}
 function withMeta<T extends object>(base: T, meta?: FieldMeta): T {
   checkShortcut(meta?.shortcut)
   return Object.freeze({
     ...base,
     ...(meta?.label !== undefined ? { label: meta.label } : {}),
     ...(meta?.group !== undefined ? { group: meta.group } : {}),
+    ...(meta?.section !== undefined ? { section: meta.section } : {}),
     ...(meta?.shortcut !== undefined ? { shortcut: meta.shortcut } : {}),
   })
 }
@@ -102,6 +141,11 @@ export function knob(
     step <= 0
   )
     throw new Error("A knob needs finite bounds and a positive step.")
+  if (
+    options.decimals !== undefined &&
+    !(Number.isInteger(options.decimals) && options.decimals >= 0)
+  )
+    throw new Error("A knob's decimals must be a whole number.")
   checkShortcut(options.shortcut)
   const field: Knob = { ...options, kind: "knob", value, step }
   return Object.freeze({ ...field, value: normalizeField(field, value) as number })
@@ -109,12 +153,78 @@ export function knob(
 export function choice<const T extends readonly [string, ...string[]]>(
   value: T[number],
   options: T,
-  meta?: FieldMeta,
+  meta?: FieldMeta & {
+    readonly labels?: Readonly<Partial<Record<T[number], string>>>
+    readonly display?: "menu" | "segmented"
+  },
 ): Choice<T[number]> {
   if (!options.includes(value) || new Set(options).size !== options.length)
     throw new Error("Invalid choice options/default.")
-  return withMeta({ kind: "choice" as const, value, options: Object.freeze([...options]) }, meta)
+  const labels = meta?.labels
+    ? Object.freeze(
+        Object.fromEntries(
+          Object.entries(meta.labels).filter(
+            ([k, v]) => options.includes(k) && typeof v === "string" && v !== k,
+          ),
+        ) as Record<string, string>,
+      )
+    : undefined
+  return withMeta(
+    {
+      kind: "choice" as const,
+      value,
+      options: Object.freeze([...options]),
+      ...(labels && Object.keys(labels).length ? { labels } : {}),
+      ...(meta?.display ? { display: meta.display } : {}),
+    },
+    meta,
+  )
 }
+/** `action("Replay", { run })`: a button row. Its key also reaches the store's `onAction`. */
+export function action(label?: string, meta?: Omit<FieldMeta, "label"> & { run?: () => void }) {
+  const field: ActionField = withMeta(
+    { kind: "action" as const, ...(meta?.run ? { run: meta.run } : {}) },
+    { ...meta, ...(label !== undefined ? { label } : {}) },
+  )
+  return field
+}
+type SpringHalf = number | Knob
+/**
+ * A flat spring: two plain number fields (`{ duration, bounce }` as separate keys) drawn as one
+ * spring card with a curve and two sliders. Spread the result into a schema, or rename its halves:
+ * `defineControls("m", { ...flatSpring({ duration: 0.45, bounce: 0.3 }, { label: "Spring" }) })`.
+ */
+export function flatSpring(
+  parts: { duration?: SpringHalf; bounce?: SpringHalf } = {},
+  meta: Omit<FieldMeta, "shortcut"> & { id?: string } = {},
+): { readonly duration: Knob; readonly bounce: Knob } {
+  const id = meta.id ?? meta.label ?? `spring-${++springIds}`
+  const half = (part: "duration" | "bounce", input: SpringHalf | undefined, fallback: number) => {
+    const base =
+      typeof input === "object"
+        ? input
+        : knob(input ?? fallback, {
+            ...SPRING[part],
+            ...(part === "duration" ? { unit: "s" } : {}),
+          })
+    return Object.freeze({
+      ...base,
+      ...(base.label === undefined ? { label: part === "duration" ? "Duration" : "Bounce" } : {}),
+      ...(meta.group !== undefined ? { group: meta.group } : {}),
+      ...(meta.section !== undefined ? { section: meta.section } : {}),
+      spring: Object.freeze({
+        id,
+        part,
+        ...(meta.label !== undefined ? { label: meta.label } : {}),
+      }),
+    }) as Knob
+  }
+  return {
+    duration: half("duration", parts.duration, 0.5),
+    bounce: half("bounce", parts.bounce, 0),
+  }
+}
+let springIds = 0
 export function toggle(value: boolean, meta?: FieldMeta): Toggle {
   return withMeta({ kind: "toggle" as const, value }, meta)
 }
@@ -177,7 +287,7 @@ const snap = (v: number, min: number, max: number, step: number) => {
 const num = (v: unknown, fallback: number) =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback
 
-export function normalizeField(field: Field, input: unknown): Value {
+export function normalizeField(field: ValueField, input: unknown): Value {
   switch (field.kind) {
     case "knob":
       if (typeof input !== "number" || !Number.isFinite(input)) return field.value
@@ -221,7 +331,9 @@ export function normalize<S extends Schema>(schema: S, input: unknown): Values<S
   const record = isRecord(input) ? input : {}
   return Object.freeze(
     Object.fromEntries(
-      Object.entries(schema).map(([key, field]) => [key, normalizeField(field, record[key])]),
+      Object.entries(schema).flatMap(([key, field]) =>
+        field.kind === "action" ? [] : [[key, normalizeField(field, record[key])]],
+      ),
     ),
   ) as Values<S>
 }

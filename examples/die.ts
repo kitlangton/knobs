@@ -96,8 +96,26 @@ interface Die {
 
 function domDie(host: HTMLElement, size: number): Die {
   const die = createDieCanvas(document, size)
+  host.style.position = "relative"
   host.append(die.canvas)
-  return { draw: () => die.render(view, look(), colorOf(host)), remove: () => die.canvas.remove() }
+  return {
+    draw: () => {
+      // Centred in the host, on whole device pixels.
+      const dpr = devicePixelRatio
+      const r = host.getBoundingClientRect()
+      const w = die.pixels(dpr)
+      const left = Math.round((r.left + r.width / 2) * dpr - w / 2)
+      const top = Math.round((r.top + r.height / 2) * dpr - w / 2)
+      die.canvas.style.left = `${left / dpr - r.left}px`
+      die.canvas.style.top = `${top / dpr - r.top}px`
+      const centre = [
+        (r.left + r.width / 2) * dpr - left,
+        (r.top + r.height / 2) * dpr - top,
+      ] as const
+      die.render(view, look(), colorOf(host), dpr, centre)
+    },
+    remove: () => die.canvas.remove(),
+  }
 }
 
 // biome-ignore lint: no WebGPU types in this repo (the renderer uses `any` too)

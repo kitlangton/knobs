@@ -1,4 +1,5 @@
 import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" }
+import { presetCss, type TokenPreset } from "../core/theme.js"
 import { FILL, LEAD, RELEASE, springEasing, TRAIL } from "./motion.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
@@ -33,6 +34,7 @@ const COLOR_TOKENS = [
   "toggle-track",
   "toggle-thumb",
   "rim",
+  "page",
 ]
 const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "font-size"]
 const NUMBER_TOKENS = ["label-weight", "blur", "glow", "glass", "glass-tone"]
@@ -55,7 +57,7 @@ const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.5);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
   --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
-  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;
+  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;--k-page:#e6e6eb;
   color-scheme:light;`
 
 const defaultsCss = `
@@ -67,12 +69,13 @@ const defaultsCss = `
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
   --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-toggle-thumb:var(--k-bg);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
-  --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;
+  --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;--k-page:#101012;
   --k-unit:4px;--k-density:1;--k-width:288px;--k-row:round(calc(32px * var(--k-density)),2px);--k-pad:round(calc(10px * var(--k-density)),2px);--k-inset:var(--k-pad);--k-gap:round(calc(var(--k-unit) * var(--k-density)),1px);--k-radius:round(calc(8px * var(--k-density)),2px);--k-panel-radius:calc(var(--k-radius) + var(--k-unit));
   --k-font-size:round(calc(12px * var(--k-density)),.5px);--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -106,11 +109,18 @@ const css = `
   --k-row-hover:color-mix(in srgb,var(--k-surface) 50%,transparent);
   --k-pill-bg:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));
   --k-pill-border:color-mix(in srgb,var(--k-accent) 32%,transparent);
-  --k-fill-rest:color-mix(in srgb,var(--k-accent) 20%,var(--k-surface-hi));
-  --k-fill-active:color-mix(in srgb,var(--k-accent) 30%,var(--k-surface-hi));
+  --k-fill-rest:color-mix(in srgb,var(--k-accent) var(--k-fill-rest-mix),var(--k-fill-base));
+  --k-fill-active:color-mix(in srgb,var(--k-accent) var(--k-fill-active-mix),var(--k-fill-base));
   --k-disabled-opacity:.32;
+  --k-unit-gap:.28em;--k-unit-color:var(--k-dim);--k-readout-mark:0;
+  --k-group-size:var(--k-text-cap);--k-group-color:var(--k-dim);--k-group-inset:var(--k-inset);--k-group-tracking:.04em;--k-group-divider:transparent;--k-group-divider-gap:0px;
+  --k-curve-inset:6px;--k-curve-guide:solid;--k-curve-dot:1;
   --k-hint-typed-opacity:.42;
 }
+/* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
+   hovered card doesn't hand its quick entrance to the rows inside it. */
+:where(.knobs-panel,.knobs-menu) *{--k-hover-t:calc(var(--k-hover-out) * 1ms)}
+:where(.knobs-panel,.knobs-menu) :is(:hover,.knobs-active){--k-hover-t:calc(var(--k-hover-in) * 1ms)}
 
 .knobs-panel,.knobs-chip{
   box-sizing:border-box;font:var(--k-font-size)/1.35 var(--k-font);color:var(--k-text);text-align:left;color-scheme:dark;
@@ -157,7 +167,9 @@ const css = `
 .knobs-morph::after{box-shadow:var(--k-shadow);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
-.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 var(--k-rim);animation:none}
+.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--k-chrome) * 100%),transparent);animation:none;
+  /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column. */
+  background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:color-mix(in srgb,var(--k-line) calc(var(--k-chrome) * 100%),transparent)}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
 
@@ -175,7 +187,7 @@ const css = `
 .knobs-head-split{margin-left:calc(var(--k-unit) * 1.5)}
 .knobs-icon{width:var(--k-icon-size);height:var(--k-icon-size);display:block;flex:none}
 .knobs-die-icon{position:relative;display:block;width:var(--k-icon-size);height:var(--k-icon-size);flex:none}
-.knobs-die-icon>canvas{position:absolute;left:50%;top:50%;margin:0!important;transform:translate(-50%,-50%)}
+.knobs-die-icon>canvas{position:absolute;margin:0}
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 .knobs-panel header button{width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-label);background:transparent;border-radius:999px;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
@@ -201,7 +213,8 @@ const css = `
 .knobs-preset-save:hover{color:var(--k-text)!important}
 
 /* Group headers */
-.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-inset);color:var(--k-dim);font-size:var(--k-text-cap);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-group-inset);color:var(--k-group-color);font-size:var(--k-group-size);font-weight:600;letter-spacing:var(--k-group-tracking);text-transform:var(--k-group-transform)}
+.knobs-panel:not(.knobs-page) .knobs-group-head:not(:first-child){border-top:1px solid var(--k-group-divider);padding-top:var(--k-group-divider-gap)}
 .knobs-group-head:first-child{margin-top:0}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer}
@@ -217,7 +230,7 @@ const css = `
 /* Grouped cards: rows share one surface, split by hairlines */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
 .knobs-card:last-child{margin-bottom:0}
-.knobs-card>*{position:relative;min-height:var(--k-row);transition:background .15s}
+.knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t)}
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)::before,.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)+*::before{opacity:0}
@@ -235,38 +248,45 @@ const css = `
 .knobs-locked .knobs-lock>svg{opacity:1;transform:none;transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1)}
 
 /* Slider: an accent-tinted fill with a brighter leading edge and centerline scale ticks */
-.knobs-track{position:absolute;inset:0;overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
+.knobs-track{position:absolute;left:0;right:0;top:0;height:var(--k-row);overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
 .knobs-panel .knobs-track:focus-visible{outline:none;box-shadow:none}
 .knobs-marks{position:absolute;inset:0;pointer-events:none;
   -webkit-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px));
   mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px))}
 .knobs-marks>i{position:absolute;top:50%;width:1px;height:7px;border-radius:999px;transform:translate(-50%,-50%);background:transparent;transition:background .2s}
-.knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-surface-hi));
+.knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-mix:var(--k-fill-rest-mix);--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-fill-base));
   background:linear-gradient(to left,color-mix(in srgb,var(--k-accent) min(calc(var(--k-glow) * (20% + var(--k-speed) * 40%)),100%),transparent),transparent calc(24px + var(--k-speed) * 24px)) 0 0/var(--k-fill) 100% no-repeat,linear-gradient(var(--k-fill-tint),var(--k-fill-tint)) 0 0/var(--k-fill) 100% no-repeat;
   transition:--k-fill-mix .15s}
-.knobs-active .knobs-fill{--k-fill-mix:30%}
+.knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-hover-mix)}
+.knobs-active .knobs-fill,.knobs-active:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
 .knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
 .knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
 .knobs-magnet .knobs-notch{opacity:.95;height:11px}
-.knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:-1.5px;border-radius:999px;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
-  opacity:0;transform:translateY(-50%) scaleX(.25);transition:opacity .15s,transform .22s var(--k-ease)}
+.knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:calc(-1.5px - var(--k-handle-inset));border-radius:999px;background:var(--k-handle);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
+  opacity:var(--k-handle-rest);transform:translateY(-50%) scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)));transition:opacity .15s,transform .22s var(--k-ease)}
+.knobs-handle.knobs-dodge{opacity:calc(var(--k-handle-rest) * .25)}
 .knobs-slider:hover .knobs-handle,.knobs-track:focus-visible~.knobs-handle,.knobs-track:focus-visible .knobs-handle{opacity:.65;transform:translateY(-50%) scaleX(1)}
 .knobs-active .knobs-handle{opacity:.95;transform:translateY(-50%) scaleX(1)}
 .knobs-slider:hover .knobs-handle.knobs-dodge,.knobs-active .knobs-handle.knobs-dodge{opacity:.18;transform:translateY(-50%) scaleX(1) scaleY(.75)}
 .knobs-slider:is(:hover,:has(:focus-visible)) .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
 .knobs-active .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
 /* Drag speed eases quickly while dragging and fades gently after; the rubber band springs back. */
-.knobs-card>.knobs-slider{transition:background .15s,--k-speed .35s ease-out}
-.knobs-card>.knobs-slider.knobs-active{transition:background .15s,--k-speed .12s ease-out}
-.knobs-card>.knobs-slider.knobs-release{transition:background .15s,--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
+.knobs-card>.knobs-slider{transition:background var(--k-hover-t),--k-speed .35s ease-out}
+.knobs-card>.knobs-slider.knobs-active{transition:background var(--k-hover-t),--k-speed .12s ease-out}
+.knobs-card>.knobs-slider.knobs-release{transition:background var(--k-hover-t),--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
 .knobs-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
-.knobs-unit{color:var(--k-dim)}
+.knobs-unit{color:var(--k-unit-color);margin-left:var(--k-unit-gap)}
+/* --k-readout-mark (0 or 1): a modified value takes the modified colour behind a small dot. */
+.knobs-value::before{content:"";flex:none;width:calc(5px * var(--k-readout-mark));height:5px;margin-right:calc(6px * var(--k-readout-mark));border-radius:50%;background:var(--k-modified);opacity:0;transform:scale(0);transition:opacity .16s ease,transform .3s cubic-bezier(.34,1.56,.64,1)}
+:is(.knobs-slider,.knobs-sub).knobs-modified .knobs-value{color:color-mix(in srgb,var(--k-modified) calc(var(--k-readout-mark) * 100%),var(--k-label))}
+:is(.knobs-slider,.knobs-sub).knobs-modified:is(.knobs-active,:has(.knobs-track:focus-visible)) .knobs-value{color:color-mix(in srgb,var(--k-modified) calc(var(--k-readout-mark) * 100%),var(--k-text))}
+:is(.knobs-slider,.knobs-sub).knobs-modified .knobs-value::before{opacity:var(--k-readout-mark);transform:none}
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - var(--k-inset) * 2 - var(--k-readout,48px) - 8px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
-.knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:.28em;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
-  color:var(--k-label);font-family:var(--k-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
+.knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:0;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
+  color:var(--k-label);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
   border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .4s}
 .knobs-value:hover{border-bottom-color:var(--k-label)}
 .knobs-active .knobs-value,.knobs-track:focus-visible .knobs-value{color:var(--k-text)}
@@ -278,11 +298,27 @@ const css = `
 /* Segmented choice */
 .knobs-seg{position:relative;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:var(--k-tray-pad);height:var(--k-control-h);padding:var(--k-tray-pad);max-width:76%;background:var(--k-seg-bg);border-radius:var(--k-radius-md)}
 .knobs-seg-pill{position:absolute;top:var(--k-tray-pad);bottom:var(--k-tray-pad);left:0;right:100%;border-radius:var(--k-radius-sm);background:var(--k-pill-bg);box-shadow:0 1px 2px rgba(0,0,0,.12);pointer-events:none;
-  transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY}}
-.knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY}}
+  transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY},opacity .15s}
+.knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY},opacity .15s}
+.knobs-seg-pill[data-off]{opacity:0}
 .knobs-seg button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 7px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:var(--k-radius-sm);transition:background .15s,color .15s}
 .knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}
+
+/* Long choices: a compact button that drops down a menu */
+.knobs-panel .knobs-select{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:62%;height:var(--k-control-h);padding:0 6px 0 10px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-label);font-size:var(--k-text-control);font-weight:var(--k-label-weight);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
+.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-panel .knobs-row-full .knobs-select{flex:1;max-width:none;justify-content:space-between}
+.knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 2px);height:calc(var(--k-icon-sm) - 2px);color:var(--k-dim)}
+.knobs-menu[data-checks] .knobs-menu-item{padding-left:24px}
+.knobs-menu-item[aria-checked="true"]::before{content:"";position:absolute;left:9px;top:50%;width:7px;height:4px;margin-top:-3.5px;border:solid currentColor;border-width:0 0 1.5px 1.5px;transform:rotate(-45deg)}
+
+/* Action rows: a button the width of the row */
+.knobs-panel .knobs-action-row{padding:0}
+.knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-text);font-size:calc(var(--k-text-control) + .5px);font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t)}
+.knobs-panel .knobs-action:is(:hover,:focus-visible){color:var(--k-accent)}
+.knobs-panel .knobs-action:active{opacity:.7}
 
 /* Switch */
 /* The thumb spans two edges: the leading one springs ahead and the other follows, so it stretches
@@ -302,7 +338,7 @@ const css = `
 .knobs-card>.knobs-selected+.knobs-selected::before{opacity:0}
 .knobs-spring{display:flex}
 .knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
-.knobs-sub{position:relative;transition:background .15s}
+.knobs-sub{position:relative;transition:background var(--k-hover-t)}
 .knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
@@ -313,10 +349,11 @@ const css = `
 .knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
 .knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1;transition:d ${FILL_T} ${DELAY}}
 .knobs-curve{fill:none;stroke:var(--k-accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:d ${FILL_T} ${DELAY}}
-.knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0}
+.knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0;scale:var(--k-curve-dot)}
+.knobs-guide-dashed{stroke:var(--k-line-hi)}
 .knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
 
-.knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background .15s}
+.knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
 .knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
 .knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}
 .knobs-x-label::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
@@ -359,6 +396,20 @@ const css = `
 .knobs-panel .knobs-ease-chip:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:var(--k-pill-bg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 
+/* Rows as separate bars (--k-row-gap above 0): each row carries its own surface, no hairlines.
+   A spring stacks its curve over its two sliders. */
+.knobs-panel[data-rows] .knobs-card{display:flex;flex-direction:column;gap:var(--k-row-gap);background:transparent;overflow:visible}
+.knobs-panel[data-rows] .knobs-card>*{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden}
+.knobs-panel[data-rows] .knobs-card>:is(:hover,.knobs-active){background:color-mix(in srgb,var(--k-surface-hi) 50%,var(--k-surface))}
+.knobs-panel[data-rows] :is(.knobs-card>*,.knobs-sub)::before{display:none}
+.knobs-panel[data-rows] .knobs-card>.knobs-spring{flex-direction:column-reverse;gap:var(--k-row-gap);background:transparent;overflow:visible}
+.knobs-panel[data-rows] .knobs-spring-tracks{display:flex;flex-direction:column;gap:var(--k-row-gap);overflow:visible}
+.knobs-panel[data-rows] .knobs-sub{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden}
+.knobs-panel[data-rows] .knobs-sub:is(:hover,.knobs-active){background:color-mix(in srgb,var(--k-surface-hi) 50%,var(--k-surface))}
+.knobs-panel[data-rows] .knobs-spring-curve{width:auto;height:calc(var(--k-row) * 2.8);margin:0;border-radius:var(--k-radius);background:var(--k-surface)}
+/* A different item landing: values are placed, nothing glides. */
+.knobs-panel[data-landing] :is(*,*::before,*::after){transition:none!important}
+
 /* Hint mode: stable short codes, zero layout shift */
 .knobs-hinting .knobs-hint-miss{opacity:var(--k-disabled-opacity);transition:opacity .1s}
 .knobs-hint-layer{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5;animation:knobs-in .1s var(--k-ease)}
@@ -369,9 +420,10 @@ const css = `
 
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
-.knobs-panel .knobs-custom-actions button{height:var(--k-action-h);min-height:24px;padding:0 8px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,transform .12s}
+.knobs-panel .knobs-custom-actions button{height:var(--k-action-h);min-height:24px;padding:0 8px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,opacity .15s,transform .12s}
 .knobs-panel .knobs-custom-actions button:is(:hover:not([disabled]),:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-custom-actions button:active:not([disabled]){transform:scale(.97)}
+.knobs-panel .knobs-tile-body>.knobs-custom-actions button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 
 /* Variants Disclosure Drawer */
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
@@ -397,22 +449,88 @@ const css = `
 
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-.knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
-  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip){
+.knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible):not(.knobs-live *){outline-color:transparent!important;box-shadow:none!important}
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
+  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
-  .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*),
+  .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*):not(.knobs-live *),
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::before,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
-.knobs-panel[data-gpu-active="true"] .knobs-card>::before,
-.knobs-panel[data-gpu-active="true"] .knobs-card>::after,
-.knobs-panel[data-gpu-active="true"] .knobs-row>span:first-child::after{opacity:0!important}
+.knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
+.knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::after,
+.knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after{opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
 .knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
+
+/* Page: sections of cards in balanced columns, under a sticky glass header. The page scrolls the
+   window, so nothing here may become a scroll container or a containing block for the fixed
+   popover and status. Custom cards (.knobs-live) are drawn by the DOM in both renderers. */
+.knobs-panel.knobs-page{width:auto;max-width:none;min-height:100dvh;padding:0 0 calc(var(--k-unit) * 16);border:0;border-radius:0;box-shadow:none;overflow:visible;background:var(--k-page);-webkit-backdrop-filter:none;backdrop-filter:none;
+  --k-page-pad:calc(var(--k-unit) * 8);--k-page-gap:calc(var(--k-unit) * 4)}
+.knobs-panel.knobs-page[data-gpu-active="true"]{background:var(--k-page)!important}
+.knobs-panel.knobs-page>header{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:var(--k-page-gap);min-height:calc(var(--k-row) + var(--k-unit) * 6);padding:calc(var(--k-unit) * 2.5) var(--k-page-pad);
+  background:color-mix(in srgb,var(--k-page) 84%,transparent);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);border-bottom:1px solid transparent;transition:border-color .2s}
+.knobs-panel.knobs-page>header[data-scrolled]{border-bottom-color:var(--k-line)}
+.knobs-panel.knobs-page>header strong{font-size:calc(var(--k-font-size) + 3px);letter-spacing:-.015em;padding-left:calc(var(--k-pad) + var(--k-inset) + 1px)}
+.knobs-page>header .knobs-presets{margin:0;min-width:0;max-width:min(640px,46vw)}
+.knobs-page>header .knobs-presets-track{display:flex;flex-wrap:wrap}
+.knobs-page>header .knobs-preset-chip{flex:0 0 var(--k-preset-min,58px)}
+.knobs-page-tools{display:flex;align-items:center;justify-content:flex-end;min-width:0}
+.knobs-page-tools .knobs-head-actions{margin-right:calc((var(--k-icon-size) - var(--k-icon-btn)) / 2 + var(--k-pad) + var(--k-inset) - var(--k-unit))}
+.knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions{display:flex;gap:var(--k-tray-pad);margin:0 calc(var(--k-unit) * 2) 0 0}
+.knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions button{height:var(--k-icon-btn);min-height:0;padding:0 8px;background:transparent;border-radius:999px}
+.knobs-panel .knobs-filter{width:0;height:var(--k-control-h);padding:0;margin:0;opacity:0;pointer-events:none;background:var(--k-seg-bg);border-radius:var(--k-radius-md);font-size:var(--k-text-control);color:var(--k-text);-webkit-appearance:none;appearance:none;
+  transition:width ${LEAD_T},padding ${LEAD_T},margin ${LEAD_T},opacity .18s}
+.knobs-panel .knobs-filter::-webkit-search-cancel-button{display:none}
+.knobs-panel .knobs-filter::placeholder{color:var(--k-dim)}
+.knobs-panel .knobs-filter[data-open]{width:min(200px,22vw);padding:0 10px;margin-right:calc(var(--k-unit) * 2);opacity:1;pointer-events:auto}
+.knobs-panel.knobs-page>.knobs-popover{position:fixed;z-index:2147480003;top:calc(var(--k-head-h,56px) + var(--k-unit) * 2);right:var(--k-page-pad);width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - var(--k-head-h,56px) - 32px);overflow:auto;margin:0;padding:var(--k-pad) var(--k-inset);
+  background:color-mix(in srgb,var(--k-bg) 94%,transparent);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6)}
+.knobs-panel.knobs-page>.knobs-status{position:fixed;z-index:2147480003;left:50%;bottom:calc(var(--k-unit) * 6);translate:-50% 0;max-width:min(480px,80vw);margin:0;padding:calc(var(--k-unit) * 2) calc(var(--k-unit) * 3.5);
+  background:var(--k-bg);border:1px solid var(--k-line);border-radius:999px;box-shadow:var(--k-shadow);color:var(--k-text)}
+.knobs-sections{padding:0 var(--k-page-pad);overflow-x:clip;overflow-anchor:none}
+.knobs-columns{display:grid;grid-template-columns:repeat(var(--k-cols,1),minmax(0,1fr));gap:var(--k-page-gap);align-items:start;padding-top:calc(var(--k-unit) * 3)}
+.knobs-column{display:flex;flex-direction:column;gap:var(--k-page-gap);min-width:0}
+.knobs-section-head{margin:0 0 calc(var(--k-page-gap) * -.25);padding:0 calc(var(--k-pad) + var(--k-inset) + 1px);font:600 calc(var(--k-font-size) + 3px)/1.25 var(--k-font);letter-spacing:-.015em;color:var(--k-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.knobs-column>:not([hidden])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
+.knobs-tile{position:relative;min-width:0;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
+.knobs-tile>.knobs-card{margin:0}
+.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-section-gap);min-height:var(--k-icon-btn);color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+.knobs-group-title{display:grid;flex:1;min-width:0}
+.knobs-group-title>*{grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .15s}
+.knobs-peek{opacity:0;pointer-events:none}
+.knobs-group-head[data-peek] .knobs-group-label{opacity:0}
+.knobs-group-head[data-peek] .knobs-peek{opacity:1}
+.knobs-group-head .knobs-chips.knobs-seg{flex:none;height:20px;max-width:none;gap:0;margin-right:var(--k-unit)}
+.knobs-group-head .knobs-chips button{width:18px;height:100%;padding:0;font-size:var(--k-text-meta);font-weight:500;font-variant-numeric:tabular-nums;border-radius:var(--k-radius-sm);background:transparent}
+.knobs-group-head .knobs-chips button[aria-checked="true"]{color:var(--k-text)}
+.knobs-tile-body{display:flex;flex-direction:column}
+.knobs-tile-body>.knobs-card{margin:0}
+.knobs-panel .knobs-tile-body>.knobs-custom-actions{position:relative;margin:0}
+.knobs-panel .knobs-tile-body>:not([hidden])~*{margin-top:var(--k-section-gap)}
+.knobs-row-full .knobs-seg{flex:1;max-width:none}
+.knobs-row-full .knobs-seg button{flex:1}
+.knobs-item[role="button"]{cursor:pointer}
+.knobs-card>.knobs-item:focus-visible{outline:none}
+.knobs-card>.knobs-item:focus-visible::after{opacity:1}
+.knobs-item-detail{flex:none;color:var(--k-dim);font-size:var(--k-text-control);font-variant-numeric:tabular-nums;white-space:nowrap}
 `
+/** Adds a token preset's stylesheet once per document. */
+export function injectPreset(doc: Document, preset: TokenPreset) {
+  const content = presetCss(preset)
+  const existing = doc.querySelector<HTMLStyleElement>(`style[data-knobs-preset="${preset.name}"]`)
+  if (existing) {
+    if (existing.textContent !== content) existing.textContent = content
+    return
+  }
+  const style = doc.createElement("style")
+  style.dataset.knobsPreset = preset.name
+  style.textContent = content
+  doc.head.append(style)
+}
 export function injectStyles(doc: Document) {
   const content = rolling + DRIVERS + defaultsCss + aliased(css)
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")

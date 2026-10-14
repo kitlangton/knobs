@@ -1,0 +1,4 @@
+`wheel-traces.json` holds real wheel event streams (deltaX, deltaY, ms, deltaMode) recorded by
+Felix Leupold for [wheel-gestures](https://github.com/xiel/wheel-gestures) (MIT): macOS trackpad
+flicks and pans in Safari, Chrome and Firefox, Chrome on a Windows precision touchpad, and mouse
+wheels. `"-0"` is Chrome on Windows marking the fingers lifting.

@@ -285,6 +285,38 @@ try {
     log("comparing ->", await remote.getAttribute("data-comparing"))
     await page.keyboard.up("\\")
     log("compare released ->", await remote.getAttribute("data-comparing"))
+
+    // 11. The full page (tune.html): keys across cards, a numbered preset, a custom card, scrolling
+    await page.goto(`http://127.0.0.1:${port}/tune.html${mode === "gpu" ? "?gpu" : ""}`)
+    const tune = page.getByRole("region", { name: "iPhone Tune controls" })
+    await tune.locator(".knobs-tile").first().waitFor()
+    await sleep(600)
+    await page.getByRole("slider", { name: "Room below a header" }).focus()
+    await page.keyboard.press("j")
+    log("page j across cards ->", await focused())
+    await page.keyboard.press("Tab")
+    log("page Tab ->", await focused())
+    const rowHeight = page.getByRole("slider", { name: "Row height" })
+    await rowHeight.focus()
+    await page.keyboard.press("3")
+    await sleep(500)
+    log("page preset 3 -> row height", await rowHeight.getAttribute("aria-valuenow"))
+    // Five speeds drop down a menu.
+    const speed = tune.getByRole("button", { name: "Speed" })
+    await speed.click()
+    await page.getByRole("menu").getByRole("menuitemradio", { name: "0.5×" }).click()
+    await sleep(200)
+    log("page custom card speed ->", await speed.textContent())
+    await page.mouse.move(700, 500)
+    await page.mouse.wheel(0, 900)
+    await sleep(700)
+    log(
+      "page scrolled ->",
+      await page.evaluate(() => scrollY),
+      "header y",
+      (await tune.locator(":scope > header").boundingBox())?.y,
+    )
+    await page.screenshot({ path: `test-results/audit-${mode}-page.png` })
     log("errors:", errors)
     await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
     const fresh = await openSplat(page)
