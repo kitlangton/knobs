@@ -12,9 +12,11 @@ const TRAIL_T = `calc(${trail.ms}ms * (.6 + .4 * clamp(0, var(--k-blur), 2))) va
 const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
 
-// Every token animates when it changes (a theme, a preset, the meta page tuning itself): each is
-// registered with a type so the browser can interpolate it, and panels transition them on the
-// panel spring. Children inherit the in-between values, and the GPU overlay reads them each frame.
+// Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
+// public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
+// can interpolate and transitions on the panel spring; an untyped alias (--kv-pad) hands the
+// in-between value down, so the subtree inherits plain values, which restyle far more cheaply
+// than typed ones. The panel's own rules read the aliases; the GPU overlay reads them each frame.
 const COLOR_TOKENS = [
   "bg",
   "surface",
@@ -33,16 +35,23 @@ const COLOR_TOKENS = [
 ]
 const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "font-size"]
 const NUMBER_TOKENS = ["label-weight", "blur", "glow", "glass", "glass-tone"]
-/** Token names that animate, for the GPU overlay's transition tracking. */
-export const ANIMATED_TOKENS = [...COLOR_TOKENS, ...LENGTH_TOKENS, ...NUMBER_TOKENS, "width"].map(
-  (t) => `--k-${t}`,
-)
-const TOKEN_T = "var(--k-token-t)"
-const TOKEN_TRANSITIONS = ANIMATED_TOKENS.map((t) => `${t} ${TOKEN_T}`).join(",")
+const ANIMATED = [...COLOR_TOKENS, ...LENGTH_TOKENS, ...NUMBER_TOKENS, "width"]
+const TOKEN_TRANSITIONS = ANIMATED.map((t) => `--kt-${t} var(--k-token-t)`).join(",")
 const register = (names: readonly string[], syntax: string, initial: string) =>
   names
-    .map((n) => `@property --k-${n}{syntax:"${syntax}";inherits:true;initial-value:${initial}}`)
+    .map((n) => `@property --kt-${n}{syntax:"${syntax}";inherits:false;initial-value:${initial}}`)
     .join("\n")
+const DRIVERS = `${register(COLOR_TOKENS, "<color>", "transparent")}
+${register(LENGTH_TOKENS, "<length>", "0px")}
+${register(NUMBER_TOKENS, "<number>", "0")}
+${register(["width"], "<length-percentage>", "288px")}
+.knobs-panel,.knobs-chip{${ANIMATED.map((t) => `--kt-${t}:var(--k-${t});--kv-${t}:var(--kt-${t})`).join(";")}}`
+/** The panel's rules read the gliding aliases; the :root defaults keep the public names. */
+const aliased = (css: string) =>
+  css.replace(
+    new RegExp(`(?<!--k-seg-active:)var\\(--k-(${ANIMATED.join("|")})\\)`, "g"),
+    "var(--kv-$1)",
+  )
 
 const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,.05);--k-surface-hi:rgba(0,0,0,.095);--k-line:rgba(0,0,0,.1);--k-line-hi:rgba(0,0,0,.2);
@@ -56,10 +65,6 @@ const css = `
 @property --k-fill-mix{syntax:"<percentage>";inherits:false;initial-value:20%}
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
 @property --k-speed{syntax:"<number>";inherits:true;initial-value:0}
-${register(COLOR_TOKENS, "<color>", "transparent")}
-${register(LENGTH_TOKENS, "<length>", "0px")}
-${register(NUMBER_TOKENS, "<number>", "0")}
-@property --k-width{syntax:"<length-percentage>";inherits:true;initial-value:288px}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-surface:rgba(255,255,255,.055);--k-surface-hi:rgba(255,255,255,.11);--k-line:rgba(255,255,255,.1);--k-line-hi:rgba(255,255,255,.18);
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -97,14 +102,16 @@ ${register(NUMBER_TOKENS, "<number>", "0")}
 .knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s,${TOKEN_TRANSITIONS}}
 .knobs-chip:focus-visible{outline:none;color:var(--k-text);border-color:var(--k-line-hi)}
 
+/* Tokens glide on the panel spring. While a control is dragged (data-knobs-scrub) they follow it
+   step for step instead: the pointer already moves them continuously, and a declared transition
+   makes every step restyle the panel twice. */
+.knobs-panel,.knobs-chip{--k-token-t:calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)}
+:root[data-knobs-scrub] .knobs-chip{--k-token-t:0s}
+:root[data-knobs-scrub] .knobs-panel{transition:none}
+@media(prefers-reduced-motion:reduce){.knobs-chip{--k-token-t:0s}.knobs-panel.knobs-panel{transition:none}}
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
    contrast; a 1px specular rim catches the top edge. */
-/* Tokens glide on the panel spring; while a control is being dragged (data-knobs-scrub) each step
-   takes a short ease instead, so a token slider still tracks the pointer. */
-.knobs-panel,.knobs-chip{--k-token-t:calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)}
-:root[data-knobs-scrub] :is(.knobs-panel,.knobs-chip){--k-token-t:90ms cubic-bezier(.2,.8,.2,1)}
-@media(prefers-reduced-motion:reduce){.knobs-panel,.knobs-chip{--k-token-t:0s}}
 .knobs-panel{transition:${TOKEN_TRANSITIONS};position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
   background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);scrollbar-width:thin;
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
@@ -345,7 +352,7 @@ ${register(NUMBER_TOKENS, "<number>", "0")}
 .knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
 `
 export function injectStyles(doc: Document) {
-  const content = rolling + css
+  const content = rolling + DRIVERS + aliased(css)
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content

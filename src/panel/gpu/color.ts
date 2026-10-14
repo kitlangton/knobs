@@ -128,8 +128,12 @@ export interface PanelThemeTokens {
   readonly isLight: boolean
 }
 
+/** A token as the panel shows it now: the gliding alias (see styles.ts), else the public value. */
+const token = (style: CSSStyleDeclaration, name: string) =>
+  style.getPropertyValue(`--kv-${name}`) || style.getPropertyValue(`--k-${name}`)
+
 const numProp = (style: CSSStyleDeclaration, name: string, fallback: number): number => {
-  const raw = parseFloat(style.getPropertyValue(name))
+  const raw = parseFloat(token(style, name))
   return Number.isFinite(raw) ? raw : fallback
 }
 
@@ -141,51 +145,39 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     if (hit && hit.version === version) return hit.tokens
   }
   const style = getComputedStyle(panel)
-  const bg = parseCssColor(style.getPropertyValue("--k-bg"), [0.11, 0.11, 0.12, 1])
+  const bg = parseCssColor(token(style, "bg"), [0.11, 0.11, 0.12, 1])
   const isLight = bg[0] * 0.2126 + bg[1] * 0.7152 + bg[2] * 0.0722 > 0.55
   const surface = parseCssColor(
-    style.getPropertyValue("--k-surface"),
+    token(style, "surface"),
     isLight ? [0, 0, 0, 0.05] : [1, 1, 1, 0.055],
   )
   const surfaceHi = parseCssColor(
-    style.getPropertyValue("--k-surface-hi"),
+    token(style, "surface-hi"),
     isLight ? [0, 0, 0, 0.095] : [1, 1, 1, 0.11],
   )
-  const line = parseCssColor(
-    style.getPropertyValue("--k-line"),
-    isLight ? [0, 0, 0, 0.1] : [1, 1, 1, 0.1],
-  )
-  const lineHi = parseCssColor(
-    style.getPropertyValue("--k-line-hi"),
-    isLight ? [0, 0, 0, 0.2] : [1, 1, 1, 0.18],
-  )
-  const text = parseCssColor(
-    style.getPropertyValue("--k-text"),
-    isLight ? [0, 0, 0, 0.88] : [1, 1, 1, 0.92],
-  )
+  const line = parseCssColor(token(style, "line"), isLight ? [0, 0, 0, 0.1] : [1, 1, 1, 0.1])
+  const lineHi = parseCssColor(token(style, "line-hi"), isLight ? [0, 0, 0, 0.2] : [1, 1, 1, 0.18])
+  const text = parseCssColor(token(style, "text"), isLight ? [0, 0, 0, 0.88] : [1, 1, 1, 0.92])
   const label = parseCssColor(
-    style.getPropertyValue("--k-label"),
+    token(style, "label"),
     isLight ? [0.23, 0.23, 0.26, 0.68] : [1, 1, 1, 0.64],
   )
   const dim = parseCssColor(
-    style.getPropertyValue("--k-dim"),
+    token(style, "dim"),
     isLight ? [0.23, 0.23, 0.26, 0.44] : [1, 1, 1, 0.42],
   )
   const accent = parseCssColor(
-    style.getPropertyValue("--k-accent"),
+    token(style, "accent"),
     isLight ? [0.11, 0.11, 0.12, 1] : [1, 1, 1, 1],
   )
   const modified = parseCssColor(
-    style.getPropertyValue("--k-modified"),
+    token(style, "modified"),
     isLight ? [0.85, 0.47, 0.02, 1] : [1, 0.62, 0.04, 1],
   )
-  const segBg = parseCssColor(
-    style.getPropertyValue("--k-seg-bg"),
-    isLight ? [0, 0, 0, 0.065] : [0, 0, 0, 0.25],
-  )
-  const segActive = parseCssColor(style.getPropertyValue("--k-seg-active"), surfaceHi)
+  const segBg = parseCssColor(token(style, "seg-bg"), isLight ? [0, 0, 0, 0.065] : [0, 0, 0, 0.25])
+  const segActive = parseCssColor(token(style, "seg-active"), surfaceHi)
   const toggleTrack = parseCssColor(
-    style.getPropertyValue("--k-toggle-track"),
+    token(style, "toggle-track"),
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
   )
 
@@ -217,19 +209,16 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     segBg,
     segActive,
     toggleTrack,
-    rim: parseCssColor(
-      style.getPropertyValue("--k-rim"),
-      isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09],
-    ),
-    radius: numProp(style, "--k-radius", 8),
-    panelRadius: numProp(style, "--k-panel-radius", 12),
-    inset: numProp(style, "--k-inset", 10),
-    fontSize: parseFloat(style.fontSize) || numProp(style, "--k-font-size", 12),
-    labelWeight: numProp(style, "--k-label-weight", 500),
-    blurStrength: numProp(style, "--k-blur", 1),
-    glowStrength: numProp(style, "--k-glow", 0.5),
-    glass: Math.min(1, Math.max(0, numProp(style, "--k-glass", 0))),
-    glassTone: numProp(style, "--k-glass-tone", isLight ? 1.08 : 0.5),
+    rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
+    radius: numProp(style, "radius", 8),
+    panelRadius: numProp(style, "panel-radius", 12),
+    inset: numProp(style, "inset", 10),
+    fontSize: parseFloat(style.fontSize) || numProp(style, "font-size", 12),
+    labelWeight: numProp(style, "label-weight", 500),
+    blurStrength: numProp(style, "blur", 1),
+    glowStrength: numProp(style, "glow", 0.5),
+    glass: Math.min(1, Math.max(0, numProp(style, "glass", 0))),
+    glassTone: numProp(style, "glass-tone", isLight ? 1.08 : 0.5),
     fillOmega: fill.omega,
     fillZeta: fill.zeta,
     fontFamily,

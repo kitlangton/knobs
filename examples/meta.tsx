@@ -236,16 +236,21 @@ export function formatTokensCss(v: MetaValues): string {
   return [":root {", ...tokensFor(v).map(([k, val]) => `  ${k}: ${val};`), "}"].join("\n")
 }
 
-// Tokens are written inline on the elements that use them (the stage and every panel and chip),
-// not on :root, so a change restyles those subtrees rather than the whole document. Writing them on
-// the panels themselves also wins over the built-in light theme's own values. Only changed tokens
-// are written; panels and chips that appear later get the full set before their first frame.
+// Tokens are written inline on the elements that use them (every panel and chip, and the specimen
+// card for its corners and wave), not on :root, so a change restyles those subtrees rather than the
+// whole document. On the panels themselves they also win over the built-in light theme's values.
+// Only changed tokens are written; panels and chips that appear later get the full set at once.
 let appliedTokens: [string, string][] = []
-const scopeSelector = ".meta-grid, .knobs-panel, .knobs-chip"
+const CARD_TOKENS = new Set(["--k-accent", "--k-panel-radius", "--k-fill-ease", "--k-fill-ms"])
+const scopedTokens = (el: Element, tokens: readonly [string, string][]) =>
+  el.classList.contains("meta-specimen-card") ? tokens.filter(([k]) => CARD_TOKENS.has(k)) : tokens
 const isScope = (node: Node): node is HTMLElement =>
-  node instanceof HTMLElement && node.matches(scopeSelector)
+  node instanceof HTMLElement &&
+  (node.classList.contains("knobs-panel") ||
+    node.classList.contains("knobs-chip") ||
+    node.classList.contains("meta-specimen-card"))
 function writeTokens(el: HTMLElement, tokens: readonly [string, string][]) {
-  for (const [k, val] of tokens) el.style.setProperty(k, val)
+  for (const [k, val] of scopedTokens(el, tokens)) el.style.setProperty(k, val)
 }
 let scopeObserver: MutationObserver | undefined
 function applyTokensToDocument(v: MetaValues) {
@@ -258,7 +263,10 @@ function applyTokensToDocument(v: MetaValues) {
   )
   appliedTokens = tokens
   if (changed.length)
-    for (const el of document.querySelectorAll<HTMLElement>(scopeSelector)) writeTokens(el, changed)
+    for (const el of document.querySelectorAll<HTMLElement>(
+      ".knobs-panel, .knobs-chip, .meta-specimen-card",
+    ))
+      writeTokens(el, changed)
   if (scopeObserver) return
   scopeObserver = new MutationObserver((records) => {
     for (const record of records)

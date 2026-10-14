@@ -28,6 +28,11 @@ import {
 } from "./color.js"
 import { FLOATS_PER_PRIM, panelWgsl } from "./shader.wgsl.js"
 
+/** Tokens whose glide moves layout, so cached rects can't be trusted while they run. */
+const LAYOUT_TOKENS = new Set(
+  ["width", "pad", "inset", "row", "gap", "font-size", "label-weight"].map((t) => `--kt-${t}`),
+)
+
 const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 type Clip = readonly [number, number, number, number]
@@ -326,8 +331,8 @@ class GpuOverlayManager {
 
   private styleVersion = 1
   private layoutVersion = 1
-  /** Token transitions running on each panel (CSS `transitionrun` minus `transitionend`/`cancel`). */
-  private readonly tokenRuns = new Map<GpuPanelBinding, number>()
+  /** Token transitions running on each panel, by property (`transitionrun` minus end/cancel). */
+  private readonly tokenRuns = new Map<GpuPanelBinding, Map<string, number>>()
   private tokenEventAt = 0
   private readonly pillAnchors = new WeakMap<
     Edges,
@@ -433,14 +438,18 @@ class GpuOverlayManager {
     // Token changes glide as CSS transitions on the panel; while any runs, every frame reads the
     // in-between tokens and fresh rects, then the loop can sleep again.
     const onTokenEvent = (event: TransitionEvent) => {
-      if (event.target !== panel.root || !event.propertyName.startsWith("--k-")) return
+      const name = event.propertyName
+      if (event.target !== panel.root || !name.startsWith("--kt-")) return
       this.tokenEventAt = performance.now()
-      const runs = (this.tokenRuns.get(panel) ?? 0) + (event.type === "transitionrun" ? 1 : -1)
-      if (runs > 0) this.tokenRuns.set(panel, runs)
-      else {
+      let runs = this.tokenRuns.get(panel)
+      if (!runs) this.tokenRuns.set(panel, (runs = new Map()))
+      const n = (runs.get(name) ?? 0) + (event.type === "transitionrun" ? 1 : -1)
+      if (n > 0) runs.set(name, n)
+      else runs.delete(name)
+      if (runs.size === 0) {
         this.tokenRuns.delete(panel)
         this.styleVersion++
-        this.layoutVersion++
+        if (LAYOUT_TOKENS.has(name)) this.layoutVersion++
       }
       this.wake()
     }
@@ -1726,10 +1735,13 @@ class GpuOverlayManager {
     const revealVer = getRevealVersion()
     // A lost end event can't keep the loop awake: no token spring runs this long.
     if (this.tokenRuns.size > 0 && clock - this.tokenEventAt > 4000) this.tokenRuns.clear()
-    const tokensMoving = this.tokenRuns.size > 0
-    if (tokensMoving) {
+    // Gliding tokens are re-read every frame; rects only while one that moves layout glides.
+    let layoutGliding = false
+    for (const runs of this.tokenRuns.values())
+      for (const name of runs.keys()) if (LAYOUT_TOKENS.has(name)) layoutGliding = true
+    if (this.tokenRuns.size > 0) {
       this.styleVersion++
-      this.layoutVersion++
+      if (layoutGliding) this.layoutVersion++
       anyMoving = true
     }
 
@@ -1768,7 +1780,7 @@ class GpuOverlayManager {
       const panelRevealing = revealing && isRevealingIn(panel.root)
       const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
       this.curBypassRectCache =
-        opening || leaving || (panelRevealing && !bodyRevealing) || this.tokenRuns.has(panel)
+        opening || leaving || (panelRevealing && !bodyRevealing) || layoutGliding
 
       const tokens = rawTokens
       this.curTokens = tokens
