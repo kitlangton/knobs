@@ -672,7 +672,9 @@ test("panning drags the preset and choice pills across their options, one undo e
     ["default", expect.closeTo(chips[0]! + 27, 0), "none"],
     ["warm", expect.closeTo(chips[0]! + 35, 0), "none"],
   ])
-  expect(seen.slice(5)).toEqual(seen.slice(5).map(() => ["warm", chips[1], ""]))
+  // The spike and the momentum after it confirm the lift; meanwhile nothing moves.
+  expect(seen.slice(5, 8)).toEqual(seen.slice(5, 8).map(() => seen[4]))
+  expect(seen.slice(8)).toEqual(seen.slice(8).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
   await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
   await synth.getByRole("button", { name: "Undo" }).click()
