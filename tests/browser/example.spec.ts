@@ -201,7 +201,7 @@ test("production ships constants, with no panel chunks or hover UI", async ({ pa
   page.on("response", (response) => {
     if (response.url().endsWith(".js")) scripts.push(response.url())
   })
-  await page.goto("http://127.0.0.1:5179/")
+  await page.goto(`http://127.0.0.1:${(Number(process.env.KNOBS_PORT) || 5178) + 1}/`)
   await expect(page.locator("[data-study]")).toHaveCount(4)
   await page.evaluate(() =>
     localStorage.setItem(
@@ -1403,16 +1403,18 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   )
 
   // A custom card's controls round-trip through the phone.
-  const speed = card("Playground & Slow Motion").getByRole("radiogroup", { name: "Speed" })
-  await speed.getByRole("radio", { name: "0.25×" }).click()
+  // Five speeds are more than a row of segments holds: a menu.
+  const speed = card("Playground & Slow Motion").getByRole("button", { name: "Speed" })
+  await speed.click()
+  await page.getByRole("menu").getByRole("menuitemradio", { name: "0.25×" }).click()
   await page.waitForTimeout(200)
   expect(await page.evaluate(() => (window as any).__tune.remote.get()["drawer.row.height"])).toBe(
     44,
   )
-  await expect(speed.getByRole("radio", { name: "0.25×" })).toHaveAttribute("aria-checked", "true")
+  await expect(speed).toHaveText("0.25×")
   await speed.focus()
   await page.keyboard.press("ArrowRight")
-  await expect(speed.getByRole("radio", { name: "0.5×" })).toHaveAttribute("aria-checked", "true")
+  await expect(speed).toHaveText("0.5×")
 
   // `/` filters rows live and Esc brings them back.
   await rowHeight.focus()
