@@ -1,4 +1,21 @@
-import { choice, knob, toggle, type Field, type Schema, type State } from "./schema.js"
+import { colorHex, oklchToRgb, parseColor } from "./color.js"
+import type { Bezier } from "./easing.js"
+import {
+  choice,
+  color,
+  easing,
+  knob,
+  point,
+  spring,
+  toggle,
+  type Field,
+  type Point,
+  type Schema,
+  same,
+  type State,
+  type Value,
+} from "./schema.js"
+import type { SpringValue } from "./spring.js"
 import type { StoragePort } from "./storage.js"
 import {
   defineControls,
@@ -13,8 +30,18 @@ import {
 export interface ControlDescriptor {
   readonly key: string
   readonly label?: string
-  readonly kind: "knob" | "number" | "choice" | "toggle" | "bool"
-  readonly default: number | string | boolean
+  readonly kind:
+    | "knob"
+    | "number"
+    | "choice"
+    | "toggle"
+    | "bool"
+    | "spring"
+    | "color"
+    | "point"
+    | "easing"
+  /** Springs take `{ duration, bounce }`, colours a CSS string, points `{ x, y }`, easings `[x1, y1, x2, y2]`. */
+  readonly default: Value
   readonly min?: number
   readonly max?: number
   readonly step?: number
@@ -35,7 +62,7 @@ export interface RemoteControlsOptions {
   readonly theme?: ThemeMode
   readonly density?: DensityMode
   readonly renderer?: RendererMode
-  readonly onSet?: (key: string, value: number | string | boolean | null, meta: ChangeMeta) => void
+  readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
   readonly onReset?: (target: { key?: string; group?: string }) => void
 }
 
@@ -69,6 +96,12 @@ export function descriptorToField(d: ControlDescriptor): Field {
     const def = list.includes(String(d.default)) ? String(d.default) : list[0]
     return choice(def, list as readonly [string, ...string[]], meta)
   }
+  if (d.kind === "spring") return spring(d.default as SpringValue, meta)
+  if (d.kind === "color")
+    return color(parseColor(d.default) ? (d.default as string) : "#808080", meta)
+  if (d.kind === "point")
+    return point(d.default as Point, { min: d.min ?? 0, max: d.max ?? 1, step: d.step, ...meta })
+  if (d.kind === "easing") return easing(d.default as Bezier, meta)
   return toggle(Boolean(d.default), meta)
 }
 
@@ -77,12 +110,26 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
 }
 
 const decimal = (n: number) => String(Math.round(n * 10000) / 10000)
-const swiftLiteral = (d: ControlDescriptor, v: number | string | boolean) => {
+const swiftLiteral = (d: ControlDescriptor, v: Value): string => {
+  if (d.kind === "color") {
+    const [r, g, b] = oklchToRgb(parseColor(v) ?? { l: 0, c: 0, h: 0 }).map(decimal)
+    return `Color(red: ${r}, green: ${g}, blue: ${b})`
+  }
+  if (d.kind === "point") {
+    const p = v as Point
+    return `CGPoint(x: ${decimal(p.x)}, y: ${decimal(p.y)})`
+  }
+  if (d.kind === "easing") {
+    const [x1, y1, x2, y2] = (v as Bezier).map(decimal)
+    return `.bezier(startControlPoint: UnitPoint(x: ${x1}, y: ${y1}), endControlPoint: UnitPoint(x: ${x2}, y: ${y2}))`
+  }
   if (typeof v === "boolean") return String(v)
   if (typeof v === "string") return `.${v}`
+  if (typeof v !== "number") return JSON.stringify(v)
   if (d.swiftType === "Int") return String(Math.round(v))
   return decimal(v)
 }
+const swiftTypes = { color: "Color", point: "CGPoint", easing: "UnitCurve" } as const
 
 export function formatSwift(
   descriptors: readonly ControlDescriptor[],
@@ -93,7 +140,7 @@ export function formatSwift(
   const done = new Set<string>()
   const lines: string[] = []
   for (const d of descriptors) {
-    const changed = d.key in values && values[d.key] !== d.default
+    const changed = d.key in values && !same(values[d.key], d.default)
     if (!changed || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`)
@@ -110,12 +157,30 @@ export function formatSwift(
       continue
     }
     done.add(d.key)
-    const swiftType = d.swiftType ?? (d.kind === "bool" || d.kind === "toggle" ? "Bool" : "Double")
+    if (d.kind === "spring") {
+      const v = values[d.key] as SpringValue
+      const was = d.default as SpringValue
+      lines.push(
+        `TunableSpring(${JSON.stringify(d.key)}, ${JSON.stringify(d.label ?? d.key)}, duration: ${decimal(v.duration)}, bounce: ${decimal(v.bounce)})` +
+          `  // was duration: ${decimal(was.duration)}, bounce: ${decimal(was.bounce)}`,
+      )
+      continue
+    }
+    const swiftType =
+      d.swiftType ??
+      (d.kind === "bool" || d.kind === "toggle"
+        ? "Bool"
+        : d.kind in swiftTypes
+          ? swiftTypes[d.kind as keyof typeof swiftTypes]
+          : "Double")
     let call = `Tunable<${swiftType}>(${JSON.stringify(d.key)}, ${JSON.stringify(d.label ?? d.key)}, default: ${swiftLiteral(d, values[d.key])}`
-    if (d.min !== undefined && d.max !== undefined)
-      call += `, in: ${decimal(d.min)}...${decimal(d.max)}`
-    if (d.step !== undefined) call += `, step: ${decimal(d.step)}`
-    lines.push(`${call})  // was ${swiftLiteral(d, d.default)}`)
+    if (d.kind === "knob" || d.kind === "number") {
+      if (d.min !== undefined && d.max !== undefined)
+        call += `, in: ${decimal(d.min)}...${decimal(d.max)}`
+      if (d.step !== undefined) call += `, step: ${decimal(d.step)}`
+    }
+    const note = d.kind === "color" ? `${colorHex(values[d.key] as string)} · ` : ""
+    lines.push(`${call})  // ${note}was ${swiftLiteral(d, d.default)}`)
   }
   return lines.join("\n")
 }
@@ -139,7 +204,7 @@ export function createRemoteControls(
       if (meta.source === "remote" || meta.source === "reset") return
       for (const [key, val] of Object.entries(patch)) {
         if (val === undefined) continue
-        const next = val === controls.locked[key] ? null : val
+        const next = same(val, controls.locked[key]) ? null : val
         options.onSet?.(key, next, meta)
       }
     },

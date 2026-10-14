@@ -2,18 +2,28 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest"
 import { createRoot as createSolidRoot, type Accessor } from "solid-js"
 import {
   choice,
+  color,
+  colorHex,
   createRemoteControls,
   defineControls,
   formatCode,
   formatSwift,
   fromDescriptors,
+  easing,
   knob,
   memoryStorage,
+  point,
+  spring,
+  springCss,
   toggle,
   urlFlag,
+  type Bezier,
   type ControlDescriptor,
+  type Point,
+  type SpringValue,
   type Values,
 } from "../src/index.js"
+import { maxChroma, parseColor } from "../src/core/color.js"
 import { normalize } from "../src/core/schema.js"
 import { randomValues } from "../src/core/random.js"
 import { storageKey } from "../src/core/storage.js"
@@ -92,6 +102,171 @@ describe("schema", () => {
       flavor: "clean",
       grain: true,
     })
+  })
+})
+
+describe("spring, color, point and easing fields", () => {
+  const rich = {
+    reveal: spring({ duration: 0.4, bounce: 0.2 }, { label: "Reveal", group: "Motion" }),
+    tint: color("#4f8cff", { group: "Look" }),
+    origin: point({ x: 0, y: 0 }, { min: -1, max: 1, step: 0.05 }),
+    curve: easing("ease-out"),
+  }
+  const makeRich = (storage = memoryStorage()) =>
+    defineControls("rich", rich, {
+      enabled: true,
+      storage,
+      presets: { calm: { reveal: { duration: 0.8, bounce: 0 }, curve: [0.42, 0, 0.58, 1] } },
+    })
+
+  it("infers value types and keeps metadata", () => {
+    const c = makeRich()
+    expectTypeOf(c.get().reveal).toEqualTypeOf<SpringValue>()
+    expectTypeOf(c.get().tint).toEqualTypeOf<string>()
+    expectTypeOf(c.get().origin).toEqualTypeOf<Point>()
+    expectTypeOf(c.get().curve).toEqualTypeOf<Bezier>()
+    expect(rich.reveal).toMatchObject({ label: "Reveal", group: "Motion" })
+    expect(c.locked.reveal).toEqual({ duration: 0.4, bounce: 0.2 })
+    expect(c.locked.curve).toEqual([0, 0, 0.58, 1])
+    expect(c.locked.tint).toMatch(/^oklch\(0\.\d+ 0\.\d+ \d+(\.\d+)?\)$/)
+    expect(colorHex(c.locked.tint)).toBe("#4f8cff")
+    expect(rich.origin).toMatchObject({ min: { x: -1, y: -1 }, step: { x: 0.05, y: 0.05 } })
+    expect(() => point({ x: 0, y: 0 }, { min: 1, max: 0 })).toThrow()
+    expect(() => color("tomato")).toThrow()
+    // @ts-expect-error Unknown easing names are rejected.
+    expect(() => easing("wobble")).toThrow()
+  })
+
+  it("clamps and snaps every part, fits colours inside sRGB, and falls back on junk", () => {
+    expect(
+      normalize(rich, {
+        reveal: { duration: 9, bounce: -3 },
+        tint: "oklch(0.7 0.4 145)",
+        origin: { x: 0.123, y: -7 },
+        curve: [-1, 3, 2, -2],
+      }),
+    ).toMatchObject({
+      reveal: { duration: 2, bounce: -0.5 },
+      origin: { x: 0.1, y: -1 },
+      curve: [0, 1.5, 1, -0.5],
+    })
+    const fitted = parseColor(normalize(rich, { tint: "oklch(0.7 0.4 145)" }).tint)!
+    expect(fitted.c).toBeLessThanOrEqual(maxChroma(0.7, 145))
+    expect(fitted.c).toBeGreaterThan(maxChroma(0.7, 145) - 0.002)
+    expect(normalize(rich, { tint: "oklch(72% 0.1 400)" }).tint).toBe("oklch(0.72 0.1 40)")
+    expect(normalize(rich, { reveal: "fast", origin: null, curve: [1, 2] })).toMatchObject({
+      reveal: rich.reveal.value,
+      origin: rich.origin.value,
+      curve: rich.curve.value,
+    })
+  })
+
+  it("randomizes inside sensible bounds", () => {
+    for (let i = 0; i <= 20; i++) {
+      const r = randomValues(rich, () => i / 20)
+      expect(r.reveal.duration).toBeGreaterThanOrEqual(0.2)
+      expect(r.reveal.duration).toBeLessThanOrEqual(0.9)
+      expect(r.reveal.bounce).toBeGreaterThanOrEqual(0)
+      expect(r.reveal.bounce).toBeLessThanOrEqual(0.45)
+      expect(Math.abs(r.origin.x)).toBeLessThanOrEqual(1)
+      expect(Math.abs(r.origin.y)).toBeLessThanOrEqual(1)
+      expect(r.curve.every(Number.isFinite)).toBe(true)
+      const t = parseColor(r.tint)!
+      expect(t.l).toBeGreaterThanOrEqual(0.5)
+      expect(t.c).toBeLessThanOrEqual(maxChroma(t.l, t.h) + 1e-9)
+    }
+  })
+
+  it("compares by value: no-op sets, modified, reset, presets, undo coalescing", () => {
+    const c = makeRich()
+    const listener = vi.fn()
+    c.subscribe(listener)
+    c.set({ reveal: { duration: 0.4, bounce: 0.2 } })
+    expect(listener).not.toHaveBeenCalled()
+    expect(c.isModified()).toBe(false)
+    const before = c.get()
+    c.set({ origin: { x: 0.2, y: 0 } })
+    c.set({ origin: { x: 0.4, y: 0.1 } }, { coalesce: true })
+    expect(c.get().reveal).toBe(before.reveal)
+    expect(c.modified()).toEqual({ origin: { x: 0.4, y: 0.1 } })
+    c.undo()
+    expect(c.get().origin).toEqual({ x: 0, y: 0 })
+    c.preset("calm")
+    expect(c.matchingPreset()).toBe("calm")
+    expect(c.isModified("curve")).toBe(true)
+    c.resetKey("curve")
+    expect(c.isModified("curve")).toBe(false)
+    c.resetGroup("Motion")
+    expect(c.matchingPreset()).toBe("default")
+  })
+
+  it("round-trips through storage, JSON variants and code", () => {
+    const storage = memoryStorage()
+    const c = makeRich(storage)
+    c.set({ tint: "oklch(0.6 0.12 30)", curve: [0.3, 1.2, 0.6, 1], origin: { x: 0.5, y: -0.5 } })
+    const saved = c.variants.save("warm")
+    expect(makeRich(storage).get()).toEqual(c.get())
+    const other = makeRich()
+    other.variants.list()
+    other.variants.import(c.variants.export())
+    other.variants.load(saved.id)
+    expect(other.get()).toEqual(c.get())
+    expect(JSON.parse(c.code("json"))).toEqual(c.get())
+  })
+
+  it("maps springs like SwiftUI and exports them as CSS linear() easings", () => {
+    const { easing: css, duration } = springCss({ duration: 0.5, bounce: 0 })
+    expect(css).toMatch(/^linear\(0,.*,1\)$/)
+    expect(duration).toBeGreaterThan(500)
+    expect(duration).toBeLessThan(800)
+    expect(springCss({ duration: 0.5, bounce: 0.4 }).easing).toMatch(/1\.\d+/)
+  })
+
+  it("travels as remote descriptors and emits matching Swift", () => {
+    const descriptors: ControlDescriptor[] = [
+      {
+        key: "sheet.spring",
+        label: "Sheet",
+        kind: "spring",
+        default: { duration: 0.35, bounce: 0.1 },
+      },
+      { key: "sheet.tint", label: "Tint", kind: "color", default: "#ff6b3d" },
+      {
+        key: "sheet.anchor",
+        label: "Anchor",
+        kind: "point",
+        default: { x: 0.5, y: 0.5 },
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      { key: "sheet.curve", label: "Curve", kind: "easing", default: [0.25, 0.1, 0.25, 1] },
+    ]
+    const sent: [string, unknown][] = []
+    const remote = createRemoteControls("phone", descriptors, {
+      onSet: (key, value) => sent.push([key, value]),
+    })
+    expect(remote.schema["sheet.anchor"]).toMatchObject({ kind: "point", max: { x: 1, y: 1 } })
+    remote.set({
+      "sheet.spring": { duration: 0.5, bounce: 0.3 },
+      "sheet.tint": "#3d8bff",
+      "sheet.anchor": { x: 0.25, y: 0.75 },
+      "sheet.curve": [0.32, 0.72, 0, 1],
+    })
+    expect(sent.map(([k]) => k)).toEqual(descriptors.map((d) => d.key))
+    remote.set({ "sheet.anchor": { x: 0.5, y: 0.5 } })
+    expect(sent.at(-1)).toEqual(["sheet.anchor", null])
+    const swift = remote.swift()
+    expect(swift).toContain(
+      'TunableSpring("sheet.spring", "Sheet", duration: 0.5, bounce: 0.3)  // was duration: 0.35, bounce: 0.1',
+    )
+    expect(swift).toMatch(
+      /Tunable<Color>\("sheet.tint", "Tint", default: Color\(red: 0.2\d*, green: 0.5\d*, blue: (1|0.99\d*)\)\)  \/\/ #3d8bff · was Color/,
+    )
+    expect(swift).toContain(
+      'Tunable<UnitCurve>("sheet.curve", "Curve", default: .bezier(startControlPoint: UnitPoint(x: 0.32, y: 0.72), endControlPoint: UnitPoint(x: 0, y: 1)))',
+    )
+    expect(swift).not.toContain("sheet.anchor")
   })
 })
 
@@ -405,7 +580,7 @@ describe("metadata, per-key/group reset, sync, remote descriptors and Solid", ()
         group: "composer",
       },
     ]
-    const sent: [string, number | string | boolean | null][] = []
+    const sent: [string, unknown][] = []
     const resets: { key?: string; group?: string }[] = []
     const remote = createRemoteControls("iphone", descriptors, {
       values: { "drawer.edge.fade": 24 },

@@ -1,6 +1,6 @@
 import { formatCode, type CodeFormat } from "./code.js"
 import { randomValues } from "./random.js"
-import { equal, normalize, type Schema, type State, type Values } from "./schema.js"
+import { equal, normalize, same, type Schema, type State, type Values } from "./schema.js"
 import { browserStorage, storageKey, type StoragePort } from "./storage.js"
 import { createVariants, type Variants } from "./variants.js"
 
@@ -147,6 +147,13 @@ export function defineControls<const S extends Schema>(
     }
     return current
   }
+  // Unchanged springs, points and curves keep their identity, so memoized consumers skip them.
+  const keep = (previous: Values<S>, next: Values<S>) =>
+    Object.freeze(
+      Object.fromEntries(
+        Object.entries(next).map(([k, v]) => [k, same(previous[k], v) ? previous[k] : v]),
+      ),
+    ) as Values<S>
   function commit(next: Values<S>) {
     current = next
     try {
@@ -163,7 +170,7 @@ export function defineControls<const S extends Schema>(
   ) {
     if (!enabled()) return
     const previous = get()
-    const next = normalize(schema, { ...previous, ...patch })
+    const next = keep(previous, normalize(schema, { ...previous, ...patch }))
     if (equal(current, next)) return
     if (!setOpts?.coalesce || past.length === 0) {
       past.push(previous)
@@ -173,7 +180,7 @@ export function defineControls<const S extends Schema>(
     commit(next)
     const diff: Record<string, unknown> = {}
     for (const k of Object.keys(schema)) {
-      if (previous[k] !== next[k]) diff[k] = next[k]
+      if (!same(previous[k], next[k])) diff[k] = next[k]
     }
     options.onChange?.(diff as Partial<Values<S>>, next, {
       source: setOpts?.source ?? "local",
@@ -186,7 +193,7 @@ export function defineControls<const S extends Schema>(
     if (!enabled()) return
     const previous = get()
     const base = syncOpts?.replace ? locked : previous
-    const next = normalize(schema, { ...base, ...values })
+    const next = keep(previous, normalize(schema, { ...base, ...values }))
     if (equal(current, next)) return
     commit(next)
     options.onChange?.(values, next, { source: "remote" })
@@ -226,7 +233,7 @@ export function defineControls<const S extends Schema>(
       commit(previous)
       const diff: Record<string, unknown> = {}
       for (const k of Object.keys(schema)) {
-        if (before[k] !== previous[k]) diff[k] = previous[k]
+        if (!same(before[k], previous[k])) diff[k] = previous[k]
       }
       options.onChange?.(diff as Partial<Values<S>>, previous, { source: "undo" })
     },
@@ -238,7 +245,7 @@ export function defineControls<const S extends Schema>(
       commit(next)
       const diff: Record<string, unknown> = {}
       for (const k of Object.keys(schema)) {
-        if (before[k] !== next[k]) diff[k] = next[k]
+        if (!same(before[k], next[k])) diff[k] = next[k]
       }
       options.onChange?.(diff as Partial<Values<S>>, next, { source: "redo" })
     },
@@ -271,14 +278,14 @@ export function defineControls<const S extends Schema>(
     },
     isModified(key) {
       const cur = get()
-      if (key !== undefined) return cur[key] !== locked[key]
+      if (key !== undefined) return !same(cur[key], locked[key])
       return !equal(cur, locked)
     },
     modified() {
       const cur = get()
       const out: Record<string, unknown> = {}
       for (const k of Object.keys(schema)) {
-        if (cur[k] !== locked[k]) out[k] = cur[k]
+        if (!same(cur[k], locked[k])) out[k] = cur[k]
       }
       return Object.freeze(out) as Partial<Values<S>>
     },

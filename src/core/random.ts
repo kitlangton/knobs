@@ -1,21 +1,39 @@
-import { normalize, type Schema, type Values } from "./schema.js"
+import { EASINGS } from "./easing.js"
+import { normalize, type Field, type Schema, type Values } from "./schema.js"
+
+const lattice = (min: number, max: number, step: number, r: number) =>
+  min + Math.floor(r * (Math.floor((max - min) / step + 1e-9) + 1)) * step
+const between = (min: number, max: number, r: number) => min + (max - min) * r
+
+function pick(field: Field, random: () => number) {
+  const r = () => Math.max(0, Math.min(1 - Number.EPSILON, random()))
+  switch (field.kind) {
+    case "knob":
+      return lattice(field.min, field.max, field.step, r())
+    case "choice":
+      return field.options[Math.floor(r() * field.options.length)]
+    case "toggle":
+      return r() >= 0.5
+    // Springs, colours and curves stay in the range people actually use.
+    case "spring":
+      return { duration: between(0.2, 0.9, r()), bounce: between(0, 0.45, r()) }
+    case "color":
+      return { l: between(0.5, 0.85, r()), c: between(0.05, 0.2, r()), h: between(0, 360, r()) }
+    case "point":
+      return {
+        x: lattice(field.min.x, field.max.x, field.step.x, r()),
+        y: lattice(field.min.y, field.max.y, field.step.y, r()),
+      }
+    case "easing": {
+      const curves = Object.values(EASINGS)
+      return curves[Math.floor(r() * curves.length)]
+    }
+  }
+}
+
 export function randomValues<S extends Schema>(schema: S, random = Math.random): Values<S> {
   return normalize(
     schema,
-    Object.fromEntries(
-      Object.entries(schema).map(([key, field]) => {
-        const r = Math.max(0, Math.min(1 - Number.EPSILON, random()))
-        return [
-          key,
-          field.kind === "knob"
-            ? field.min +
-              Math.floor(r * (Math.floor((field.max - field.min) / field.step + 1e-9) + 1)) *
-                field.step
-            : field.kind === "choice"
-              ? field.options[Math.floor(r * field.options.length)]
-              : r >= 0.5,
-        ]
-      }),
-    ),
+    Object.fromEntries(Object.entries(schema).map(([key, field]) => [key, pick(field, random)])),
   )
 }
