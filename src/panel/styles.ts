@@ -570,7 +570,9 @@ const css = `
 /* A collapsible custom card: its header toggles it, with a caret and, while folded, a summary. */
 .knobs-live[data-collapsible]>.knobs-group-head{margin-bottom:0;cursor:pointer;border-radius:var(--k-radius-sm);transition:background var(--k-hover-t)}
 .knobs-live[data-collapsible]>.knobs-group-head:focus-visible{background:var(--k-surface)}
-.knobs-live[data-collapsible]>.knobs-tile-body{margin-top:var(--k-head-gap)}
+.knobs-live[data-collapsible]>.knobs-tile-body{margin-top:var(--k-head-gap);transition:opacity var(--k-token-t)}
+.knobs-live[data-collapsed]>.knobs-tile-body{opacity:0}
+.knobs-live>.knobs-tile-body[data-folding]{position:absolute;left:var(--k-pad);right:var(--k-pad);margin-top:0}
 .knobs-card-right{display:flex;align-items:center;gap:6px;min-width:0}
 .knobs-card-side{display:grid;justify-items:end;min-width:0}
 .knobs-card-side>*{grid-area:1/1;min-width:0;max-width:100%;transition:opacity var(--k-token-t)}

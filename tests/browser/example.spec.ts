@@ -1633,13 +1633,14 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   const card = (name: string) => tune.locator(`.knobs-tile[aria-label="${name}"]`)
   // Groups become cards in sections; custom cards join them; the columns follow the width.
   await expect(tune.locator(".knobs-section-head:not([data-continued])")).toHaveText([
+    "Connection",
     "Playground",
     "Session List",
     "Transcript",
     "Composer",
   ])
   await expect(card("Spacing")).toBeVisible()
-  await expect(tune.locator(".knobs-live")).toHaveCount(2)
+  await expect(tune.locator(".knobs-live")).toHaveCount(3)
   await expect(tune.locator(".knobs-column")).toHaveCount(4)
 
   // j runs off the end of one card into the next; Tab and ⇧Tab move between groups.
@@ -1653,36 +1654,22 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await page.keyboard.press("k")
   await expect(page.getByRole("slider", { name: "Room below a header" })).toBeFocused()
 
-  // 1–9 apply the focused group's numbered preset; the phone applies its own and agrees.
+  // 1–9 apply the focused group's preset; the phone applies its own and agrees. Four names don't
+  // fit beside "Spacing", so its presets are a menu showing the selected one's name.
   const rowHeight = page.getByRole("slider", { name: "Row height" })
   await rowHeight.focus()
-  // The header peeks the preset's name for a moment: watched as it happens, not raced.
-  await card("Spacing")
-    .locator(".knobs-group-head")
-    .evaluate((head) => {
-      const seen = window as unknown as { __peeked?: boolean }
-      seen.__peeked = false
-      new MutationObserver(() => {
-        if (head.hasAttribute("data-peek")) seen.__peeked = true
-      }).observe(head, { attributes: true, attributeFilter: ["data-peek"] })
-    })
+  const spacingPresets = card("Spacing").getByRole("button", { name: "Spacing presets" })
+  await expect(spacingPresets).toHaveText("Today")
   await page.keyboard.press("2")
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
-  await expect(card("Spacing").getByRole("radio", { name: "2 Compact" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  )
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __peeked?: boolean }).__peeked))
-    .toBe(true)
+  await expect(spacingPresets).toHaveText("Compact")
   await page.waitForTimeout(400)
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
   await page.keyboard.press("u")
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "44")
-  await expect(card("Spacing").getByRole("radio", { name: "1 Today" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  )
+  await expect(spacingPresets).toHaveText("Today")
+  // Three short names fit beside "Arrivals": segments.
+  await expect(card("Arrivals").getByRole("radio")).toHaveText(["Today", "Brisk", "Gentle"])
 
   // A custom card's controls round-trip through the phone.
   // Five speeds are more than a row of segments holds: a menu.

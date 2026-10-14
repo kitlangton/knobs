@@ -1219,4 +1219,149 @@ describe("page layout", () => {
       expect(Math.max(...got.map((c) => c.height))).toBeCloseTo(best, 5)
     }
   })
+
+  it("drops a card title's repeated section prefix, only after a separator", async () => {
+    const { cardTitle } = await import("../src/panel/page.js")
+    expect(cardTitle("Transcript · Arrivals", ["Transcript"])).toBe("Arrivals")
+    expect(cardTitle("transcript: Follow", ["Transcript"])).toBe("Follow")
+    expect(cardTitle("Session — Header Style", ["session", "Session List"])).toBe("Header Style")
+    expect(cardTitle("Composer / Actions", ["composer", "Composer"])).toBe("Actions")
+    // No separator, nothing left, or another section: kept as it is.
+    expect(cardTitle("Transcript Arrivals", ["Transcript"])).toBe("Transcript Arrivals")
+    expect(cardTitle("Transcript", ["Transcript"])).toBe("Transcript")
+    expect(cardTitle("Transcript · ", ["Transcript"])).toBe("Transcript · ")
+    expect(cardTitle("Composer · Layout", ["Transcript"])).toBe("Composer · Layout")
+    expect(cardTitle("Spacing", [""])).toBe("Spacing")
+  })
+})
+
+describe("labels apart from ids", () => {
+  it("resolves group, section and preset labels: options first, then the first field's", () => {
+    const controls = defineControls(
+      "labels",
+      {
+        a: knob(1, {
+          min: 0,
+          max: 2,
+          group: "drawer.spacing",
+          groupLabel: "Spacing",
+          section: "drawer",
+          sectionLabel: "Session List",
+        }),
+        b: knob(1, {
+          min: 0,
+          max: 2,
+          group: "drawer.spacing",
+          groupLabel: "Ignored",
+          section: "drawer",
+        }),
+        c: knob(1, { min: 0, max: 2, group: "composer.spacing", section: "composer" }),
+      },
+      {
+        enabled: true,
+        storage: memoryStorage(),
+        groupLabels: { "composer.spacing": "Spacing" },
+        sectionLabels: { composer: "Composer" },
+        defaultLabel: "Native",
+        presets: { airy: { a: 2 } },
+        presetLabels: { airy: "Airy" },
+      },
+    )
+    expect(controls.groupLabel("drawer.spacing")).toBe("Spacing")
+    expect(controls.groupLabel("composer.spacing")).toBe("Spacing")
+    expect(controls.groupLabel("nowhere")).toBeUndefined()
+    expect(controls.sectionLabel("drawer")).toBe("Session List")
+    expect(controls.sectionLabel("composer")).toBe("Composer")
+    expect(controls.presetLabel("default")).toBe("Native")
+    expect(controls.presetLabel("airy")).toBe("Airy")
+    expect(controls.presetLabel("other")).toBe("other")
+    // Ids stay the identity: the preset is still "default", the group still its id.
+    expect(Object.keys(controls.presets)).toEqual(["default", "airy"])
+    expect(controls.groupPresetDisplay).toBe("auto")
+    controls.set({ a: 2, c: 2 })
+    controls.resetGroup("drawer.spacing")
+    expect(controls.get()).toMatchObject({ a: 1, b: 1, c: 2 })
+  })
+
+  it("carries descriptor labels through remote controls; Swift and resets keep the ids", () => {
+    const resets: unknown[] = []
+    const remote = createRemoteControls(
+      "remote-labels",
+      [
+        {
+          key: "drawer.row.height",
+          kind: "number",
+          default: 44,
+          min: 28,
+          max: 72,
+          step: 1,
+          swiftType: "CGFloat",
+          group: "drawer.spacing",
+          groupLabel: "Spacing",
+          section: "drawer",
+          sectionLabel: "Session List",
+        },
+        {
+          key: "composer.spacing.margin",
+          kind: "number",
+          default: 20,
+          min: 8,
+          max: 48,
+          step: 1,
+          swiftType: "CGFloat",
+          group: "composer.spacing",
+          section: "composer",
+        },
+        {
+          key: "drawer.open",
+          kind: "spring",
+          bind: { duration: "drawer.open.duration", bounce: "drawer.open.bounce" },
+          default: { duration: 0.4, bounce: 0.1 },
+          group: "drawer.motion",
+          groupLabel: "Motion",
+        },
+      ],
+      {
+        groupLabels: { "composer.spacing": "Spacing" },
+        defaultLabel: "Native",
+        groupPresetDisplay: "menu",
+        onReset: (t) => resets.push(t),
+      },
+    )
+    expect(remote.groupLabel("drawer.spacing")).toBe("Spacing")
+    expect(remote.groupLabel("composer.spacing")).toBe("Spacing")
+    expect(remote.groupLabel("drawer.motion")).toBe("Motion")
+    expect(remote.sectionLabel("drawer")).toBe("Session List")
+    expect(remote.presetLabel("default")).toBe("Native")
+    expect(remote.groupPresetDisplay).toBe("menu")
+    remote.set({ "drawer.row.height": 50, "composer.spacing.margin": 30 })
+    expect(remote.swift("drawer.spacing")).toContain("drawer.row.height")
+    expect(remote.swift("drawer.spacing")).not.toContain("composer.spacing.margin")
+    remote.resetGroup("composer.spacing")
+    expect(resets).toEqual([{ group: "composer.spacing" }])
+    expect(remote.get()["drawer.row.height"]).toBe(50)
+  })
+
+  it("folds a pan across a card's presets into one undo step", () => {
+    const controls = defineControls(
+      "pan-presets",
+      { a: knob(1, { min: 0, max: 9, step: 1, group: "g" }) },
+      {
+        enabled: true,
+        storage: memoryStorage(),
+        groupPresets: {
+          g: [
+            { name: "One", values: {} },
+            { name: "Two", values: { a: 2 } },
+            { name: "Three", values: { a: 3 } },
+          ],
+        },
+      },
+    )
+    controls.groupPreset("g", 1)
+    controls.groupPreset("g", 2, { coalesce: true })
+    expect(controls.get().a).toBe(3)
+    controls.undo()
+    expect(controls.get().a).toBe(1)
+  })
 })

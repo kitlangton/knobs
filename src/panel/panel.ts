@@ -1615,8 +1615,7 @@ function buildPanel<S extends Schema>(
       const menuButton = presetUi.menu
       add(menuButton, menuButton.getAttribute("aria-label") ?? "Presets", () => menuButton.click())
     } else if (presetUi)
-      for (const b of presetUi.buttons)
-        add(b, b.getAttribute("aria-label") ?? "", () => b.click())
+      for (const b of presetUi.buttons) add(b, b.getAttribute("aria-label") ?? "", () => b.click())
     // Controls in custom cards, by their label (or their card's title).
     if (page)
       for (const stop of body.querySelectorAll<HTMLElement>(
@@ -2227,8 +2226,7 @@ function buildPanel<S extends Schema>(
     for (const type of ["wheel", "touchstart", "keydown"])
       doc.addEventListener(type, touched, { capture: true, passive: true })
     doc.addEventListener("pointerdown", onPointerDown, true)
-    for (const type of ["pointerup", "pointercancel"])
-      doc.addEventListener(type, onPointerUp, true)
+    for (const type of ["pointerup", "pointercancel"]) doc.addEventListener(type, onPointerUp, true)
     root.addEventListener("focusin", (event) => {
       const t = event.target as HTMLElement
       if (header.contains(t) || popover.contains(t) || !body.contains(t)) return
@@ -2470,6 +2468,7 @@ function buildPanel<S extends Schema>(
       const section = cardOptions.section ?? ""
       const card = createCustomCard(doc, cardOptions, {
         wake: () => wakeGpu(),
+        resize: (tile, from) => pageLayout.resize(tile, from),
         title: (title) =>
           options.groupLabels?.[title] ??
           (section ? cardTitle(title, [section, sectionTitle(section)]) : title),

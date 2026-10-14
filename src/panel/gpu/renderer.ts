@@ -259,6 +259,8 @@ export interface KnobsGpuDiagnostics {
   readonly skippedFrames: number
   readonly sleeping: boolean
   readonly lastInstanceCount: number
+  /** The text the last drawn frame drew (labels, values, titles), for parity checks. */
+  readonly lastTexts: readonly string[]
   forceDeviceLoss(): void
   wake(): void
 }
@@ -437,6 +439,9 @@ class GpuOverlayManager {
   private curTokens!: PanelThemeTokens
   /** Panel opacity (CSS open/close fades), applied to every primitive of the current panel. */
   private curAlpha = 1
+  /** Text drawn this frame, and in the last one finished (see `KnobsGpuDiagnostics.lastTexts`). */
+  private frameTexts: string[] = []
+  lastTexts: readonly string[] = []
   private curDt = 0
   /** Small eased scalars keyed by an object and a slot (e.g. a row's "hover" or "focus"). */
   private readonly eased = new WeakMap<object, Map<string, Spring>>()
@@ -482,6 +487,9 @@ class GpuOverlayManager {
       },
       get lastInstanceCount() {
         return s.primCount
+      },
+      get lastTexts() {
+        return [...s.lastTexts]
       },
       forceDeviceLoss: () => {
         try {
@@ -896,6 +904,7 @@ class GpuOverlayManager {
 
   private drawText(text: string, x: number, centerY: number, color: Rgba, opts: TextOpts = {}) {
     if (!text) return 0
+    if (color[3] * this.curAlpha > 0.01) this.frameTexts.push(text)
     const t = this.curTokens
     const px = opts.px ?? t.fontSize
     const weight = opts.weight ?? t.labelWeight
@@ -2041,6 +2050,7 @@ class GpuOverlayManager {
     }
 
     const drawn: DOMRect[] = []
+    this.frameTexts = []
     const orderedPanels = [...this.panels].sort((a, b) => {
       if (a.inline !== b.inline) return a.inline ? -1 : 1
       return (
@@ -2366,7 +2376,8 @@ class GpuOverlayManager {
           // A label fading in (its section just appeared) carries the DOM's opacity; one dimmed
           // by a highlight fades its text toward the page, as the DOM does.
           const lit = pageB.emphasis?.(head)
-          const shown = (head.style.opacity ? Number(head.style.opacity) : 1) * (1 - (lit?.dim ?? 0))
+          const shown =
+            (head.style.opacity ? Number(head.style.opacity) : 1) * (1 - (lit?.dim ?? 0))
           this.drawText(
             this.fit(head.textContent ?? "", sr.width - indent * 2, px, 600),
             sr.left + indent,
@@ -3027,6 +3038,7 @@ class GpuOverlayManager {
     this.curMask = 0
     const easing = this.easeMoving
     this.easeMoving = false
+    this.lastTexts = this.frameTexts
     return anyMoving || easing
   }
 

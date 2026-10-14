@@ -147,6 +147,8 @@ export interface PageLayout {
   change(mutate: () => void, rows?: readonly HTMLElement[]): void
   /** Steps the motion now, at the start of the overlay's frame (`now` from requestAnimationFrame). */
   frame(now: number): void
+  /** A card's content changed at once (it was drawn `from` px tall): its height eases there. */
+  resize(tile: HTMLElement, from: number): void
   /** Emphasizes the cards and sections in `target` and dims the rest (see `Page.highlight`). */
   highlight(target: PageHighlight | null): void
   /** Highlighted cards and section headings that show, top to bottom. */
@@ -155,7 +157,9 @@ export interface PageLayout {
    * How a card or section heading is emphasized right now: `dim` (0 full … the token's
    * `--k-page-dim`) and its dot (`mark` 0…1), as the DOM draws them.
    */
-  emphasis(node: HTMLElement): { readonly dim: number; readonly mark: number; readonly dot?: HTMLElement } | undefined
+  emphasis(
+    node: HTMLElement,
+  ): { readonly dim: number; readonly mark: number; readonly dot?: HTMLElement } | undefined
   /** While cards glide or change height, or something folds inside them. */
   readonly moving: boolean
   readonly version: number
@@ -940,6 +944,22 @@ export function createPageLayout(
         tick(now)
       }
     },
+    resize(tile, from) {
+      const natural = naturals([tile]).get(tile)!
+      known.set(tile, natural)
+      if (!ready || reduced() || leaving.has(tile)) return
+      const m = motions.get(tile)
+      if (m?.h) {
+        m.h.set(natural)
+        if (m.fold !== undefined) m.fold = natural
+      } else if (Math.abs(natural - from) >= 0.5) {
+        const mm = motionFor(tile)
+        mm.h = sizeSpring(from, natural)
+        gapPx = gapOf()
+        write(tile, mm)
+      }
+      run()
+    },
     highlight(target) {
       const groups = new Set(target?.groups ?? [])
       const named = new Set(target?.sections ?? [])
@@ -1023,6 +1043,8 @@ export function createCustomCard(
     remove(tile: HTMLElement): void
     /** What the header shows for `title` (a repeated section prefix dropped). */
     title?(title: string): string
+    /** The card's content changed at once (it was `from` px tall): its height eases there. */
+    resize?(tile: HTMLElement, from: number): void
     /** Where a collapsible card's state is kept (per tab), by title. */
     folded?: { get(title: string): boolean | undefined; set(title: string, folded: boolean): void }
   },
@@ -1107,8 +1129,36 @@ export function createCustomCard(
     // Focus inside a body folding away stays on the card, at its header.
     if (next && body.contains(doc.activeElement))
       head.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    if (animate && tile.isConnected && !still()) reveal(body, !next)
-    else body.hidden = next
+    if (animate && tile.isConnected && !still() && hooks.resize) {
+      // The card's height springs on the page's own motion (the cards below glide with it);
+      // meanwhile a folding body leaves the flow where it is and fades, clipped by the card.
+      const from = tile.getBoundingClientRect().height
+      if (next) {
+        body.style.top = `${body.offsetTop}px`
+        body.dataset.folding = ""
+        // Gone once it has faded (or soon after, should no transition run).
+        const done = (event?: TransitionEvent) => {
+          if (event && (event.target !== body || event.propertyName !== "opacity")) return
+          body.removeEventListener("transitionend", done)
+          clearTimeout(timer)
+          if (!folded || !("folding" in body.dataset)) return
+          body.hidden = true
+          delete body.dataset.folding
+          body.style.top = ""
+        }
+        const timer = setTimeout(done, 900)
+        body.addEventListener("transitionend", done)
+      } else {
+        body.hidden = false
+        delete body.dataset.folding
+        body.style.top = ""
+      }
+      hooks.resize(tile, from)
+    } else {
+      body.hidden = next
+      delete body.dataset.folding
+      body.style.top = ""
+    }
     if (options.title) hooks.folded?.set(options.title, next)
     hooks.wake()
   }
