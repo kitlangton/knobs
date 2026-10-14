@@ -31,6 +31,7 @@ import type {
 } from "./gpu/renderer.js"
 import { reveal } from "./reveal.js"
 import { createSlider, type Slider } from "./slider.js"
+import { onPan } from "./swipe.js"
 
 /** What a row needs from the panel. */
 export interface RowContext<F> {
@@ -316,6 +317,31 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   }
   track.onpointerup = release
   track.onpointercancel = release
+  // A sideways pan scrubs like a drag: 1:1 with the fingers, as one undo step.
+  let panAt: number | undefined
+  onPan(track, {
+    accept: () => !dragging,
+    move(dx) {
+      if (!size.w) return
+      if (panAt === undefined) {
+        panAt = current
+        o.start()
+        line.classList.add("knobs-active")
+        c.wake()
+      }
+      panAt = clamp(panAt + (dx / Math.max(1, size.w - size.h)) * span, o.min, o.max)
+      o.set(quantize(panAt, false))
+    },
+    end() {
+      panAt = undefined
+      line.classList.remove("knobs-active")
+      c.wake()
+    },
+    step(direction) {
+      o.start()
+      o.set(quantize(current + direction * o.step, false))
+    },
+  })
   track.addEventListener("keydown", (event) => {
     if (!plainKey(event)) return
     const dir = arrow(event)
@@ -707,6 +733,40 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   }
   pad.onpointerup = release
   pad.onpointercancel = release
+  // A pan that starts sideways moves the puck with the fingers in both axes, as one undo step.
+  let panAt: Point | undefined
+  onPan(
+    pad,
+    {
+      accept: () => !dragging,
+      move(dx, dy) {
+        if (!size.w) return
+        if (!panAt) {
+          panAt = shown
+          g.start()
+          pad.classList.add("knobs-active")
+          c.wake()
+        }
+        const spanX = f.max.x - f.min.x
+        const spanY = f.max.y - f.min.y
+        panAt = {
+          x: clamp(panAt.x + (dx / (size.w - PAD_INSET * 2)) * spanX, f.min.x, f.max.x),
+          y: clamp(panAt.y + (dy / (size.h - PAD_INSET * 2)) * spanY, f.min.y, f.max.y),
+        }
+        g.set(panAt)
+      },
+      end() {
+        panAt = undefined
+        pad.classList.remove("knobs-active")
+        c.wake()
+      },
+      step(direction) {
+        g.start()
+        g.set({ x: shown.x + direction * f.step.x, y: shown.y })
+      },
+    },
+    { axes: "xy" },
+  )
   pad.ondblclick = () => c.set(f.value)
   // Arrows move the puck about 1% of the range (⇧ 10%, ⌥ one step); j and k still leave the pad.
   pad.addEventListener("keydown", (event) => {
@@ -938,6 +998,48 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       move(i, shown[i * 2]! + dx * by, shown[i * 2 + 1]! + dy * by)
     })
   })
+  // A pan that starts sideways moves the hovered (or focused) handle with the fingers.
+  let panned = -1
+  let panAt: [number, number] = [0, 0]
+  const panTarget = () => {
+    const hovered = handles.findIndex((h) => h.matches(":hover"))
+    return hovered >= 0 ? hovered : handles.findIndex((h) => h === c.doc.activeElement)
+  }
+  onPan(
+    box,
+    {
+      accept: () => dragging < 0 && panTarget() >= 0,
+      move(dx, dy) {
+        if (!size.w) return
+        if (panned < 0) {
+          panned = panTarget()
+          if (panned < 0) return
+          panAt = [shown[panned * 2]!, shown[panned * 2 + 1]!]
+          g.start()
+          box.classList.add("knobs-active")
+          c.wake()
+        }
+        const [uw, uh] = unit()
+        panAt = [
+          clamp(panAt[0] + dx / uw, 0, 1),
+          clamp(panAt[1] - (dy / uh) * spanY, range[0], range[1]),
+        ]
+        move(panned, ...panAt)
+      },
+      end() {
+        panned = -1
+        box.classList.remove("knobs-active")
+        c.wake()
+      },
+      step(direction) {
+        const i = panTarget()
+        if (i < 0) return
+        g.start()
+        move(i, shown[i * 2]! + direction * 0.01, shown[i * 2 + 1]!)
+      },
+    },
+    { axes: "xy" },
+  )
   const cycle = (dir: number) => {
     const i = chipButtons.findIndex((b) => b.getAttribute("aria-checked") === "true")
     const next = i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length
@@ -988,9 +1090,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       handles.forEach((h, i) =>
         h.setAttribute("aria-valuetext", `x ${shown[i * 2]}, y ${shown[i * 2 + 1]}`),
       )
-      layout(first || dragging >= 0)
-      if (miniSize.h)
-        place([miniPath], first || dragging >= 0, () => setPath(miniPath, miniPoints()))
+      const held = dragging >= 0 || panned >= 0
+      layout(first || held)
+      if (miniSize.h) place([miniPath], first || held, () => setPath(miniPath, miniPoints()))
     },
   }
 }
