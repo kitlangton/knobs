@@ -1,0 +1,8 @@
+{
+  // The public demo at knobs.kitlangton.com: the example pages as static assets.
+  "name": "knobs-site",
+  "account_id": "19d80aa432b86d110c8e1480cf895f5c",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./examples/site" },
+  "routes": [{ "pattern": "knobs.kitlangton.com", "custom_domain": true }]
+}

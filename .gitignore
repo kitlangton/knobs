@@ -4,3 +4,5 @@ examples/dist/
 test-results/
 playwright-report/
 .DS_Store
+examples/site
+.wrangler

@@ -9,21 +9,24 @@ const rollingCss = readFileSync(
 )
 const port = Number(process.env.PORT) || 5178
 
-export default defineConfig(({ command }) => ({
+// `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
+export default defineConfig(({ command, mode }) => ({
   root: "examples",
-  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html"] },
+  optimizeDeps: { entries: ["index.html", "contracts.html", "meta.html", "die.html"] },
   server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
   build: {
-    outDir: "dist",
+    outDir: mode === "site" ? "site" : "dist",
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, "index.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
+        die: resolve(import.meta.dirname, "die.html"),
       },
     },
   },
-  ...(command === "serve"
+  ...(command === "serve" || mode === "site"
     ? {
         resolve: {
           alias: [

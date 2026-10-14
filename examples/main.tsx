@@ -32,7 +32,7 @@ const splat = defineControls(
     grain: toggle(true),
   },
   {
-    enabled: import.meta.env.DEV,
+    enabled: import.meta.env.DEV || import.meta.env.MODE === "site",
     presets: { subtle: { count: 40, size: 4 }, heavy: { count: 210, size: 12 } },
   },
 )
@@ -45,7 +45,7 @@ const dots = defineControls(
     invert: toggle(false),
   },
   {
-    enabled: import.meta.env.DEV,
+    enabled: import.meta.env.DEV || import.meta.env.MODE === "site",
     presets: { dense: { cells: 38, radius: 3 }, sparse: { cells: 12, radius: 5 } },
   },
 )
@@ -58,7 +58,7 @@ const type = defineControls(
     flavor: choice("tight", ["tight", "open", "italic"]),
   },
   {
-    enabled: import.meta.env.DEV,
+    enabled: import.meta.env.DEV || import.meta.env.MODE === "site",
     presets: { editorial: { size: 64, tracking: -2, weight: 400, flavor: "italic" } },
   },
 )
@@ -72,7 +72,7 @@ const motion = defineControls(
     tint: color("oklch(0.7 0.16 40)", { label: "Tint" }),
   },
   {
-    enabled: import.meta.env.DEV,
+    enabled: import.meta.env.DEV || import.meta.env.MODE === "site",
     presets: {
       lazy: {
         travel: { duration: 1.1, bounce: 0 },
@@ -320,7 +320,7 @@ const remoteTune = createRemoteControls(
     },
   ],
   {
-    enabled: import.meta.env.DEV,
+    enabled: import.meta.env.DEV || import.meta.env.MODE === "site",
     values: { "drawer.spring": { duration: 0.45, bounce: 0.25 }, "drawer.edge.fade": 24 },
     presets: {
       snappy: { "drawer.spring": { duration: 0.25, bounce: 0.35 } },
@@ -500,7 +500,9 @@ function App() {
         <Typography />
         <Motion />
       </div>
-      {import.meta.env.DEV && <Workbench renderer={renderer} />}
+      {(import.meta.env.DEV || import.meta.env.MODE === "site") && (
+        <Workbench renderer={renderer} />
+      )}
       <footer>
         <span>RANDOMIZE · RESET · SAVE · SWITCH · COPY</span>
         <span>Explore in development. Ship constants.</span>
