@@ -4,7 +4,7 @@ Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
 Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
+Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock follows its label. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
@@ -139,14 +139,20 @@ Panels and switchers are keyboard-first:
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
-| `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
+| `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed; scrolling sideways over it nudges by steps (one undo entry per gesture) |
 | Swipe sideways | Over the preset strip or a choice: the next or previous one, once per gesture (`⇧` + wheel too) |
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
-| `r` / `⇧R` | Randomize all fields / reset all fields to defaults |
-| `⇧C` | Copy the current values as code |
+| `r` / `⇧R` | Randomize all fields / reset all fields to defaults (locked fields keep their values on Random, not on Reset) |
+| `⌥R` | Mutate: nudge every unlocked value a little (numbers and points 8–12% of their range, colours a few degrees of hue and a touch of chroma and lightness, springs and curves slightly; choices and switches change about 15% of the time) |
+| `g` / `⌥G` | Randomize / mutate the focused row's group (also the die beside each group's reset icon; `⌥`-click mutates) |
+| `⇧L` | Lock or unlock the focused row (or the selection) from Random and Mutate |
+| `⇧`-click / `⇧↑` `⇧↓` | Select a range of rows (`⌘`-click adds or removes one); `r`, `⌥R`, `⌫`, `⇧L` and `⇧C` then act on the selection; `Esc` or a plain click clears it |
+| Right-click / `⇧F10` / `ContextMenu` | Menu for the row or selection: Lock from Random, Randomize, Reset, Copy; `↑↓`, a letter, `Enter`, `Esc` |
+| Hold `\` | Compare: show the values from before the last change while held (the title dims); nothing is recorded |
+| `⇧C` | Copy the current values (or the selected fields) as code |
 | `⇧S` | Save the current values as a new preset chip |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover |
@@ -170,7 +176,7 @@ const motion = defineControls("motion", {
 })
 ```
 
-When fields specify `group`, each group's rows share one rounded card under a section header. A small reset icon appears beside the header while anything in that group differs from its defaults. A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
+When fields specify `group`, each group's rows share one rounded card under a section header. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
 
 ### Remote / Socket-Driven Controls (`createRemoteControls`)
 
@@ -275,7 +281,8 @@ Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, t
 ```ts
 const die = defineControls("die", schema, {
   onChange(patch, values, { source }) {
-    // source: "local" | "randomize" | "reset" | "preset" | "variant" | "undo" | "redo" | "remote"
+    // source: "local" | "randomize" | "mutate" | "reset" | "preset" | "variant" | "undo" | "redo"
+    //       | "remote" | "compare" (holding \ previews earlier values, and their return)
     if (source === "randomize") rollDice()
   },
 })
@@ -314,10 +321,13 @@ The package has two core exports selected through the standard `development` con
 - `controls.get()` / `controls.getServerSnapshot()` / `controls.locked`
 - `controls.set(patch, { coalesce? })`
 - `controls.sync(values, { replace? })` — apply external state without recording undo or emitting a local change
-- `controls.reset()` / `controls.resetKey(key)` / `controls.resetGroup(group)`
+- `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
 - `controls.isModified(key?)` / `controls.modified()`
 - `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
-- `controls.randomize()` / `controls.preset(id)` / `controls.matchingPreset()`
+- `controls.randomize(keys?)` / `controls.mutate(keys?)`: skip locked fields; one undo step each
+- `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
+- `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
+- `controls.preset(id)` / `controls.matchingPreset()`
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel
