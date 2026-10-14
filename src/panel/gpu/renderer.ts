@@ -1009,12 +1009,15 @@ class GpuOverlayManager {
         this.ease(lock, "room", 0)
         this.ease(lock, "shown", 0)
       }
-      room = 14 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
+      room = 15 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
       const shown = this.ease(lock, "shown", on, 20, 0.6)
       if (shown > 0.005) {
-        const lr = this.rectOf(lock)
-        const cy = lr.height > 0 ? lr.top + lr.height / 2 : rowCenterY
-        const box = { left: lRect.left + w + 4 + stretchOffset, top: cy - 5, width: 10, height: 10 }
+        const box = {
+          left: lRect.left + w + 5 + stretchOffset,
+          top: rowCenterY - 5,
+          width: 10,
+          height: 10,
+        }
         this.drawIcon(
           "lock",
           10,
@@ -1518,18 +1521,12 @@ class GpuOverlayManager {
         if (tr.bottom < body[1] || tr.top > body[3]) continue
         const lineY = tr.top + tr.height / 2
         const lr = this.rectOf(s.label)
-        this.drawText(
-          s.label.textContent ?? "",
-          lr.left + lr.width / 2,
-          lineY,
-          withAlpha(t.dim, rowAlpha),
-          {
-            px: t.fontSize - 1.5,
-            weight: 600,
-            align: "center",
-            clip: body,
-          },
-        )
+        this.drawText(s.label.textContent ?? "", lr.left, lineY, withAlpha(t.dim, rowAlpha), {
+          px: t.fontSize - 1.5,
+          weight: 600,
+          align: "left",
+          clip: body,
+        })
         this.readout(s.read, lineY, withAlpha(t.label, rowAlpha), body)
         const h = tr.height
         this.pushPrim({
@@ -2081,7 +2078,7 @@ class GpuOverlayManager {
             sr.top + sr.height * 0.5,
             this.hot(ps.saveButton, hot, tokens.dim),
             {
-              px: tokens.fontSize + 2,
+              px: tokens.textTitle,
               weight: 400,
               align: "center",
             },
@@ -2273,7 +2270,10 @@ class GpuOverlayManager {
           // The fill fades under the readout; the zone follows the readout's width.
           const digitsText = sl.getDigitsText()
           const vRect = this.rectOf(sl.valueButton, digitsText.length)
-          const lRect = this.rectOf(sl.label)
+          const lRect = this.rectOf(
+            sl.label,
+            this.curLocks?.get(sl.label)?.dataset.on === "true" ? 1 : 0,
+          )
           const zone = this.ease(
             row.row,
             "zone",

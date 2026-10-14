@@ -10,7 +10,7 @@ export function positionPanel(
   const doc = panel.ownerDocument
   const win = doc.defaultView!
   const bounds = anchor.getBoundingClientRect()
-  const w = panel.offsetWidth || 280
+  const w = panel.offsetWidth || 288
   const clampX = (v: number) => Math.max(8, Math.min(v, win.innerWidth - w - 8))
   let x = bounds.right + w <= win.innerWidth - 8 ? bounds.right + 8 : clampX(bounds.left - w - 8)
   let y = Math.max(8, bounds.top)

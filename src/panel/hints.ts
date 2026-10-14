@@ -236,11 +236,10 @@ export function createHintController(
       tag.append(typedSpan, restSpan)
 
       const rect = t.el.getBoundingClientRect()
-      const isRow = t.el.classList.contains("knobs-row") || t.el.classList.contains("knobs-slider")
-      if (isRow && t.labelEl) {
+      if (t.labelEl) {
         const lRect = t.labelEl.getBoundingClientRect()
         const left = lRect.right - rootRect.left - root.clientLeft + root.scrollLeft + 6
-        const top = rect.top - rootRect.top - root.clientTop + root.scrollTop + rect.height * 0.5
+        const top = lRect.top - rootRect.top - root.clientTop + root.scrollTop + lRect.height * 0.5
         tag.style.left = `${Math.round(left)}px`
         tag.style.top = `${Math.round(top)}px`
       } else {
