@@ -142,6 +142,8 @@ interface TextOpts {
   track?: number
   /** Vertical feather (px) from the clip's top and bottom edges, for rolling digits. */
   feather?: number
+  /** Skip device-pixel snapping (text in motion). */
+  exact?: boolean
 }
 
 class GpuOverlayManager {
@@ -155,7 +157,7 @@ class GpuOverlayManager {
   private viewBuffer: any = null
   private labelTexture: any = null
   private bindGroup: any = null
-  private readonly atlas = new LabelAtlas()
+  private readonly atlas: LabelAtlas
 
   private readonly data = new Float32Array(MAX_PRIMS * FLOATS_PER_PRIM)
   private readonly prevData = new Float32Array(MAX_PRIMS * FLOATS_PER_PRIM)
@@ -191,6 +193,7 @@ class GpuOverlayManager {
   private readonly placeOffsets = new WeakMap<object, number>()
 
   constructor(private readonly doc: Document) {
+    this.atlas = new LabelAtlas(doc)
     this.publishDiagnostics()
   }
 
@@ -256,6 +259,7 @@ class GpuOverlayManager {
         this.rafId = 0
         this.sleeping = true
         this.canvas?.remove()
+        this.atlas.detach()
         this.canvas = null
         this.context = null
       } else {
@@ -513,9 +517,12 @@ class GpuOverlayManager {
         : align === "right"
           ? x - entry.w + entry.pad
           : x - entry.pad
+    // Whole device pixels, so the atlas blits 1:1 instead of being resampled (which reads bolder).
+    const s = this.curScale
+    const snap = (v: number) => (opts.exact ? v : Math.round(v * s) / s)
     this.pushPrim({
-      x: drawX,
-      y: centerY - entry.h * 0.5,
+      x: snap(drawX),
+      y: snap(centerY - entry.h * 0.5),
       w: entry.w,
       h: entry.h,
       clip: opts.clip ?? this.curClip,
@@ -709,9 +716,11 @@ class GpuOverlayManager {
 
   private drawIcon(icon: IconName, px: number, box: DOMRect, color: Rgba, clip?: Clip, scale = 1) {
     const entry = this.atlas.icon(ICONS[icon], px, this.curScale)
+    const s = scale === 1 ? this.curScale : 0
+    const snap = (v: number) => (s ? Math.round(v * s) / s : v)
     this.pushPrim({
-      x: box.left + (box.width - entry.w * scale) * 0.5,
-      y: box.top + (box.height - entry.h * scale) * 0.5,
+      x: snap(box.left + (box.width - entry.w * scale) * 0.5),
+      y: snap(box.top + (box.height - entry.h * scale) * 0.5),
       w: entry.w * scale,
       h: entry.h * scale,
       clip,
@@ -807,7 +816,7 @@ class GpuOverlayManager {
           tRect.left,
           tRect.top + tRect.height * 0.5,
           tokens.text,
-          { px, weight: 600, clip: panelClip },
+          { px, weight: 600, clip: panelClip, track: -0.01 },
         )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue
@@ -1174,7 +1183,12 @@ class GpuOverlayManager {
                 for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
                   const y = rowCenterY + rise + (k - position) * faceH
                   if (Math.abs(y - rowCenterY) >= faceH) continue
-                  this.drawText(numeral(k), cx, y, col, { ...text, align: "center", blurY })
+                  this.drawText(numeral(k), cx, y, col, {
+                    ...text,
+                    align: "center",
+                    blurY,
+                    exact: position !== k || rise !== 0,
+                  })
                 }
               })
             }
@@ -1358,7 +1372,6 @@ class GpuOverlayManager {
 
     const win = this.win
     const dpr = Math.min(3, Math.max(1, win.devicePixelRatio || 1))
-    const effectiveScale = dpr * (win.visualViewport?.scale ?? 1)
     const cssW = Math.max(1, win.innerWidth),
       cssH = Math.max(1, win.innerHeight)
     const pixelW = Math.max(1, Math.round(cssW * dpr)),
@@ -1370,7 +1383,7 @@ class GpuOverlayManager {
     }
 
     const reducedMotion = win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
-    const anyMoving = this.buildScene(dt, effectiveScale, reducedMotion)
+    const anyMoving = this.buildScene(dt, dpr, reducedMotion)
 
     if (!this.dirty && !anyMoving && this.isDataUnchanged(pixelW, pixelH)) {
       this.skippedFrames++

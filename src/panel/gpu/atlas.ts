@@ -9,8 +9,8 @@ export interface AtlasEntry {
 }
 
 export class LabelAtlas {
-  readonly canvas: OffscreenCanvas | HTMLCanvasElement
-  private readonly ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
+  readonly canvas: HTMLCanvasElement
+  private readonly ctx: CanvasRenderingContext2D
   private readonly map = new Map<string, AtlasEntry>()
   private lx = 0
   private ly = 0
@@ -20,16 +20,25 @@ export class LabelAtlas {
   private dirtyY1 = 0
   private currentScale = 0
 
-  constructor() {
-    if (typeof OffscreenCanvas !== "undefined") {
-      this.canvas = new OffscreenCanvas(ATLAS_SIZE, ATLAS_SIZE)
-    } else {
-      const c = document.createElement("canvas")
-      c.width = ATLAS_SIZE
-      c.height = ATLAS_SIZE
-      this.canvas = c
-    }
-    this.ctx = this.canvas.getContext("2d")!
+  // A connected canvas element, because 2D text only honours `-webkit-font-smoothing` through the
+  // element's style: an OffscreenCanvas draws with macOS font smoothing, visibly bolder than the DOM.
+  constructor(private readonly doc: Document) {
+    const c = doc.createElement("canvas")
+    c.width = ATLAS_SIZE
+    c.height = ATLAS_SIZE
+    c.setAttribute("aria-hidden", "true")
+    c.style.cssText =
+      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;contain:strict;-webkit-font-smoothing:antialiased;"
+    this.canvas = c
+    this.ctx = c.getContext("2d")!
+  }
+
+  private attach() {
+    if (!this.canvas.isConnected) this.doc.body.append(this.canvas)
+  }
+
+  detach() {
+    this.canvas.remove()
   }
 
   clear() {
@@ -43,8 +52,9 @@ export class LabelAtlas {
     this.dirtyY1 = ATLAS_SIZE
   }
 
+  /** Glyphs are rasterized at the canvas's own device-pixel ratio so they blit 1:1. */
   ensureScale(scale: number) {
-    const quantized = Math.max(2, Math.min(4, Math.ceil(scale * 2) / 2))
+    const quantized = Math.max(1, Math.min(4, Math.round(scale * 4) / 4))
     if (this.currentScale !== quantized) {
       this.currentScale = quantized
       this.clear()
@@ -57,28 +67,31 @@ export class LabelAtlas {
     px: number,
     weight: number,
     family: string,
-    scaleFactor = 3,
+    scaleFactor = 2,
     letterSpacingEm = 0,
   ): AtlasEntry {
     const scale = this.ensureScale(scaleFactor)
     const key = `${text}|${px}|${weight}|${family}|${scale}|${letterSpacingEm}`
     const hit = this.map.get(key)
     if (hit) return hit
+    this.attach()
 
+    // The font is set at its CSS size and scaled by the transform: a larger font size would pick
+    // a different optical size (SF Pro Display instead of Text), which reads bolder and tighter.
     const ctx = this.ctx
-    const scaledPx = px * scale
-    ctx.font = `${weight} ${scaledPx}px ${family}`
+    ctx.font = `${weight} ${px}px ${family}`
     if ("letterSpacing" in ctx) {
-      ;(ctx as any).letterSpacing = `${letterSpacingEm * scaledPx}px`
+      ;(ctx as any).letterSpacing = `${letterSpacingEm * px}px`
     }
     if ("fontKerning" in ctx) {
       ;(ctx as any).fontKerning = "normal"
     }
 
     const pad = Math.ceil(4 * scale)
-    const measuredW = ctx.measureText(text).width
+    const measuredW = ctx.measureText(text).width * scale
     const w = Math.min(ATLAS_SIZE - 8, Math.max(4, Math.ceil(measuredW) + pad * 2))
-    const h = Math.max(4, Math.ceil(scaledPx * 1.35) + pad * 2)
+    // Even heights keep the text's middle on a whole device pixel.
+    const h = Math.max(4, 2 * Math.ceil((px * scale * 1.35) / 2) + pad * 2)
 
     if (this.lx + w > ATLAS_SIZE) {
       this.lx = 0
@@ -90,10 +103,13 @@ export class LabelAtlas {
     }
     this.rowH = Math.max(this.rowH, h)
 
+    ctx.save()
+    ctx.setTransform(scale, 0, 0, scale, this.lx + pad, this.ly + h * 0.5)
     ctx.fillStyle = "#ffffff"
     ctx.textBaseline = "middle"
     ctx.textAlign = "left"
-    ctx.fillText(text, this.lx + pad, this.ly + h * 0.5)
+    ctx.fillText(text, 0, 0)
+    ctx.restore()
 
     const entry: AtlasEntry = {
       uv: [
@@ -123,9 +139,9 @@ export class LabelAtlas {
     const hit = this.widths.get(key)
     if (hit !== undefined) return hit
     const ctx = this.ctx
-    ctx.font = `${weight} ${px * 4}px ${family}`
+    ctx.font = `${weight} ${px}px ${family}`
     if ("letterSpacing" in ctx) (ctx as any).letterSpacing = "0px"
-    const w = ctx.measureText(text).width / 4
+    const w = ctx.measureText(text).width
     if (this.widths.size > 4096) this.widths.clear()
     this.widths.set(key, w)
     return w
@@ -137,6 +153,7 @@ export class LabelAtlas {
     const key = `icon|${path.length}|${path.slice(0, 24)}|${px}|${scale}`
     const hit = this.map.get(key)
     if (hit) return hit
+    this.attach()
     const pad = Math.ceil(2 * scale)
     const size = Math.ceil(px * scale)
     const w = size + pad * 2
