@@ -67,6 +67,11 @@ export const site = defineControls("site", siteSchema, {
   ],
 })
 
+// Random and Mutate would otherwise switch Motion off half the time, and with it the glide of
+// every later change. A fresh visitor starts with the row locked; ⇧L on it unlocks it.
+if (typeof localStorage !== "undefined" && !localStorage.getItem("knobs:site:state:v1"))
+  site.lock("motion")
+
 export async function copy(text: string, done: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -93,14 +98,17 @@ export const resolvedTheme = (v: SiteValues) =>
 
 const round = (n: number, digits = 3) => String(Math.round(n * 10 ** digits) / 10 ** digits)
 
+type Glide = { easing: string; duration: number }
+const still: Glide = { easing: "linear", duration: 0 }
+const motionOn = (v: SiteValues) => v.motion && !reducedMotion()
+const glideOf = (v: SiteValues): Glide => (motionOn(v) ? springCss(v.spring) : still)
+
 /** Every token the site panel controls, as [name, value] pairs. */
-export function siteTokens(v: SiteValues): [string, string][] {
+export function siteTokens(v: SiteValues, glide = glideOf(v)): [string, string][] {
   const dark = resolvedTheme(v) === "dark"
   const { l, c, h } = parseColor(v.accent) ?? { l: 0.62, c: 0.19, h: 256 }
   // Dark pages lift a dark accent so links keep their contrast; light pages deepen a pale one.
   const textL = dark ? Math.max(l, 0.72) : Math.min(l, 0.56)
-  const glide =
-    v.motion && !reducedMotion() ? springCss(v.spring) : { easing: "linear", duration: 0 }
   const tint = v.tint * (dark ? 0.03 : 0.02)
   return [
     ["--accent", v.accent],
@@ -122,12 +130,29 @@ export function siteCss(v: SiteValues) {
   return [":root {", ...siteTokens(v).map(([k, val]) => `  ${k}: ${val};`), "}"].join("\n")
 }
 
+// The change that turns Motion off (Random often does) still glides on the spring it had, so
+// the jump only starts with the next change.
+let applied: { on: boolean; glide: Glide } | undefined
 export function applySite(v: SiteValues) {
   const root = document.documentElement
+  const on = motionOn(v)
+  const glide = on ? glideOf(v) : applied?.on ? applied.glide : still
+  applied = { on, glide: on ? glide : still }
   root.dataset.theme = resolvedTheme(v)
-  root.dataset.motion = v.motion && !reducedMotion() ? "on" : "off"
+  root.dataset.motion = on ? "on" : "off"
   root.dataset.panels = v.panels ? "tinted" : "plain"
-  for (const [k, val] of siteTokens(v)) root.style.setProperty(k, val)
+  for (const [k, val] of siteTokens(v, glide)) root.style.setProperty(k, val)
+}
+
+/**
+ * knobs marks a drag with data-knobs-scrub and clears it on a pointerup inside the panel, so a
+ * drag released outside the panel leaves it set and every later change skips its transition.
+ * Clearing it on any pointerup works around that until the library listens on the document.
+ */
+export function releaseStuckScrub() {
+  const clear = () => document.documentElement.removeAttribute("data-knobs-scrub")
+  for (const type of ["pointerup", "pointercancel"]) addEventListener(type, clear, true)
+  addEventListener("blur", clear)
 }
 
 // Sharing: "Copy link" writes every modified store into the hash as `#tune=<base64url json>`.

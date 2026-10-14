@@ -145,11 +145,10 @@
   --tok-punct: #8e8e93;
   color-scheme: dark;
 }
+/* Discrete changes (presets, Random, Mutate, Reset, undo, compare) glide on --glide-ms; while a
+   knobs control is being dragged, everything follows it exactly. */
 :root[data-knobs-scrub] {
-  transition-duration: 0ms;
-}
-:root[data-knobs-scrub] .sec {
-  transition-duration: 0ms;
+  --glide-ms: 0ms !important;
 }
 
 /* Sections can tint every knobs panel with the site accent (Appearance → Tint panels). */
@@ -442,7 +441,8 @@ main > * {
   border-radius: calc(var(--radius) + 6px);
   transition-property:
     background-color, box-shadow, --s-size, --s-tracking, --s-weight, --s-measure, --s-space,
-    --code-bg;
+    --code-bg, --code-fg, --code-line, --tok-comment, --tok-string, --tok-keyword, --tok-number,
+    --tok-type, --tok-fn, --tok-prop, --tok-tag, --tok-punct;
   transition-duration: var(--glide-ms);
   transition-timing-function: var(--glide-ease);
 }
