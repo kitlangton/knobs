@@ -2,7 +2,7 @@
 import { chromium, type Page } from "@playwright/test"
 import { spawn } from "node:child_process"
 
-const port = 5190
+const port = Number(process.env.PORT) || 5191
 const server = spawn("bunx", ["vite", "--config", "examples/vite.config.ts"], {
   env: { ...process.env, PORT: String(port) },
   stdio: "ignore",
