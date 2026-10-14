@@ -75,7 +75,7 @@ const defaultsCss = `
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-active-mix:30%;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -109,8 +109,8 @@ const css = `
   --k-row-hover:color-mix(in srgb,var(--k-surface) 50%,transparent);
   --k-pill-bg:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));
   --k-pill-border:color-mix(in srgb,var(--k-accent) 32%,transparent);
-  --k-fill-rest:color-mix(in srgb,var(--k-accent) 20%,var(--k-surface-hi));
-  --k-fill-active:color-mix(in srgb,var(--k-accent) 30%,var(--k-surface-hi));
+  --k-fill-rest:color-mix(in srgb,var(--k-accent) var(--k-fill-rest-mix),var(--k-fill-base));
+  --k-fill-active:color-mix(in srgb,var(--k-accent) var(--k-fill-active-mix),var(--k-fill-base));
   --k-disabled-opacity:.32;
   --k-hint-typed-opacity:.42;
 }
@@ -208,7 +208,7 @@ const css = `
 .knobs-preset-save:hover{color:var(--k-text)!important}
 
 /* Group headers */
-.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-inset);color:var(--k-dim);font-size:var(--k-text-cap);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-inset);color:var(--k-dim);font-size:var(--k-text-cap);font-weight:600;letter-spacing:.04em;text-transform:var(--k-group-transform)}
 .knobs-group-head:first-child{margin-top:0}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer}
@@ -248,18 +248,19 @@ const css = `
   -webkit-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px));
   mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px))}
 .knobs-marks>i{position:absolute;top:50%;width:1px;height:7px;border-radius:999px;transform:translate(-50%,-50%);background:transparent;transition:background .2s}
-.knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-surface-hi));
+.knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-mix:var(--k-fill-rest-mix);--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-fill-base));
   background:linear-gradient(to left,color-mix(in srgb,var(--k-accent) min(calc(var(--k-glow) * (20% + var(--k-speed) * 40%)),100%),transparent),transparent calc(24px + var(--k-speed) * 24px)) 0 0/var(--k-fill) 100% no-repeat,linear-gradient(var(--k-fill-tint),var(--k-fill-tint)) 0 0/var(--k-fill) 100% no-repeat;
   transition:--k-fill-mix .15s}
-.knobs-active .knobs-fill{--k-fill-mix:30%}
+.knobs-active .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
 .knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
 .knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
 .knobs-magnet .knobs-notch{opacity:.95;height:11px}
-.knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:-1.5px;border-radius:999px;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
-  opacity:0;transform:translateY(-50%) scaleX(.25);transition:opacity .15s,transform .22s var(--k-ease)}
+.knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:calc(-1.5px - var(--k-handle-inset));border-radius:999px;background:var(--k-handle);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
+  opacity:var(--k-handle-rest);transform:translateY(-50%) scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)));transition:opacity .15s,transform .22s var(--k-ease)}
+.knobs-handle.knobs-dodge{opacity:calc(var(--k-handle-rest) * .25)}
 .knobs-slider:hover .knobs-handle,.knobs-track:focus-visible~.knobs-handle,.knobs-track:focus-visible .knobs-handle{opacity:.65;transform:translateY(-50%) scaleX(1)}
 .knobs-active .knobs-handle{opacity:.95;transform:translateY(-50%) scaleX(1)}
 .knobs-slider:hover .knobs-handle.knobs-dodge,.knobs-active .knobs-handle.knobs-dodge{opacity:.18;transform:translateY(-50%) scaleX(1) scaleY(.75)}
@@ -273,7 +274,7 @@ const css = `
 .knobs-unit{color:var(--k-dim)}
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - var(--k-inset) * 2 - var(--k-readout,48px) - 8px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
 .knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:.28em;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
-  color:var(--k-label);font-family:var(--k-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
+  color:var(--k-label);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
   border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .4s}
 .knobs-value:hover{border-bottom-color:var(--k-label)}
 .knobs-active .knobs-value,.knobs-track:focus-visible .knobs-value{color:var(--k-text)}

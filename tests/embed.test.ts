@@ -295,14 +295,33 @@ describe("viewer.js settings", () => {
       {
         title: "Scenario",
         items: [
-          { id: "0.0", label: "Theme", kind: "choice", choices: [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }], value: "light" },
+          {
+            id: "0.0",
+            label: "Theme",
+            kind: "choice",
+            choices: [
+              { id: "dark", label: "Dark" },
+              { id: "light", label: "Light" },
+            ],
+            value: "light",
+          },
           { id: "0.1", label: "Reduce Motion", kind: "toggle", value: true },
         ],
       },
       { title: "", items: [{ id: "1.0", label: "Replay", kind: "action" }] },
     ])
     expect(descriptors).toEqual([
-      { key: "0.0", label: "Theme", group: "Scenario", kind: "choice", default: "dark", choices: [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }] },
+      {
+        key: "0.0",
+        label: "Theme",
+        group: "Scenario",
+        kind: "choice",
+        default: "dark",
+        choices: [
+          { id: "dark", label: "Dark" },
+          { id: "light", label: "Light" },
+        ],
+      },
       { key: "0.1", label: "Reduce Motion", group: "Scenario", kind: "toggle", default: false },
       { key: "1.0", label: "Replay", kind: "action" },
     ])

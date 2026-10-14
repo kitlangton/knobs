@@ -72,6 +72,14 @@ export const problemsPreset: TokenPreset = {
     blur: 0.6,
     "hover-in": 0,
     "hover-out": 100,
+    "handle-rest": 0.55,
+    handle: "var(--k-text)",
+    "handle-inset": "7.5px",
+    "fill-base": "transparent",
+    "fill-rest-mix": "24%",
+    "fill-active-mix": "36%",
+    "group-transform": "none",
+    "value-font": "var(--k-mono)",
     spring: "0.185 0.14",
     "fill-ease": glide.easing,
     "fill-ms": glide.duration,
@@ -97,5 +105,8 @@ export const problemsPreset: TokenPreset = {
   css:
     "&.knobs-inline{background:transparent;border:0;box-shadow:none;padding:0;-webkit-backdrop-filter:none;backdrop-filter:none}" +
     "& .knobs-slider.knobs-modified .knobs-value{color:var(--kv-modified)}" +
-    "& .knobs-group-head{margin-top:calc(var(--kv-gap) * 3)}",
+    "& .knobs-value{gap:0}& .knobs-unit{color:inherit}" +
+    "& .knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}" +
+    "& .knobs-group-head{padding:0;color:var(--kv-label);font-size:12px;letter-spacing:-.01em}" +
+    "& .knobs-group-head:not(:first-child){margin-top:10px;padding-top:8px;border-top:1px solid var(--kv-line)}",
 }

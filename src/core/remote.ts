@@ -395,8 +395,18 @@ export type SettingsItem =
       readonly choices: readonly { readonly id: string; readonly label?: string }[]
       readonly value?: string | null
     }
-  | { readonly id: string; readonly label: string; readonly kind: "toggle"; readonly value?: boolean }
-  | { readonly id: string; readonly label: string; readonly kind: "action"; readonly value?: boolean }
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "toggle"
+      readonly value?: boolean
+    }
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "action"
+      readonly value?: boolean
+    }
 
 /**
  * Settings sections as descriptors and values, one row per item: choices (a menu past four
@@ -417,7 +427,12 @@ export function fromSettings(groups: readonly SettingsGroup[]): {
         descriptors.push({ ...meta, kind: "toggle", default: false })
         values[item.id] = Boolean(item.value)
       } else if (item.choices.length) {
-        descriptors.push({ ...meta, kind: "choice", default: item.choices[0]!.id, choices: item.choices })
+        descriptors.push({
+          ...meta,
+          kind: "choice",
+          default: item.choices[0]!.id,
+          choices: item.choices,
+        })
         values[item.id] = item.value ?? item.choices[0]!.id
       }
     }

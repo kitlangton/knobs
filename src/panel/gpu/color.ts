@@ -116,6 +116,10 @@ export interface PanelThemeTokens {
   /** Hover wash in and out (ms). */
   readonly hoverIn: number
   readonly hoverOut: number
+  /** A slider handle's opacity at rest (0 shows it only on hover, focus and drag). */
+  readonly handleRest: number
+  /** Group headings in small caps (`--k-group-transform: none` keeps their case). */
+  readonly groupUpper: boolean
   readonly pillBg: Rgba
   readonly pillBorder: Rgba
   readonly fillRest: Rgba
@@ -206,6 +210,9 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     token(style, "toggle-track"),
     isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
   )
+  const fillBase = style.getPropertyValue("--k-fill-base").trim()
+    ? parseCssColor(token(style, "fill-base"), surfaceHi)
+    : surfaceHi
   const accentLum = accent[0] * 0.2126 + accent[1] * 0.7152 + accent[2] * 0.0722
   const toggleThumb = parseCssColor(
     token(style, "toggle-thumb"),
@@ -258,10 +265,12 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     rowGap: numProp(style, "row-gap", 0),
     hoverIn: numProp(style, "hover-in", 150),
     hoverOut: numProp(style, "hover-out", 150),
+    handleRest: numProp(style, "handle-rest", 0),
+    groupUpper: style.getPropertyValue("--k-group-transform").trim() !== "none",
     pillBg: cssMix(accent, segActive, 0.18),
     pillBorder: withAlpha(accent, 0.32),
-    fillRest: cssMix(accent, surfaceHi, 0.2),
-    fillActive: cssMix(accent, surfaceHi, 0.3),
+    fillRest: cssMix(accent, fillBase, numProp(style, "fill-rest-mix", 20) / 100),
+    fillActive: cssMix(accent, fillBase, numProp(style, "fill-active-mix", 30) / 100),
     pad,
     inset,
     row,

@@ -714,8 +714,12 @@ function buildPanel<S extends Schema>(
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
     const plain = (values: Record<string, unknown>) => values[key]
-    const isModified = () => spec.keys.some((k) => controls.isModified(k as keyof S & string))
-    const resetRow = () => run(() => controls.reset(spec.keys as (keyof S & string)[]))
+    // No way to reset a row (`keys: { reset: false }`), no modified marks.
+    const isModified = () =>
+      bound("reset") && spec.keys.some((k) => controls.isModified(k as keyof S & string))
+    const resetRow = () => {
+      if (bound("reset")) run(() => controls.reset(spec.keys as (keyof S & string)[]))
+    }
     let label: (text: string) => void = () => {}
     const retuneBase = (row: Row, next: RowSpec) => {
       row.field = next.field
@@ -1493,7 +1497,7 @@ function buildPanel<S extends Schema>(
         row.wave.at = row.wave.until = 0
         row.row.style.removeProperty("--k-delay")
       }
-      const modified = row.keys.some((k) => !same(values[k], locked[k]))
+      const modified = bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)
         row.row.classList.toggle("knobs-modified", modified)
       if (row.slider) row.slider.update(Number(value), delay, instant)
@@ -1513,8 +1517,9 @@ function buildPanel<S extends Schema>(
           (r) => r.group === groupName && r.keys.some((k) => !same(values[k], locked[k])),
         )
         if (groupMod) anyMod = true
-        if (gReset.disabled !== !groupMod) gReset.disabled = !groupMod
-        const s = String(groupMod)
+        const shown = groupMod && bound("reset")
+        if (gReset.disabled !== !shown) gReset.disabled = !shown
+        const s = String(shown)
         if (gReset.dataset.shown !== s) gReset.dataset.shown = s
       }
       const totalMod =

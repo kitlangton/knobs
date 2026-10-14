@@ -2336,7 +2336,9 @@ class GpuOverlayManager {
             )
         } else
           this.drawText(
-            (g.labelEl.textContent ?? "").toUpperCase(),
+            tokens.groupUpper
+              ? (g.labelEl.textContent ?? "").toUpperCase()
+              : (g.labelEl.textContent ?? ""),
             lr.left,
             lr.top + lr.height * 0.5,
             tokens.dim,
@@ -2514,7 +2516,13 @@ class GpuOverlayManager {
           const focused = this.isFocused(sl.track)
           const dragging = sl.isDragging()
           // The handle follows the same states as its CSS (hover, keyboard focus, drag).
-          sl.handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
+          sl.handleSpring.set(
+            dragging
+              ? 1
+              : hovered || focused
+                ? Math.max(0.65, tokens.handleRest)
+                : tokens.handleRest,
+          )
           sl.fillSpring.omega = tokens.fillOmega
           sl.fillSpring.zeta = tokens.fillZeta
           for (const sp of [sl.fillSpring, sl.stretchSpring, sl.handleSpring]) {

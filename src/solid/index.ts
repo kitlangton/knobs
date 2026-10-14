@@ -158,7 +158,8 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Ele
     const values = props.values
     const land = Boolean(props.land)
     if (!c.enabled || (!descriptors && !values)) return
-    if (descriptors && "update" in c) (c as unknown as RemoteControls).update(descriptors, values, { land })
+    if (descriptors && "update" in c)
+      (c as unknown as RemoteControls).update(descriptors, values, { land })
     else if (values) c.sync(values as Partial<Values<S>>, { replace: true, land })
   })
   createEffect(() => {
