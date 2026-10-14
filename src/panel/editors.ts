@@ -322,14 +322,17 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   onPan(track, {
     accept: () => !dragging,
     move(dx) {
-      if (!size.w) return
+      // Read the box directly when a pan lands before the size has been measured.
+      const w = size.w || track.clientWidth
+      const h = size.h || track.clientHeight
+      if (!w) return
       if (panAt === undefined) {
         panAt = current
         o.start()
         line.classList.add("knobs-active")
         c.wake()
       }
-      panAt = clamp(panAt + (dx / Math.max(1, size.w - size.h)) * span, o.min, o.max)
+      panAt = clamp(panAt + (dx / Math.max(1, w - h)) * span, o.min, o.max)
       o.set(quantize(panAt, false))
     },
     end() {
@@ -740,7 +743,9 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     {
       accept: () => !dragging,
       move(dx, dy) {
-        if (!size.w) return
+        const w = size.w || pad.clientWidth
+        const h = size.h || pad.clientHeight
+        if (!w) return
         if (!panAt) {
           panAt = shown
           g.start()
@@ -750,8 +755,8 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
         const spanX = f.max.x - f.min.x
         const spanY = f.max.y - f.min.y
         panAt = {
-          x: clamp(panAt.x + (dx / (size.w - PAD_INSET * 2)) * spanX, f.min.x, f.max.x),
-          y: clamp(panAt.y + (dy / (size.h - PAD_INSET * 2)) * spanY, f.min.y, f.max.y),
+          x: clamp(panAt.x + (dx / (w - PAD_INSET * 2)) * spanX, f.min.x, f.max.x),
+          y: clamp(panAt.y + (dy / (h - PAD_INSET * 2)) * spanY, f.min.y, f.max.y),
         }
         g.set(panAt)
       },
@@ -1010,7 +1015,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     {
       accept: () => dragging < 0 && panTarget() >= 0,
       move(dx, dy) {
-        if (!size.w) return
+        const w = size.w || box.clientWidth
+        const h = size.h || box.clientHeight
+        if (!w) return
         if (panned < 0) {
           panned = panTarget()
           if (panned < 0) return
@@ -1019,10 +1026,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
           box.classList.add("knobs-active")
           c.wake()
         }
-        const [uw, uh] = unit()
         panAt = [
-          clamp(panAt[0] + dx / uw, 0, 1),
-          clamp(panAt[1] - (dy / uh) * spanY, range[0], range[1]),
+          clamp(panAt[0] + dx / (w - EASE_PAD.x * 2), 0, 1),
+          clamp(panAt[1] - (dy / (h - EASE_PAD.y * 2)) * spanY, range[0], range[1]),
         ]
         move(panned, ...panAt)
       },
