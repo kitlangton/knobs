@@ -5,6 +5,8 @@ import type { SpringValue } from "./spring.js"
 export interface FieldMeta {
   readonly label?: string
   readonly group?: string
+  /** A page region the field's group sits in (see `mountPage`); panels ignore it. */
+  readonly section?: string
   readonly shortcut?: string
 }
 export interface Knob extends FieldMeta {
@@ -87,6 +89,7 @@ function withMeta<T extends object>(base: T, meta?: FieldMeta): T {
     ...base,
     ...(meta?.label !== undefined ? { label: meta.label } : {}),
     ...(meta?.group !== undefined ? { group: meta.group } : {}),
+    ...(meta?.section !== undefined ? { section: meta.section } : {}),
     ...(meta?.shortcut !== undefined ? { shortcut: meta.shortcut } : {}),
   })
 }

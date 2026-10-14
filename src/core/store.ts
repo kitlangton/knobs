@@ -3,6 +3,7 @@ import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
 import {
   equal,
+  type Field,
   normalize,
   normalizeField,
   same,
@@ -41,8 +42,15 @@ export interface ControlAction<V = State> {
   readonly shortcut?: string
   run(values: V, controls: Controls<any>): void | string | Promise<void | string>
 }
+/** One of a group's numbered presets; keys it leaves out sit at their defaults (see `groupPresets`). */
+export interface GroupPreset<V = State> {
+  readonly name: string
+  readonly values: Partial<V>
+}
 export interface MountPanelOptions {
   readonly title?: string | false
+  /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
+  readonly copy?: () => string
   readonly theme?: ThemeMode
   readonly density?: DensityMode
   readonly renderer?: RendererMode
@@ -56,12 +64,20 @@ export interface ControlsOptions<S extends Schema> {
   enabled?: boolean | (() => boolean)
   storage?: StoragePort | null
   presets?: Readonly<Record<string, Partial<Values<S>>>>
+  /**
+   * Numbered presets per group, shown as 1, 2, 3… on the group's card in a page. A group's
+   * presets cover every key any of them names; keys a preset leaves out are at their defaults,
+   * so `{ name: "Today", values: {} }` is the shipped look.
+   */
+  groupPresets?: Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   actions?: readonly ControlAction<Values<S>>[]
   theme?: ThemeMode
   density?: DensityMode
   renderer?: RendererMode
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   onReset?: (target: { key?: keyof S & string; group?: string }) => void
+  /** A group's numbered preset was applied (after its values are set). */
+  onPreset?: (target: { group: string; index: number; name: string }) => void
 }
 export interface Controls<S extends Schema = Schema> {
   readonly id: string
@@ -112,6 +128,12 @@ export interface Controls<S extends Schema = Schema> {
   readonly comparing: boolean
   preset(id: string): void
   matchingPreset(): string
+  /** Each group's numbered presets, complete over the keys they cover. */
+  readonly groupPresets: Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
+  /** Applies a group's preset (0-based), one undo step. */
+  groupPreset(group: string, index: number): void
+  /** The group preset the current values match, or -1. */
+  matchingGroupPreset(group: string): number
   code(format?: CodeFormat, values?: Values<S>): string
   attach(element: HTMLElement): () => void
   mount(container: HTMLElement, options?: MountPanelOptions): () => void
@@ -159,6 +181,41 @@ export function defineControls<const S extends Schema>(
       }),
     ]),
   ) as Readonly<Record<string, Values<S>>>
+  const groupPresets = Object.freeze(
+    Object.fromEntries(
+      Object.entries(options.groupPresets ?? {}).map(([group, list]) => {
+        const named = list.flatMap((p) =>
+          Object.keys(p.values).filter((k) => Object.hasOwn(schema, k)),
+        )
+        const covered = new Set(
+          named.length
+            ? named
+            : Object.keys(schema).filter((k) => (schema[k] as Field).group === group),
+        )
+        return [
+          group,
+          Object.freeze(
+            list.map((p) =>
+              Object.freeze({
+                name: p.name,
+                values: Object.freeze(
+                  Object.fromEntries(
+                    [...covered].map((k) => [
+                      k,
+                      normalizeField(
+                        schema[k]!,
+                        (p.values as Record<string, unknown>)[k] ?? locked[k],
+                      ),
+                    ]),
+                  ),
+                ) as Partial<Values<S>>,
+              }),
+            ),
+          ),
+        ]
+      }),
+    ),
+  ) as Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   /** The committed values, read from storage on first use. */
   function load() {
     if (!read) {
@@ -435,6 +492,20 @@ export function defineControls<const S extends Schema>(
       set(presets[id], { source: "preset" })
     },
     matchingPreset: () => Object.keys(presets).find((id) => equal(get(), presets[id])) ?? "custom",
+    groupPresets,
+    groupPreset(group, index) {
+      const preset = groupPresets[group]?.[index]
+      if (!preset) throw new Error(`Unknown preset ${index + 1} for group ${group}`)
+      if (!enabled()) return
+      set(preset.values, { source: "preset", group })
+      options.onPreset?.({ group, index, name: preset.name })
+    },
+    matchingGroupPreset(group) {
+      const cur = get() as Record<string, unknown>
+      return (groupPresets[group] ?? []).findIndex((p) =>
+        Object.entries(p.values).every(([k, v]) => same(cur[k], v)),
+      )
+    },
     code: (format, values) => formatCode(values ?? get(), format),
     variants: createVariants(
       schema,

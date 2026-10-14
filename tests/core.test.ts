@@ -1000,3 +1000,138 @@ describe("locks, mutate and compare", () => {
     expect(onSet).toHaveBeenLastCalledWith("b", 9, { source: "compare" })
   })
 })
+
+describe("sections and group presets", () => {
+  const tuned = () => ({
+    rise: knob(6, { min: 0, max: 24, step: 1, group: "Arrivals", section: "Transcript" }),
+    fade: knob(0.25, { min: 0.05, max: 0.8, step: 0.01, group: "Arrivals", section: "Transcript" }),
+    stagger: toggle(false, { group: "Arrivals", section: "Transcript" }),
+    font: choice("body", ["body", "callout"], { group: "Rows", section: "Session list" }),
+  })
+
+  it("keeps section metadata on fields and descriptors", () => {
+    const fields = tuned()
+    expect(fields.rise.section).toBe("Transcript")
+    expect(fields.font.section).toBe("Session list")
+    expect(spring({}, { section: "Motion" }).section).toBe("Motion")
+    expect(knob(1, { min: 0, max: 2 }).section).toBeUndefined()
+    const schema = fromDescriptors([
+      { key: "a.b", kind: "number", default: 1, min: 0, max: 2, group: "B", section: "A" },
+      { key: "a.c", kind: "bool", default: true, group: "B" },
+    ])
+    expect(schema["a.b"]!.section).toBe("A")
+    expect(schema["a.c"]!.section).toBeUndefined()
+  })
+
+  it("applies numbered group presets over every key they cover, matches and undoes them", () => {
+    const presets: { group: string; index: number; name: string }[] = []
+    const sources: string[] = []
+    const c = defineControls("group-presets", tuned(), {
+      enabled: true,
+      storage: null,
+      groupPresets: {
+        Arrivals: [
+          { name: "Today", values: {} },
+          { name: "Brisk", values: { rise: 4, fade: 0.15 } },
+          { name: "Soft", values: { fade: 0.5, stagger: true } },
+        ],
+      },
+      onPreset: (target) => presets.push(target),
+      onChange: (_patch, _values, meta) => sources.push(`${meta.source}:${meta.group ?? ""}`),
+    })
+    // Every preset spans the union of named keys; "Today" is the defaults.
+    expect(c.groupPresets.Arrivals!.map((p) => p.values)).toEqual([
+      { rise: 6, fade: 0.25, stagger: false },
+      { rise: 4, fade: 0.15, stagger: false },
+      { rise: 6, fade: 0.5, stagger: true },
+    ])
+    expect(c.matchingGroupPreset("Arrivals")).toBe(0)
+    c.groupPreset("Arrivals", 2)
+    expect(c.get()).toMatchObject({ rise: 6, fade: 0.5, stagger: true })
+    expect(c.matchingGroupPreset("Arrivals")).toBe(2)
+    c.groupPreset("Arrivals", 1)
+    expect(c.get()).toMatchObject({ rise: 4, fade: 0.15, stagger: false })
+    expect(presets).toEqual([
+      { group: "Arrivals", index: 2, name: "Soft" },
+      { group: "Arrivals", index: 1, name: "Brisk" },
+    ])
+    expect(sources).toEqual(["preset:Arrivals", "preset:Arrivals"])
+    c.set({ rise: 5 })
+    expect(c.matchingGroupPreset("Arrivals")).toBe(-1)
+    expect(c.matchingGroupPreset("Rows")).toBe(-1)
+    c.undo()
+    expect(c.matchingGroupPreset("Arrivals")).toBe(1)
+    c.undo()
+    expect(c.matchingGroupPreset("Arrivals")).toBe(2)
+    expect(() => c.groupPreset("Arrivals", 7)).toThrow()
+  })
+
+  it("lets a remote peer apply its own group presets, and holds local edits against stale echoes", () => {
+    vi.useFakeTimers()
+    try {
+      const sent: unknown[] = []
+      const remote = createRemoteControls(
+        "iphone",
+        [
+          {
+            key: "t.rise",
+            kind: "number",
+            default: 6,
+            min: 0,
+            max: 24,
+            step: 1,
+            group: "Arrivals",
+          },
+          {
+            key: "t.fade",
+            kind: "number",
+            default: 0.25,
+            min: 0,
+            max: 1,
+            step: 0.01,
+            group: "Arrivals",
+          },
+        ],
+        {
+          groupPresets: {
+            Arrivals: [
+              { name: "Today", values: {} },
+              { name: "Brisk", values: { "t.rise": 4 } },
+            ],
+          },
+          onSet: (key, value) => sent.push({ type: "set", key, value }),
+          onPreset: ({ group, index }) => sent.push({ type: "preset", group, index }),
+        },
+      )
+      remote.groupPreset("Arrivals", 1)
+      expect(remote.get()["t.rise"]).toBe(4)
+      // The phone applies its own preset: no per-key sets go out.
+      expect(sent).toEqual([{ type: "preset", group: "Arrivals", index: 1 }])
+
+      // A drag sends 10; the phone's state still says 8 when it crosses in flight.
+      remote.set({ "t.rise": 10 })
+      expect(sent.at(-1)).toEqual({ type: "set", key: "t.rise", value: 10 })
+      remote.sync({ "t.rise": 8, "t.fade": 0.5 }, { replace: true })
+      expect(remote.get()).toEqual({ "t.rise": 10, "t.fade": 0.5 })
+      // Once the window passes, the peer's latest state stands (it may have clamped the value).
+      vi.advanceTimersByTime(700)
+      expect(remote.get()).toEqual({ "t.rise": 8, "t.fade": 0.5 })
+      expect(sent).toHaveLength(2)
+
+      // Without onPreset, a preset reaches the peer as ordinary sets.
+      const plain: unknown[] = []
+      const other = createRemoteControls(
+        "plain",
+        [{ key: "x", kind: "number", default: 1, min: 0, max: 2, step: 1, group: "G" }],
+        {
+          groupPresets: { G: [{ name: "Two", values: { x: 2 } }] },
+          onSet: (key, value) => plain.push([key, value]),
+        },
+      )
+      other.groupPreset("G", 0)
+      expect(plain).toEqual([["x", 2]])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

@@ -33,6 +33,7 @@ export {
   type Controls,
   type ControlsOptions,
   type DensityMode,
+  type GroupPreset,
   type MountPanelOptions,
   type RendererMode,
   type ThemeMode,

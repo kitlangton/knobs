@@ -21,6 +21,7 @@ import {
   defineControls,
   type ChangeMeta,
   type ControlAction,
+  type GroupPreset,
   type Controls,
   type DensityMode,
   type RendererMode,
@@ -49,6 +50,8 @@ export interface ControlDescriptor {
   readonly choices?: readonly string[]
   readonly options?: readonly string[]
   readonly group?: string
+  /** The page region the descriptor's group sits in (see `mountPage`). */
+  readonly section?: string
   readonly shortcut?: string
   readonly swiftType?: string
 }
@@ -57,6 +60,8 @@ export interface RemoteControlsOptions {
   readonly enabled?: boolean | (() => boolean)
   readonly values?: State
   readonly presets?: Readonly<Record<string, State>>
+  /** Numbered presets per group, e.g. the phone's preset sets (see `ControlsOptions.groupPresets`). */
+  readonly groupPresets?: Readonly<Record<string, readonly GroupPreset[]>>
   readonly actions?: readonly ControlAction<State>[]
   readonly storage?: StoragePort | null
   readonly theme?: ThemeMode
@@ -64,6 +69,11 @@ export interface RemoteControlsOptions {
   readonly renderer?: RendererMode
   readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
   readonly onReset?: (target: { key?: string; group?: string }) => void
+  /**
+   * A group preset was chosen. When given, the peer applies its own preset (and sends back its
+   * state) instead of receiving `onSet` for each key.
+   */
+  readonly onPreset?: (target: { group: string; index: number; name: string }) => void
 }
 
 export interface RemoteControls extends Controls<Schema> {
@@ -75,6 +85,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
   const meta = {
     ...(d.label !== undefined ? { label: d.label } : {}),
     ...(d.group !== undefined ? { group: d.group } : {}),
+    ...(d.section !== undefined ? { section: d.section } : {}),
     ...(d.shortcut !== undefined ? { shortcut: d.shortcut } : {}),
   }
   if (d.kind === "knob" || d.kind === "number") {
@@ -185,6 +196,9 @@ export function formatSwift(
   return lines.join("\n")
 }
 
+/** How long a local change outranks the peer's state for that key. */
+const ECHO_MS = 600
+
 export function createRemoteControls(
   id: string,
   descriptors: readonly ControlDescriptor[],
@@ -192,18 +206,27 @@ export function createRemoteControls(
 ): RemoteControls {
   const frozenDescriptors = Object.freeze([...descriptors])
   const schema = fromDescriptors(frozenDescriptors)
+  // Keys changed here recently: a peer's state that crosses them in flight (an echo of an older
+  // value mid-drag) doesn't pull them back.
+  const sent = new Map<string, number>()
+  const now = () => Date.now()
   const controls = defineControls(id, schema, {
     enabled: options.enabled ?? true,
     storage: options.storage ?? null,
     presets: options.presets,
+    groupPresets: options.groupPresets,
+    onPreset: options.onPreset,
     actions: options.actions,
     theme: options.theme,
     density: options.density,
     renderer: options.renderer,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
+      const peerPreset = meta.source === "preset" && meta.group !== undefined && options.onPreset
       for (const [key, val] of Object.entries(patch)) {
         if (val === undefined) continue
+        sent.set(key, now())
+        if (peerPreset) continue
         const next = same(val, controls.locked[key]) ? null : val
         options.onSet?.(key, next, meta)
       }
@@ -218,8 +241,28 @@ export function createRemoteControls(
   if (options.values) {
     controls.sync(options.values, { replace: true })
   }
+  // Once the window passes, the peer's latest state is applied as it is, so a value the peer
+  // corrected (clamped, rounded) while it was held still lands.
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const sync: RemoteControls["sync"] = (values, syncOptions) => {
+    const held: Record<string, unknown> = { ...values }
+    const current = controls.get() as Record<string, unknown>
+    const t = now()
+    let holding = false
+    for (const [key, at] of sent) {
+      if (t - at >= ECHO_MS) sent.delete(key)
+      else {
+        held[key] = current[key]
+        holding = true
+      }
+    }
+    controls.sync(held as State, syncOptions)
+    clearTimeout(settle)
+    if (holding) settle = setTimeout(() => sync(values, syncOptions), ECHO_MS)
+  }
   return Object.freeze({
     ...controls,
+    sync,
     get enabled() {
       return controls.enabled
     },
