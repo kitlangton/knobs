@@ -34,6 +34,7 @@ export {
   defineControls,
   type ChangeMeta,
   type ChangeSource,
+  type ChipOptions,
   type ControlAction,
   type Controls,
   type ControlsOptions,
@@ -46,6 +47,7 @@ export {
   type PanelKeys,
   type SyncOptions,
   type RendererMode,
+  type RevealMode,
   type ThemeMode,
 } from "./core/store.js"
 export {

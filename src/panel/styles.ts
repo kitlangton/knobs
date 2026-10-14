@@ -50,7 +50,7 @@ const DRIVERS = `${register(COLOR_TOKENS, "<color>", "transparent")}
 ${register(LENGTH_TOKENS, "<length>", "0px")}
 ${register(NUMBER_TOKENS, "<number>", "0")}
 ${register(["width"], "<length-percentage>", "288px")}
-.knobs-panel,.knobs-chip{${ANIMATED.map((t) => `--kt-${t}:var(--k-${t});--kv-${t}:var(--kt-${t})`).join(";")}}`
+.knobs-panel,.knobs-chip,.knobs-toast{${ANIMATED.map((t) => `--kt-${t}:var(--k-${t});--kv-${t}:var(--kt-${t})`).join(";")}}`
 /** The panel's rules read the gliding aliases; the :root defaults keep the public names. */
 const aliased = (css: string) =>
   css.replace(new RegExp(`var\\(--k-(${ANIMATED.join("|")})\\)`, "g"), "var(--kv-$1)")
@@ -80,11 +80,11 @@ const defaultsCss = `
   --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
-:where(.knobs-panel,.knobs-chip)[data-theme="light"],
-:where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip):not([data-theme="dark"]),
-:where(:root[data-theme="light"]) :where(.knobs-panel,.knobs-chip)[data-theme="auto"]{${lightVars}}
+:where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="light"],
+:where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast):not([data-theme="dark"]),
+:where(:root[data-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
 @media(prefers-color-scheme:light){
-  :where(:root:not([data-theme="dark"])) :where(.knobs-panel,.knobs-chip)[data-theme="auto"]{${lightVars}}
+  :where(:root:not([data-theme="dark"])) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
 }
 :where(.knobs-panel)[data-density="compact"]{--k-density:.875;--k-row:28px;--k-gap:3px;--k-radius:6px;--k-panel-radius:calc(var(--k-radius) + var(--k-unit));--k-pad:8px;--k-inset:8px;--k-font-size:11px}
 :where(.knobs-panel)[data-density="comfortable"]{--k-density:1.1875;--k-row:38px;--k-gap:6px;--k-radius:10px;--k-panel-radius:calc(var(--k-radius) + var(--k-unit));--k-pad:12px;--k-inset:12px;--k-font-size:13px}
@@ -133,12 +133,23 @@ const css = `
 .knobs-panel [hidden],.knobs-chip[hidden]{display:none!important}
 .knobs-mono{font-family:var(--k-mono);font-variant-numeric:tabular-nums}
 
-.knobs-chip{position:fixed;z-index:2147480000;padding:4px 9px;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid var(--k-line);
-  color:var(--k-label);font-size:var(--k-text-control);letter-spacing:.01em;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,${TOKEN_TRANSITIONS};}
+/* The chip: a round cog button, or a capsule with a label beside the cog. */
+.knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid var(--k-line);
+  color:var(--k-label);font-size:var(--k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
+.knobs-chip[data-label]{width:auto;padding:0 10px 0 7px}
+.knobs-chip .knobs-icon{display:block;flex:none;width:15px;height:15px}
 .knobs-chip:hover{color:var(--k-text);border-color:var(--k-line-hi)}
-.knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),visibility 0s,${TOKEN_TRANSITIONS}}
+.knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),scale .12s var(--k-ease),visibility 0s,${TOKEN_TRANSITIONS}}
 .knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s,${TOKEN_TRANSITIONS}}
+/* A press squeezes it, easing in (morph.ts carries the squeeze on into the glass). */
+.knobs-chip.knobs-chip[data-pressed]{scale:.94;transition:color .15s,border-color .15s,scale 60ms cubic-bezier(.11,0,.5,0),${TOKEN_TRANSITIONS}}
 .knobs-chip:focus-visible{outline:none;color:var(--k-text);border-color:var(--k-line-hi)}
+@media(prefers-reduced-motion:reduce){.knobs-chip.knobs-chip{scale:none;transform:none}}
+/* "knobs on" / "knobs off" after the reveal shortcut. */
+.knobs-toast{position:fixed;left:50%;bottom:24px;z-index:2147480004;translate:-50% 0;padding:6px 12px;border-radius:999px;pointer-events:none;
+  background:var(--k-bg);border:1px solid var(--k-line);box-shadow:0 4px 16px rgba(0,0,0,.35);color:var(--k-text);font:500 12px/1.2 var(--k-font);letter-spacing:.01em;
+  transition:opacity .18s var(--k-ease),scale .18s var(--k-ease)}
+.knobs-toast[data-shown="false"]{opacity:0;scale:.96;transition:opacity .16s ease-in,scale .16s ease-in}
 
 /* Tokens glide on the panel spring. While a control is dragged (data-knobs-scrub) they follow it
    step for step instead: the pointer already moves them continuously, and a declared transition
