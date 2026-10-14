@@ -43,18 +43,36 @@ test("the page and the example pages load without errors, and every example moun
   await expect(page.locator("main h1")).toHaveText("knobs")
   await scrollThrough(page)
   const sections = page.locator("main section[data-section]")
-  expect(await sections.count()).toBeGreaterThanOrEqual(18)
+  expect(await sections.count()).toBeGreaterThanOrEqual(20)
+  // The full-page example lays its sections out as columns of cards.
+  await expect(page.locator(".page-demo .knobs-page .knobs-tile").first()).toBeVisible()
+  await expect(page.locator(".embed-panel .knobs-panel")).toBeVisible()
   await expect(page.locator("main .example-placeholder")).toHaveCount(0)
   await expect(page.locator("main section[data-section]:not([data-in])")).toHaveCount(0)
   // The section index lists every section.
   await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link")).toHaveCount(
     await page.locator("main section[data-toc] > h2").count(),
   )
-  await expect(page.locator("#examples a[href='/examples/studies.html']")).toBeVisible()
-  for (const example of ["studies", "meta", "die"]) {
+  for (const example of ["studies", "meta", "die", "tune", "problems"])
+    await expect(page.locator(`#examples a[href='/examples/${example}.html']`)).toBeVisible()
+  for (const example of ["studies", "meta", "die", "tune", "problems"]) {
     await page.goto(`/examples/${example}.html`)
     await expect(page.locator(".knobs-panel, .knobs-chip").first()).toBeAttached()
   }
+  expect(errors).toEqual([])
+})
+
+test("the embedded panel swaps rows in place when the app switches items", async ({ page }) => {
+  const errors = trackErrors(page)
+  await page.goto("/#embedding-in-an-app")
+  const panel = page.locator(".embed-panel .knobs-panel")
+  await expect(panel.getByRole("slider", { name: "Width", exact: true })).toBeVisible()
+  const before = await panel.elementHandle()
+  await page.getByRole("tab", { name: "Sheet" }).click()
+  await expect(panel.getByRole("slider", { name: "Tilt", exact: true })).toBeVisible()
+  await expect(panel.getByRole("slider", { name: "Duration", exact: true })).toHaveCount(0)
+  // The same panel element: the rows changed, the panel stayed.
+  expect(await panel.evaluate((el, prev) => el === prev, before)).toBe(true)
   expect(errors).toEqual([])
 })
 
