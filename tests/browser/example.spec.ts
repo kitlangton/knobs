@@ -550,9 +550,10 @@ test("sideways swipes step presets and choices once per gesture, as one undo ent
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   const strip = synth.getByRole("radiogroup", { name: "Preset or variant" })
   const waveform = synth.getByRole("radiogroup", { name: "Waveform" })
-  // A trackpad flick: rising deltas, then a long fading momentum tail, all as one stream.
+  // A trackpad flick: rising deltas, then a long fading momentum tail, all as one stream. Sent in
+  // one burst: real timers can stall past the gesture gap on a slow CI runner.
   const flick = (sign: number) =>
-    page.evaluate(async (sign) => {
+    page.evaluate((sign) => {
       const el = document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!
       const deltas = [4, 12, 26, 40, ...Array.from({ length: 40 }, (_, i) => 40 * 0.9 ** (i + 1))]
       let blocked = 0
@@ -560,7 +561,6 @@ test("sideways swipes step presets and choices once per gesture, as one undo ent
         const e = new WheelEvent("wheel", { deltaX: d * sign, bubbles: true, cancelable: true })
         el.dispatchEvent(e)
         if (e.defaultPrevented) blocked++
-        await new Promise((r) => setTimeout(r, 8))
       }
       return blocked === deltas.length
     }, sign)
