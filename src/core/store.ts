@@ -1,6 +1,14 @@
 import { formatCode, type CodeFormat } from "./code.js"
 import { randomValues } from "./random.js"
-import { equal, normalize, same, type Schema, type State, type Values } from "./schema.js"
+import {
+  equal,
+  normalize,
+  normalizeField,
+  same,
+  type Schema,
+  type State,
+  type Values,
+} from "./schema.js"
 import { browserStorage, storageKey, type StoragePort } from "./storage.js"
 import { createVariants, type Variants } from "./variants.js"
 
@@ -147,13 +155,6 @@ export function defineControls<const S extends Schema>(
     }
     return current
   }
-  // Unchanged springs, points and curves keep their identity, so memoized consumers skip them.
-  const keep = (previous: Values<S>, next: Values<S>) =>
-    Object.freeze(
-      Object.fromEntries(
-        Object.entries(next).map(([k, v]) => [k, same(previous[k], v) ? previous[k] : v]),
-      ),
-    ) as Values<S>
   function commit(next: Values<S>) {
     current = next
     try {
@@ -164,24 +165,54 @@ export function defineControls<const S extends Schema>(
     }
     notify()
   }
+  function applyPatch(base: Values<S>, previous: Values<S>, patch: Partial<Values<S>>) {
+    const out: Record<string, unknown> = { ...base }
+    const diff: Record<string, unknown> = {}
+    let changed = false
+    if (base === previous) {
+      for (const k of Object.keys(patch)) {
+        if (!Object.hasOwn(schema, k)) continue
+        const raw = (patch as Record<string, unknown>)[k]
+        const val = raw === undefined ? previous[k] : normalizeField(schema[k]!, raw)
+        if (!same(previous[k], val)) {
+          out[k] = val
+          diff[k] = val
+          changed = true
+        }
+      }
+      return changed ? { next: Object.freeze(out) as Values<S>, diff } : null
+    }
+    for (const k of Object.keys(patch)) {
+      if (!Object.hasOwn(schema, k)) continue
+      const raw = (patch as Record<string, unknown>)[k]
+      const val = raw === undefined ? base[k] : normalizeField(schema[k]!, raw)
+      out[k] = same(previous[k], val) ? previous[k] : val
+    }
+    for (const k of Object.keys(schema)) {
+      if (!same(previous[k], out[k])) {
+        diff[k] = out[k]
+        changed = true
+      } else {
+        out[k] = previous[k]
+      }
+    }
+    return changed ? { next: Object.freeze(out) as Values<S>, diff } : null
+  }
   function set(
     patch: Partial<Values<S>>,
     setOpts?: { coalesce?: boolean; source?: ChangeSource; key?: string; group?: string },
   ) {
     if (!enabled()) return
     const previous = get()
-    const next = keep(previous, normalize(schema, { ...previous, ...patch }))
-    if (equal(current, next)) return
+    const applied = applyPatch(previous, previous, patch)
+    if (!applied) return
+    const { next, diff } = applied
     if (!setOpts?.coalesce || past.length === 0) {
       past.push(previous)
       if (past.length > HISTORY) past.shift()
     }
     future.length = 0
     commit(next)
-    const diff: Record<string, unknown> = {}
-    for (const k of Object.keys(schema)) {
-      if (!same(previous[k], next[k])) diff[k] = next[k]
-    }
     options.onChange?.(diff as Partial<Values<S>>, next, {
       source: setOpts?.source ?? "local",
       ...(setOpts?.coalesce ? { coalesce: true } : {}),
@@ -193,10 +224,10 @@ export function defineControls<const S extends Schema>(
     if (!enabled()) return
     const previous = get()
     const base = syncOpts?.replace ? locked : previous
-    const next = keep(previous, normalize(schema, { ...base, ...values }))
-    if (equal(current, next)) return
-    commit(next)
-    options.onChange?.(values, next, { source: "remote" })
+    const applied = applyPatch(base, previous, values)
+    if (!applied) return
+    commit(applied.next)
+    options.onChange?.(values, applied.next, { source: "remote" })
   }
   const controls: Controls<S> = {
     id,

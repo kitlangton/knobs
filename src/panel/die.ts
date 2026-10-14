@@ -226,6 +226,11 @@ export function dieTracer(size: number, view: DieView, look: DieLook) {
     const wx = ix - rx * START
     const wy = iy - ry * START
     const wz = -rz * START - cz
+    // Enter the bounding sphere in world space (rotation preserves dot products) before rotating.
+    const b = wx * rx + wy * ry + wz * rz
+    const c = wx * wx + wy * wy + wz * wz - BOUND * BOUND
+    const disc = b * b - c
+    if (disc < 0) return MISS
     // Into cube space: undo rotateX, then rotateY.
     let y1 = ry * cx + rz * sx
     let z1 = -ry * sx + rz * cx
@@ -237,11 +242,6 @@ export function dieTracer(size: number, view: DieView, look: DieLook) {
     const o0 = wx * cy - z1 * sy
     const o1 = y1
     const o2 = wx * sy + z1 * cy
-    // Enter the bounding sphere, then sphere-trace the rounded box.
-    const b = o0 * d0 + o1 * d1 + o2 * d2
-    const c = o0 * o0 + o1 * o1 + o2 * o2 - BOUND * BOUND
-    const disc = b * b - c
-    if (disc < 0) return MISS
     let t = Math.max(0, -b - Math.sqrt(disc))
     const far = -b + Math.sqrt(disc)
     let px = 0

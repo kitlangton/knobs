@@ -44,11 +44,11 @@ fn die_trace(p: vec2f, size: f32, rot: vec2f, energy: f32, look: vec4f, shade: f
   let cz = look.y * energy * 256.0 - ${f(+DIE.half.toFixed(4))};
   let dw = normalize(vec3f(p / unit * k, -1.0));
   let ow = vec3f(p / unit, 0.0) - dw * 512.0 - vec3f(0.0, 0.0, cz);
+  let b = dot(ow, dw);
+  let disc = b * b - (dot(ow, ow) - ${f(BOUND)} * ${f(BOUND)});
+  if (disc < 0.0) { return 0.0; }
   let o = die_to_local(ow, rot);
   let d = die_to_local(dw, rot);
-  let b = dot(o, d);
-  let disc = b * b - (dot(o, o) - ${f(BOUND)} * ${f(BOUND)});
-  if (disc < 0.0) { return 0.0; }
   var t = max(0.0, -b - sqrt(disc));
   let far = -b + sqrt(disc);
   var q = vec3f(0.0);
