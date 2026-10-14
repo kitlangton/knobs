@@ -8,7 +8,7 @@ Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon but
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps; the same swipe over the preset strip or a choice moves one preset or option per gesture. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
 
@@ -141,6 +141,7 @@ Panels and switchers are keyboard-first:
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row to its locked default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed; scrolling sideways over it nudges by steps (one undo entry per gesture) |
+| Swipe sideways | Over the preset strip or a choice: the next or previous one, once per gesture (`⇧` + wheel too) |
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
@@ -263,7 +264,9 @@ Override CSS variables on `:root` or `.knobs-panel`:
 }
 ```
 
-Reduced motion (`prefers-reduced-motion`) turns off the cascade, the pop, the stretch, the spring dot and the editors' height reveals.
+Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
+
+Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, the stretch, the spring dot and the editors' height reveals.
 
 ### Reacting to Random, Reset and presets
 
