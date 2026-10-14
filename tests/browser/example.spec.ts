@@ -50,6 +50,18 @@ const lift = (fingers: readonly number[], start: number): Wheel[] => {
   return out
 }
 
+async function openStudy(page: Page, id: string) {
+  const study = page.locator(`[data-study="${id}"]`)
+  const bounds = (await study.boundingBox())!
+  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
+  const chip = page.getByRole("button", { name: `Tune ${id}`, exact: true })
+  await expect(chip).toBeVisible()
+  await chip.click()
+  const panel = page.getByRole("dialog", { name: `${id} controls`, exact: true })
+  await expect(panel).toBeVisible()
+  return panel
+}
+
 test("hover chips, independent panels, persistence, clipboard, keyboard, hint prefixes, preset strip and drag", async ({
   page,
   context,
@@ -64,12 +76,7 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   const beforeSplat = await rendered("splat").getAttribute("data-render")
   const beforeDots = await rendered("halftone").getAttribute("data-render")
   for (const id of ["splat", "halftone", "typography"]) {
-    const study = page.locator(`[data-study="${id}"]`)
-    const bounds = (await study.boundingBox())!
-    await study.hover({ position: { x: bounds.width - 20, y: 60 } })
-    await expect(page.getByRole("button", { name: `Tune ${id}`, exact: true })).toBeVisible()
-    await page.getByRole("button", { name: `Tune ${id}`, exact: true }).click()
-    await expect(page.getByRole("dialog", { name: `${id} controls`, exact: true })).toBeVisible()
+    await openStudy(page, id)
   }
   await expect(page.getByRole("dialog")).toHaveCount(3)
   // Move other panels out of the way through their own close actions.
@@ -297,8 +304,10 @@ test("React hydration, nested switcher ownership, saved variants and teardown", 
   await expect(page.locator("[data-inner]")).toHaveText("c")
   await page.getByRole("group", { name: "Saved", exact: true }).focus()
   await page.mouse.move(0, 0)
+  await expect(page.locator("[data-outer-meta]")).toHaveText("2:true")
   await page.keyboard.press("3")
   await expect(page.locator("[data-outer]")).toHaveText("a:7")
+  await expect(page.locator("[data-outer-meta]")).toHaveText("7:true")
   await page.getByRole("group", { name: "Outer", exact: true }).focus()
   await page.getByRole("button", { name: "Tune outer" }).click()
   await expect(page.getByRole("dialog")).toHaveCount(1)
@@ -321,6 +330,23 @@ test("React hydration, nested switcher ownership, saved variants and teardown", 
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.5:solid")
   await remotePanel.getByRole("button", { name: "Reset Spring" }).click()
   await expect(page.locator("[data-solid-remote]")).toHaveText("0.35:solid")
+  // React KnobsPanel: header, preset, marks, keys, onReady, descriptors/values/land
+  const reactEmbed = page.getByRole("region", { name: "react-embed controls" })
+  await expect(reactEmbed).toHaveAttribute("data-preset", "problems")
+  await expect(reactEmbed.locator("header")).toBeHidden()
+  await expect(reactEmbed.locator(".knobs-modified")).toHaveCount(0)
+  await page.getByRole("button", { name: "Focus embed" }).click()
+  const widthSlider = reactEmbed.getByRole("slider", { name: "Width" })
+  await expect(widthSlider).toBeFocused()
+  await expect(widthSlider).toHaveAttribute("aria-valuenow", "140")
+  await page.keyboard.press("Shift+ArrowRight")
+  await expect(widthSlider).toHaveAttribute("aria-valuenow", "170")
+  await page.getByRole("button", { name: "Swap embed" }).click()
+  await expect(reactEmbed.getByRole("slider", { name: "Radius" })).toHaveAttribute(
+    "aria-valuenow",
+    "16",
+  )
+  await expect(reactEmbed.getByRole("slider", { name: "Width" })).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
@@ -349,10 +375,10 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
     tokensPanel.getByRole("slider", { name: "Control radius", exact: true }),
   ).toBeFocused()
 
-  // The OKLCH accent: ←→ on its row turns the hue, and --k-accent follows at once
+  // The OKLCH accent: ←→ on its row turns the hue, keeping relative chroma, and --k-accent follows at once
   await tokensPanel.getByRole("button", { name: "Accent", exact: true }).focus()
   await page.keyboard.press("Shift+ArrowRight")
-  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: oklch(0.7 0.13 260)")
+  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: oklch(0.7 0.1252 260)")
 
   // Switch preset to "compact" and verify CSS variables update on :root and affect both panels
   const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })
@@ -386,12 +412,7 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   // Navigate to /?gpu and verify WebGPU hardware renderer & diagnostics
   await page.setViewportSize({ width: 2048, height: 1480 })
   await page.goto("/?gpu")
-  const study = page.locator('[data-study="splat"]')
-  const bounds = (await study.boundingBox())!
-  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
-  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
-  const splatDialog = page.getByRole("dialog", { name: "splat controls", exact: true })
-  await expect(splatDialog).toBeVisible()
+  const splatDialog = await openStudy(page, "splat")
   await expect(splatDialog).toHaveAttribute("data-renderer", "gpu")
   await expect(splatDialog).toHaveAttribute("data-gpu-active", "true")
   await expect(page.locator("canvas.knobs-gpu-canvas")).toHaveCount(1)
@@ -436,11 +457,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await page.goto("/")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  const study = page.locator('[data-study="splat"]')
-  const bounds = (await study.boundingBox())!
-  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
-  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
-  const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  const panel = await openStudy(page, "splat")
   const strip = panel.getByRole("radiogroup", { name: "Preset or variant" })
   const seed = panel.getByRole("slider", { name: "seed", exact: true })
   const random = panel.getByRole("button", { name: "Random", exact: true })
@@ -533,11 +550,7 @@ test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ pag
   await page.goto("/")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  const study = page.locator('[data-study="splat"]')
-  const bounds = (await study.boundingBox())!
-  await study.hover({ position: { x: bounds.width - 20, y: 60 } })
-  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
-  const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+  const panel = await openStudy(page, "splat")
   // Pointers reach only what the growing shape has revealed, so let it settle first.
   await expect(panel).not.toHaveAttribute("data-morphing")
   const count = panel.getByRole("slider", { name: "count", exact: true })
@@ -823,14 +836,7 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   const study = page.locator('[data-study="motion"]')
   const values = async () =>
     JSON.parse((await study.locator("[data-render]").getAttribute("data-render"))!)
-  const open = async () => {
-    const b = (await study.boundingBox())!
-    await study.hover({ position: { x: b.width - 20, y: 60 } })
-    await page.getByRole("button", { name: "Tune motion", exact: true }).click()
-    const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
-    await expect(panel).toBeVisible()
-    return panel
-  }
+  const open = () => openStudy(page, "motion")
   const panel = await open()
   const duration = panel.getByRole("slider", { name: "Travel duration" })
   await expect(duration).toBeFocused()
@@ -875,10 +881,13 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   const tint = panel.getByRole("button", { name: "Tint", exact: true })
   await expect(tint).toBeFocused()
   await page.keyboard.press("Space")
+  await panel.evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))),
+  )
   await page.keyboard.press("ArrowDown")
   await expect(panel.getByRole("slider", { name: "Tint hue" })).toBeFocused()
   await page.keyboard.press("ArrowRight")
-  expect((await values()).tint).toBe("oklch(0.7 0.16 41)")
+  expect((await values()).tint).toBe("oklch(0.7 0.1607 41)")
   await page.keyboard.press("ArrowDown")
   await page.keyboard.press("End")
   const fitted = (await values()).tint
@@ -895,6 +904,53 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await expect(panel.locator(".knobs-strip").first()).not.toHaveClass(/knobs-active/)
   await page.keyboard.press("u")
   await expect.poll(async () => (await values()).tint).toBe(fitted)
+  // The C strip spans 0…maxChroma(l, h) with no veil: scrubbing H or L keeps the C thumb at
+  // C / maxC (within 0.5 px) while the readout shows the absolute OKLCH chroma; round-trip is
+  // stable, even after L visits 0.
+  await page.keyboard.press("Shift+R")
+  await expect(panel.locator(".knobs-strip-veil")).toHaveCount(0)
+  const chromaStrip = panel.getByRole("slider", { name: "Tint chroma" })
+  const lightnessStrip = panel.getByRole("slider", { name: "Tint lightness" })
+  const chromaThumbLeft = () =>
+    chromaStrip
+      .locator(".knobs-strip-thumb")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  const chromaRead = () =>
+    chromaStrip.locator("..").locator(".knobs-strip-read").textContent() as Promise<string>
+  const initialThumb = await chromaThumbLeft()
+  expect(await chromaRead()).toBe("0.160")
+  const hBox = (await hue.boundingBox())!
+  await page.mouse.move(hBox.x + hBox.width * 0.2, hBox.y + hBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hBox.x + hBox.width * 0.56, hBox.y + hBox.height / 2, { steps: 3 })
+  expect(Math.abs((await chromaThumbLeft()) - initialThumb)).toBeLessThanOrEqual(0.5)
+  expect(Number(await chromaRead())).toBeLessThan(0.13)
+  await page.mouse.up()
+  // Undo returns to the exact starting colour and thumb position.
+  await page.keyboard.press("u")
+  expect((await values()).tint).toBe("oklch(0.7 0.16 40)")
+  expect(Math.abs((await chromaThumbLeft()) - initialThumb)).toBeLessThanOrEqual(0.5)
+  // Scrub L all the way to 0 (maxC = 0) and back to 0.7: relative chroma is remembered.
+  await lightnessStrip.focus()
+  await page.keyboard.press("Home")
+  expect((await values()).tint).toBe("oklch(0 0 40)")
+  expect(await chromaRead()).toBe("0.000")
+  expect(Math.abs((await chromaThumbLeft()) - initialThumb)).toBeLessThanOrEqual(0.5)
+  const lBox = (await lightnessStrip.boundingBox())!
+  await page.mouse.click(
+    lBox.x + lBox.height / 2 + (lBox.width - lBox.height) * 0.7,
+    lBox.y + lBox.height / 2,
+  )
+  expect(Math.abs((await chromaThumbLeft()) - initialThumb)).toBeLessThanOrEqual(0.5)
+  expect((await values()).tint).toBe("oklch(0.7 0.16 40)")
+  // Keyboard steps on C move the relative position by 1% of the track.
+  await chromaStrip.focus()
+  const relBefore = Number(await chromaStrip.getAttribute("aria-valuenow"))
+  await page.keyboard.press("ArrowRight")
+  expect(Number(await chromaStrip.getAttribute("aria-valuenow"))).toBeCloseTo(
+    Math.round(relBefore * 100) / 100 + 0.01,
+    4,
+  )
   await page.keyboard.press("Escape")
 
   // A pad drag, however long, is one undo step; arrows nudge the puck.
@@ -987,6 +1043,15 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   expect(
     Math.abs(rgb[0]! - 0xef) + Math.abs(rgb[1]! - 0x77) + Math.abs(rgb[2]! - 0x4b),
   ).toBeLessThan(12)
+  // In GPU mode too, panning H leaves the C thumb still within 0.5 px.
+  const gpuChroma = gpuPanel.getByRole("slider", { name: "Tint chroma" })
+  const gpuThumbLeft = () =>
+    gpuChroma
+      .locator(".knobs-strip-thumb")
+      .evaluate((el) => parseFloat((el as HTMLElement).style.left))
+  const gpuInitialThumb = await gpuThumbLeft()
+  await wheel(page, hueSelector, pan([5, 10, 10, 5], 30_000))
+  expect(Math.abs((await gpuThumbLeft()) - gpuInitialThumb)).toBeLessThanOrEqual(0.5)
   expect(errors).toEqual([])
 })
 
@@ -1001,12 +1066,7 @@ test("a reload reopens floating panels, open editors and the focused stop, witho
     sessionStorage.clear()
   })
   await page.reload()
-  const study = page.locator('[data-study="motion"]')
-  const b = (await study.boundingBox())!
-  await study.hover({ position: { x: b.width - 20, y: 60 } })
-  await page.getByRole("button", { name: "Tune motion", exact: true }).click()
-  const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
-  await expect(panel).toBeVisible()
+  const panel = await openStudy(page, "motion")
   const tint = panel.getByRole("button", { name: "Tint", exact: true })
   await tint.click()
   await expect(tint).toHaveAttribute("aria-expanded", "true")
@@ -1344,12 +1404,7 @@ test("design-system geometry contracts: left/right column alignment, concentric 
     await page.reload()
 
     // Open splat floating dialog so we also measure '+' save button and context menu radii
-    const splatStudy = page.locator('[data-study="splat"]')
-    const sb = (await splatStudy.boundingBox())!
-    await splatStudy.hover({ position: { x: sb.width - 20, y: 60 } })
-    await page.getByRole("button", { name: "Tune splat", exact: true }).click()
-    const splatPanel = page.getByRole("dialog", { name: "splat controls", exact: true })
-    await expect(splatPanel).toBeVisible()
+    const splatPanel = await openStudy(page, "splat")
     await expect(splatPanel).not.toHaveAttribute("data-morphing")
 
     const remote = page.getByRole("region", { name: "remote-tune controls" })
@@ -1571,6 +1626,9 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await expect(rowHeight).toBeHidden()
   await page.keyboard.press("Escape")
   await expect(rowHeight).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight > innerHeight))
+    .toBe(true)
 
   // The header stays put while the page scrolls under it.
   const header = tune.locator(":scope > header")
@@ -1585,6 +1643,32 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await page.goto("/tune.html?gpu")
   await expect(tune.locator(".knobs-tile").first()).toBeVisible()
   await page.waitForTimeout(500)
+
+  // At phone width (390 px), the presets wrap onto a second row below the title and buttons, in
+  // both renderers, with no overlap or horizontal overflow.
+  for (const mode of ["dom", "gpu"] as const) {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/tune.html${mode === "gpu" ? "?gpu" : ""}`)
+    await expect(tune.locator(".knobs-tile").first()).toBeVisible()
+    const head = await header.evaluate((h) => {
+      const title = h.querySelector("strong")!.getBoundingClientRect()
+      const tools = h.querySelector(".knobs-page-tools")!.getBoundingClientRect()
+      const presets = h.querySelector(".knobs-presets")!.getBoundingClientRect()
+      return {
+        title,
+        tools,
+        presets,
+        width: innerWidth,
+        scroll: document.documentElement.scrollWidth,
+      }
+    })
+    expect(head.scroll).toBeLessThanOrEqual(head.width)
+    expect(head.title.right).toBeLessThanOrEqual(head.tools.left + 0.5)
+    expect(head.presets.top).toBeGreaterThanOrEqual(
+      Math.max(head.title.bottom, head.tools.bottom) - 0.5,
+    )
+    expect(head.presets.right).toBeLessThanOrEqual(head.width)
+  }
   expect(errors).toEqual([])
 })
 

@@ -83,6 +83,31 @@ describe("holds: the row in hand is never clobbered", () => {
     expect(r.get().size).toBe(3)
     expect(sent).toEqual([["size", 6]])
   })
+
+  it("undo and redo also hold against stale echoes for the echo window", () => {
+    const sent: [string, unknown][] = []
+    const r = createRemoteControls("undo-echo", params(), {
+      nullDefaults: false,
+      onSet: (k, v) => sent.push([k, v]),
+    })
+    r.set({ size: 8 })
+    // A stale echo from before undo arrives while the undo is in flight.
+    r.sync({ size: 7 })
+    expect(r.get().size).toBe(8)
+    vi.advanceTimersByTime(100)
+    r.undo()
+    expect(r.get().size).toBe(4)
+    expect(sent).toEqual([
+      ["size", 8],
+      ["size", 4],
+    ])
+    // A late echo of 8 arriving right after undo is held back; after 600 ms the peer's latest lands.
+    r.sync({ size: 8 })
+    expect(r.get().size).toBe(4)
+    r.sync({ size: 4 })
+    vi.advanceTimersByTime(650)
+    expect(r.get().size).toBe(4)
+  })
 })
 
 describe("remote.update: descriptor swaps without teardown", () => {
@@ -422,5 +447,58 @@ describe("shipping", () => {
       { storage: null, ship: async () => panel },
     )
     expect(c.enabled).toBe(true)
+  })
+
+  it("shares mount options, descriptor/value sync, and look sync across React and Solid adapters", async () => {
+    const { mountPanelAdapter, syncPanelValues } = await import("../src/core/adapter.js")
+    const { problemsPreset } = await import("../src/themes/index.js")
+    let receivedOpts: Record<string, unknown> | undefined
+    const fakePanel = {
+      element: {} as HTMLElement,
+      focus: vi.fn(),
+      dispose: vi.fn(),
+    }
+    const r = createRemoteControls("adapter-test", params(), {
+      ship: async () => ({
+        mountPanel: (_c, _host, opts) => {
+          receivedOpts = opts as Record<string, unknown>
+          return fakePanel
+        },
+        attach: () => () => {},
+      }),
+    })
+    let readyHandle: unknown
+    let copyText = "first"
+    const dispose = mountPanelAdapter({} as HTMLElement, r, () => ({
+      controls: r,
+      header: false,
+      variants: false,
+      marks: false,
+      preset: problemsPreset,
+      keys: { random: false, vim: false, bigStep: 5 },
+      copy: () => copyText,
+      onReady: (p) => (readyHandle = p),
+    }))
+    await new Promise((resolve) => setTimeout(resolve))
+    expect(readyHandle).toBe(fakePanel)
+    expect(receivedOpts).toMatchObject({
+      header: false,
+      variants: false,
+      marks: false,
+      preset: problemsPreset,
+      keys: { random: false, vim: false, bigStep: 5 },
+    })
+    copyText = "updated"
+    expect((receivedOpts?.copy as () => string)()).toBe("updated")
+    syncPanelValues(
+      r,
+      [{ key: "width", kind: "number", default: 10, min: 0, max: 50, step: 5 }],
+      { width: 25 },
+      true,
+    )
+    expect(Object.keys(r.schema)).toEqual(["width"])
+    expect(r.get()).toEqual({ width: 25 })
+    dispose()
+    expect(fakePanel.dispose).toHaveBeenCalledTimes(1)
   })
 })

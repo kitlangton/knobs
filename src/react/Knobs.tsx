@@ -9,8 +9,16 @@ import {
   type ReactElement,
   type Ref,
 } from "react"
+import {
+  mountPanelAdapter,
+  syncPanelLook,
+  syncPanelValues,
+  type KnobsPanelProps,
+} from "../core/adapter.js"
 import type { Schema } from "../core/schema.js"
-import type { Controls, MountPanelOptions } from "../core/store.js"
+import type { Controls } from "../core/store.js"
+
+export type { KnobsPanelProps }
 
 export function useKnobs<S extends Schema, E extends HTMLElement = HTMLElement>(
   controls: Controls<S>,
@@ -41,49 +49,27 @@ export function Knobs<S extends Schema>({
   )
   return cloneElement(children, { ref })
 }
-export function KnobsPanel<S extends Schema>({
-  controls,
-  title,
-  theme,
-  density,
-  renderer,
-  variants,
-  history,
-  footer,
-  actions,
-  onClose,
-}: MountPanelOptions & {
-  controls: Controls<S>
-}) {
+export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>) {
+  const { controls, descriptors, values, land, theme, density } = props
   const enabled = useSyncExternalStore(
     controls.subscribe,
     () => controls.enabled,
     () => false,
   )
   const ref = useRef<HTMLDivElement>(null)
-  // Theme and density restyle the mounted panel in place, so its tokens glide instead of the
-  // panel being rebuilt.
-  const look = useRef({ theme, density })
-  look.current = { theme, density }
-  useEffect(() => {
-    const panel = ref.current?.firstElementChild as HTMLElement | null | undefined
-    if (!panel) return
-    panel.dataset.theme = theme ?? controls.theme
-    panel.dataset.density = density ?? controls.density
-  }, [controls, theme, density])
+  const latest = useRef(props)
+  latest.current = props
   useEffect(() => {
     if (!enabled || !ref.current) return
-    return controls.mount(ref.current, {
-      title,
-      ...look.current,
-      renderer,
-      variants,
-      history,
-      footer,
-      actions,
-      onClose,
-    })
-  }, [enabled, controls, title, renderer, variants, history, footer, actions, onClose])
+    return mountPanelAdapter(ref.current, controls, () => latest.current)
+  }, [enabled, controls])
+  useEffect(() => {
+    if (!enabled) return
+    syncPanelValues(controls, descriptors, values, Boolean(land))
+  }, [enabled, controls, descriptors, values, land])
+  useEffect(() => {
+    syncPanelLook(ref.current, controls, theme, density)
+  }, [controls, theme, density])
   if (!enabled) return null
   return <div ref={ref} data-knobs-mount={controls.id} />
 }

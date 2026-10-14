@@ -190,9 +190,16 @@ test("variations swap descriptors in place; another item lands", async ({ page }
   ).toBe(true)
   await expect(params(page).locator(".knobs-spring")).toHaveCount(0)
   // J: a different item lands — transitions are off for the frame, values placed at once.
-  await page.keyboard.press("j")
   const root = page.locator('[data-controls="parameters"]')
-  await expect(root).toHaveAttribute("data-landing", "")
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-controls="parameters"]')!
+    ;(window as any).__sawLanding = el.hasAttribute("data-landing")
+    new MutationObserver(() => {
+      if (el.hasAttribute("data-landing")) (window as any).__sawLanding = true
+    }).observe(el, { attributes: true, attributeFilter: ["data-landing"] })
+  })
+  await page.keyboard.press("j")
+  expect(await page.evaluate(() => (window as any).__sawLanding)).toBe(true)
   const size = params(page).getByRole("slider", { name: "Size" })
   await expect(size).toHaveAttribute("aria-valuenow", "120")
   const fill = await params(page)

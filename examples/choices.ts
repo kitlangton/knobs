@@ -63,7 +63,10 @@ const inline = createRemoteControls("choices", descriptors, {
   nullDefaults: false,
   onSet: (k, v) => sets.push([k, v]),
 })
-mountPanel(inline, document.getElementById("inline")!, { title: "Inline", variants: false })
+const inlinePanel = mountPanel(inline, document.getElementById("inline")!, {
+  title: "Inline",
+  variants: false,
+})
 
 const tune = createRemoteControls("choices-page", descriptors.slice(0, 2), { storage: null })
 const page = mountPage(tune, document.getElementById("page")!, { title: "Page", columnWidth: 300 })
@@ -88,4 +91,4 @@ const forced = card.choice({
   display: "menu",
   onChange: (v) => chosen.push(v),
 })
-Object.assign(window, { __choices: { sets, chosen, scene, speed, forced, inline } })
+Object.assign(window, { __choices: { sets, chosen, scene, speed, forced, inline, inlinePanel } })

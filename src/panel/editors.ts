@@ -1,11 +1,4 @@
-import {
-  CHROMA_MAX,
-  colorHex,
-  maxChroma,
-  oklchToRgb,
-  parseColor,
-  type Oklch,
-} from "../core/color.js"
+import { colorHex, maxChroma, oklchToRgb, parseColor, type Oklch } from "../core/color.js"
 import { bezierPoint, EASING_Y, EASINGS, easingName, type Bezier } from "../core/easing.js"
 import {
   same,
@@ -30,8 +23,9 @@ import type {
   RowWave,
 } from "./gpu/renderer.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { clamp } from "./motion.js"
 import { reveal } from "./reveal.js"
-import { createSlider, type Slider } from "./slider.js"
+import { createSlider, decimals, type Slider } from "./slider.js"
 import { onPan } from "./swipe.js"
 
 /** What a row needs from the panel. */
@@ -71,18 +65,13 @@ export interface EditorRow {
   update(value: Value, delay: number, instant?: boolean): void
   /** A flat spring's halves changed range or label (see `RowContext.parts`). */
   retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
+  dispose(): void
   readonly tracks: readonly SubTrack[]
   readonly gpu: readonly GpuRowBinding[]
 }
 
 const reducedMotion = (doc: Document) =>
   doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
-const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
-const decimals = (step: number) => {
-  const text = String(step)
-  const i = text.indexOf(".")
-  return i < 0 ? 0 : text.length - i - 1
-}
 const rgbCss = (rgb: readonly number[]) =>
   `rgb(${rgb.map((v) => Math.round(v * 2550) / 10).join(" ")})`
 const pathOf = (pts: readonly number[]) => {
@@ -142,15 +131,16 @@ const plainKey = (event: KeyboardEvent) => !event.metaKey && !event.ctrlKey && !
 
 /** A size kept current by a ResizeObserver, so layout reads stay out of the frame loop. */
 function measure(node: Element, onResize: () => void) {
-  const size = { w: 0, h: 0 }
-  new ResizeObserver(() => {
+  const size = { w: 0, h: 0, disconnect: () => ro.disconnect() }
+  const ro = new ResizeObserver(() => {
     const w = (node as HTMLElement).clientWidth
     const h = (node as HTMLElement).clientHeight
     if (w === size.w && h === size.h) return
     size.w = w
     size.h = h
     if (w > 0) onResize()
-  }).observe(node)
+  })
+  ro.observe(node)
   return size
 }
 
@@ -235,16 +225,13 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
   track.setAttribute("aria-label", o.aria)
   track.setAttribute("aria-valuemin", String(o.min))
   track.setAttribute("aria-valuemax", String(o.max))
-  const veil = el("i", "knobs-strip-veil")
   const thumb = el("i", "knobs-strip-thumb")
-  track.append(veil, thumb)
+  track.append(thumb)
   const read = el("span", "knobs-strip-read")
   line.append(label, track, read)
   const span = o.max - o.min
   let current = o.min
   let colorAt: ((ratio: number) => string) | undefined
-  let veilFn: (() => number) | undefined
-  let veilAt = 1
   let paintKey = ""
   let paintedKey = ""
   let dragging = false
@@ -257,12 +244,9 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     const key = `${size.w}|${size.h}|${paintKey}`
     if (!force && key === paintedKey) return
     paintedKey = key
-    veilAt = veilFn ? veilFn() : 1
     if (track.closest('[data-gpu-active="true"]') !== null) return
     const stops = Array.from({ length: 25 }, (_, i) => `${colorAt!(i / 24)} ${xOf(i / 24)}px`)
     track.style.background = `linear-gradient(to right,${stops.join(",")})`
-    veil.style.left = `${xOf(veilAt)}px`
-    veil.hidden = veilAt >= 1
   }
   const placeThumb = (instant: boolean) => {
     if (size.w) place([thumb], instant, () => (thumb.style.left = `${xOf(ratio(current))}px`))
@@ -297,6 +281,7 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     track.focus({ preventScroll: true })
     dragRect = track.getBoundingClientRect()
     dragging = true
+    line.classList.add("knobs-active")
     fine = event.altKey
     anchorX = event.clientX
     anchorValue = current
@@ -369,7 +354,6 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     read,
     mode: 0,
     thumbX: () => (size.w ? xOf(ratio(current)) : 0),
-    veil: () => veilAt,
     dragging: () => line.classList.contains("knobs-active"),
   }
   return {
@@ -377,20 +361,23 @@ function strip(c: RowContext<unknown>, o: StripOptions) {
     track,
     thumb,
     gpu,
-    update(value: number) {
+    update(value: number, text = o.format(value)) {
       const first = !thumb.style.left
+      if (read.textContent !== text) {
+        read.textContent = text
+        track.setAttribute("aria-valuetext", text)
+      }
+      if (!first && current === value) return
       current = value
-      read.textContent = o.format(value)
-      track.setAttribute("aria-valuenow", String(value))
-      track.setAttribute("aria-valuetext", o.format(value))
+      track.setAttribute("aria-valuenow", String(Number(value.toFixed(4))))
       placeThumb(first)
     },
-    paint(key: string, fn: (ratio: number) => string, veil?: () => number) {
+    paint(key: string, fn: (ratio: number) => string) {
       paintKey = key
       colorAt = fn
-      veilFn = veil
       paint()
     },
+    dispose: () => size.disconnect(),
   }
 }
 
@@ -577,21 +564,43 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
       }
       initialized = true
     },
+    dispose() {
+      size.disconnect()
+      for (const p of parts) p.slider.dispose()
+    },
   }
 }
 
-/** OKLCH: a swatch and hex in the head; hue, chroma and lightness strips in the body. */
+/** OKLCH: a swatch and hex in the head; hue, relative chroma (0…maxC) and lightness strips in the body. */
 export function colorRow(c: RowContext<ColorField>): EditorRow {
   const { el } = factory(c.doc)
   const swatch = el("span", "knobs-swatch")
   const hex = el("span", "knobs-x-read")
   let shown: Oklch = parseColor(c.field.value)!
-  // Hue and lightness moves keep the chroma you asked for, even where sRGB has to trim it.
-  let want = shown.c
+  // The C strip spans 0…maxChroma(l, h), so its thumb sits at C / maxC and stays put while H or L
+  // are scrubbed (preserving relative vividness), and remembers its spot when L nears 0 or 1.
+  const relOf = ({ l, c: ch, h }: Oklch, fallback: number) => {
+    const max = maxChroma(l, h)
+    return max > 1e-4 ? clamp(ch / max, 0, 1) : fallback
+  }
+  let rel = relOf(shown, 0)
+  let sending = false
   const g = gesture(c)
-  const send = (patch: Partial<Oklch>) => {
-    if (patch.c !== undefined) want = patch.c
-    g.set({ ...shown, c: want, ...patch })
+  const send = (patch: { l?: number; r?: number; h?: number }) => {
+    const l = patch.l ?? shown.l
+    const h = patch.h ?? shown.h
+    if (patch.r !== undefined) rel = clamp(patch.r, 0, 1)
+    const ch = rel * maxChroma(l, h)
+    sending = true
+    try {
+      g.set({ l, c: ch, h })
+    } finally {
+      sending = false
+    }
+    if (patch.r !== undefined) {
+      strips[1]!.update(rel, shown.c.toFixed(3))
+      c.wake()
+    }
   }
   const strips = [
     strip(c, {
@@ -608,10 +617,10 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
       label: "C",
       aria: `${c.display} chroma`,
       min: 0,
-      max: CHROMA_MAX,
-      step: 0.005,
-      format: (v) => v.toFixed(3),
-      set: (cc) => send({ c: cc }),
+      max: 1,
+      step: 0.01,
+      format: () => shown.c.toFixed(3),
+      set: (r) => send({ r }),
       start: g.start,
     }),
     strip(c, {
@@ -664,24 +673,24 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     gpu: [gpu],
     update(value) {
       shown = parseColor(value)!
-      if (Math.abs(Math.min(want, maxChroma(shown.l, shown.h)) - shown.c) > 0.001) want = shown.c
+      const { l, c: ch, h } = shown
+      const maxC = maxChroma(l, h)
+      if (!sending && maxC > 1e-4 && Math.abs(rel * maxC - ch) > 5e-4) rel = clamp(ch / maxC, 0, 1)
       const rgb = rgbCss(oklchToRgb(shown))
       swatch.style.backgroundColor = rgb
       hex.textContent = colorHex(shown).toUpperCase()
       const [hs, cs, ls] = strips
-      hs!.update(shown.h)
-      cs!.update(shown.c)
-      ls!.update(shown.l)
-      const { l, c: ch, h } = shown
+      hs!.update(h)
+      cs!.update(rel, ch.toFixed(3))
+      ls!.update(l)
       const hc = Math.max(ch, 0.06)
       hs!.paint(`${l}|${hc}`, (r) => rgbCss(oklchToRgb({ l, c: hc, h: r * 360 })))
-      cs!.paint(
-        `${l}|${h}`,
-        (r) => rgbCss(oklchToRgb({ l, c: r * CHROMA_MAX, h })),
-        () => maxChroma(l, h) / CHROMA_MAX,
-      )
+      cs!.paint(`${l}|${h}`, (r) => rgbCss(oklchToRgb({ l, c: r * maxC, h })))
       ls!.paint(`${ch}|${h}`, (r) => rgbCss(oklchToRgb({ l: r, c: ch, h })))
       for (const s of strips) s.thumb.style.backgroundColor = rgb
+    },
+    dispose() {
+      for (const s of strips) s.dispose()
     },
   }
 }
@@ -873,6 +882,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
       pad.setAttribute("aria-valuetext", format(shown))
       layout(first)
     },
+    dispose: () => size.disconnect(),
   }
 }
 
@@ -1147,6 +1157,10 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       const held = dragging >= 0 || panned >= 0
       layout(first || held)
       if (miniSize.h) place([miniPath], first || held, () => setPath(miniPath, miniPoints()))
+    },
+    dispose() {
+      size.disconnect()
+      miniSize.disconnect()
     },
   }
 }

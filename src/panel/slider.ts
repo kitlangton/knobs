@@ -76,9 +76,10 @@ export interface Slider {
   readonly field: KnobField
   /** Open the inline editor (used when a digit is typed on the track). */
   edit(): void
+  dispose(): void
 }
 
-const decimals = (step: number) => {
+export const decimals = (step: number) => {
   const text = String(step)
   const i = text.indexOf(".")
   return i < 0 ? 0 : text.length - i - 1
@@ -680,5 +681,10 @@ export function createSlider(
     isEditing: () => !number.hidden,
     update,
     edit,
+    dispose() {
+      ro.disconnect()
+      clearTimeout(rollTimer)
+      clearTimeout(speedTimer)
+    },
   }
 }

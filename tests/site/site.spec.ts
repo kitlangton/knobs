@@ -12,7 +12,7 @@ function trackErrors(page: Page) {
 /** Scrolls the whole page in steps so every lazy example mounts and every section enters. */
 async function scrollThrough(page: Page) {
   const height = await page.evaluate(() => document.body.scrollHeight)
-  for (let y = 0; y <= height; y += 600) {
+  for (let y = 0; y <= height + 600; y += 600) {
     await page.evaluate((top) => scrollTo({ top, behavior: "instant" }), y)
     await page.waitForTimeout(60)
   }
@@ -53,6 +53,19 @@ test("the page and the example pages load without errors, and every example moun
   await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link")).toHaveCount(
     await page.locator("main section[data-toc] > h2").count(),
   )
+  // At 390 px, the full-page demo's presets sit on their own row under the title and buttons.
+  await page.setViewportSize({ width: 390, height: 844 })
+  const pageHead = await page.locator(".page-demo .knobs-page > header").evaluate((h) => {
+    const title = h.querySelector("strong")!.getBoundingClientRect()
+    const tools = h.querySelector(".knobs-page-tools")!.getBoundingClientRect()
+    const presets = h.querySelector(".knobs-presets")!.getBoundingClientRect()
+    return { title, tools, presets }
+  })
+  expect(pageHead.title.right).toBeLessThanOrEqual(pageHead.tools.left + 0.5)
+  expect(pageHead.presets.top).toBeGreaterThanOrEqual(
+    Math.max(pageHead.title.bottom, pageHead.tools.bottom) - 0.5,
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
   for (const example of ["studies", "meta", "die", "tune", "problems"])
     await expect(page.locator(`#examples a[href='/examples/${example}.html']`)).toBeVisible()
   for (const example of ["studies", "meta", "die", "tune", "problems"]) {

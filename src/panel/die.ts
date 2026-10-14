@@ -431,8 +431,6 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
     if (!fading) fading = requestAnimationFrame(step)
   }
   const nudgeColour = () => follow(performance.now() + 260)
-  for (const type of ["pointerenter", "pointerleave", "focusin", "focusout", "transitionrun"])
-    node.parentElement?.addEventListener?.(type, nudgeColour)
   queueMicrotask(() => {
     const button = node.closest("button")
     for (const type of [

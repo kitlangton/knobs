@@ -1,3 +1,4 @@
+import { maxChroma } from "./color.js"
 import { EASINGS } from "./easing.js"
 import { normalize, type Schema, type ValueField, type Values } from "./schema.js"
 
@@ -17,8 +18,11 @@ function pick(field: ValueField, random: () => number) {
     // Springs, colours and curves stay in the range people actually use.
     case "spring":
       return { duration: between(0.2, 0.9, r()), bounce: between(0, 0.45, r()) }
-    case "color":
-      return { l: between(0.5, 0.85, r()), c: between(0.05, 0.2, r()), h: between(0, 360, r()) }
+    case "color": {
+      const l = between(0.5, 0.85, r())
+      const h = between(0, 360, r())
+      return { l, c: between(0.25, 0.85, r()) * maxChroma(l, h), h }
+    }
     case "point":
       return {
         x: lattice(field.min.x, field.max.x, field.step.x, r()),

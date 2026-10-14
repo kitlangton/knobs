@@ -462,12 +462,12 @@ fn oklchRgb(l: f32, c: f32, h: f32) -> vec3f {
 fn stripColor(p: Prim, r: f32) -> vec3f {
   let mode = i32(p.extra.x + 0.5);
   if (mode == 0) { return oklchRgb(p.aux.x, p.aux.y, r * 360.0); }
-  if (mode == 1) { return oklchRgb(p.aux.x, r * 0.37, p.aux.z); }
+  if (mode == 1) { return oklchRgb(p.aux.x, r * p.aux.w, p.aux.z); }
   return oklchRgb(r, p.aux.y, p.aux.z);
 }
 
 // kind 9: OKLCH strip. Like the DOM's gradient: 25 stops, a radius (extra.y) in from each end,
-// blended in sRGB; past where sRGB runs out (aux.w) the bg (aux2) veils it. color2 rims it.
+// blended in sRGB; the C strip (mode 1) spans 0 to maxChroma(l, h) (aux.w). color2 rims it.
 fn shadeStrip(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let dist = roundedBox(local, size, size.y * 0.5);
   let cov = covSd(dist);
@@ -475,12 +475,7 @@ fn shadeStrip(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let r = clamp((local.x - p.extra.y) / max(1.0, size.x - p.extra.y * 2.0), 0.0, 1.0);
   let f = r * 24.0;
   let i = min(floor(f), 23.0);
-  var rgb = mix(stripColor(p, i / 24.0), stripColor(p, (i + 1.0) / 24.0), f - i);
-  let veilX = p.extra.y + (size.x - p.extra.y * 2.0) * p.aux.w;
-  if (p.aux.w < 1.0) {
-    let veil = clamp(0.5 + (local.x - veilX) * view.dpr, 0.0, 1.0) * p.aux2.a;
-    rgb = mix(rgb, p.aux2.rgb, veil);
-  }
+  let rgb = mix(stripColor(p, i / 24.0), stripColor(p, (i + 1.0) / 24.0), f - i);
   var out = vec4f(rgb * p.color.a, p.color.a) * cov;
   out = over(out, premul(p.color2) * hairline(dist, 1.0));
   return out;

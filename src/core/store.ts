@@ -474,6 +474,14 @@ export function defineControls<const S extends Schema>(
     }
     return changed ? { next: Object.freeze(out) as Values<S>, diff } : null
   }
+  const markChanged = (diff: Record<string, unknown>) => {
+    if (echo > 0) {
+      const at = now()
+      for (const k of Object.keys(diff)) changedAt.set(k, at)
+      scheduleEcho()
+    }
+    for (const k of Object.keys(diff)) pending.delete(k)
+  }
   function set(
     patch: Partial<Values<S>>,
     setOpts?: { coalesce?: boolean; source?: ChangeSource; key?: string; group?: string },
@@ -489,12 +497,7 @@ export function defineControls<const S extends Schema>(
       if (past.length > HISTORY) past.shift()
     }
     future.length = 0
-    if (echo > 0) {
-      const at = now()
-      for (const k of Object.keys(diff)) changedAt.set(k, at)
-      scheduleEcho()
-    }
-    for (const k of Object.keys(diff)) pending.delete(k)
+    markChanged(diff)
     commit(next)
     options.onChange?.(diff as Partial<Values<S>>, next, {
       source: setOpts?.source ?? "local",
@@ -550,6 +553,7 @@ export function defineControls<const S extends Schema>(
     future.length = 0
     changedAt.clear()
     for (const k of [...pending.keys()]) if (!grabbed.has(k)) pending.delete(k)
+    scheduleEcho()
   }
   function announce(land: boolean) {
     landing = land
@@ -680,18 +684,22 @@ export function defineControls<const S extends Schema>(
       const previous = past.pop()
       if (!previous) return
       const before = load()
+      const diff = changes(before, previous)
       future.push(before)
+      markChanged(diff as Record<string, unknown>)
       commit(previous)
-      options.onChange?.(changes(before, previous), previous, { source: "undo" })
+      options.onChange?.(diff, previous, { source: "undo" })
     },
     redo() {
       release()
       const next = future.pop()
       if (!next) return
       const before = load()
+      const diff = changes(before, next)
       past.push(before)
+      markChanged(diff as Record<string, unknown>)
       commit(next)
-      options.onChange?.(changes(before, next), next, { source: "redo" })
+      options.onChange?.(diff, next, { source: "redo" })
     },
     getServerSnapshot: () => locked,
     subscribe(cb) {

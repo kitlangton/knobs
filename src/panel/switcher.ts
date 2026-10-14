@@ -1,10 +1,8 @@
-import { equal, type Choice, type Schema, type Values } from "../core/schema.js"
+import type { ChoiceKey } from "../core/adapter.js"
+import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 
-export type ChoiceKey<S extends Schema> = {
-  [K in keyof S]: S[K] extends Choice ? K : never
-}[keyof S] &
-  string
+export type { ChoiceKey }
 
 export interface SwitcherOptions<S extends Schema> {
   readonly field?: ChoiceKey<S>

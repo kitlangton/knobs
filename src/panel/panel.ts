@@ -463,7 +463,9 @@ function buildPanel<S extends Schema>(
     // On a page, the group's numbered presets sit in its header; hovering one shows its name
     // where the title is.
     const presets = page ? (controls.groupPresets[groupName] ?? []).slice(0, 9) : []
-    let chips: { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges } | undefined
+    let chips:
+      | { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges; ro: ResizeObserver }
+      | undefined
     const gPeek = el("span")
     gPeek.className = "knobs-peek"
     gPeek.setAttribute("aria-hidden", "true")
@@ -490,10 +492,11 @@ function buildPanel<S extends Schema>(
         seg.append(b)
         return b
       })
-      new ResizeObserver(() =>
+      const ro = new ResizeObserver(() =>
         placeSegPill(seg, buttons, String(controls.matchingGroupPreset(groupName)), true),
-      ).observe(seg)
-      chips = { seg, buttons, pill: new Edges() }
+      )
+      ro.observe(seg)
+      chips = { seg, buttons, pill: new Edges(), ro }
       groupChips.set(groupName, chips)
       gRight.append(seg)
     }
@@ -517,7 +520,7 @@ function buildPanel<S extends Schema>(
   }
   const groupChips = new Map<
     string,
-    { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges }
+    { seg: HTMLElement; buttons: HTMLButtonElement[]; pill: Edges; ro: ResizeObserver }
   >()
   const peekTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** Shows a preset's name in place of its group's title (null brings the title back). */
@@ -928,6 +931,8 @@ function buildPanel<S extends Schema>(
   }
   const dropGpu = (row: Row) => {
     row.dispose?.()
+    row.slider?.dispose()
+    row.editor?.dispose()
     for (const g of row.gpu) {
       const at = gpuRows.indexOf(g)
       if (at >= 0) gpuRows.splice(at, 1)
@@ -950,6 +955,7 @@ function buildPanel<S extends Schema>(
       groupResetButtons.delete(block.group)
       groupDice.get(block.group)?.die.dispose()
       groupDice.delete(block.group)
+      groupChips.get(block.group)?.ro.disconnect()
       groupChips.delete(block.group)
     }
   }
@@ -1953,7 +1959,7 @@ function buildPanel<S extends Schema>(
     // Focus leaving for somewhere else on the page is forgotten; the window losing it isn't.
     root.addEventListener("focusout", () =>
       setTimeout(() => {
-        if (!doc.hasFocus() || root.contains(doc.activeElement)) return
+        if (!root.isConnected || !doc.hasFocus() || root.contains(doc.activeElement)) return
         if (readSession(controls.id).focus?.inline === inline)
           writeSession(controls.id, { focus: undefined })
       }),
@@ -1966,6 +1972,7 @@ function buildPanel<S extends Schema>(
   const endScrub = () => {
     pressAt = undefined
     if (html.hasAttribute("data-knobs-scrub")) html.removeAttribute("data-knobs-scrub")
+    setTimeout(letGo)
   }
   root.addEventListener("pointerdown", (e) => (pressAt = [e.clientX, e.clientY]), true)
   root.addEventListener(
@@ -2016,9 +2023,10 @@ function buildPanel<S extends Schema>(
     const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
     win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
   }
-  const headSize = new ResizeObserver(() =>
-    root.style.setProperty("--k-head-h", `${Math.round(header.getBoundingClientRect().height)}px`),
-  )
+  const headSize = new ResizeObserver(() => {
+    header.toggleAttribute("data-narrow", header.clientWidth > 0 && header.clientWidth < 560)
+    root.style.setProperty("--k-head-h", `${Math.round(header.getBoundingClientRect().height)}px`)
+  })
   // Cards that change size (an editor opening, a custom card's content) move the ones below.
   const tileSizes = new ResizeObserver(() => {
     layoutTick++
@@ -2224,6 +2232,9 @@ function buildPanel<S extends Schema>(
     dispose() {
       clearTimeout(statusTimer)
       for (const t of peekTimers.values()) clearTimeout(t)
+      for (const r of [...rows, ...leavingRows]) dropGpu(r)
+      for (const c of groupChips.values()) c.ro.disconnect()
+      presetStrip.dispose()
       layout?.dispose()
       tileSizes.disconnect()
       headSize.disconnect()
@@ -2240,6 +2251,7 @@ function buildPanel<S extends Schema>(
       rowsObserver.disconnect()
       doc.defaultView?.cancelAnimationFrame(landTimer)
       for (const k of inHand) controls.hold(k, false)
+      inHand.clear()
       positioned?.dispose()
       die.dispose()
       for (const g of groupDice.values()) g.die.dispose()

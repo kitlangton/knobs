@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { createEffect, createRoot as createSolidRoot } from "solid-js"
-import { choice, createRemoteControls, defineControls, knob } from "knobs"
-import { Knobs, KnobsPanel, useControls, VariantSwitcher } from "knobs/react"
+import { choice, createRemoteControls, defineControls, knob, type ControlDescriptor } from "knobs"
+import { Knobs, KnobsPanel, useControls, useModified, useValue, VariantSwitcher } from "knobs/react"
 import { useControls as useSolidControls } from "knobs/solid"
+import { problemsPreset } from "knobs/themes"
 
 // Browser contract fixture: server snapshots, nested ownership, and attachment cleanup.
 const outer = defineControls(
@@ -75,6 +76,15 @@ const remote = createRemoteControls(
   },
 )
 
+const embedSets: Record<string, ControlDescriptor[]> = {
+  a: [{ key: "width", label: "Width", kind: "number", default: 100, min: 50, max: 200, step: 10 }],
+  b: [{ key: "radius", label: "Radius", kind: "number", default: 8, min: 0, max: 24, step: 2 }],
+}
+const embedded = createRemoteControls("react-embed", embedSets.a!, {
+  nullDefaults: false,
+  storage: null,
+})
+
 function SolidMirror() {
   const host = useRef<HTMLOutputElement>(null)
   useEffect(() => {
@@ -95,10 +105,14 @@ function SolidMirror() {
 function App() {
   const a = useControls(outer),
     b = useControls(inner)
+  const outerSize = useValue(outer, "size")
+  const outerMod = useModified(outer)
   const [shown, setShown] = useState(true)
   const [showRemote, setShowRemote] = useState(false)
+  const [embedItem, setEmbedItem] = useState<"a" | "b">("a")
   const [refAttached, setRefAttached] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const focusEmbed = useRef<() => void>(() => {})
   return (
     <>
       <button type="button" onClick={() => setShown((v) => !v)}>
@@ -113,6 +127,9 @@ function App() {
       <output data-ref>{String(refAttached)}</output>
       <output data-outer>
         {a.flavor}:{a.size}
+      </output>
+      <output data-outer-meta>
+        {outerSize}:{String(outerMod)}
       </output>
       <output data-inner>{b.flavor}</output>
       {shown && (
@@ -132,6 +149,26 @@ function App() {
         <div>
           <SolidMirror />
           <KnobsPanel controls={remote} variants={false} />
+          <button type="button" onClick={() => setEmbedItem((v) => (v === "a" ? "b" : "a"))}>
+            Swap embed
+          </button>
+          <button type="button" onClick={() => focusEmbed.current()}>
+            Focus embed
+          </button>
+          <KnobsPanel
+            controls={embedded}
+            descriptors={embedSets[embedItem]}
+            values={embedItem === "a" ? { width: 140 } : { radius: 16 }}
+            land={embedItem === "b"}
+            header={false}
+            variants={false}
+            marks={false}
+            preset={problemsPreset}
+            keys={{ random: false, vim: false, bigStep: 3 }}
+            onReady={(p) => {
+              focusEmbed.current = () => p.focus()
+            }}
+          />
         </div>
       )}
       <VariantSwitcher controls={outer} label="Saved">

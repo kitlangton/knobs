@@ -1,4 +1,4 @@
 "use client"
-export { useControls } from "./useControls.js"
-export { Knobs, KnobsPanel, useKnobs } from "./Knobs.js"
+export { useControls, useModified, useValue } from "./useControls.js"
+export { Knobs, KnobsPanel, useKnobs, type KnobsPanelProps } from "./Knobs.js"
 export { VariantSwitcher } from "./VariantSwitcher.js"

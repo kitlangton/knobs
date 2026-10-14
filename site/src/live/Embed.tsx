@@ -1,6 +1,7 @@
 import { createRemoteControls, type ControlDescriptor, type State } from "knobs"
+import { KnobsPanel } from "knobs/react"
 import { problemsPreset } from "knobs/themes"
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react"
+import { useRef, useState, useSyncExternalStore, type CSSProperties } from "react"
 
 // An app that owns its values: three items, each with its own parameters, saved to a pretend
 // server that echoes a moment later. The panel shows whichever item is selected.
@@ -79,7 +80,10 @@ function write(key: string, value: number) {
   const id = items[current]!.id
   saved = { ...saved, [id]: { ...saved[id], [key]: value } }
   emit()
-  setTimeout(() => remote.update(items[current]!.descriptors, saved[items[current]!.id]), 300)
+  setTimeout(() => {
+    saved = { ...saved, [id]: { ...saved[id] } }
+    emit()
+  }, 300)
 }
 
 const remote = createRemoteControls("embedded", items[0]!.descriptors, {
@@ -108,35 +112,16 @@ function useSaved() {
 
 export default function EmbedDemo() {
   const [index, setIndex] = useState(0)
+  const last = useRef(0)
+  const switched = last.current !== index
+  last.current = index
   const all = useSaved()
-  const host = useRef<HTMLDivElement>(null)
   const item = items[index]!
   const v = all[item.id]! as Record<string, number>
-
-  useEffect(() => {
-    let disposed = false
-    let dispose = () => {}
-    void import("knobs/panel").then(({ mountPanel }) => {
-      if (disposed || !host.current) return
-      const panel = mountPanel(remote, host.current, {
-        header: false,
-        variants: false,
-        preset: problemsPreset,
-        theme: "auto",
-      })
-      dispose = () => panel.dispose()
-    })
-    return () => {
-      disposed = true
-      dispose()
-    }
-  }, [])
 
   const choose = (next: number) => {
     current = next
     setIndex(next)
-    // Another item arrived: its rows swap in place and its values land without springing.
-    remote.update(items[next]!.descriptors, saved[items[next]!.id], { land: true })
   }
 
   const shape: CSSProperties = {
@@ -166,7 +151,18 @@ export default function EmbedDemo() {
         </div>
         <span className="demo-caption">The app owns these values; the panel reports edits</span>
       </div>
-      <div className="demo-panel embed-panel" ref={host} />
+      <div className="demo-panel embed-panel">
+        <KnobsPanel
+          controls={remote}
+          descriptors={item.descriptors}
+          values={v}
+          land={switched}
+          header={false}
+          variants={false}
+          preset={problemsPreset}
+          theme="auto"
+        />
+      </div>
     </div>
   )
 }
