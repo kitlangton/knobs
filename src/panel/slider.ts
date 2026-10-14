@@ -124,6 +124,9 @@ export function createSlider(
   const value = el("button", "knobs-value")
   value.type = "button"
   value.tabIndex = -1
+  // A pointer shortcut into the inline editor; the slider itself carries the value for assistive
+  // tech (aria-valuetext), and typing a digit opens the same editor.
+  value.setAttribute("aria-hidden", "true")
   const digits = el("span", "knobs-digits")
   value.append(digits)
   const unit = el("span", "knobs-unit")
@@ -152,7 +155,6 @@ export function createSlider(
     notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
     marks.replaceChildren(...ticks, notch)
     if (label.textContent !== display) label.textContent = display
-    value.setAttribute("aria-label", `Edit ${display}`)
     unit.textContent = field.unit ?? ""
     if (field.unit) {
       if (!unit.isConnected) value.append(unit)

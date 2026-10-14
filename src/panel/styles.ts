@@ -57,7 +57,7 @@ const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.5);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
   --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
-  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;--k-page:#e6e6eb;
+  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;--k-page:#e6e6eb;--k-group-ink:var(--k-dim);
   color-scheme:light;`
 
 const defaultsCss = `
@@ -70,6 +70,7 @@ const defaultsCss = `
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
   --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-toggle-thumb:var(--k-bg);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
   --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;--k-page:#101012;
+  --k-group-ink:rgba(255,255,255,.48);
   --k-unit:4px;--k-density:1;--k-width:288px;--k-row:round(calc(32px * var(--k-density)),2px);--k-pad:round(calc(10px * var(--k-density)),2px);--k-inset:var(--k-pad);--k-gap:round(calc(var(--k-unit) * var(--k-density)),1px);--k-radius:round(calc(8px * var(--k-density)),2px);--k-panel-radius:calc(var(--k-radius) + var(--k-unit));
   --k-font-size:round(calc(12px * var(--k-density)),.5px);--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
@@ -113,7 +114,7 @@ const css = `
   --k-fill-active:color-mix(in srgb,var(--k-accent) var(--k-fill-active-mix),var(--k-fill-base));
   --k-disabled-opacity:.32;
   --k-unit-gap:.28em;--k-unit-color:var(--k-dim);--k-readout-mark:0;
-  --k-group-size:var(--k-text-cap);--k-group-color:var(--k-dim);--k-group-inset:var(--k-inset);--k-group-tracking:.04em;--k-group-divider:transparent;--k-group-divider-gap:0px;
+  --k-group-size:var(--k-text-cap);--k-group-color:var(--k-group-ink);--k-group-inset:var(--k-inset);--k-group-tracking:.04em;--k-group-divider:transparent;--k-group-divider-gap:0px;
   --k-curve-inset:6px;--k-curve-guide:solid;--k-curve-dot:1;
   --k-hint-typed-opacity:.42;
 }
