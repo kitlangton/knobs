@@ -406,3 +406,13 @@ a:focus-visible,
   height: 34px;
   margin: -17px;
 }
+/* The meta page writes tokens on its stage too; the specimen's wave and corners glide with the panels. */
+.meta-grid {
+  transition:
+    --k-accent var(--k-meta-t),
+    --k-panel-radius var(--k-meta-t);
+  --k-meta-t: calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease);
+}
+:root[data-knobs-scrub] .meta-grid {
+  --k-meta-t: 90ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}

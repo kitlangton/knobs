@@ -236,22 +236,35 @@ export function formatTokensCss(v: MetaValues): string {
   return [":root {", ...tokensFor(v).map(([k, val]) => `  ${k}: ${val};`), "}"].join("\n")
 }
 
-// Tokens go on the panels too, so they win over the built-in light theme's own values.
+// Tokens are written inline on the elements that use them (the stage and every panel and chip),
+// not on :root, so a change restyles those subtrees rather than the whole document. Writing them on
+// the panels themselves also wins over the built-in light theme's own values. Only changed tokens
+// are written; panels and chips that appear later get the full set before their first frame.
+let appliedTokens: [string, string][] = []
+const scopeSelector = ".meta-grid, .knobs-panel, .knobs-chip"
+const isScope = (node: Node): node is HTMLElement =>
+  node instanceof HTMLElement && node.matches(scopeSelector)
+function writeTokens(el: HTMLElement, tokens: readonly [string, string][]) {
+  for (const [k, val] of tokens) el.style.setProperty(k, val)
+}
+let scopeObserver: MutationObserver | undefined
 function applyTokensToDocument(v: MetaValues) {
   const root = document.documentElement
   const nextTheme = resolveThemeIsLight(v.theme) ? "light" : "dark"
   if (root.dataset.knobsTheme !== nextTheme) root.dataset.knobsTheme = nextTheme
-  let style = document.querySelector<HTMLStyleElement>("style[data-meta-tokens]")
-  if (!style) {
-    style = document.createElement("style")
-    style.dataset.metaTokens = ""
-    document.head.append(style)
-  }
-  const body = tokensFor(v)
-    .map(([k, val]) => `${k}:${val};`)
-    .join("")
-  const nextCss = `:root,:root .knobs-panel,:root .knobs-chip{${body}}`
-  if (style.textContent !== nextCss) style.textContent = nextCss
+  const tokens = tokensFor(v)
+  const changed = tokens.filter(
+    ([k, val], i) => appliedTokens[i]?.[0] !== k || appliedTokens[i]?.[1] !== val,
+  )
+  appliedTokens = tokens
+  if (changed.length)
+    for (const el of document.querySelectorAll<HTMLElement>(scopeSelector)) writeTokens(el, changed)
+  if (scopeObserver) return
+  scopeObserver = new MutationObserver((records) => {
+    for (const record of records)
+      for (const node of record.addedNodes) if (isScope(node)) writeTokens(node, appliedTokens)
+  })
+  scopeObserver.observe(document.body, { childList: true, subtree: true })
 }
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {

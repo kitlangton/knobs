@@ -71,6 +71,13 @@ try {
   await report("group reset in")
   await synth.getByRole("button", { name: "Reset Filter" }).click()
   await report("group reset out")
+  // Token transitions keep the loop awake only while they run.
+  const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
+  await tokens.getByRole("slider", { name: "Panel padding" }).focus()
+  await page.keyboard.press("Shift+ArrowRight")
+  await report("token glide")
+  await tokens.getByRole("radio", { name: "paper" }).click()
+  await report("theme glide")
 
   // The compound editors: springs with their dot, disclosure rows, strips, pad and curve handles.
   await page.goto(`http://127.0.0.1:${port}/?gpu`)
