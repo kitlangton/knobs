@@ -1,5 +1,8 @@
 export const ATLAS_SIZE = 2048
 
+const quantizePx = (px: number) => Math.round(px * 4) / 4
+const quantizeWeight = (weight: number) => Math.round(weight / 10) * 10
+
 export interface AtlasEntry {
   readonly uv: readonly [number, number, number, number]
   readonly w: number
@@ -62,15 +65,26 @@ export class LabelAtlas {
     return quantized
   }
 
+  /**
+   * Starts a frame: a nearly full atlas is cleared now rather than midway through a frame, which
+   * would strand glyphs already placed. Gliding font sizes and weights fill it fastest.
+   */
+  beginFrame() {
+    if (this.ly > ATLAS_SIZE * 0.7) this.clear()
+  }
+
   get(
     text: string,
-    px: number,
-    weight: number,
+    rawPx: number,
+    rawWeight: number,
     family: string,
     scaleFactor = 2,
     letterSpacingEm = 0,
   ): AtlasEntry {
     const scale = this.ensureScale(scaleFactor)
+    // A gliding size or weight rasterizes at quarter-pixel and 10-unit steps, not every frame.
+    const px = quantizePx(rawPx)
+    const weight = quantizeWeight(rawWeight)
     const key = `${text}|${px}|${weight}|${family}|${scale}|${letterSpacingEm}`
     const hit = this.map.get(key)
     if (hit) return hit
@@ -134,7 +148,9 @@ export class LabelAtlas {
 
   private readonly widths = new Map<string, number>()
   /** Advance width (CSS px) of `text`, measured with the browser's shaping, without rasterizing. */
-  measure(text: string, px: number, weight: number, family: string): number {
+  measure(text: string, rawPx: number, rawWeight: number, family: string): number {
+    const px = quantizePx(rawPx)
+    const weight = quantizeWeight(rawWeight)
     const key = `${text}|${px}|${weight}|${family}`
     const hit = this.widths.get(key)
     if (hit !== undefined) return hit

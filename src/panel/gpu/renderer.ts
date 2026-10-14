@@ -326,6 +326,13 @@ class GpuOverlayManager {
 
   private styleVersion = 1
   private layoutVersion = 1
+  /** Token transitions running on each panel (CSS `transitionrun` minus `transitionend`/`cancel`). */
+  private readonly tokenRuns = new Map<GpuPanelBinding, number>()
+  private tokenEventAt = 0
+  private readonly pillAnchors = new WeakMap<
+    Edges,
+    { el: Element; left: number; right: number; top: number }
+  >()
   private readonly openUntil = new WeakMap<GpuPanelBinding, number>()
   private readonly rectCache = new WeakMap<
     Element,
@@ -350,8 +357,6 @@ class GpuOverlayManager {
   /** Panel opacity (CSS open/close fades), applied to every primitive of the current panel. */
   private curAlpha = 1
   private curDt = 0
-  /** Colors ease toward new token values so theme and meta-page changes cross-fade. */
-  private readonly shownTokens = new WeakMap<GpuPanelBinding, PanelThemeTokens>()
   /** Small eased scalars keyed by an object and a slot (e.g. a row's "hover" or "focus"). */
   private readonly eased = new WeakMap<object, Map<string, Spring>>()
   private easeMoving = false
@@ -425,6 +430,22 @@ class GpuOverlayManager {
       attributes: true,
       attributeFilter: ["data-theme", "data-density", "style"],
     })
+    // Token changes glide as CSS transitions on the panel; while any runs, every frame reads the
+    // in-between tokens and fresh rects, then the loop can sleep again.
+    const onTokenEvent = (event: TransitionEvent) => {
+      if (event.target !== panel.root || !event.propertyName.startsWith("--k-")) return
+      this.tokenEventAt = performance.now()
+      const runs = (this.tokenRuns.get(panel) ?? 0) + (event.type === "transitionrun" ? 1 : -1)
+      if (runs > 0) this.tokenRuns.set(panel, runs)
+      else {
+        this.tokenRuns.delete(panel)
+        this.styleVersion++
+        this.layoutVersion++
+      }
+      this.wake()
+    }
+    const tokenEvents = ["transitionrun", "transitionend", "transitioncancel"] as const
+    for (const type of tokenEvents) panel.root.addEventListener(type, onTokenEvent)
     void this.ensureInitialized().then((ok) => {
       if (!this.panels.has(panel)) return
       panel.root.dataset.gpuActive = ok ? "true" : "false"
@@ -434,6 +455,8 @@ class GpuOverlayManager {
     return () => {
       ro.disconnect()
       mo.disconnect()
+      for (const type of tokenEvents) panel.root.removeEventListener(type, onTokenEvent)
+      this.tokenRuns.delete(panel)
       this.panels.delete(panel)
       this.backdrops.get(panel)?.remove()
       this.backdrops.delete(panel)
@@ -843,6 +866,21 @@ class GpuOverlayManager {
     return sp.x
   }
 
+  /**
+   * Carries a pill along when layout moves its selected button (a token transition, a resize), so
+   * only a change of selection animates, as in the DOM, which snaps its pills on resize.
+   */
+  private carry(pe: Edges, el: Element, left: number, right: number, y?: Spring, top = 0) {
+    const prev = this.pillAnchors.get(pe)
+    this.pillAnchors.set(pe, { el, left, right, top })
+    if (!prev || prev.el !== el) return
+    if (left !== prev.left || right !== prev.right) pe.shift(left - prev.left, right - prev.right)
+    if (y && top !== prev.top) {
+      y.x += top - prev.top
+      y.target += top - prev.top
+    }
+  }
+
   private rectOf(el: HTMLElement | SVGElement, subKey = 0): DOMRect {
     const pRect = this.curPanelRect
     if (
@@ -908,35 +946,6 @@ class GpuOverlayManager {
   /** A control's hover/press wash, faded in and out over the DOM's 0.15 s. */
   private wash(el: object, on: boolean) {
     return this.ease(el, "wash", on ? 1 : 0, 30)
-  }
-
-  private smoothTokens(
-    panel: GpuPanelBinding,
-    next: PanelThemeTokens,
-    dt: number,
-  ): PanelThemeTokens {
-    const prev = this.shownTokens.get(panel)
-    if (!prev || prev === next || dt <= 0) {
-      this.shownTokens.set(panel, next)
-      return next
-    }
-    const k = 1 - Math.exp(-dt * 16)
-    let moving = false
-    const out: Record<string, unknown> = { ...next }
-    for (const [key, value] of Object.entries(next)) {
-      const from = (prev as unknown as Record<string, unknown>)[key]
-      if (!Array.isArray(value) || !Array.isArray(from)) continue
-      const mixed = value.map((v: number, i: number) => {
-        const f = from[i] as number
-        if (Math.abs(v - f) > 0.002) moving = true
-        return f + (v - f) * k
-      })
-      out[key] = mixed
-    }
-    if (moving) this.easeMoving = true
-    const shown = out as unknown as PanelThemeTokens
-    this.shownTokens.set(panel, moving ? shown : next)
-    return moving ? shown : next
   }
 
   private drawRowLabel(
@@ -1706,6 +1715,7 @@ class GpuOverlayManager {
     this.pointCount = 0
     this.curScale = scale
     this.hotRows.clear()
+    this.atlas.beginFrame()
     let anyMoving = false
     const win = this.win
     const activeEl = this.doc.activeElement
@@ -1714,6 +1724,14 @@ class GpuOverlayManager {
     const clock = performance.now()
     const revealing = isAnyRevealing()
     const revealVer = getRevealVersion()
+    // A lost end event can't keep the loop awake: no token spring runs this long.
+    if (this.tokenRuns.size > 0 && clock - this.tokenEventAt > 4000) this.tokenRuns.clear()
+    const tokensMoving = this.tokenRuns.size > 0
+    if (tokensMoving) {
+      this.styleVersion++
+      this.layoutVersion++
+      anyMoving = true
+    }
 
     const drawn: DOMRect[] = []
     const orderedPanels = [...this.panels].sort((a, b) => {
@@ -1749,9 +1767,10 @@ class GpuOverlayManager {
       const leaving = panel.root.dataset.leaving === "true"
       const panelRevealing = revealing && isRevealingIn(panel.root)
       const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
-      this.curBypassRectCache = opening || leaving || (panelRevealing && !bodyRevealing)
+      this.curBypassRectCache =
+        opening || leaving || (panelRevealing && !bodyRevealing) || this.tokenRuns.has(panel)
 
-      const tokens = this.smoothTokens(panel, rawTokens, reducedMotion ? 0 : dt)
+      const tokens = rawTokens
       this.curTokens = tokens
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion
@@ -1896,6 +1915,7 @@ class GpuOverlayManager {
           const left = activeBtnRect.left - trackRect.left
           const right = left + Math.max(20, activeBtnRect.width)
           const top = activeBtnRect.top - trackRect.top
+          this.carry(pe, activeBtn, left, right, ps.pillY, top)
           if (reducedMotion || pe.end.x - pe.start.x <= 1) {
             pe.snap(left, right)
             ps.pillY.snap(top)
@@ -2275,6 +2295,7 @@ class GpuOverlayManager {
             const left = activeBr.left - segRect.left
             const right = left + activeBr.width
             const pe = row.pill
+            this.carry(pe, activeBtn, left, right)
             if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
             else {
               pe.to(left, right, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)

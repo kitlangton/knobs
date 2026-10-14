@@ -12,6 +12,38 @@ const TRAIL_T = `calc(${trail.ms}ms * (.6 + .4 * clamp(0, var(--k-blur), 2))) va
 const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
 
+// Every token animates when it changes (a theme, a preset, the meta page tuning itself): each is
+// registered with a type so the browser can interpolate it, and panels transition them on the
+// panel spring. Children inherit the in-between values, and the GPU overlay reads them each frame.
+const COLOR_TOKENS = [
+  "bg",
+  "surface",
+  "surface-hi",
+  "line",
+  "line-hi",
+  "text",
+  "label",
+  "dim",
+  "accent",
+  "modified",
+  "seg-bg",
+  "seg-active",
+  "toggle-track",
+  "rim",
+]
+const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "font-size"]
+const NUMBER_TOKENS = ["label-weight", "blur", "glow", "glass", "glass-tone"]
+/** Token names that animate, for the GPU overlay's transition tracking. */
+export const ANIMATED_TOKENS = [...COLOR_TOKENS, ...LENGTH_TOKENS, ...NUMBER_TOKENS, "width"].map(
+  (t) => `--k-${t}`,
+)
+const TOKEN_T = "var(--k-token-t)"
+const TOKEN_TRANSITIONS = ANIMATED_TOKENS.map((t) => `${t} ${TOKEN_T}`).join(",")
+const register = (names: readonly string[], syntax: string, initial: string) =>
+  names
+    .map((n) => `@property --k-${n}{syntax:"${syntax}";inherits:true;initial-value:${initial}}`)
+    .join("\n")
+
 const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,.05);--k-surface-hi:rgba(0,0,0,.095);--k-line:rgba(0,0,0,.1);--k-line-hi:rgba(0,0,0,.2);
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.44);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
@@ -24,6 +56,10 @@ const css = `
 @property --k-fill-mix{syntax:"<percentage>";inherits:false;initial-value:20%}
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
 @property --k-speed{syntax:"<number>";inherits:true;initial-value:0}
+${register(COLOR_TOKENS, "<color>", "transparent")}
+${register(LENGTH_TOKENS, "<length>", "0px")}
+${register(NUMBER_TOKENS, "<number>", "0")}
+@property --k-width{syntax:"<length-percentage>";inherits:true;initial-value:288px}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-surface:rgba(255,255,255,.055);--k-surface-hi:rgba(255,255,255,.11);--k-line:rgba(255,255,255,.1);--k-line-hi:rgba(255,255,255,.18);
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -55,16 +91,21 @@ const css = `
 .knobs-mono{font-family:var(--k-mono);font-variant-numeric:tabular-nums}
 
 .knobs-chip{position:fixed;z-index:2147480000;padding:4px 9px;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid var(--k-line);
-  color:var(--k-label);font-size:11.5px;letter-spacing:.01em;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s;}
+  color:var(--k-label);font-size:11.5px;letter-spacing:.01em;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,${TOKEN_TRANSITIONS};}
 .knobs-chip:hover{color:var(--k-text);border-color:var(--k-line-hi)}
-.knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),visibility 0s}
-.knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s}
+.knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),visibility 0s,${TOKEN_TRANSITIONS}}
+.knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s,${TOKEN_TRANSITIONS}}
 .knobs-chip:focus-visible{outline:none;color:var(--k-text);border-color:var(--k-line-hi)}
 
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
    contrast; a 1px specular rim catches the top edge. */
-.knobs-panel{transition:background-color .25s,border-color .25s,color .25s;position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
+/* Tokens glide on the panel spring; while a control is being dragged (data-knobs-scrub) each step
+   takes a short ease instead, so a token slider still tracks the pointer. */
+.knobs-panel,.knobs-chip{--k-token-t:calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)}
+:root[data-knobs-scrub] :is(.knobs-panel,.knobs-chip){--k-token-t:90ms cubic-bezier(.2,.8,.2,1)}
+@media(prefers-reduced-motion:reduce){.knobs-panel,.knobs-chip{--k-token-t:0s}}
+.knobs-panel{transition:${TOKEN_TRANSITIONS};position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
   background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);scrollbar-width:thin;
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);

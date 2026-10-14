@@ -381,7 +381,9 @@ function buildPanel<S extends Schema>(
         return b
       })
       seg.tabIndex = 0
-      new ResizeObserver(() => placeSegPill(seg, buttons, String(controls.get()[key]))).observe(seg)
+      new ResizeObserver(() =>
+        placeSegPill(seg, buttons, String(controls.get()[key]), true),
+      ).observe(seg)
       row.append(seg)
       host.append(row)
       gpuRows.push({
@@ -512,7 +514,12 @@ function buildPanel<S extends Schema>(
 
   // The selected choice's background is one pill that slides between options (the GPU renderer
   // springs its own copy). The first placement doesn't animate.
-  function placeSegPill(seg: HTMLElement, buttons: readonly HTMLButtonElement[], value: string) {
+  function placeSegPill(
+    seg: HTMLElement,
+    buttons: readonly HTMLButtonElement[],
+    value: string,
+    resized = false,
+  ) {
     let active: HTMLButtonElement | undefined
     for (const b of buttons) {
       const on = b.dataset.value === value
@@ -521,8 +528,10 @@ function buildPanel<S extends Schema>(
     }
     const pill = seg.querySelector<HTMLElement>(".knobs-seg-pill")
     if (!pill || !active) return
-    // Placed by its edges, so the edge facing the move can lead (see .knobs-seg-pill).
-    const first = !pill.dataset.placed
+    // Placed by its edges, so the edge facing the move can lead (see .knobs-seg-pill). A resize
+    // (a token gliding) carries the pill with its option instead of animating it.
+    const first = !pill.dataset.placed || (resized && pill.dataset.value === value)
+    pill.dataset.value = value
     const left = active.offsetLeft
     const at = parseFloat(pill.style.left)
     if (first) pill.style.transition = "none"
@@ -804,6 +813,26 @@ function buildPanel<S extends Schema>(
     }
   }
   root.onpointerdown = raise
+  // While a control is dragged, token transitions shorten (see --k-token-t) so a slider that
+  // tunes the panel itself still tracks the pointer. Releasing restores the spring first.
+  const html = doc.documentElement
+  let pressAt: [number, number] | undefined
+  const endScrub = () => {
+    pressAt = undefined
+    if (html.hasAttribute("data-knobs-scrub")) html.removeAttribute("data-knobs-scrub")
+  }
+  root.addEventListener("pointerdown", (e) => (pressAt = [e.clientX, e.clientY]), true)
+  root.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!pressAt || !(e.buttons & 1) || html.hasAttribute("data-knobs-scrub")) return
+      if (Math.abs(e.clientX - pressAt[0]) + Math.abs(e.clientY - pressAt[1]) < 3) return
+      html.setAttribute("data-knobs-scrub", "")
+    },
+    true,
+  )
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+    root.addEventListener(type, endScrub, true)
   root.addEventListener("focusin", raise)
   const unsubscribe = controls.subscribe(update)
   update()
@@ -888,6 +917,7 @@ function buildPanel<S extends Schema>(
     },
     dispose() {
       clearTimeout(statusTimer)
+      endScrub()
       hintCtrl.stop()
       modeObserver.disconnect()
       unregisterGpu?.()

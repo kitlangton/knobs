@@ -36,6 +36,14 @@ export class Edges {
     this.end.set(end, delay)
     return this
   }
+  /** Moves both edges and their targets by the same distance, keeping any motion in flight. */
+  shift(ds: number, de: number) {
+    this.start.x += ds
+    this.start.target += ds
+    this.end.x += de
+    this.end.target += de
+    return this
+  }
   snap(start: number, end: number) {
     this.start.snap(start)
     this.end.snap(end)
