@@ -12,7 +12,7 @@ function trackErrors(page: Page) {
 /** Scrolls the whole page in steps so every lazy example mounts and every section enters. */
 async function scrollThrough(page: Page) {
   const height = await page.evaluate(() => document.body.scrollHeight)
-  for (let y = 0; y <= height; y += 600) {
+  for (let y = 0; y <= height + 600; y += 600) {
     await page.evaluate((top) => scrollTo({ top, behavior: "instant" }), y)
     await page.waitForTimeout(60)
   }

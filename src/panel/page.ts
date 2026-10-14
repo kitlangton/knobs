@@ -850,6 +850,10 @@ export function createCustomCard(
     return row
   }
   const item = (o: PageItem) => fill(el("div", "knobs-row knobs-item"), o)
+  const choices: { dispose(): void }[] = []
+  const disposeChoices = () => {
+    while (choices.length) choices.pop()!.dispose()
+  }
 
   return {
     element: tile,
@@ -882,6 +886,7 @@ export function createCustomCard(
         },
         wake: hooks.wake,
       })
+      choices.push(control)
       for (const node of [control.seg, control.menu]) {
         node.dataset.knobsStop = ""
         node.addEventListener("keydown", (event) => {
@@ -1129,10 +1134,12 @@ export function createCustomCard(
       hooks.wake()
     },
     clear() {
+      disposeChoices()
       body.replaceChildren()
       hooks.wake()
     },
     remove() {
+      disposeChoices()
       hooks.remove(tile)
     },
   }

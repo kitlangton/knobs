@@ -83,6 +83,31 @@ describe("holds: the row in hand is never clobbered", () => {
     expect(r.get().size).toBe(3)
     expect(sent).toEqual([["size", 6]])
   })
+
+  it("undo and redo also hold against stale echoes for the echo window", () => {
+    const sent: [string, unknown][] = []
+    const r = createRemoteControls("undo-echo", params(), {
+      nullDefaults: false,
+      onSet: (k, v) => sent.push([k, v]),
+    })
+    r.set({ size: 8 })
+    // A stale echo from before undo arrives while the undo is in flight.
+    r.sync({ size: 7 })
+    expect(r.get().size).toBe(8)
+    vi.advanceTimersByTime(100)
+    r.undo()
+    expect(r.get().size).toBe(4)
+    expect(sent).toEqual([
+      ["size", 8],
+      ["size", 4],
+    ])
+    // A late echo of 8 arriving right after undo is held back; after 600 ms the peer's latest lands.
+    r.sync({ size: 8 })
+    expect(r.get().size).toBe(4)
+    r.sync({ size: 4 })
+    vi.advanceTimersByTime(650)
+    expect(r.get().size).toBe(4)
+  })
 })
 
 describe("remote.update: descriptor swaps without teardown", () => {

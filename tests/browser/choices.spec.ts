@@ -131,6 +131,11 @@ test("menu rows: ←/→ step without opening; Enter opens; ↑↓, letters, Ent
   expect(await page.evaluate(() => (window as any).__choices.chosen)).toEqual([
     "Streaming Markdown",
   ])
+  // Disposing a panel while a choice menu is open closes and removes the menu too.
+  await button.click()
+  await expect(page.getByRole("menu")).toBeVisible()
+  await page.evaluate(() => (window as any).__choices.inlinePanel.dispose())
+  await expect(page.getByRole("menu")).toHaveCount(0)
 })
 
 test("menu rows draw on the GPU overlay", async ({ page }) => {

@@ -80,6 +80,7 @@ export interface PresetStrip {
   /** Deletes the selected chip when it's a saved variant; returns a status message. */
   deleteActive(): string | undefined
   update(): void
+  dispose(): void
 }
 
 export function createPresetStrip<S extends Schema>(
@@ -451,5 +452,6 @@ export function createPresetStrip<S extends Schema>(
     },
     deleteActive,
     update,
+    dispose: () => ro.disconnect(),
   }
 }

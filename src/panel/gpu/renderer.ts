@@ -1,4 +1,4 @@
-import { oklchToRgb } from "../../core/color.js"
+import { maxChroma, oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
 import { DIE_LOOK, dieBox, type HeaderDie } from "../die.js"
 import { ICONS, type IconName } from "../icons.js"
@@ -113,8 +113,6 @@ export interface GpuStrip {
   /** 0 hue, 1 chroma, 2 lightness. */
   mode: number
   thumbX(): number
-  /** Where sRGB runs out along a chroma strip (0…1; 1 when it doesn't). */
-  veil(): number
   dragging(): boolean
 }
 export interface GpuColorRow {
@@ -1288,70 +1286,109 @@ class GpuOverlayManager {
     })
   }
 
+  /** A circular icon button's hover/focus wash. */
+  private drawRoundWash(r: DOMRect, alpha: number, wash: number, clip?: Clip) {
+    if (wash <= 0.005) return
+    const t = this.curTokens
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      clip,
+      color: withAlpha(t.surfaceHi, alpha * wash),
+      color2: t.accent,
+      radius: r.height * 0.5,
+      glowOrBlur: t.glowStrength * 8,
+      kind: 1,
+    })
+  }
+
   /**
-   * A page group's numbered presets: a tray of digits with the matching one's pill, which slides
-   * between presets and fades when none matches (as .knobs-seg-pill[data-off]). Returns whether
-   * anything still moves.
+   * A segmented tray (`.knobs-seg`), its sliding pill, and its option labels: used for both choice
+   * rows and a page group's numbered preset chips. Returns whether the pill is still moving.
    */
-  private drawChips(
-    chips: NonNullable<GpuGroupBinding["presets"]>,
-    hinting: boolean,
-    reducedMotion: boolean,
+  private drawSeg(
+    seg: HTMLElement,
+    buttons: readonly HTMLButtonElement[],
+    pill: Edges,
+    opts: {
+      delay?: number
+      alpha?: number
+      px?: number
+      weight?: number
+      hinting?: boolean
+      canFadeOff?: boolean
+      minPill?: number
+      reducedMotion: boolean
+    },
   ): boolean {
     const t = this.curTokens
-    const sr = this.rectOf(chips.seg)
+    const sr = this.rectOf(seg)
     if (sr.width <= 0) return false
+    const alpha = opts.alpha ?? 1
+    const delay = opts.delay ?? 0
+    const minPill = opts.minPill ?? 12
+    const reduced = opts.reducedMotion
     this.pushPrim({
       x: sr.left,
       y: sr.top,
       w: sr.width,
       h: sr.height,
-      color: t.segBg,
+      color: withAlpha(t.segBg, alpha),
       color2: t.accent,
       radius: t.radiusMd,
       glowOrBlur: t.glowStrength * 8,
       kind: 1,
     })
     let moving = false
-    const active = chips.buttons.find((b) => b.getAttribute("aria-checked") === "true")
-    const shown = this.ease(chips.seg, "pill", active ? 1 : 0, 30)
-    const pe = chips.pill
+    const active = buttons.find((b) => b.getAttribute("aria-checked") === "true")
+    const shown = opts.canFadeOff ? this.ease(seg, "pill", active ? 1 : 0, 30) : active ? 1 : 0
     if (active) {
       const ar = this.rectOf(active)
       const left = ar.left - sr.left
       const right = left + ar.width
-      this.carry(pe, active, left, right)
-      // Coming back from no match, it appears where it lands instead of sliding there.
-      if (reducedMotion || shown < 0.05 || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
+      const panned = livePill(seg)
+      this.carry(pill, active, left, right)
+      if (panned) pill.snap(panned.left, panned.right)
+      else if (reduced || shown < 0.05 || pill.end.x - pill.start.x <= 1) pill.snap(left, right)
       else {
-        pe.to(left, right, 0, trailScale(t.blurStrength)).step(this.curDt)
-        if (!pe.resting) moving = true
+        pill.to(left, right, delay, trailScale(t.blurStrength)).step(this.curDt)
+        if (!pill.resting) moving = true
       }
     }
     if (shown > 0.005) {
       const pad = t.trayPad
       this.pushPrim({
-        x: sr.left + pe.start.x,
+        x: sr.left + pill.start.x,
         y: sr.top + pad,
-        w: Math.max(8, pe.end.x - pe.start.x),
-        h: Math.max(8, sr.height - pad * 2),
-        color: withAlpha(t.pillBg, shown),
+        w: Math.max(minPill, pill.end.x - pill.start.x),
+        h: Math.max(minPill, sr.height - pad * 2),
+        color: withAlpha(t.pillBg, shown * alpha),
         color2: [0, 0, 0, 0],
         radius: t.radiusSm,
         glowOrBlur: t.glowStrength * 0.6,
         kind: 3,
-        blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * t.blurStrength, -6, 6),
+        blurX: reduced ? 0 : clamp(pill.velocity * 0.006 * t.blurStrength, -6, 6),
       })
     }
-    for (const b of chips.buttons) {
+    for (const b of buttons) {
       const br = this.rectOf(b)
-      const on = b.getAttribute("aria-checked") === "true" || this.isHovered(b) || this.isFocused(b)
+      const on =
+        b.getAttribute("aria-checked") === "true" ||
+        this.isHovered(b) ||
+        (Boolean(opts.canFadeOff) && this.isFocused(b))
+      const bAlpha = opts.hinting !== undefined ? alpha * this.missed(b, opts.hinting) : alpha
       this.drawText(
         b.textContent ?? "",
         br.left + br.width * 0.5,
         br.top + br.height * 0.5,
-        withAlpha(this.hot(b, on), this.missed(b, hinting)),
-        { px: t.textMeta, weight: 500, align: "center" },
+        withAlpha(this.hot(b, on), bAlpha),
+        {
+          px: opts.px ?? t.textControl,
+          weight: opts.weight ?? t.labelWeight,
+          align: "center",
+        },
       )
     }
     return moving
@@ -1639,6 +1676,7 @@ class GpuOverlayManager {
       rowAlpha,
     )
     const col = row.color()
+    const maxC = maxChroma(col.l, col.h)
     const target = oklchToRgb(col)
     const waiting = clock < row.wave.at
     if (waiting) this.easeMoving = true
@@ -1687,8 +1725,7 @@ class GpuOverlayManager {
           kind: 9,
           p0: s.mode,
           p1: h / 2,
-          aux: [col.l, s.mode === 0 ? Math.max(col.c, 0.06) : col.c, col.h, s.veil()],
-          aux2: withAlpha(t.bg, 0.62),
+          aux: [col.l, s.mode === 0 ? Math.max(col.c, 0.06) : col.c, col.h, maxC],
         })
         const [x] = this.morph(s.track, [s.thumbX()], row.wave.at - clock, s.dragging(), tr)
         const lift = s.dragging() || this.isFocused(s.track)
@@ -2122,21 +2159,7 @@ class GpuOverlayManager {
             30,
           )
           const on = hovered || focused || expanded
-          const wash = this.wash(hb.button, on)
-          if (wash > 0.005) {
-            this.pushPrim({
-              x: bRect.left,
-              y: bRect.top,
-              w: bRect.width,
-              h: bRect.height,
-              clip: panelClip,
-              color: withAlpha(tokens.surfaceHi, alpha * wash),
-              color2: tokens.accent,
-              radius: bRect.height * 0.5,
-              glowOrBlur: tokens.glowStrength * 8,
-              kind: 1,
-            })
-          }
+          this.drawRoundWash(bRect, alpha, this.wash(hb.button, on), panelClip)
           const iconColor = withAlpha(this.hot(hb.button, on), alpha)
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
           if (die) this.drawDie(die, bRect, iconColor, panelClip)
@@ -2376,7 +2399,16 @@ class GpuOverlayManager {
             color: tokens.groupDivider,
             kind: 1,
           })
-        if (g.presets) anyMoving = this.drawChips(g.presets, hinting, reducedMotion) || anyMoving
+        if (g.presets)
+          anyMoving =
+            this.drawSeg(g.presets.seg, g.presets.buttons, g.presets.pill, {
+              px: tokens.textMeta,
+              weight: 500,
+              hinting,
+              canFadeOff: true,
+              minPill: 8,
+              reducedMotion,
+            }) || anyMoving
         for (const gb of g.buttons) {
           this.drawButton(
             gb,
@@ -2395,19 +2427,7 @@ class GpuOverlayManager {
           const br = this.rectOf(reset)
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
-          const wash = this.wash(reset, hovered || focused)
-          if (wash > 0.005)
-            this.pushPrim({
-              x: br.left,
-              y: br.top,
-              w: br.width,
-              h: br.height,
-              color: withAlpha(tokens.surfaceHi, alpha * wash),
-              color2: tokens.accent,
-              radius: br.height * 0.5,
-              glowOrBlur: tokens.glowStrength * 7,
-              kind: 1,
-            })
+          this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
           this.drawIcon(
             "reset",
             tokens.iconSm,
@@ -2425,19 +2445,7 @@ class GpuOverlayManager {
           const dimmed =
             this.ease(button, "dim", button.disabled ? tokens.disabledOpacity : 1, 30) *
             this.missed(button, hinting)
-          const wash = this.wash(button, on)
-          if (wash > 0.005)
-            this.pushPrim({
-              x: dr.left,
-              y: dr.top,
-              w: dr.width,
-              h: dr.height,
-              color: withAlpha(tokens.surfaceHi, dimmed * wash),
-              color2: tokens.accent,
-              radius: dr.height * 0.5,
-              glowOrBlur: tokens.glowStrength * 7,
-              kind: 1,
-            })
+          this.drawRoundWash(dr, dimmed, this.wash(button, on))
           this.drawDie(die, dr, withAlpha(this.hot(button, on, tokens.dim), dimmed))
         }
       }
@@ -2830,64 +2838,12 @@ class GpuOverlayManager {
         } else if (row.kind === "choice") {
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
-
-          const segRect = this.rectOf(row.segEl)
-          this.pushPrim({
-            x: segRect.left,
-            y: segRect.top,
-            w: segRect.width,
-            h: segRect.height,
-            color: withAlpha(tokens.segBg, rowAlpha),
-            color2: tokens.accent,
-            radius: tokens.radiusMd,
-            glowOrBlur: tokens.glowStrength * 8,
-            kind: 1,
-          })
-
-          const activeBtn = row.buttons.find((b) => b.getAttribute("aria-checked") === "true")
-          if (activeBtn) {
-            const activeBr = this.rectOf(activeBtn)
-            const left = activeBr.left - segRect.left
-            const right = left + activeBr.width
-            const pe = row.pill
-            const panned = livePill(row.segEl)
-            this.carry(pe, activeBtn, left, right)
-            if (panned) pe.snap(panned.left, panned.right)
-            else if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
-            else {
-              pe.to(left, right, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
-              if (!pe.resting) anyMoving = true
-            }
-            const pad = tokens.trayPad
-            this.pushPrim({
-              x: segRect.left + pe.start.x,
-              y: segRect.top + pad,
-              w: Math.max(12, pe.end.x - pe.start.x),
-              h: Math.max(12, segRect.height - pad * 2),
-              color: withAlpha(pillFill, rowAlpha),
-              color2: [0, 0, 0, 0],
-              radius: tokens.radiusSm,
-              glowOrBlur: tokens.glowStrength * 0.6,
-              kind: 3,
-              blurX: clamp(pe.velocity * 0.006 * blurMul, -6, 6),
-            })
-          }
-
-          for (const b of row.buttons) {
-            const br = this.rectOf(b)
-            const checked = b.getAttribute("aria-checked") === "true"
-            this.drawText(
-              b.textContent ?? "",
-              br.left + br.width * 0.5,
-              br.top + br.height * 0.5,
-              withAlpha(this.hot(b, checked || this.isHovered(b)), rowAlpha),
-              {
-                px: tokens.textControl,
-                weight: tokens.labelWeight,
-                align: "center",
-              },
-            )
-          }
+          anyMoving =
+            this.drawSeg(row.segEl, row.buttons, row.pill, {
+              delay: row.wave.at - clock,
+              alpha: rowAlpha,
+              reducedMotion,
+            }) || anyMoving
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "action") {
           const b = row.button
