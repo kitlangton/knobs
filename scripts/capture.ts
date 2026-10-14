@@ -85,6 +85,39 @@ const scenes: { name: string; path: string; run(page: Page, mode: string): Promi
     },
   },
   {
+    // The floating panel dragged over the ink study, at glass 0, the default and 1.
+    name: "glass",
+    path: "/",
+    async run(page, mode) {
+      const study = page.locator('[data-study="splat"]')
+      const b = (await study.boundingBox())!
+      await study.hover({ position: { x: b.width - 20, y: 60 } })
+      await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+      const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
+      await panel.waitFor()
+      const head = (await panel.locator("header strong").boundingBox())!
+      await page.mouse.move(head.x + 10, head.y + head.height / 2)
+      await page.mouse.down()
+      // Straddle the art's right edge: ink, splats and the light page all pass under the glass.
+      const art = (await study.locator(".art").boundingBox())!
+      const size = (await panel.boundingBox())!
+      await page.mouse.move(art.x + art.width - size.width / 2 + 10, art.y + 30, { steps: 6 })
+      await page.mouse.up()
+      await page.mouse.move(5, 5)
+      const p = (await panel.boundingBox())!
+      const clip = { x: p.x - 40, y: p.y - 30, width: p.width + 80, height: p.height + 60 }
+      for (const glass of ["0", "0.6", "1"]) {
+        await page.evaluate(
+          (g) => document.documentElement.style.setProperty("--k-glass", g),
+          glass,
+        )
+        await page.evaluate(() => window.__knobsGpu?.wake())
+        await sleep(600)
+        await page.screenshot({ path: `test-results/cap-${mode}-glass-${glass}.png`, clip })
+      }
+    },
+  },
+  {
     name: "remote",
     path: "/",
     async run(page, mode) {
