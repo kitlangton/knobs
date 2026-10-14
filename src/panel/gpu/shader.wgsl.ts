@@ -1,6 +1,19 @@
+import { dieSamples, HEADER_DIE } from "../die.js"
+import { DIE_WGSL } from "./die.wgsl.js"
+
 export const FLOATS_PER_PRIM = 40
 
 export const panelWgsl = /* wgsl */ `
+${DIE_WGSL}
+
+// kind 11: The Random button's die mid-roll, traced like the DOM canvas. extra = (rx, ry, energy,
+// size), aux = (perspective, lift, cos bevel, fill), look.y = shade.
+fn shadeDie(p: Prim, rect: vec4f, frag: vec2f) -> vec4f {
+  let origin = (rect.xy + rect.zw * 0.5) * view.dpr;
+  let a = die_coverage(frag, origin, view.dpr, ${dieSamples(HEADER_DIE)}u, p.extra.w, p.extra.xy, p.extra.z, p.aux, p.look.y) * p.color.a;
+  return vec4f(p.color.rgb * a, a);
+}
+
 struct Prim {
   rect: vec4f,    // x, y, w, h in viewport CSS px
   clip: vec4f,    // minX, minY, maxX, maxY in viewport CSS px
@@ -527,6 +540,7 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     case 8: { out = shadeLine(p, in.screenPx); }
     case 9: { out = shadeStrip(p, local, size); }
     case 10: { out = shadeShape(p, local, size); }
+    case 11: { out = shadeDie(p, in.rect, in.pos.xy); }
     default: { out = shadeDot(p, local, size); }
   }
   return out * clipCov;

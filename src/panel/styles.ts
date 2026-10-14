@@ -59,7 +59,7 @@ const css = `
 .knobs-chip:hover{color:var(--k-text);border-color:var(--k-line-hi)}
 .knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),visibility 0s}
 .knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s}
-.knobs-chip:focus-visible{outline:2px solid var(--k-accent);outline-offset:2px}
+.knobs-chip:focus-visible{outline:none;color:var(--k-text);border-color:var(--k-line-hi)}
 
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
@@ -74,8 +74,7 @@ const css = `
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
 
 :where(.knobs-panel) :where(button,input,select,textarea){font:inherit;color:inherit;background:var(--k-surface);border:0;border-radius:var(--k-radius);min-width:0}
-.knobs-panel :focus-visible{outline:1.5px solid var(--k-accent);outline-offset:-1.5px;box-shadow:0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
-.knobs-panel header button:focus-visible,.knobs-toggle:focus-visible{outline-offset:2px}
+.knobs-panel :focus-visible{outline:none}
 
 /* Header */
 .knobs-panel header{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;touch-action:none;padding:0 2px 8px;min-height:24px}
@@ -85,8 +84,11 @@ const css = `
 .knobs-head-actions{display:flex;align-items:center}
 .knobs-head-split{margin-left:6px}
 .knobs-icon{width:15px;height:15px;display:block;flex:none}
+.knobs-die-icon{position:relative;display:block;width:15px;height:15px;flex:none}
+.knobs-die-icon>canvas{position:absolute;left:50%;top:50%;margin:0!important;transform:translate(-50%,-50%)}
+.knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 .knobs-panel header button{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-label);background:transparent;border-radius:999px;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
-.knobs-panel header button:hover:not([disabled]),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel header button[disabled]{opacity:.3;cursor:default}
 
 /* Shortcuts Popover */
@@ -113,7 +115,7 @@ const css = `
 .knobs-group-head:first-child{margin-top:2px}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:4px}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:calc(var(--k-font-size) - 1.5px);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:4px;cursor:pointer}
-.knobs-group-head button:hover:not([disabled]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-group-head button:is(:hover:not([disabled]),:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-group-head .knobs-group-reset{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
   transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1),background .15s,color .15s,visibility 0s}
 .knobs-group-reset .knobs-icon{width:13px;height:13px}
@@ -129,7 +131,6 @@ const css = `
 .knobs-card>:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-card>:is(:hover,:has(:focus-visible),.knobs-active)+*::before{opacity:0}
 .knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;border-radius:var(--k-radius);background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
 .knobs-card>:has(:focus-visible)::after{opacity:1}
-.knobs-slider:has(.knobs-track:focus-visible)::after{box-shadow:inset 0 0 0 1.5px var(--k-accent),0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
 .knobs-panel .knobs-slider{height:var(--k-row)}
 .knobs-panel .knobs-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px var(--k-inset)}
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -183,7 +184,7 @@ const css = `
   transition:left ${TRAIL_T} ${DELAY},right ${LEAD_T} ${DELAY}}
 .knobs-seg-pill[data-dir="left"]{transition:left ${LEAD_T} ${DELAY},right ${TRAIL_T} ${DELAY}}
 .knobs-seg button{position:relative;z-index:1;padding:3px 7px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:calc(var(--k-radius) - 3px);transition:background .15s,color .15s}
-.knobs-seg button:hover{color:var(--k-text)}
+.knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}
 
 /* Switch */
@@ -206,7 +207,7 @@ const css = `
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
 :is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;border-radius:var(--k-radius);background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
-:is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1;box-shadow:inset 0 0 0 1.5px var(--k-accent),0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
+:is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1}
 .knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:5px 5px 5px 0;border-radius:calc(var(--k-radius) - 3px);background:var(--k-seg-bg);pointer-events:none}
 .knobs-panel :is(.knobs-spring-curve,.knobs-ease)>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
@@ -233,10 +234,9 @@ const css = `
 .knobs-strip-label{color:var(--k-dim);font-size:calc(var(--k-font-size) - 1.5px);font-weight:600;text-align:center}
 .knobs-strip-read{text-align:right}
 .knobs-strip-track{position:relative;height:calc(var(--k-row) - 14px);border-radius:999px;box-shadow:inset 0 0 0 1px var(--k-line);cursor:ew-resize;touch-action:none}
-.knobs-panel .knobs-strip-track:focus-visible{outline-offset:2px;box-shadow:inset 0 0 0 1px var(--k-line),0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
 .knobs-strip-veil{position:absolute;top:0;bottom:0;right:0;border-radius:0 999px 999px 0;background:color-mix(in srgb,var(--k-bg) 62%,transparent);pointer-events:none}
 .knobs-strip-thumb{position:absolute;top:50%;left:0;width:calc(var(--k-row) - 12px);height:calc(var(--k-row) - 12px);margin:calc(6px - var(--k-row) / 2);border-radius:50%;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.4);pointer-events:none;transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease)}
-.knobs-strip.knobs-active .knobs-strip-thumb{transition:background-color .2s,scale .2s var(--k-ease);scale:1.1}
+.knobs-strip:is(.knobs-active,:has(:focus-visible)) .knobs-strip-thumb{transition:background-color .2s,scale .2s var(--k-ease);scale:1.1}
 .knobs-pad,.knobs-ease{position:relative;border-radius:calc(var(--k-radius) - 2px);background:var(--k-seg-bg);touch-action:none}
 .knobs-pad{height:calc(var(--k-row) * 4);cursor:crosshair;overflow:hidden}
 .knobs-pad>i{position:absolute;left:0;top:0;pointer-events:none;transition:translate ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
@@ -245,18 +245,18 @@ const css = `
 .knobs-pad .knobs-pad-home{width:7px;height:7px;margin:-3.5px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--k-dim);transition:none}
 .knobs-pad-puck{width:12px;height:12px;margin:-6px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 0 1.5px var(--k-bg),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 50%,transparent)}
 .knobs-pad.knobs-active>i{transition:scale .2s var(--k-ease)}
-.knobs-pad.knobs-active .knobs-pad-puck{scale:1.2}
+.knobs-pad:is(.knobs-active,:focus-visible) .knobs-pad-puck{scale:1.2}
 .knobs-ease{height:calc(var(--k-row) * 4.5)}
 .knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:50%;background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,.3);cursor:grab;touch-action:none;transition:translate ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
 .knobs-ease-handle::before{content:"";position:absolute;inset:-8px;border-radius:50%}
-.knobs-panel .knobs-ease-handle:focus-visible{outline-offset:2px;border-radius:50%}
 .knobs-ease.knobs-active :is(.knobs-curve,.knobs-arm){transition:none}
 .knobs-ease.knobs-active .knobs-ease-handle{transition:scale .2s var(--k-ease)}
 .knobs-ease-handle:active{scale:1.2;cursor:grabbing}
+.knobs-ease-handle:focus-visible{scale:1.2}
 .knobs-ease-mini{flex:none;width:30px;height:calc(var(--k-row) - 14px);overflow:visible}
 .knobs-ease-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:6px;padding:2px;border-radius:calc(var(--k-radius) - 2px);background:var(--k-seg-bg)}
 .knobs-panel .knobs-ease-chip{min-width:0;height:calc(var(--k-row) - 10px);padding:0 6px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent;border-radius:calc(var(--k-radius) - 3px);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
-.knobs-panel .knobs-ease-chip:hover{color:var(--k-text)}
+.knobs-panel .knobs-ease-chip:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));box-shadow:0 1px 2px rgba(0,0,0,.12)}
 
 /* Hint mode: stable short codes, zero layout shift */
@@ -270,13 +270,13 @@ const css = `
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:calc(var(--k-gap) * 2)}
 .knobs-panel .knobs-custom-actions button{height:calc(var(--k-row) - 4px);min-height:24px;padding:0 8px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,transform .12s}
-.knobs-panel .knobs-custom-actions button:hover:not([disabled]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-panel .knobs-custom-actions button:is(:hover:not([disabled]),:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-custom-actions button:active:not([disabled]){transform:scale(.97)}
 
 /* Variants Disclosure Drawer */
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
 .knobs-transfer button{height:24px;padding:0 8px;background:var(--k-surface);font-size:calc(var(--k-font-size) - 1px);color:var(--k-label);cursor:pointer;transition:background .15s,color .15s}
-.knobs-transfer button:hover{background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-transfer button:is(:hover,:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 
 /* Status & Transfer Textarea */
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 2px;color:var(--k-label);font-size:calc(var(--k-font-size) - 1px);overflow-wrap:anywhere}

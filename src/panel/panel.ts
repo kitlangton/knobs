@@ -16,6 +16,7 @@ import {
   type SubTrack,
 } from "./editors.js"
 import { createHintController, type HintTarget } from "./hints.js"
+import { createHeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Edges } from "./motion.js"
 import { positionPanel } from "./position.js"
@@ -184,7 +185,14 @@ function buildPanel<S extends Schema>(
     node.classList.add("knobs-head-cmd")
     return node
   }
-  command("random", "Random", "r", controls.randomize)
+  // Random rolls a die in place of the dice icon (see die.ts).
+  const die = createHeaderDie(doc, () => wakeGpu())
+  const randomize = () => {
+    die.roll()
+    controls.randomize()
+  }
+  const randomButton = command("random", "Random", "r", randomize)
+  randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
   const resetBtn = command("reset", "Reset", "Shift+R", controls.reset)
   command("copy", "Copy", "Shift+C", copyValues)
   const undoButton = iconButton("undo", "Undo", "u", controls.undo)
@@ -701,7 +709,7 @@ function buildPanel<S extends Schema>(
     }
     if (key === "r" || key === "R") {
       event.preventDefault()
-      run(key === "R" ? controls.reset : controls.randomize)
+      run(key === "R" ? controls.reset : randomize)
       return
     }
     if (key === "C") {
@@ -794,6 +802,7 @@ function buildPanel<S extends Schema>(
     header,
     titleEl,
     headerButtons,
+    headerDie: { button: randomButton, die },
     presetStrip,
     groups: gpuGroups,
     cards,
@@ -861,6 +870,7 @@ function buildPanel<S extends Schema>(
       unregisterGpu?.()
       unsubscribe()
       positioned?.dispose()
+      die.dispose()
       root.remove()
     },
   }
