@@ -111,6 +111,7 @@ export interface PanelThemeTokens {
   readonly rim: Rgba
   readonly radius: number
   readonly panelRadius: number
+  readonly inset: number
   readonly fontSize: number
   readonly labelWeight: number
   readonly blurStrength: number
@@ -222,6 +223,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     ),
     radius: numProp(style, "--k-radius", 8),
     panelRadius: numProp(style, "--k-panel-radius", 12),
+    inset: numProp(style, "--k-inset", 10),
     fontSize: parseFloat(style.fontSize) || numProp(style, "--k-font-size", 12),
     labelWeight: numProp(style, "--k-label-weight", 500),
     blurStrength: numProp(style, "--k-blur", 1),

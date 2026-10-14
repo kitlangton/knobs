@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react"
+import { StrictMode, useEffect, useLayoutEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import {
   bezierCss,
@@ -163,17 +163,38 @@ function resolveThemeIsLight(theme: MetaValues["theme"]): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: light)").matches
 }
 
+let cachedMotion: MetaValues["motion"] | null = null
+let cachedFill = { easing: "", duration: 0 }
+let cachedAccentRaw = ""
+let cachedAccentParsed = { l: 0.7, c: 0.13, h: 250 }
+let cachedValues: MetaValues | null = null
+let cachedTokens: [string, string][] = []
+
 /** Every token the meta panel controls, computed once for both live application and Copy CSS. */
 function tokensFor(v: MetaValues): [string, string][] {
+  if (cachedValues === v) return cachedTokens
   const isLight = resolveThemeIsLight(v.theme)
   const c = v.contrast
   const rgb = isLight ? "0, 0, 0" : "255, 255, 255"
   const alpha = (light: number, dark: number) => ((isLight ? light : dark) * c).toFixed(3)
   // Light panels darken the accent so it keeps its contrast.
-  const { l, c: chroma, h } = parseColor(v.accent)!
+  if (v.accent !== cachedAccentRaw) {
+    cachedAccentRaw = v.accent
+    cachedAccentParsed = parseColor(v.accent)!
+  }
+  const { l, c: chroma, h } = cachedAccentParsed
   const accent = isLight && l > 0.55 ? `oklch(0.55 ${chroma} ${h})` : v.accent
-  const fill = springCss(v.motion)
-  return [
+  if (
+    !cachedMotion ||
+    cachedMotion.duration !== v.motion.duration ||
+    cachedMotion.bounce !== v.motion.bounce
+  ) {
+    cachedMotion = v.motion
+    cachedFill = springCss(v.motion)
+  }
+  const fill = cachedFill
+  cachedValues = v
+  cachedTokens = [
     ["--k-bg", isLight ? "#f5f5f7" : "#1c1c1e"],
     ["--k-surface", `rgba(${rgb}, ${alpha(0.05, 0.055)})`],
     ["--k-surface-hi", `rgba(${rgb}, ${alpha(0.095, 0.11)})`],
@@ -208,6 +229,7 @@ function tokensFor(v: MetaValues): [string, string][] {
     ["--k-fill-ease", fill.easing],
     ["--k-fill-ms", String(fill.duration)],
   ]
+  return cachedTokens
 }
 
 export function formatTokensCss(v: MetaValues): string {
@@ -217,7 +239,8 @@ export function formatTokensCss(v: MetaValues): string {
 // Tokens go on the panels too, so they win over the built-in light theme's own values.
 function applyTokensToDocument(v: MetaValues) {
   const root = document.documentElement
-  root.dataset.knobsTheme = resolveThemeIsLight(v.theme) ? "light" : "dark"
+  const nextTheme = resolveThemeIsLight(v.theme) ? "light" : "dark"
+  if (root.dataset.knobsTheme !== nextTheme) root.dataset.knobsTheme = nextTheme
   let style = document.querySelector<HTMLStyleElement>("style[data-meta-tokens]")
   if (!style) {
     style = document.createElement("style")
@@ -227,7 +250,8 @@ function applyTokensToDocument(v: MetaValues) {
   const body = tokensFor(v)
     .map(([k, val]) => `${k}:${val};`)
     .join("")
-  style.textContent = `:root,:root .knobs-panel,:root .knobs-chip{${body}}`
+  const nextCss = `:root,:root .knobs-panel,:root .knobs-chip{${body}}`
+  if (style.textContent !== nextCss) style.textContent = nextCss
 }
 
 const knobsMeta = defineControls("knobs-tokens", metaSchema, {
@@ -375,7 +399,7 @@ function MetaApp() {
     urlFlag("gpu")() ? "gpu" : "auto",
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyTokensToDocument(v)
   }, [v])
 

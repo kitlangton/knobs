@@ -420,7 +420,6 @@ class GpuOverlayManager {
     ro.observe(panel.presetStrip.track)
     const mo = new MutationObserver(() => {
       this.styleVersion++
-      this.layoutVersion++
       this.wake()
     })
     mo.observe(panel.root, {
@@ -484,7 +483,6 @@ class GpuOverlayManager {
     }
     const docMo = new MutationObserver(() => {
       this.styleVersion++
-      this.layoutVersion++
       this.wake()
     })
     docMo.observe(this.doc.documentElement, {
@@ -1726,19 +1724,25 @@ class GpuOverlayManager {
         continue
       }
 
+      const rawTokens = readPanelTokens(panel.root, this.styleVersion)
       this.curPanelRect = pRect
       this.curPanelScrollTop = panel.root.scrollTop
       this.curPanelHovered = panel.root.matches(":hover")
-      this.curLayoutKey = this.layoutVersion * 100000 + this.styleVersion * 100 + (revealVer % 100)
+      this.curLayoutKey =
+        ((this.layoutVersion * 31 +
+          Math.round(pRect.width * 4) * 17 +
+          Math.round(pRect.height * 4) * 13 +
+          Math.round(rawTokens.fontSize * 10) * 7 +
+          rawTokens.labelWeight * 3 +
+          Math.round(rawTokens.inset * 4)) *
+          100 +
+          (revealVer % 100)) |
+        0
       const opening = clock < (this.openUntil.get(panel) ?? 0)
       const leaving = panel.root.dataset.leaving === "true"
       this.curBypassRectCache = revealing || opening || leaving
 
-      const tokens = this.smoothTokens(
-        panel,
-        readPanelTokens(panel.root, this.styleVersion),
-        reducedMotion ? 0 : dt,
-      )
+      const tokens = this.smoothTokens(panel, rawTokens, reducedMotion ? 0 : dt)
       this.curTokens = tokens
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion
