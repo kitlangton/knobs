@@ -15,6 +15,7 @@ import {
   trailScale,
 } from "../motion.js"
 import type { PresetStrip } from "../presets.js"
+import { getRevealVersion, isAnyRevealing } from "../reveal.js"
 import type { Slider } from "../slider.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -219,22 +220,37 @@ export function resolveRendererMode(mode: RendererMode, doc: Document): "gpu" | 
   return mode === "gpu" ? "gpu" : "dom"
 }
 
-function getEffectiveClipRect(el: HTMLElement, win: Window): [number, number, number, number] {
+const clipAncestorsCache = new WeakMap<HTMLElement, { version: number; ancestors: HTMLElement[] }>()
+
+function getEffectiveClipRect(
+  el: HTMLElement,
+  win: Window,
+  version = -1,
+): [number, number, number, number] {
   let minX = 0,
     minY = 0,
     maxX = win.innerWidth,
     maxY = win.innerHeight
-  let curr: HTMLElement | null = el.parentElement
-  while (curr && curr !== el.ownerDocument.body && curr !== el.ownerDocument.documentElement) {
-    const s = win.getComputedStyle(curr)
-    if (/(auto|scroll|hidden|clip)/.test(s.overflowX + s.overflowY)) {
-      const r = curr.getBoundingClientRect()
-      minX = Math.max(minX, r.left)
-      minY = Math.max(minY, r.top)
-      maxX = Math.min(maxX, r.right)
-      maxY = Math.min(maxY, r.bottom)
+  let cached = version >= 0 ? clipAncestorsCache.get(el) : undefined
+  if (!cached || cached.version !== version) {
+    const ancestors: HTMLElement[] = []
+    let curr: HTMLElement | null = el.parentElement
+    while (curr && curr !== el.ownerDocument.body && curr !== el.ownerDocument.documentElement) {
+      const s = win.getComputedStyle(curr)
+      if (/(auto|scroll|hidden|clip)/.test(s.overflowX + s.overflowY)) {
+        ancestors.push(curr)
+      }
+      curr = curr.parentElement
     }
-    curr = curr.parentElement
+    cached = { version, ancestors }
+    if (version >= 0) clipAncestorsCache.set(el, cached)
+  }
+  for (const curr of cached.ancestors) {
+    const r = curr.getBoundingClientRect()
+    minX = Math.max(minX, r.left)
+    minY = Math.max(minY, r.top)
+    maxX = Math.min(maxX, r.right)
+    maxY = Math.min(maxY, r.bottom)
   }
   return [minX, minY, Math.max(minX, maxX), Math.max(minY, maxY)]
 }
@@ -308,6 +324,26 @@ class GpuOverlayManager {
   private skippedFrames = 0
   private listenersAttached = false
 
+  private styleVersion = 1
+  private layoutVersion = 1
+  private readonly openUntil = new WeakMap<GpuPanelBinding, number>()
+  private readonly rectCache = new WeakMap<
+    Element,
+    { ox: number; oy: number; w: number; h: number; key: number; subKey: number }
+  >()
+  private curActiveEl: Element | null = null
+  private curFocusVisible = false
+  private curPanelHovered = false
+  private curSubHovered = false
+  private readonly hotRows = new Set<Element>()
+  private curPanelRect: DOMRect | null = null
+  private curPanelScrollTop = 0
+  private curLayoutKey = 0
+  private curBypassRectCache = false
+  private cachedCellFont = ""
+  private cachedCellPx = 0
+  private cachedCellWidth = 0
+
   private curClip: Clip = [0, 0, 0, 0]
   private curScale = 2
   private curTokens!: PanelThemeTokens
@@ -372,8 +408,25 @@ class GpuOverlayManager {
 
   register(panel: GpuPanelBinding): () => void {
     this.panels.add(panel)
+    if (!panel.inline) this.openUntil.set(panel, performance.now() + 220)
     panel.root.dataset.renderer = "gpu"
     this.attachGlobalListeners()
+    const ro = new ResizeObserver(() => {
+      this.layoutVersion++
+      this.wake()
+    })
+    ro.observe(panel.root)
+    ro.observe(panel.body)
+    ro.observe(panel.presetStrip.track)
+    const mo = new MutationObserver(() => {
+      this.styleVersion++
+      this.layoutVersion++
+      this.wake()
+    })
+    mo.observe(panel.root, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-density", "style"],
+    })
     void this.ensureInitialized().then((ok) => {
       if (!this.panels.has(panel)) return
       panel.root.dataset.gpuActive = ok ? "true" : "false"
@@ -381,6 +434,8 @@ class GpuOverlayManager {
       if (ok) this.wake()
     })
     return () => {
+      ro.disconnect()
+      mo.disconnect()
       this.panels.delete(panel)
       this.backdrops.get(panel)?.remove()
       this.backdrops.delete(panel)
@@ -415,17 +470,42 @@ class GpuOverlayManager {
     if (this.listenersAttached) return
     this.listenersAttached = true
     const win = this.win
+    const bumpLayout = () => {
+      this.layoutVersion++
+      this.wake()
+    }
     win.addEventListener("scroll", this.wake, { capture: true, passive: true })
-    win.addEventListener("resize", this.wake, { passive: true })
-    win.visualViewport?.addEventListener("resize", this.wake, { passive: true })
+    win.addEventListener("resize", bumpLayout, { passive: true })
+    win.visualViewport?.addEventListener("resize", bumpLayout, { passive: true })
     win.visualViewport?.addEventListener("scroll", this.wake, { passive: true })
     this.doc.addEventListener("pointermove", this.onDocPointer, { passive: true })
     for (const ev of ["pointerdown", "pointerup", "focusin", "focusout", "keydown"] as const) {
       this.doc.addEventListener(ev, this.wake, { capture: true, passive: true })
     }
+    const docMo = new MutationObserver(() => {
+      this.styleVersion++
+      this.layoutVersion++
+      this.wake()
+    })
+    docMo.observe(this.doc.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-knobs-theme", "style", "class"],
+    })
+    if (this.doc.head) {
+      docMo.observe(this.doc.head, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      })
+    }
   }
 
   private onDocPointer = (e: PointerEvent) => {
+    if (!this.sleeping && this.rafId) {
+      this.dirty = true
+      this.settleFrames = 0
+      return
+    }
     for (const p of this.panels) {
       const r = p.root.getBoundingClientRect()
       if (
@@ -608,45 +688,52 @@ class GpuOverlayManager {
       o.y = y0
     }
     const clip = o.clip ?? this.curClip
-    const uv = o.corners ?? o.uv ?? [0, 0, 1, 1]
-    const c2 = o.color2 ?? [1, 1, 1, 0]
-    const c3 = o.aux2 ?? [1, 1, 1, 0]
-    this.data.set(
-      [
-        o.x,
-        o.y,
-        o.w,
-        o.h,
-        ...clip,
-        ...uv,
-        o.color[0],
-        o.color[1],
-        o.color[2],
-        o.color[3] * this.curAlpha,
-        c2[0],
-        c2[1],
-        c2[2],
-        c2[3] * this.curAlpha,
-        o.radius ?? 0,
-        o.strokeWidth ?? 0,
-        o.glowOrBlur ?? 0,
-        o.kind,
-        o.blurX ?? 0,
-        o.blurY ?? 0,
-        o.stretchX ?? 0,
-        o.corners ? 1 : 0,
-        o.p0 ?? 0,
-        o.p1 ?? 0,
-        o.p2 ?? 0,
-        o.p3 ?? 0,
-        ...(o.aux ?? [0, 0, 0, 0]),
-        c3[0],
-        c3[1],
-        c3[2],
-        c3[3] * this.curAlpha,
-      ],
-      this.primCount++ * FLOATS_PER_PRIM,
-    )
+    const uv = o.corners ?? o.uv
+    const c2 = o.color2
+    const c3 = o.aux2
+    const aux = o.aux
+    const d = this.data
+    const b = this.primCount++ * FLOATS_PER_PRIM
+    d[b] = o.x
+    d[b + 1] = o.y
+    d[b + 2] = o.w
+    d[b + 3] = o.h
+    d[b + 4] = clip[0]
+    d[b + 5] = clip[1]
+    d[b + 6] = clip[2]
+    d[b + 7] = clip[3]
+    d[b + 8] = uv ? uv[0] : 0
+    d[b + 9] = uv ? uv[1] : 0
+    d[b + 10] = uv ? uv[2] : 1
+    d[b + 11] = uv ? uv[3] : 1
+    d[b + 12] = o.color[0]
+    d[b + 13] = o.color[1]
+    d[b + 14] = o.color[2]
+    d[b + 15] = o.color[3] * this.curAlpha
+    d[b + 16] = c2 ? c2[0] : 1
+    d[b + 17] = c2 ? c2[1] : 1
+    d[b + 18] = c2 ? c2[2] : 1
+    d[b + 19] = (c2 ? c2[3] : 0) * this.curAlpha
+    d[b + 20] = o.radius ?? 0
+    d[b + 21] = o.strokeWidth ?? 0
+    d[b + 22] = o.glowOrBlur ?? 0
+    d[b + 23] = o.kind
+    d[b + 24] = o.blurX ?? 0
+    d[b + 25] = o.blurY ?? 0
+    d[b + 26] = o.stretchX ?? 0
+    d[b + 27] = o.corners ? 1 : 0
+    d[b + 28] = o.p0 ?? 0
+    d[b + 29] = o.p1 ?? 0
+    d[b + 30] = o.p2 ?? 0
+    d[b + 31] = o.p3 ?? 0
+    d[b + 32] = aux ? aux[0] : 0
+    d[b + 33] = aux ? aux[1] : 0
+    d[b + 34] = aux ? aux[2] : 0
+    d[b + 35] = aux ? aux[3] : 0
+    d[b + 36] = c3 ? c3[0] : 1
+    d[b + 37] = c3 ? c3[1] : 1
+    d[b + 38] = c3 ? c3[2] : 1
+    d[b + 39] = (c3 ? c3[3] : 0) * this.curAlpha
   }
 
   /**
@@ -751,6 +838,58 @@ class GpuOverlayManager {
     return sp.x
   }
 
+  private rectOf(el: HTMLElement | SVGElement, subKey = 0): DOMRect {
+    const pRect = this.curPanelRect
+    if (
+      !pRect ||
+      this.curBypassRectCache ||
+      (el instanceof HTMLElement && el.style.transform !== "")
+    ) {
+      return el.getBoundingClientRect()
+    }
+    const key = this.curLayoutKey
+    const hit = this.rectCache.get(el)
+    if (hit && hit.key === key && hit.subKey === subKey) {
+      const left = pRect.left + hit.ox
+      const top = pRect.top + hit.oy - this.curPanelScrollTop
+      return {
+        left,
+        top,
+        right: left + hit.w,
+        bottom: top + hit.h,
+        width: hit.w,
+        height: hit.h,
+        x: left,
+        y: top,
+        toJSON() {},
+      } as DOMRect
+    }
+    const r = el.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) {
+      this.rectCache.set(el, {
+        ox: r.left - pRect.left,
+        oy: r.top - pRect.top + this.curPanelScrollTop,
+        w: r.width,
+        h: r.height,
+        key,
+        subKey,
+      })
+    }
+    return r
+  }
+
+  private isHovered(el: Element): boolean {
+    return this.curSubHovered && el.matches(":hover")
+  }
+
+  private isFocused(el: Element): boolean {
+    return this.curFocusVisible && this.curActiveEl === el
+  }
+
+  private hasFocusVisible(el: Element): boolean {
+    return this.curFocusVisible && this.curActiveEl !== null && el.contains(this.curActiveEl)
+  }
+
   /** From `from` (label) to `to` (text) as `el` turns hot, eased like the DOM's 0.15 s colour transitions. */
   private hot(el: object, on: boolean, from = this.curTokens.label, to = this.curTokens.text) {
     return cssMix(to, from, this.ease(el, "hot", on ? 1 : 0, 30))
@@ -772,7 +911,7 @@ class GpuOverlayManager {
     dt: number,
   ): PanelThemeTokens {
     const prev = this.shownTokens.get(panel)
-    if (!prev || dt <= 0) {
+    if (!prev || prev === next || dt <= 0) {
       this.shownTokens.set(panel, next)
       return next
     }
@@ -802,9 +941,9 @@ class GpuOverlayManager {
     rowCenterY: number,
     rowAlpha: number,
     stretchOffset = 0,
+    lRect = this.rectOf(labelEl),
   ) {
     const t = this.curTokens
-    const lRect = labelEl.getBoundingClientRect()
     const w = this.drawText(
       text,
       lRect.left + stretchOffset,
@@ -828,18 +967,18 @@ class GpuOverlayManager {
 
   private drawButton(
     btn: HTMLButtonElement,
-    activeEl: Element | null,
+    _activeEl: Element | null,
     hinting: boolean,
     radius: number,
     px: number,
     alwaysBg: boolean,
   ) {
     const t = this.curTokens
-    const br = btn.getBoundingClientRect()
+    const br = this.rectOf(btn)
     if (br.width <= 0 || br.height <= 0 || br.bottom < this.curClip[1] || br.top > this.curClip[3])
       return
-    const hovered = btn.matches(":hover") && !btn.disabled
-    const focused = activeEl === btn && btn.matches(":focus-visible")
+    const hovered = !btn.disabled && this.isHovered(btn)
+    const focused = this.isFocused(btn)
     const expanded = btn.getAttribute("aria-expanded") === "true"
     const alpha = this.ease(btn, "dim", btn.disabled ? 0.36 : 1, 30) * this.missed(btn, hinting)
     const on = hovered || focused || expanded
@@ -869,7 +1008,7 @@ class GpuOverlayManager {
   }
 
   private isHot(row: Element) {
-    return row.matches(":hover,:has(:focus-visible),.knobs-active")
+    return this.hotRows.has(row)
   }
 
   /** Square inside its card, except the card's own rounded corners on the first and last rows. */
@@ -905,7 +1044,7 @@ class GpuOverlayManager {
   /** The hairline above every row but a card's first, and the focus wash. */
   private drawRowOverlay(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     this.drawSeparator(row, rRect, cardClip, stretchX)
-    this.drawFocus(row, row.matches(":has(:focus-visible)"), rRect, cardClip, stretchX)
+    this.drawFocus(row, this.hasFocusVisible(row), rRect, cardClip, stretchX)
   }
 
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
@@ -1122,8 +1261,9 @@ class GpuOverlayManager {
 
   /** An outline like CSS `outline: 1.5px` at `offset`, following `radius`; drawn while focus-visible. */
   private readout(el: HTMLElement, centerY: number, color: Rgba, clip?: Clip) {
-    const r = el.getBoundingClientRect()
-    this.drawText(el.textContent ?? "", r.right, centerY, color, {
+    const text = el.textContent ?? ""
+    const r = this.rectOf(el, text.length)
+    this.drawText(text, r.right, centerY, color, {
       px: this.curTokens.fontSize - 0.5,
       weight: 400,
       align: "right",
@@ -1139,11 +1279,12 @@ class GpuOverlayManager {
     modified: boolean,
     cardClip: Clip,
     rowAlpha: number,
-  ): Clip | undefined {
+  ): { hRect: DOMRect; bodyClip: Clip | undefined } {
     const t = this.curTokens
-    const hRect = x.head.getBoundingClientRect()
+    const open = x.isOpen()
+    const hRect = this.rectOf(x.head)
     const centerY = hRect.top + hRect.height / 2
-    const hot = x.head.matches(":hover")
+    const hot = this.isHovered(x.head)
     const hover = this.ease(x.head, "hover", hot ? 1 : 0)
     if (hover > 0.005)
       this.pushPrim({
@@ -1152,13 +1293,12 @@ class GpuOverlayManager {
         w: hRect.width,
         h: hRect.height,
         color: withAlpha(t.surface, 0.5 * hover),
-        corners: this.rowCorners(item, x.isOpen()),
+        corners: this.rowCorners(item, open),
         kind: 1,
       })
     this.drawRowLabel(x.label, display, modified, centerY, rowAlpha)
-    const cRect = x.caret.getBoundingClientRect()
-    const turn =
-      (this.ease(x.caret, "turn", x.isOpen() ? 1 : 0, LEAD.omega, LEAD.zeta) * Math.PI) / 2
+    const cRect = this.rectOf(x.caret)
+    const turn = (this.ease(x.caret, "turn", open ? 1 : 0, LEAD.omega, LEAD.zeta) * Math.PI) / 2
     const cx = cRect.left + cRect.width / 2
     const cy = cRect.top + cRect.height / 2
     const cos = Math.cos(turn)
@@ -1171,16 +1311,22 @@ class GpuOverlayManager {
         cy + chevron[i]! * sin + chevron[i + 1]! * cos,
       )
     this.pushLine(pts, withAlpha(this.hot(x.caret, hot, t.dim, t.label), rowAlpha), 1.4)
-    this.drawFocus(x.head, x.head.matches(":focus-visible"), hRect, cardClip)
-    const bRect = x.body.getBoundingClientRect()
-    if (x.body.hidden || bRect.height < 0.5) return undefined
-    return intersectClip(cardClip, [bRect.left, bRect.top, bRect.right, bRect.bottom])
+    this.drawFocus(x.head, this.isFocused(x.head), hRect, cardClip)
+    if (x.body.hidden) return { hRect, bodyClip: undefined }
+    const bRect = this.rectOf(x.body)
+    if (bRect.height < 0.5) return { hRect, bodyClip: undefined }
+    return {
+      hRect,
+      bodyClip: intersectClip(cardClip, [bRect.left, bRect.top, bRect.right, bRect.bottom]),
+    }
   }
 
   /** Draws an open body at its reveal's opacity. */
   private inBody(x: GpuExpander, draw: () => void) {
     const alpha = this.curAlpha
-    this.curAlpha *= Number(getComputedStyle(x.body).opacity) || 0
+    if (this.curBypassRectCache) {
+      this.curAlpha *= Number(getComputedStyle(x.body).opacity) || 0
+    }
     draw()
     this.curAlpha = alpha
   }
@@ -1194,7 +1340,7 @@ class GpuOverlayManager {
   ) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
-    const box = row.box.getBoundingClientRect()
+    const box = this.rectOf(row.box)
     this.pushPrim({
       x: box.left,
       y: box.top,
@@ -1248,7 +1394,14 @@ class GpuOverlayManager {
   ) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
-    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
+    const { bodyClip: body } = this.drawHead(
+      row.row,
+      row.x,
+      row.display,
+      row.isModified(),
+      cardClip,
+      rowAlpha,
+    )
     const col = row.color()
     const target = oklchToRgb(col)
     const waiting = clock < row.wave.at
@@ -1259,7 +1412,7 @@ class GpuOverlayManager {
       this.ease(row.swatch, "b", waiting ? undefined : target[2], 30),
       rowAlpha,
     ]
-    const sw = row.swatch.getBoundingClientRect()
+    const sw = this.rectOf(row.swatch)
     const centerY = sw.top + sw.height / 2
     this.shape({
       x: sw.left,
@@ -1275,10 +1428,10 @@ class GpuOverlayManager {
     if (!body) return
     this.inBody(row.x, () => {
       for (const s of row.strips) {
-        const tr = s.track.getBoundingClientRect()
+        const tr = this.rectOf(s.track)
         if (tr.bottom < body[1] || tr.top > body[3]) continue
         const lineY = tr.top + tr.height / 2
-        const lr = s.label.getBoundingClientRect()
+        const lr = this.rectOf(s.label)
         this.drawText(
           s.label.textContent ?? "",
           lr.left + lr.width / 2,
@@ -1308,7 +1461,7 @@ class GpuOverlayManager {
           aux2: withAlpha(t.bg, 0.62),
         })
         const [x] = this.morph(s.track, [s.thumbX()], row.wave.at - clock, s.dragging(), tr)
-        const lift = s.dragging() || s.track.matches(":focus-visible")
+        const lift = s.dragging() || this.isFocused(s.track)
         const d = (h + 2) * this.ease(s.track, "grab", lift ? 1.1 : 1, 30)
         this.shape({
           x: tr.left + x! - d / 2,
@@ -1335,12 +1488,18 @@ class GpuOverlayManager {
   ) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
-    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
-    const hRect = row.x.head.getBoundingClientRect()
+    const { hRect, bodyClip: body } = this.drawHead(
+      row.row,
+      row.x,
+      row.display,
+      row.isModified(),
+      cardClip,
+      rowAlpha,
+    )
     this.readout(row.read, hRect.top + hRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
-      const pr = row.pad.getBoundingClientRect()
+      const pr = this.rectOf(row.pad)
       const radius = Math.max(0, t.radius - 2)
       const clip = intersectClip(body, [pr.left, pr.top, pr.right, pr.bottom])
       this.pushPrim({
@@ -1386,7 +1545,7 @@ class GpuOverlayManager {
         ringColor: withAlpha(t.dim, rowAlpha),
         clip,
       })
-      const lift = active || row.pad.matches(":focus-visible")
+      const lift = active || this.isFocused(row.pad)
       const d = 12 * this.ease(row.pad, "grab", lift ? 1.2 : 1, 30)
       this.shape({
         x: pr.left + px! - d / 2,
@@ -1413,16 +1572,23 @@ class GpuOverlayManager {
   ) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
-    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
+    const { bodyClip: body } = this.drawHead(
+      row.row,
+      row.x,
+      row.display,
+      row.isModified(),
+      cardClip,
+      rowAlpha,
+    )
     const delay = row.wave.at - clock
     const snap = row.snap()
-    const mRect = row.mini.getBoundingClientRect()
+    const mRect = this.rectOf(row.mini)
     const accent = withAlpha(t.accent, rowAlpha)
     this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
-      const br = row.box.getBoundingClientRect()
+      const br = this.rectOf(row.box)
       const radius = Math.max(0, t.radius - 2)
       this.pushPrim({
         x: br.left,
@@ -1450,7 +1616,8 @@ class GpuOverlayManager {
       this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
       row.handles.forEach((h, i) => {
         if (arms.length !== 8) return
-        const d = 12 * this.ease(h, "grab", h.matches(":active, :focus-visible") ? 1.2 : 1, 30)
+        const activeHandle = this.isFocused(h) || (this.curPanelHovered && h.matches(":active"))
+        const d = 12 * this.ease(h, "grab", activeHandle ? 1.2 : 1, 30)
         const cx = arms[i * 4 + 2]!
         const cy = arms[i * 4 + 3]!
         this.shape({
@@ -1468,7 +1635,7 @@ class GpuOverlayManager {
       })
       const chipsEl = row.chips[0]?.parentElement
       if (!chipsEl) return
-      const cr = chipsEl.getBoundingClientRect()
+      const cr = this.rectOf(chipsEl)
       this.pushPrim({
         x: cr.left,
         y: cr.top,
@@ -1481,7 +1648,7 @@ class GpuOverlayManager {
       })
       const pill = cssMix(t.accent, t.segActive, 0.18)
       for (const chip of row.chips) {
-        const r = chip.getBoundingClientRect()
+        const r = this.rectOf(chip)
         const checked = chip.getAttribute("aria-checked") === "true"
         const on = this.ease(chip, "on", checked ? 1 : 0, 30)
         if (on > 0.005)
@@ -1501,21 +1668,47 @@ class GpuOverlayManager {
           chip.textContent ?? "",
           r.left + r.width / 2,
           r.top + r.height / 2,
-          withAlpha(this.hot(chip, checked || chip.matches(":hover, :focus-visible")), rowAlpha),
+          withAlpha(
+            this.hot(chip, checked || this.isHovered(chip) || this.isFocused(chip)),
+            rowAlpha,
+          ),
           { px: t.fontSize - 0.5, align: "center", clip: body },
         )
       }
     })
   }
 
+  private getDigitCellWidth(valPx: number, fontFamily: string): number {
+    if (
+      this.cachedCellPx === valPx &&
+      this.cachedCellFont === fontFamily &&
+      this.cachedCellWidth > 0
+    ) {
+      return this.cachedCellWidth
+    }
+    let cell = 0
+    for (let d = 0; d <= 9; d++) {
+      cell = Math.max(cell, this.atlas.measure(String(d), valPx, 400, fontFamily))
+    }
+    this.cachedCellPx = valPx
+    this.cachedCellFont = fontFamily
+    this.cachedCellWidth = cell
+    return cell
+  }
+
   private buildScene(dt: number, scale: number, reducedMotion: boolean): boolean {
     this.primCount = 0
     this.pointCount = 0
     this.curScale = scale
+    this.hotRows.clear()
     let anyMoving = false
     const win = this.win
     const activeEl = this.doc.activeElement
+    this.curActiveEl = activeEl
+    this.curFocusVisible = activeEl !== null && activeEl.matches(":focus-visible")
     const clock = performance.now()
+    const revealing = isAnyRevealing()
+    const revealVer = getRevealVersion()
 
     const drawn: DOMRect[] = []
     const orderedPanels = [...this.panels].sort((a, b) => {
@@ -1533,16 +1726,33 @@ class GpuOverlayManager {
         continue
       }
 
-      const tokens = this.smoothTokens(panel, readPanelTokens(panel.root), reducedMotion ? 0 : dt)
+      this.curPanelRect = pRect
+      this.curPanelScrollTop = panel.root.scrollTop
+      this.curPanelHovered = panel.root.matches(":hover")
+      this.curLayoutKey = this.layoutVersion * 100000 + this.styleVersion * 100 + (revealVer % 100)
+      const opening = clock < (this.openUntil.get(panel) ?? 0)
+      const leaving = panel.root.dataset.leaving === "true"
+      this.curBypassRectCache = revealing || opening || leaving
+
+      const tokens = this.smoothTokens(
+        panel,
+        readPanelTokens(panel.root, this.styleVersion),
+        reducedMotion ? 0 : dt,
+      )
       this.curTokens = tokens
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion
       // Follow CSS open/close and reveal animations: fade with the panel, and keep drawing while they run.
-      this.curAlpha = Number(getComputedStyle(panel.root).opacity) || 0
-      if (panel.root.getAnimations({ subtree: true }).length > 0) anyMoving = true
+      if (opening || leaving) {
+        this.curAlpha = Number(getComputedStyle(panel.root).opacity) || 0
+        anyMoving = true
+      } else {
+        this.curAlpha = 1
+      }
+      if (revealing) anyMoving = true
       const blurMul = reducedMotion ? 0 : tokens.blurStrength
       const outerClip = panel.inline
-        ? getEffectiveClipRect(panel.root, win)
+        ? getEffectiveClipRect(panel.root, win, this.styleVersion)
         : ([0, 0, win.innerWidth, win.innerHeight] as [number, number, number, number])
       const panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
       const pillFill = cssMix(tokens.accent, tokens.segActive, 0.18)
@@ -1586,7 +1796,7 @@ class GpuOverlayManager {
         if (pop)
           bodyClip = [
             bodyClip[0],
-            Math.max(bodyClip[1], pop.getBoundingClientRect().bottom + 2),
+            Math.max(bodyClip[1], this.rectOf(pop).bottom + 2),
             bodyClip[2],
             bodyClip[3],
           ]
@@ -1595,7 +1805,8 @@ class GpuOverlayManager {
 
       // 2. Header
       {
-        const tRect = panel.titleEl.getBoundingClientRect()
+        this.curSubHovered = this.curPanelHovered && panel.header.matches(":hover")
+        const tRect = this.rectOf(panel.titleEl)
         const px = tokens.fontSize + 1
         this.drawText(
           this.fit(panel.titleEl.textContent ?? "", tRect.width, px, 600),
@@ -1606,11 +1817,12 @@ class GpuOverlayManager {
         )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue
-          const bRect = hb.button.getBoundingClientRect()
-          const hovered = hb.button.matches(":hover") && !hb.button.disabled
-          const focused = activeEl === hb.button && hb.button.matches(":focus-visible")
+          const bRect = this.rectOf(hb.button)
+          const hovered = !hb.button.disabled && this.isHovered(hb.button)
+          if (hovered) this.curSubHovered = false
+          const focused = this.isFocused(hb.button)
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
-          const alpha = Number(getComputedStyle(hb.button).opacity)
+          const alpha = this.ease(hb.button, "dim", hb.button.disabled ? 0.3 : 1, 30)
           const on = hovered || focused || expanded
           const wash = this.wash(hb.button, on)
           if (wash > 0.005) {
@@ -1638,8 +1850,10 @@ class GpuOverlayManager {
       const ps = panel.presetStrip
       const hinting = panel.root.classList.contains("knobs-hinting")
       if (!ps.element.hidden) {
-        const psRect = ps.element.getBoundingClientRect()
-        const trackRect = ps.track.getBoundingClientRect()
+        const psHovered = this.curPanelHovered && ps.element.matches(":hover")
+        this.curSubHovered = psHovered
+        const psRect = this.rectOf(ps.element)
+        const trackRect = this.rectOf(ps.track)
         this.pushPrim({
           x: psRect.left,
           y: psRect.top,
@@ -1650,7 +1864,7 @@ class GpuOverlayManager {
           radius: tokens.radius,
           glowOrBlur: tokens.glowStrength * 8,
           kind: 1,
-          p0: ps.element.matches(":hover, :focus-visible") ? 0.4 : 0,
+          p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
         })
 
         const stripClip = intersectClip(bodyClip, [
@@ -1664,15 +1878,17 @@ class GpuOverlayManager {
         const activeBtn =
           activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
         const pe = ps.pillEdges
-        if (activeBtn && !activeState.isCustom) {
-          const left = activeBtn.offsetLeft
-          const right = left + Math.max(20, activeBtn.offsetWidth)
+        const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
+        if (activeBtn && activeBtnRect && !activeState.isCustom) {
+          const left = activeBtnRect.left - trackRect.left
+          const right = left + Math.max(20, activeBtnRect.width)
+          const top = activeBtnRect.top - trackRect.top
           if (reducedMotion || pe.end.x - pe.start.x <= 1) {
             pe.snap(left, right)
-            ps.pillY.snap(activeBtn.offsetTop)
+            ps.pillY.snap(top)
           } else {
             pe.to(left, right, 0, trailScale(tokens.blurStrength))
-            ps.pillY.set(activeBtn.offsetTop)
+            ps.pillY.set(top)
           }
           ps.pillAlpha.set(1)
         } else {
@@ -1693,7 +1909,7 @@ class GpuOverlayManager {
             x: trackRect.left + pe.start.x,
             y: trackRect.top + ps.pillY.x,
             w: Math.max(18, pe.end.x - pe.start.x),
-            h: Math.max(16, activeBtn?.offsetHeight ?? trackRect.height),
+            h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
             clip: stripClip,
             color: withAlpha(pillFill, pillAlpha),
             color2: withAlpha(tokens.accent, 0.32 * pillAlpha),
@@ -1706,14 +1922,16 @@ class GpuOverlayManager {
 
         for (let i = 0; i < chipButtons.length; i++) {
           const btn = chipButtons[i]!
-          const br = btn.getBoundingClientRect()
+          const br = this.rectOf(btn)
           if (br.right < stripClip[0] || br.left > stripClip[2]) continue
           const isActive = i === activeState.activeIndex
+          const chipHovered = this.isHovered(btn)
+          if (chipHovered) this.curSubHovered = false
           this.drawText(
             btn.textContent ?? "",
             br.left + br.width * 0.5,
             br.top + br.height * 0.5,
-            withAlpha(this.hot(btn, isActive || btn.matches(":hover")), this.missed(btn, hinting)),
+            withAlpha(this.hot(btn, isActive || chipHovered), this.missed(btn, hinting)),
             {
               px: tokens.fontSize - 0.5,
               weight: isActive ? 600 : tokens.labelWeight,
@@ -1724,8 +1942,8 @@ class GpuOverlayManager {
         }
 
         if (ps.saveButton && !ps.saveButton.hidden) {
-          const sr = ps.saveButton.getBoundingClientRect()
-          const hot = ps.saveButton.matches(":hover")
+          const sr = this.rectOf(ps.saveButton)
+          const hot = this.isHovered(ps.saveButton)
           this.drawText(
             "+",
             sr.left + sr.width * 0.5,
@@ -1741,10 +1959,12 @@ class GpuOverlayManager {
       }
 
       // 4. Group headers
+      const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
+      this.curSubHovered = bodyHovered
       for (const g of panel.groups) {
-        const gr = g.element.getBoundingClientRect()
+        const gr = this.rectOf(g.element)
         if (gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
-        const lr = g.labelEl.getBoundingClientRect()
+        const lr = this.rectOf(g.labelEl)
         this.drawText(
           (g.labelEl.textContent ?? "").toUpperCase(),
           lr.left,
@@ -1755,13 +1975,14 @@ class GpuOverlayManager {
         for (const gb of g.buttons) {
           this.drawButton(gb, activeEl, hinting, 4, Math.max(10, tokens.fontSize - 1.5), false)
         }
-        // The reset fades and scales with its CSS transition, read straight from the DOM.
+        // The reset fades and scales on its GPU spring, matching the DOM transition.
         const reset = g.reset
-        const alpha = Number(getComputedStyle(reset).opacity) * this.missed(reset, hinting)
+        const resetShown = this.ease(reset, "shown", reset.dataset.shown === "true" ? 1 : 0, 28)
+        const alpha = resetShown * this.missed(reset, hinting)
         if (alpha > 0.005) {
-          const br = reset.getBoundingClientRect()
-          const hovered = reset.matches(":hover") && !reset.disabled
-          const focused = activeEl === reset && reset.matches(":focus-visible")
+          const br = this.rectOf(reset)
+          const hovered = !reset.disabled && this.isHovered(reset)
+          const focused = this.isFocused(reset)
           const wash = this.wash(reset, hovered || focused)
           if (wash > 0.005)
             this.pushPrim({
@@ -1781,14 +2002,16 @@ class GpuOverlayManager {
             br,
             withAlpha(this.hot(reset, hovered || focused), alpha),
             undefined,
-            br.width / (reset.offsetWidth || br.width),
+            0.55 + 0.45 * resetShown,
           )
         }
       }
 
       // 5. Grouped cards, then their rows
+      const cardRects = new Map<HTMLElement, DOMRect>()
       for (const card of panel.cards) {
-        const cr = card.getBoundingClientRect()
+        const cr = this.rectOf(card)
+        cardRects.set(card, cr)
         if (cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
         this.pushPrim({
           x: cr.left,
@@ -1801,12 +2024,25 @@ class GpuOverlayManager {
         })
       }
       for (const row of panel.rows) {
-        const rRect = row.row.getBoundingClientRect()
+        this.curSubHovered = bodyHovered
+        const rRect = this.rectOf(row.row)
         if (rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
         const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
-        const hovered = row.row.matches(":hover")
-        const card = row.row.parentElement!.getBoundingClientRect()
+        const hovered = this.isHovered(row.row)
+        this.curSubHovered = hovered
+        const hot =
+          hovered || row.row.classList.contains("knobs-active") || this.hasFocusVisible(row.row)
+        if (hot) {
+          this.hotRows.add(row.row)
+          const parent = row.row.parentElement
+          if (parent && !parent.classList.contains("knobs-card")) {
+            const outer = row.row.closest(".knobs-card > *")
+            if (outer) this.hotRows.add(outer)
+          }
+        }
+        const parentEl = row.row.parentElement!
+        const card = cardRects.get(parentEl) ?? this.rectOf(parentEl)
         const cardClip = intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom])
         this.curClip = cardClip
 
@@ -1821,7 +2057,7 @@ class GpuOverlayManager {
                 clock - d.enterAt < d.enterMs,
             )
           if (rolling) anyMoving = true
-          const focused = activeEl === sl.track && sl.track.matches(":focus-visible")
+          const focused = this.isFocused(sl.track)
           const dragging = sl.isDragging()
           // The handle follows the same states as its CSS (hover, keyboard focus, drag).
           sl.handleSpring.set(dragging ? 1 : hovered || focused ? 0.65 : 0)
@@ -1849,7 +2085,9 @@ class GpuOverlayManager {
             this.ease(row.row, "fill", dragging ? 0.3 : 0.2),
           )
           // The fill fades under the readout; the zone follows the readout's width.
-          const vRect = sl.valueButton.getBoundingClientRect()
+          const digitsText = sl.getDigitsText()
+          const vRect = this.rectOf(sl.valueButton, digitsText.length)
+          const lRect = this.rectOf(sl.label)
           const zone = this.ease(
             row.row,
             "zone",
@@ -1895,16 +2133,22 @@ class GpuOverlayManager {
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
             p3: this.ease(row.row, "ticks", dragging ? 1 : hovered ? 0.7 : 0),
-            aux: [zone, sl.notchRatio, notch, sl.label.getBoundingClientRect().right - rRect.left],
+            aux: [zone, sl.notchRatio, notch, lRect.right - rRect.left],
             aux2: withAlpha(tokens.text, rowAlpha),
           })
 
-          this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, stretchX * 0.35)
+          this.drawRowLabel(
+            sl.label,
+            row.display,
+            false,
+            rowCenterY,
+            rowAlpha,
+            stretchX * 0.35,
+            lRect,
+          )
 
           if (!sl.isEditing()) {
-            const vRect = sl.valueButton.getBoundingClientRect()
             const unitText = sl.getUnitText()
-            const digitsText = sl.getDigitsText()
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
             const valPx = tokens.fontSize - 0.5
             let rightEdge = vRect.right + stretchX * 0.35
@@ -1945,10 +2189,11 @@ class GpuOverlayManager {
                 ...zoom,
               }
               const maxBlur = faceH * 0.45 * blurMul
-              const measure = (t: string) => this.atlas.measure(t, valPx, 400, tokens.fontFamily)
-              let cell = 0
-              for (let d = 0; d <= 9; d++) cell = Math.max(cell, measure(String(d)))
-              const advance = (ch: string) => (ch >= "0" && ch <= "9" ? cell : measure(ch))
+              const cell = this.getDigitCellWidth(valPx, tokens.fontFamily)
+              const advance = (ch: string) =>
+                ch >= "0" && ch <= "9"
+                  ? cell
+                  : this.atlas.measure(ch, valPx, 400, tokens.fontFamily)
               sl.digitPlaces.forEach((place, j) => {
                 const presence = clamp(place.presence.sample(clock).position, 0, 1)
                 if (presence <= 0.005) return
@@ -1994,7 +2239,7 @@ class GpuOverlayManager {
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
 
-          const segRect = row.segEl.getBoundingClientRect()
+          const segRect = this.rectOf(row.segEl)
           this.pushPrim({
             x: segRect.left,
             y: segRect.top,
@@ -2005,13 +2250,14 @@ class GpuOverlayManager {
             radius: Math.max(2, tokens.radius - 2),
             glowOrBlur: tokens.glowStrength * 8,
             kind: 1,
-            p1: row.segEl.matches(":focus-visible") ? 1 : 0,
+            p1: this.isFocused(row.segEl) ? 1 : 0,
           })
 
           const activeBtn = row.buttons.find((b) => b.getAttribute("aria-checked") === "true")
           if (activeBtn) {
-            const left = activeBtn.offsetLeft
-            const right = left + activeBtn.offsetWidth
+            const activeBr = this.rectOf(activeBtn)
+            const left = activeBr.left - segRect.left
+            const right = left + activeBr.width
             const pe = row.pill
             if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
             else {
@@ -2033,13 +2279,13 @@ class GpuOverlayManager {
           }
 
           for (const b of row.buttons) {
-            const br = b.getBoundingClientRect()
+            const br = this.rectOf(b)
             const checked = b.getAttribute("aria-checked") === "true"
             this.drawText(
               b.textContent ?? "",
               br.left + br.width * 0.5,
               br.top + br.height * 0.5,
-              withAlpha(this.hot(b, checked || b.matches(":hover")), rowAlpha),
+              withAlpha(this.hot(b, checked || this.isHovered(b)), rowAlpha),
               {
                 px: tokens.fontSize - 0.5,
                 weight: checked ? 600 : tokens.labelWeight,
@@ -2057,13 +2303,12 @@ class GpuOverlayManager {
         } else if (row.kind === "easing") {
           this.drawEasing(row, rRect, cardClip, rowAlpha, clock)
         } else if (row.kind === "toggle") {
-          const focused = row.toggleEl.matches(":focus-visible")
-          const tRect = row.toggleEl.getBoundingClientRect()
+          const tRect = this.rectOf(row.toggleEl)
           // The thumb is a span between two edges: the leading edge springs ahead and the trailing
           // one follows, so it stretches into a capsule while it travels; a press widens it toward
           // where it will go, like iOS.
           const on = row.toggleEl.getAttribute("aria-checked") === "true"
-          const pressed = row.toggleEl.matches(":active")
+          const pressed = this.curPanelHovered && row.toggleEl.matches(":active")
           const d = tRect.height - 4
           const travel = tRect.width - 4 - d
           const from = 2 + (on ? travel : 0) - (pressed && on ? 4 : 0)
@@ -2105,6 +2350,7 @@ class GpuOverlayManager {
       this.curClip = bodyClip
 
       // 6. Action buttons
+      this.curSubHovered = this.curPanelHovered
       for (const btn of panel.actionButtons) {
         if (!btn.hidden && this.doc.body.contains(btn)) {
           this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.fontSize - 0.5, true)
@@ -2152,6 +2398,7 @@ class GpuOverlayManager {
       }
     }
 
+    this.curPanelRect = null
     this.curAlpha = 1
     const easing = this.easeMoving
     this.easeMoving = false

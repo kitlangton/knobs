@@ -132,7 +132,13 @@ const numProp = (style: CSSStyleDeclaration, name: string, fallback: number): nu
   return Number.isFinite(raw) ? raw : fallback
 }
 
-export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
+const tokenCache = new WeakMap<HTMLElement, { version: number; tokens: PanelThemeTokens }>()
+
+export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTokens {
+  if (version >= 0) {
+    const hit = tokenCache.get(panel)
+    if (hit && hit.version === version) return hit.tokens
+  }
   const style = getComputedStyle(panel)
   const bg = parseCssColor(style.getPropertyValue("--k-bg"), [0.11, 0.11, 0.12, 1])
   const isLight = bg[0] * 0.2126 + bg[1] * 0.7152 + bg[2] * 0.0722 > 0.55
@@ -188,10 +194,15 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
       ? springMotion({ duration: duration!, bounce: bounce! })
       : { omega: 26, zeta: 0.84 }
 
-  const monoSample = panel.querySelector<HTMLElement>(".knobs-value")
-  const monoComputed = monoSample ? getComputedStyle(monoSample).fontFamily : ""
+  const fontFamily =
+    style.fontFamily ||
+    style.getPropertyValue("--k-font").trim() ||
+    'system-ui, -apple-system, "SF Pro Text", sans-serif'
+  const monoFamily =
+    style.getPropertyValue("--k-mono").trim() ||
+    'ui-monospace, "Geist Mono", SFMono-Regular, Menlo, monospace'
 
-  return {
+  const tokens: PanelThemeTokens = {
     bg,
     surface,
     surfaceHi,
@@ -219,14 +230,10 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
     glassTone: numProp(style, "--k-glass-tone", isLight ? 1.08 : 0.5),
     fillOmega: fill.omega,
     fillZeta: fill.zeta,
-    fontFamily:
-      style.fontFamily ||
-      style.getPropertyValue("--k-font").trim() ||
-      'system-ui, -apple-system, "SF Pro Text", sans-serif',
-    monoFamily:
-      monoComputed ||
-      style.getPropertyValue("--k-mono").trim() ||
-      'ui-monospace, "Geist Mono", SFMono-Regular, Menlo, monospace',
+    fontFamily,
+    monoFamily,
     isLight,
   }
+  if (version >= 0) tokenCache.set(panel, { version, tokens })
+  return tokens
 }

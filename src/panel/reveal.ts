@@ -1,6 +1,13 @@
 const EASE_OUT = "cubic-bezier(.2,.8,.2,1)"
 const EASE_IN = "cubic-bezier(.4,0,.8,.4)"
 
+const running = new WeakMap<HTMLElement, Animation>()
+let activeReveals = 0
+let revealVersion = 0
+
+export const isAnyRevealing = () => activeReveals > 0
+export const getRevealVersion = () => revealVersion
+
 /**
  * Shows or hides an in-flow element by animating its height (and margins/padding) open or shut,
  * so the content below glides instead of jumping. Interruptible: reversing mid-flight continues
@@ -13,11 +20,18 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   if (!show && (node.hidden || leaving)) return
   const fromHeight = node.hidden ? 0 : node.getBoundingClientRect().height
   const fromOpacity = node.hidden ? 0 : Number(win.getComputedStyle(node).opacity)
-  for (const a of node.getAnimations()) a.cancel()
+  const prev = running.get(node)
+  if (prev) {
+    running.delete(node)
+    activeReveals = Math.max(0, activeReveals - 1)
+    revealVersion++
+    prev.cancel()
+  }
   node.hidden = false
   delete node.dataset.leaving
   if (win.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     node.hidden = !show
+    revealVersion++
     return after?.()
   }
   const cs = win.getComputedStyle(node)
@@ -56,7 +70,19 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
     duration: show ? 240 : 170,
     easing: show ? ease : EASE_IN,
   })
+  running.set(node, animation)
+  activeReveals++
+  revealVersion++
+  const settle = () => {
+    if (running.get(node) === animation) {
+      running.delete(node)
+      activeReveals = Math.max(0, activeReveals - 1)
+      revealVersion++
+    }
+  }
+  animation.oncancel = settle
   animation.onfinish = () => {
+    settle()
     node.style.overflow = ""
     if (!show) {
       node.hidden = true
