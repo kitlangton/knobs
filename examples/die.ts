@@ -45,7 +45,13 @@ const controls = defineControls(
     }),
     size: knob(120, { min: 15, max: 200, step: 1, unit: "px", label: "Size", group: "Preview" }),
   },
-  { enabled: true },
+  {
+    enabled: true,
+    // The panel's Random (its button or `r`) rolls the demo dice along with its own.
+    onChange: (_patch, _values, { source }) => {
+      if (source === "randomize") roll()
+    },
+  },
 )
 mountPanel(controls, document.getElementById("panel")!)
 

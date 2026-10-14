@@ -265,6 +265,21 @@ Override CSS variables on `:root` or `.knobs-panel`:
 
 Reduced motion (`prefers-reduced-motion`) turns off the cascade, the pop, the stretch, the spring dot and the editors' height reveals.
 
+### Reacting to Random, Reset and presets
+
+`onChange` says where each change came from, so a page can answer the panel's own commands, such as replaying an animation when Random rolls:
+
+```ts
+const die = defineControls("die", schema, {
+  onChange(patch, values, { source }) {
+    // source: "local" | "randomize" | "reset" | "preset" | "variant" | "undo" | "redo" | "remote"
+    if (source === "randomize") rollDice()
+  },
+})
+```
+
+`patch` holds only the fields that changed. The die page (`examples/die.ts`) rolls its demo dice this way.
+
 ## Explore in development. Ship constants.
 
 ```ts
