@@ -559,11 +559,12 @@ async function measureLatency(
         }),
       )
       let dieSettleMs = 0
+      // The traced canvas only exists for DOM-rendered rolls; the GPU draws its own die.
       const dieCanvas = panelEl.querySelector<HTMLElement>(".knobs-die")
       while (performance.now() - tDie0 < 2500) {
         await sleepRaf()
         if (
-          dieCanvas?.hidden &&
+          (!dieCanvas || dieCanvas.hidden) &&
           (panelEl.dataset.gpuActive !== "true" || window.__knobsGpu?.sleeping)
         ) {
           dieSettleMs = performance.now() - tDie0
