@@ -40,8 +40,6 @@ const TOUCH_GAP = 24
  */
 const PLATEAU_PX = 3
 const PLATEAU = 10
-/** Px of rubber band at the ends: the overshoot a pan can bank before it stops counting. */
-export const OVERSHOOT = 224
 
 export interface WheelSample {
   readonly deltaX: number

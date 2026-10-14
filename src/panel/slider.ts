@@ -1,18 +1,19 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
+import { springMotion } from "../core/spring.js"
+import { tick } from "./haptics.js"
 import { keyPrefs } from "./prefs.js"
 import {
   clamp,
   FILL,
   POP_MS,
   popScale,
-  RELEASE,
   Roll,
   rollTarget,
   Spring,
   VelocityTracker,
 } from "./motion.js"
-import { OVERSHOOT, onPan } from "./swipe.js"
+import { onPan } from "./swipe.js"
 
 export interface DigitPlace {
   ch: string
@@ -36,10 +37,11 @@ export interface Slider {
   valueButton: HTMLButtonElement
   /** The inline number editor (hidden until the value is clicked). */
   number: HTMLInputElement
-  /** Spring driving normalized fill ratio [0..1]. */
+  /**
+   * Spring driving the fill's edge [0..1]: the value, or while a stepped slider is in hand, the
+   * value pulled part way toward the pointer (--k-step-resist).
+   */
   fillSpring: Spring
-  /** Spring driving rubber-band stretch in px (-MAX..+MAX). */
-  stretchSpring: Spring
   /** Spring driving handle visibility/scale [0..1] (the GPU renderer sets its target). */
   handleSpring: Spring
   /** Per-character springs for GPU rolling number digits. */
@@ -53,8 +55,6 @@ export interface Slider {
   readonly notchRatio: number
   /** Whether a drag is currently held on the default by the notch's magnet. */
   isMagnetized(): boolean
-  /** Drag speed mapped to 0..1 for the fill's leading-edge glow (0 once the pointer rests). */
-  speed(): number
   /** When the readout last popped (a click landing on a decile, or the default's magnet). */
   poppedAt: number
   /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
@@ -166,7 +166,11 @@ export function createSlider(
     number.setAttribute("aria-label", `${display} value`)
   }
   shape()
-  track.append(fill, marks, handle, label, value, number)
+  // The handle rides a full-width layer translated by the fill (a transform, so it lands on the
+  // fill's exact sub-pixel edge), inside a still layer that fades it where the text sits.
+  const handleZone = el("div", "knobs-handle-zone")
+  handleZone.append(handle)
+  track.append(fill, marks, handleZone, label, value, number)
   root.append(track)
   // Hover ticks and the default notch stay clear of both the readout and the label.
   let trackWidth = 0
@@ -190,24 +194,40 @@ export function createSlider(
       motionBlur: true,
     })
   let roller = makeRoller(field.value)
-  // Roll durations are design tokens (ms) so the meta page can tune them; 0 while dragging snaps.
-  let cachedRollAt = -Infinity
-  let cachedStepRoll = 320
-  let cachedDragRoll = 0
-  const rollMs = (drag: boolean) => {
-    const now = performance.now()
-    // Read once per press while dragging: a style read per pointer move would force a restyle.
-    if (now - cachedRollAt > 16 && !dragging) {
-      cachedRollAt = now
-      const cs = getComputedStyle(root)
-      const sRaw = parseFloat(cs.getPropertyValue("--k-roll"))
-      const dRaw = parseFloat(cs.getPropertyValue("--k-drag-roll"))
-      cachedStepRoll = Number.isFinite(sRaw) ? Math.max(0, sRaw) : 320
-      cachedDragRoll = Number.isFinite(dRaw) ? Math.max(0, dRaw) : 0
-    }
-    return drag ? cachedDragRoll : cachedStepRoll
+  // Roll durations (ms), the stepped drag's resistance, the edge blur and the spring are design
+  // tokens, so the meta page can tune them. Read once per press while dragging: a style read per
+  // pointer move would force a restyle.
+  const tokens = {
+    stepRoll: 320,
+    dragRoll: 0,
+    resist: 0.25,
+    blur: 0,
+    omega: FILL.omega,
+    zeta: FILL.zeta,
   }
-  const pct = (v: number) => ratioOf(v) * 100
+  let tokensAt = Number.NEGATIVE_INFINITY
+  const readTokens = () => {
+    const now = performance.now()
+    if (now - tokensAt <= 16 || dragging) return tokens
+    tokensAt = now
+    const cs = getComputedStyle(root)
+    const num = (name: string, fallback: number) => {
+      const n = parseFloat(cs.getPropertyValue(name))
+      return Number.isFinite(n) ? n : fallback
+    }
+    tokens.stepRoll = Math.max(0, num("--k-roll", 320))
+    tokens.dragRoll = Math.max(0, num("--k-drag-roll", 0))
+    tokens.resist = clamp(num("--k-step-resist", 0.25), 0, 1)
+    tokens.blur = clamp(num("--k-motion-blur", 0), 0, 1)
+    const [duration, bounce] = cs.getPropertyValue("--k-spring").trim().split(/\s+/).map(Number)
+    if (Number.isFinite(duration) && Number.isFinite(bounce)) {
+      const m = springMotion({ duration: duration!, bounce: bounce! })
+      tokens.omega = m.omega
+      tokens.zeta = m.zeta
+    }
+    return tokens
+  }
+  const rollMs = (drag: boolean) => (drag ? readTokens().dragRoll : readTokens().stepRoll)
   /** Few enough stops that a drag glides from one to the next instead of tracking the pointer. */
   const stepped = () => steps <= 10
   const quantize = (v: number) =>
@@ -217,7 +237,6 @@ export function createSlider(
     )
 
   const fillSpring = new Spring(notchRatio, FILL.omega, FILL.zeta)
-  const stretchSpring = new Spring(0, RELEASE.omega, RELEASE.zeta)
   const handleSpring = new Spring(0, 28, 0.88)
   const digitPlaces: DigitPlace[] = []
   const velocity = new VelocityTracker()
@@ -284,14 +303,76 @@ export function createSlider(
   // Entering or leaving the notch's magnet eases the last few px instead of jumping.
   let settleUntil = 0
   const settling = () => inHand() && performance.now() < settleUntil
+  /** Where the fill's edge belongs: the value, pulled toward the pointer while a stepped drag holds it. */
+  const aim = () => {
+    const r = ratioOf(current)
+    if (pulled === undefined || !stepped() || magnet) return r
+    return r + (ratioOf(pulled) - r) * tokens.resist
+  }
+  const gpuActive = () => root.closest('[data-gpu-active="true"]') !== null
+  const reduced = doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)")
+  const writeFill = (ratio: number) => {
+    const p = `${ratio * 100}%`
+    fill.style.setProperty("--k-fill", p)
+    handle.style.setProperty("--k-fill", p)
+  }
+  // The DOM moves the fill on CSS transitions, except where it needs the spring itself: a stepped
+  // drag's resistance and snap, and edge blur (--k-motion-blur), which needs the edge's speed. Then
+  // it steps `fillSpring` each frame, as the GPU renderer does, and stops once it rests.
+  let frame = 0
+  let frameAt = 0
+  let smear = 0
+  /** Whether `fillSpring` holds the edge on screen (not a CSS transition's). */
+  let synced = true
+  const springDriven = () => frame !== 0 || (inHand() && stepped()) || readTokens().blur > 0
+  const setSmear = (px: number) => {
+    const next = px < 0.25 ? 0 : px
+    if (next === smear) return
+    smear = next
+    root.classList.toggle("knobs-smear", next > 0)
+    root.style.setProperty("--k-smear", next.toFixed(2))
+  }
+  const run = (now: number) => {
+    fillSpring.omega = tokens.omega
+    fillSpring.zeta = tokens.zeta
+    if (reduced?.matches) fillSpring.snap(fillSpring.target)
+    else fillSpring.step((now - frameAt) / 1000)
+    frameAt = now
+    writeFill(fillSpring.x)
+    // Edge blur: the same smear as the GPU's, from the edge's speed (px/s).
+    const speed = Math.max(Math.abs(fillSpring.v), Math.abs(velocity.velocity[0])) * getTrackWidth()
+    setSmear(reduced?.matches ? 0 : Math.min(28, speed * 0.022 * tokens.blur))
+    const busy = !fillSpring.resting || smear > 0 || (inHand() && tokens.blur > 0)
+    frame = busy ? requestAnimationFrame(run) : 0
+    onMotionWake?.()
+  }
+  const drive = () => {
+    if (frame) return
+    // Pick up the edge where any CSS transition has it now (a style read, so only then).
+    if (!synced) {
+      const shown = parseFloat(getComputedStyle(fill).getPropertyValue("--k-fill"))
+      if (Number.isFinite(shown)) {
+        fillSpring.x = shown / 100
+        fillSpring.v = 0
+      }
+      synced = true
+    }
+    root.classList.remove("knobs-animate", "knobs-settle")
+    frameAt = performance.now()
+    frame = requestAnimationFrame(run)
+  }
+  const halt = () => {
+    cancelAnimationFrame(frame)
+    frame = 0
+    setSmear(0)
+  }
   const paint = (v: number, animate: boolean) => {
+    if (!gpuActive() && springDriven()) return drive()
+    halt()
+    synced = gpuActive()
     root.classList.toggle("knobs-animate", animate)
     root.classList.toggle("knobs-settle", settling())
-    const p = pct(v)
-    fill.style.setProperty("--k-fill", `${p}%`)
-    handle.style.left = `${p}%`
-    // Dodge the text when the handle would sit on top of it.
-    handle.classList.toggle("knobs-dodge", p < 28 || p > 76)
+    writeFill(ratioOf(v))
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
   const slotX = (slot: HTMLElement) =>
@@ -317,8 +398,10 @@ export function createSlider(
     const r = ratioOf(v)
     velocity.add(r, 0)
     const ms = !initialized || instant ? 0 : rollMs(inHand())
-    if (!initialized || instant || (inHand() && !settling() && !stepped())) fillSpring.snap(r)
-    else fillSpring.set(r, delay)
+    if (!initialized || instant || (inHand() && !settling() && !stepped())) {
+      fillSpring.snap(r)
+      synced = true
+    } else fillSpring.set(aim(), delay)
     const digitsStr = fmtDigits(v)
     syncDigits(digitsStr, Math.sign(v - previous), ms, ms > 0 ? delay : 0)
     initialized = true
@@ -379,16 +462,6 @@ export function createSlider(
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return field.min + t * span
   }
-  // Drag speed for the leading-edge glow: nothing below a slow drag, full bloom by a quick flick.
-  // The DOM eases --k-speed with a transition; the GPU renderer eases speed() itself.
-  let speedTimer: ReturnType<typeof setTimeout> | undefined
-  const speed = () =>
-    inHand() ? clamp((Math.abs(velocity.velocity[0]) * getTrackWidth() - 150) / 1350, 0, 1) : 0
-  const glow = (value: number) => {
-    root.style.setProperty("--k-speed", value.toFixed(3))
-    clearTimeout(speedTimer)
-    if (value > 0) speedTimer = setTimeout(() => glow(0), 80)
-  }
   // A click's pop waits for the rolling digits to land (about a third of the roll); the
   // magnet's pops at once, since drags don't roll.
   let poppedAt = -Infinity
@@ -424,6 +497,10 @@ export function createSlider(
   // A trackpad pan holds the slider like a drag does.
   let panning = false
   const inHand = () => dragging || panning
+  /** Where the pointer or fingers have the value (clamped to the range) while it's in hand. */
+  let pulled: number | undefined
+  /** Whether the drag or pan in hand has changed the value yet (its undo step exists). */
+  let committed = false
   let dragRect: DOMRect | undefined
   let startX = 0
   let moved = false
@@ -441,8 +518,8 @@ export function createSlider(
     if (event.button !== 0 || (target && number.contains(target))) return
     event.preventDefault()
     fromValue = Boolean(target && value.contains(target))
-    cachedRollAt = -Infinity
-    rollMs(false)
+    tokensAt = Number.NEGATIVE_INFINITY
+    readTokens()
     track.setPointerCapture(event.pointerId)
     dragRect = track.getBoundingClientRect()
     trackWidth = dragRect.width
@@ -452,26 +529,34 @@ export function createSlider(
     fine = relative = event.altKey
     anchorX = startX
     anchorValue = raw = current
+    committed = false
     velocity.reset()
     root.classList.add("knobs-active")
-    track.focus({ preventScroll: true })
+    // A pointer focus isn't a keyboard one: no focus wash (Chromium would draw one, since the
+    // pointerdown's default, which tells it a pointer did this, is prevented).
+    track.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     onMotionWake?.()
   }
-  const MAX_STRETCH = 8
-  // `over` is how far (px) the pointer has pulled past an end: negative left, positive right.
-  let prevStretch = 0
-  const stretch = (over: number) => {
-    const width = getTrackWidth()
-    const dead = Math.max(0, Math.abs(over) - 24)
-    const amount = MAX_STRETCH * Math.sqrt(Math.min(dead / 200, 1))
-    const signed = over < 0 ? -amount : amount
-    stretchSpring.snap(signed)
-    if (signed === 0 && prevStretch === 0) return
-    prevStretch = signed
-    root.style.transform = amount
-      ? `translateX(${over < 0 ? -amount : 0}px) scaleX(${1 + amount / width})`
-      : ""
-    root.style.transformOrigin = over < 0 ? "right" : "left"
+  /**
+   * The pointer or fingers have the value at `at` (clamped to the range): it takes the nearest
+   * step (or the default, held by its magnet), and the fill follows: exactly for a continuous
+   * slider, pulled part way from its stop for a stepped one, which snaps to the next stop past
+   * halfway. Each new stop or catch by the magnet ticks on a phone.
+   */
+  const pull = (at: number, factor = 1) => {
+    pulled = at
+    const before = current
+    const caught = magnetize(at, factor)
+    // The gesture's first change is a new undo step; the rest fold into it.
+    set(caught ? field.value : quantize(at), { coalesce: committed })
+    if (current !== before) {
+      committed = true
+      if (stepped() && !caught) tick(track)
+    }
+    if (stepped()) {
+      fillSpring.set(aim())
+      if (!gpuActive()) drive()
+    } else if (frame === 0 && readTokens().blur > 0 && !gpuActive()) drive()
     onMotionWake?.()
   }
   track.onpointermove = (event) => {
@@ -483,27 +568,19 @@ export function createSlider(
       anchorX = event.clientX
       anchorValue = raw
     }
-    const first = !moved
     moved = true
     const rect = dragRect ?? (dragRect = track.getBoundingClientRect())
     const factor = fine ? 0.1 : 1
-    let over: number
     if (relative) {
       raw = anchorValue + ((event.clientX - anchorX) / rect.width) * span * factor
-      const bound = Math.min(field.max, Math.max(field.min, raw))
-      over = span > 0 ? ((raw - bound) / span) * (rect.width / factor) : 0
-    } else {
-      raw = valueAt(event.clientX, rect)
-      over =
-        event.clientX < rect.left
-          ? event.clientX - rect.left
-          : event.clientX > rect.right
-            ? event.clientX - rect.right
-            : 0
-    }
-    set(magnetize(raw, factor) ? field.value : quantize(raw), { coalesce: !first })
-    glow(speed())
-    stretch(over)
+      // The ends hold: pushing past one and back moves at once, with nothing banked.
+      if (raw < field.min || raw > field.max) {
+        raw = clamp(raw, field.min, field.max)
+        anchorValue = raw
+        anchorX = event.clientX
+      }
+    } else raw = valueAt(event.clientX, rect)
+    pull(raw, factor)
   }
   /** Whether `raw` is close enough to the default for its magnet to hold it there. */
   const magnetize = (raw: number, factor = 1) => {
@@ -512,23 +589,20 @@ export function createSlider(
       magnet = held
       settleUntil = held ? performance.now() + 80 : 0
       root.classList.toggle("knobs-magnet", held)
-      if (held) pop()
+      if (held) {
+        pop()
+        tick(track)
+      }
     }
     return held
   }
-  /** The end of a drag or pan: the rubber band springs back. */
+  /** The end of a drag or pan: a stepped fill springs home onto its stop. */
   const letGo = () => {
     magnet = false
-    prevStretch = 0
-    glow(0)
-    root.classList.remove("knobs-magnet", "knobs-settle")
-    stretchSpring.set(0)
-    root.classList.remove("knobs-active")
-    root.classList.add("knobs-release")
-    root.style.transform = ""
-    root.addEventListener("transitionend", () => root.classList.remove("knobs-release"), {
-      once: true,
-    })
+    pulled = undefined
+    root.classList.remove("knobs-magnet", "knobs-settle", "knobs-active")
+    fillSpring.set(ratioOf(current))
+    if (!gpuActive() && (frame !== 0 || stepped() || tokens.blur > 0)) drive()
   }
   const settleDigits = () => {
     if (rollerDirty && root.closest('[data-gpu-active="true"]') === null) {
@@ -552,12 +626,11 @@ export function createSlider(
   track.onpointercancel = release
 
   // A sideways trackpad pan is a drag by other means: the value follows the fingers 1:1 at the
-  // fill's scale from the first event, stretches at the ends, and lands as one undo step; the
+  // fill's scale from the first event, holds at the ends, and lands as one undo step; the
   // momentum after the fingers lift is ignored. A wheel notch (or ⇧ + wheel) steps once.
   // Vertical scrolling is left alone so the page and panel still scroll.
   let panRaw = 0
   let panValue = 0
-  let panCommitted = false
   /** Between a pan's first move and its end (`panning` lets go a little sooner, at the lift). */
   let panGesture = false
   const panLift = () => {
@@ -576,23 +649,17 @@ export function createSlider(
         panning = true
         velocity.reset()
         root.classList.add("knobs-active")
+        readTokens()
       }
       // A new gesture, or any other change (an undo, a key), anchors the pan as a new undo step.
       if (!panGesture || current !== panValue) {
         panGesture = true
         panRaw = panValue = current
-        panCommitted = false
+        committed = false
       }
-      const reach = (OVERSHOOT / width) * span
-      panRaw = clamp(panRaw + (dx / width) * span, field.min - reach, field.max + reach)
-      const next = magnetize(panRaw) ? field.value : quantize(panRaw)
-      if (next !== current) {
-        set(next, { coalesce: panCommitted })
-        panCommitted = true
-      }
+      panRaw = clamp(panRaw + (dx / width) * span, field.min, field.max)
+      pull(panRaw)
       panValue = current
-      glow(speed())
-      stretch(((panRaw - clamp(panRaw, field.min, field.max)) / span) * width)
     },
     lift: panLift,
     end() {
@@ -619,6 +686,9 @@ export function createSlider(
     number.hidden = true
     value.hidden = false
     if (commit && Number.isFinite(next)) set(quantize(next))
+    halt()
+    fillSpring.snap(ratioOf(current))
+    synced = true
     paint(current, false)
     track.focus({ preventScroll: true })
     onMotionWake?.()
@@ -656,7 +726,6 @@ export function createSlider(
     valueButton: value,
     number,
     fillSpring,
-    stretchSpring,
     handleSpring,
     digitPlaces,
     velocity,
@@ -671,7 +740,6 @@ export function createSlider(
     },
     retune,
     isMagnetized: () => magnet,
-    speed,
     get poppedAt() {
       return poppedAt
     },
@@ -684,7 +752,7 @@ export function createSlider(
     dispose() {
       ro.disconnect()
       clearTimeout(rollTimer)
-      clearTimeout(speedTimer)
+      halt()
     },
   }
 }

@@ -1,13 +1,12 @@
 import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" }
 import { presetCss, type TokenPreset } from "../core/theme.js"
-import { FILL, LEAD, RELEASE, springEasing, TRAIL } from "./motion.js"
+import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
 const lead = springEasing(LEAD.omega, LEAD.zeta)
 const trail = springEasing(TRAIL.omega, TRAIL.zeta)
 const fill = springEasing(FILL.omega, FILL.zeta)
-const release = springEasing(RELEASE.omega, RELEASE.zeta)
 const LEAD_T = `${lead.ms}ms var(--k-lead)`
 const TRAIL_T = `calc(${trail.ms}ms * (.6 + .4 * clamp(0, var(--k-blur), 2))) var(--k-trail)`
 const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k-fill-ease)`
@@ -67,7 +66,6 @@ const defaultsCss = `
 @property --k-fill{syntax:"<percentage>";inherits:false;initial-value:0%}
 @property --k-fill-mix{syntax:"<percentage>";inherits:false;initial-value:20%}
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
-@property --k-speed{syntax:"<number>";inherits:true;initial-value:0}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -79,8 +77,8 @@ const defaultsCss = `
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
-  --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
 :where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip):not([data-theme="dark"]),
@@ -245,42 +243,51 @@ const css = `
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
 .knobs-modified.knobs-row>span:first-child::after{opacity:.95;transform:none}
-/* A locked row's lock sits after its label: room opens on the lead spring as it scales in. */
-.knobs-lock{position:relative;display:inline-block;width:0;height:10px;vertical-align:-1px;color:var(--k-dim);transition:width ${LEAD_T}}
-.knobs-lock>svg{position:absolute;left:5px;top:0;width:10px;height:10px;opacity:0;transform:scale(.5);transition:opacity .14s ease-in,transform .14s ease-in}
-.knobs-locked .knobs-lock{width:15px}
+/* A locked row's lock sits just left of its readout (or its control), where the eye reads the value.
+   Its room opens at once (it's right-aligned, so nothing beside it moves); the icon fades and
+   scales in place. */
+.knobs-lock{position:relative;flex:none;order:-1;display:inline-block;width:0;height:10px;color:var(--k-dim)}
+.knobs-lock>svg{position:absolute;right:0;top:0;width:10px;height:10px;opacity:0;transform:scale(.5);transition:opacity .14s ease-in,transform .14s ease-in}
+.knobs-locked .knobs-lock{width:10px}
+.knobs-value>.knobs-lock>svg{right:6px}
+.knobs-locked .knobs-value>.knobs-lock{width:16px}
+.knobs-row>.knobs-lock{order:0;margin-left:auto}
 .knobs-locked .knobs-lock>svg{opacity:1;transform:none;transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1)}
+/* On iPhones a switch's tap lands on a label for a hidden native switch: iOS's system tick. */
+.knobs-tap-tick{position:absolute;inset:0;border-radius:inherit;-webkit-tap-highlight-color:transparent}
 
-/* Slider: an accent-tinted fill with a brighter leading edge and centerline scale ticks */
-.knobs-track{position:absolute;left:0;right:0;top:0;height:var(--k-row);overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
+/* Slider: one flat accent-tinted fill, a hairline handle on its edge and centerline scale ticks.
+   The ticks and handle fade where the label and readout sit (--k-text-mask). The fill and handle
+   are moved by transforms, never layout or background sizes, which snap to whole pixels: the
+   edge and the handle's centre both land on the value's exact sub-pixel position, as on the GPU. */
+.knobs-track{position:absolute;left:0;right:0;top:0;height:var(--k-row);overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease);
+  --k-text-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px))}
 .knobs-panel .knobs-track:focus-visible{outline:none;box-shadow:none}
-.knobs-marks{position:absolute;inset:0;pointer-events:none;
-  -webkit-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px));
-  mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px))}
+.knobs-marks,.knobs-handle-zone{position:absolute;inset:0;pointer-events:none;-webkit-mask:var(--k-text-mask);mask:var(--k-text-mask)}
 .knobs-marks>i{position:absolute;top:50%;width:1px;height:7px;border-radius:999px;transform:translate(-50%,-50%);background:transparent;transition:background .2s}
 .knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-mix:var(--k-fill-rest-mix);--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-fill-base));
-  background:linear-gradient(to left,color-mix(in srgb,var(--k-accent) min(calc(var(--k-glow) * (20% + var(--k-speed) * 40%)),100%),transparent),transparent calc(24px + var(--k-speed) * 24px)) 0 0/var(--k-fill) 100% no-repeat,linear-gradient(var(--k-fill-tint),var(--k-fill-tint)) 0 0/var(--k-fill) 100% no-repeat;
-  transition:--k-fill-mix .15s}
+  background:var(--k-fill-tint);transform:translateX(calc(var(--k-fill) - 100%));transition:--k-fill-mix .15s}
 .knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-hover-mix)}
 .knobs-active .knobs-fill,.knobs-active:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
-.knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,left ${SLIDE_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
-.knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
+/* --k-motion-blur: a moving edge smears into a ramp as wide as its speed (--k-smear, px), as a
+   horizontal box blur would; the handle widens and thins to match. */
+.knobs-smear .knobs-fill{background:linear-gradient(to left,transparent,var(--k-fill-tint) calc(var(--k-smear) * 1px));transform:translateX(calc(var(--k-fill) - 100% + var(--k-smear) * .5px))}
+.knobs-smear .knobs-handle::before{scale:calc(1 + var(--k-smear) / 3) 1;opacity:calc(3 / (3 + var(--k-smear)))}
+.knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,opacity .15s}
+.knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,opacity .15s}
 .knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
 .knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
 .knobs-magnet .knobs-notch{opacity:.95;height:11px}
-.knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:calc(-1.5px - var(--k-handle-inset));border-radius:999px;background:var(--k-handle);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
-  opacity:var(--k-handle-rest);transform:translateY(-50%) scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)));transition:opacity .15s,transform .22s var(--k-ease)}
-.knobs-handle.knobs-dodge{opacity:calc(var(--k-handle-rest) * .25)}
-.knobs-slider:hover .knobs-handle,.knobs-track:focus-visible~.knobs-handle,.knobs-track:focus-visible .knobs-handle{opacity:.65;transform:translateY(-50%) scaleX(1)}
-.knobs-active .knobs-handle{opacity:.95;transform:translateY(-50%) scaleX(1)}
-.knobs-slider:hover .knobs-handle.knobs-dodge,.knobs-active .knobs-handle.knobs-dodge{opacity:.18;transform:translateY(-50%) scaleX(1) scaleY(.75)}
+/* The handle is a full-width layer moved by the fill (translate's % is its own width, the track's). */
+.knobs-handle{position:absolute;inset:0;pointer-events:none;transform:translateX(var(--k-fill));opacity:var(--k-handle-rest);transition:opacity .15s}
+.knobs-handle::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:calc(-50% - var(--k-handle-inset)) 0;border-radius:999px;background:var(--k-handle);
+  box-shadow:0 0 calc(var(--k-glow) * 8px) color-mix(in srgb,var(--k-accent) 60%,transparent);transform:scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)));transition:transform .22s var(--k-ease)}
+.knobs-slider:hover .knobs-handle,.knobs-track:focus-visible .knobs-handle{opacity:max(.65,var(--k-handle-rest))}
+.knobs-active .knobs-handle{opacity:.95}
+.knobs-slider:is(:hover,.knobs-active) .knobs-handle::before,.knobs-track:focus-visible .knobs-handle::before{transform:scaleX(1)}
 .knobs-slider:is(:hover,:has(:focus-visible)) .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
 .knobs-active .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
-/* Drag speed eases quickly while dragging and fades gently after; the rubber band springs back. */
-.knobs-card>.knobs-slider{transition:background var(--k-hover-t),--k-speed .35s ease-out}
-.knobs-card>.knobs-slider.knobs-active{transition:background var(--k-hover-t),--k-speed .12s ease-out}
-.knobs-card>.knobs-slider.knobs-release{transition:background var(--k-hover-t),--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
 .knobs-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-unit{color:var(--k-unit-color);margin-left:var(--k-unit-gap)}
 /* --k-readout-mark (0 or 1): a modified value takes the modified colour behind a small dot. */

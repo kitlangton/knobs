@@ -21,7 +21,7 @@ struct Prim {
   color: vec4f,   // primary r, g, b, a
   color2: vec4f,  // secondary r, g, b, a (border / handle / thumb / glow)
   look: vec4f,    // radius, strokeWidth, glowOrBlur, kind
-  motion: vec4f,  // blurX, blurY, stretchX, cornersInUv + 2 * (mask index + 1)
+  motion: vec4f,  // blurX, blurY, unused, cornersInUv + 2 * (mask index + 1)
   extra: vec4f,   // kind-specific params
   aux: vec4f,     // kind-specific params
   aux2: vec4f,    // kind-specific color
@@ -61,13 +61,7 @@ struct Out {
   );
   let c = corners[v];
 
-  var r = p.rect;
-  if (p.motion.z < -0.01) {
-    r.x += p.motion.z;
-    r.z -= p.motion.z;
-  } else if (p.motion.z > 0.01) {
-    r.z += p.motion.z;
-  }
+  let r = p.rect;
 
   // Shadows and the pill/switch glows reach ~14px past their shapes.
   let wide = p.look.w == 0.0 || p.look.w == 3.0 || p.look.w == 4.0 || p.look.w == 10.0;
@@ -100,7 +94,6 @@ fn roundedBox4(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
 }
 
 fn radiiOf(p: Prim) -> vec4f {
-  // Shapes with per-corner radii may reuse look.x (the slider's drag speed).
   return select(vec4f(p.look.x), p.uv, (u32(p.motion.w) & 1u) == 1u);
 }
 
@@ -192,44 +185,45 @@ fn shadeTrack(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   return out;
 }
 
+// Where text sits, the handle and ticks fade: clear of the label (aux.w, its right edge) and the
+// readout (aux.x, its width from the right), over 8px a few px out, like the DOM's text mask.
+fn clearOfText(p: Prim, x: f32, width: f32) -> f32 {
+  return clamp((x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) * clamp((width - p.aux.x - 4.0 - x) / 8.0, 0.0, 1.0);
+}
+
 // Single sample of slider fill + handle at local coordinate
 fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let fillRatio = clamp(p.extra.x, 0.0, 1.0);
   let fillX = fillRatio * size.x;
   var out = vec4f(0.0);
 
-  // Accent-tinted fill; its leading 24px brighten toward the edge (look.y = edge alpha).
-  // Drag speed (look.x, 0..1) widens the bright edge to 48px.
-  let speed = clamp(p.look.x, 0.0, 1.0);
+  // One flat, monochrome fill.
   let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
-    let edge = (1.0 - clamp((fillX - local.x) / (24.0 + 24.0 * speed), 0.0, 1.0)) * p.look.y;
-    out = over(premul(p.color), vec4f(p.color2.rgb * edge, edge)) * fillCov;
+    out = premul(p.color) * fillCov;
   }
 
-  // Handle pill at fillX
+  // Handle pill centred on the fill's edge.
   let handleScale = clamp(p.extra.y, 0.0, 1.0);
   if (handleScale > 0.01) {
-    // Near the ends (where the label and readout sit) it dims to a quarter and shortens.
-    let dodge = select(1.0, 0.25, fillRatio < 0.28 || fillRatio > 0.76);
-    let hScaleY = select(1.0, 0.75, fillRatio < 0.28 || fillRatio > 0.76);
+    let fade = clearOfText(p, local.x, size.x);
     // Like the CSS handle: 3px wide at rest, scaled from 25% width as it appears.
     let hw = 3.0 * clamp(0.25 + handleScale * 1.15, 0.25, 1.0);
-    let hh = max(6.0, (size.y - 12.0) * hScaleY);
+    let hh = max(6.0, size.y - 12.0);
     // motion.y: how far inside the fill's edge the handle sits (--k-handle-inset).
     let hp = local - vec2f(fillX - hw * 0.5 - p.motion.y, (size.y - hh) * 0.5);
     let hDist = roundedBox(hp, vec2f(hw, hh), hw * 0.5);
     let hCov = covSd(hDist);
-    let hAlpha = p.color2.a * handleScale * dodge;
+    let hAlpha = p.color2.a * handleScale * fade;
     if (hCov > 0.0) {
       out = over(out, vec4f(p.color2.rgb * hAlpha * hCov, hAlpha * hCov));
     }
-    // Handle glow like its box-shadow: a blur of glow × (8 + 12·speed) px (σ is half), at
-    // 60–100% accent. look.z = --k-glow.
-    let sigma = max(0.5, p.look.z * (4.0 + 6.0 * speed));
+    // Handle glow like its box-shadow: a blur of glow × 8 px (σ is half) at 60% accent.
+    // look.z = --k-glow.
+    let sigma = max(0.5, p.look.z * 4.0);
     if (p.look.z > 0.01 && hDist > 0.0 && hDist < sigma * 3.0) {
       let fall = exp(-0.5 * (hDist / sigma) * (hDist / sigma));
-      let glow = fall * (0.6 + 0.4 * speed) * 0.32 * min(1.0, p.look.z * 4.0) * handleScale * dodge;
+      let glow = fall * 0.6 * 0.32 * min(1.0, p.look.z * 4.0) * handleScale * fade;
       out = over(out, vec4f(p.color2.rgb * glow, glow));
     }
   }
@@ -256,9 +250,8 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     acc = acc / f32(n);
   }
 
-  // Tick marks and default-value notch on the centerline, clear of the label (aux.w) and readout (aux.x).
-  let clear = clamp((local.x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) *
-    clamp((size.x - p.aux.x - 4.0 - local.x) / 8.0, 0.0, 1.0);
+  // Tick marks and default-value notch on the centerline, clear of the label and readout.
+  let clear = clearOfText(p, local.x, size.x);
   let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
   let tickAlpha = clamp(p.extra.w, 0.0, 1.0);
   let tickCount = p.extra.z;

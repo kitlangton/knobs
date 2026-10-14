@@ -1108,8 +1108,9 @@ function buildPanel<S extends Schema>(
     anchor = head = -1
   }
 
-  // A locked row carries a small lock after its label (see .knobs-lock), added the first time it's
-  // locked; the GPU finds it by label.
+  // A locked row carries a small lock just left of its readout (see .knobs-lock): inside a slider's
+  // value, at the head of an editor's summary, or before a row's control. It's added the first time
+  // the row is locked; the GPU finds it by label.
   const lockIcons = new Map<HTMLElement, HTMLElement>()
   const lockIcon = (label: HTMLElement, animate: boolean) => {
     let lock = lockIcons.get(label)
@@ -1118,7 +1119,11 @@ function buildPanel<S extends Schema>(
       lock.className = "knobs-lock"
       lock.setAttribute("aria-hidden", "true")
       lock.append(iconSvg(doc, "lock"))
-      label.append(lock)
+      const readout =
+        label.parentElement?.querySelector<HTMLElement>(":scope > .knobs-value") ??
+        label.parentElement?.querySelector<HTMLElement>(":scope > .knobs-x-sum")
+      if (readout) readout.prepend(lock)
+      else label.after(lock)
       lockIcons.set(label, lock)
       // Styled unlocked first, so it scales in (data-enter tells the GPU to do the same).
       if (animate) {

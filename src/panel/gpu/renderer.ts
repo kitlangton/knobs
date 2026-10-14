@@ -774,7 +774,6 @@ class GpuOverlayManager {
     kind: number
     blurX?: number
     blurY?: number
-    stretchX?: number
     p0?: number
     p1?: number
     p2?: number
@@ -826,7 +825,7 @@ class GpuOverlayManager {
     d[b + 23] = o.kind
     d[b + 24] = o.blurX ?? 0
     d[b + 25] = o.blurY ?? 0
-    d[b + 26] = o.stretchX ?? 0
+    d[b + 26] = 0
     d[b + 27] = (o.corners ? 1 : 0) + 2 * this.curMask
     d[b + 28] = o.p0 ?? 0
     d[b + 29] = o.p1 ?? 0
@@ -1061,51 +1060,17 @@ class GpuOverlayManager {
     modified: boolean,
     rowCenterY: number,
     rowAlpha: number,
-    stretchOffset = 0,
     lRect = this.rectOf(labelEl),
   ) {
     const t = this.curTokens
-    const w = this.drawText(
-      text,
-      lRect.left + stretchOffset,
-      rowCenterY,
-      withAlpha(t.label, rowAlpha),
-    )
-    // The lock after the label: its room opens on the lead spring (pushing the dot along) while
-    // the icon fades and scales in on the reset icon's spring, like .knobs-lock.
+    const w = this.drawText(text, lRect.left, rowCenterY, withAlpha(t.label, rowAlpha))
     const lock = this.curLocks?.get(labelEl)
-    let room = 0
-    if (lock) {
-      const on = lock.dataset.on === "true" ? 1 : 0
-      // A lock added just now enters from nothing; one there from the start is simply shown.
-      if ("enter" in lock.dataset && !this.eased.has(lock)) {
-        this.ease(lock, "room", 0)
-        this.ease(lock, "shown", 0)
-      }
-      room = 15 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
-      const shown = this.ease(lock, "shown", on, 20, 0.6)
-      if (shown > 0.005) {
-        const box = {
-          left: lRect.left + w + 5 + stretchOffset,
-          top: rowCenterY - 5,
-          width: 10,
-          height: 10,
-        }
-        this.drawIcon(
-          "lock",
-          10,
-          box as DOMRect,
-          withAlpha(t.dim, rowAlpha * clamp(shown, 0, 1)),
-          undefined,
-          0.5 + 0.5 * shown,
-        )
-      }
-    }
+    if (lock) this.drawLock(lock, rowCenterY, rowAlpha)
     const dot = this.ease(labelEl, "dot", modified ? 1 : 0)
     if (dot > 0.01) {
       const size = 4 * (0.4 + 0.6 * dot)
       this.pushPrim({
-        x: lRect.left + w + room + 7 + stretchOffset - size / 2,
+        x: lRect.left + w + 7 - size / 2,
         y: rowCenterY - size / 2,
         w: size,
         h: size,
@@ -1114,6 +1079,30 @@ class GpuOverlayManager {
         kind: 7,
       })
     }
+  }
+
+  /**
+   * A locked row's lock, just left of its readout (or control): it fades and scales in on the
+   * reset icon's spring, like .knobs-lock, at the right edge of the room the DOM leaves for it.
+   */
+  private drawLock(lock: HTMLElement, rowCenterY: number, rowAlpha: number) {
+    const on = lock.dataset.on === "true" ? 1 : 0
+    // A lock added just now enters from nothing; one there from the start is simply shown.
+    if ("enter" in lock.dataset && !this.eased.has(lock)) this.ease(lock, "shown", 0)
+    const shown = this.ease(lock, "shown", on, 20, 0.6)
+    if (shown <= 0.005) return
+    const r = this.rectOf(lock, on)
+    // In a readout the icon keeps 6px from the digits (see .knobs-value>.knobs-lock>svg).
+    const right = r.right - (lock.parentElement?.classList.contains("knobs-value") ? 6 : 0)
+    const box = { left: right - 10, top: rowCenterY - 5, width: 10, height: 10 }
+    this.drawIcon(
+      "lock",
+      10,
+      box as DOMRect,
+      withAlpha(this.curTokens.dim, rowAlpha * clamp(shown, 0, 1)),
+      undefined,
+      0.5 + 0.5 * shown,
+    )
   }
 
   private drawButton(
@@ -1179,7 +1168,7 @@ class GpuOverlayManager {
   }
 
   /** A row's hover wash, drawn beneath its control like the DOM row background. */
-  private drawRowHover(row: HTMLElement, rRect: DOMRect, hot: boolean, stretchX = 0) {
+  private drawRowHover(row: HTMLElement, rRect: DOMRect, hot: boolean) {
     const hover =
       this.ease(row, "hover", hot ? 1 : 0, this.hoverOmega(hot)) * (1 - this.curSelected)
     if (hover < 0.005) return
@@ -1191,17 +1180,16 @@ class GpuOverlayManager {
       color: withAlpha(this.curTokens.rowHover, hover),
       corners: this.rowCorners(row),
       kind: 1,
-      stretchX,
     })
   }
 
   /** The hairline above every row but a card's first, and the focus wash. */
-  private drawRowOverlay(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
-    this.drawSeparator(row, rRect, cardClip, stretchX)
-    this.drawFocus(row, this.hasFocusVisible(row), rRect, cardClip, stretchX)
+  private drawRowOverlay(row: HTMLElement, rRect: DOMRect, cardClip: Clip) {
+    this.drawSeparator(row, rRect, cardClip)
+    this.drawFocus(row, this.hasFocusVisible(row), rRect, cardClip)
   }
 
-  private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
+  private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip) {
     const t = this.curTokens
     if (t.rowGap > 0) return
     // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
@@ -1223,12 +1211,11 @@ class GpuOverlayManager {
         clip: cardClip,
         color: withAlpha(t.line, sep),
         kind: 1,
-        stretchX,
       })
   }
 
   /** The focus wash, matching the row's corners inside its card. */
-  private drawFocus(el: HTMLElement, on: boolean, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
+  private drawFocus(el: HTMLElement, on: boolean, rRect: DOMRect, cardClip: Clip) {
     const t = this.curTokens
     const focus = this.ease(el, "focus", on ? 1 : 0)
     if (focus < 0.005) return
@@ -1243,7 +1230,6 @@ class GpuOverlayManager {
       corners: this.rowCorners(el, el.getAttribute("aria-expanded") === "true"),
       glowOrBlur: t.glowStrength * 8,
       kind: 1,
-      stretchX,
     })
   }
 
@@ -2245,7 +2231,7 @@ class GpuOverlayManager {
             radius: tokens.radiusMd,
             glowOrBlur: tokens.glowStrength,
             kind: 3,
-            blurX: clamp(pe.velocity * 0.006 * blurMul, -8, 8),
+            blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
           })
         }
 
@@ -2587,15 +2573,14 @@ class GpuOverlayManager {
               if (!sp.resting) anyMoving = true
             }
           }
-          const stretchX = sl.stretchSpring.x * blurMul
 
-          this.drawRowHover(row.row, rRect, hovered || dragging, stretchX)
+          this.drawRowHover(row.row, rRect, hovered || dragging)
 
-          const dragVel = sl.velocity.velocity[0]
-          const springVel = sl.fillSpring.v
-          const rawVelPx =
-            (Math.abs(springVel) > Math.abs(dragVel) ? springVel : dragVel) * rRect.width
-          const blurX = clamp(rawVelPx * 0.022 * blurMul, -28, 28)
+          // Edge blur (--k-motion-blur): a smear as wide as the edge's speed, like the DOM's.
+          const edgeSpeed =
+            Math.max(Math.abs(sl.fillSpring.v), Math.abs(sl.velocity.velocity[0])) * rRect.width
+          const blurX = reducedMotion ? 0 : Math.min(28, edgeSpeed * 0.022 * tokens.motionBlur)
+          if (blurX > 0) anyMoving = true
           const fillTint = mixColor(
             mixColor(
               tokens.fillRest,
@@ -2605,13 +2590,13 @@ class GpuOverlayManager {
             tokens.fillActive,
             this.ease(row.row, "fill", dragging ? 1 : 0),
           )
-          // The fill fades under the readout; the zone follows the readout's width.
+          // Ticks and the handle fade where the text sits: the zone follows the readout's width
+          // (and the lock beside it).
           const digitsText = sl.getDigitsText()
-          const vRect = this.rectOf(sl.valueButton, digitsText.length)
-          const lRect = this.rectOf(
-            sl.label,
-            this.curLocks?.get(sl.label)?.dataset.on === "true" ? 1 : 0,
-          )
+          const lock = this.curLocks?.get(sl.label)
+          const locked = lock?.dataset.on === "true"
+          const vRect = this.rectOf(sl.valueButton, digitsText.length * 2 + (locked ? 1 : 0))
+          const lRect = this.rectOf(sl.label)
           const zone = this.ease(
             row.row,
             "zone",
@@ -2634,11 +2619,6 @@ class GpuOverlayManager {
             22,
           )
 
-          // Drag speed brightens and widens the fill's leading edge and blooms the handle; it
-          // follows quickly while dragging and fades out gently after (like --k-speed's transitions).
-          const speed = reducedMotion
-            ? 0
-            : this.ease(row.row, "speed", sl.speed(), dragging ? 26 : 12)
           this.pushPrim({
             x: rRect.left,
             y: rRect.top,
@@ -2647,16 +2627,11 @@ class GpuOverlayManager {
             color: withAlpha(fillTint, rowAlpha),
             color2: withAlpha(tokens.handle, rowAlpha),
             corners: this.rowCorners(row.row),
-            // Rows always pass corners, so the radius slot carries the speed.
-            radius: speed,
-            strokeWidth:
-              Math.min(1, tokens.glowStrength * (0.2 + 0.4 * speed)) * tokens.accent[3] * rowAlpha,
             glowOrBlur: tokens.glowStrength,
             kind: 2,
             blurX,
             // Kind 2 has no vertical blur; the slot carries the handle's inset from the fill edge.
             blurY: tokens.handleInset,
-            stretchX,
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
@@ -2665,15 +2640,7 @@ class GpuOverlayManager {
             aux2: withAlpha(tokens.accent, rowAlpha),
           })
 
-          this.drawRowLabel(
-            sl.label,
-            row.display,
-            false,
-            rowCenterY,
-            rowAlpha,
-            stretchX * 0.35,
-            lRect,
-          )
+          this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, lRect)
 
           if (!sl.isEditing()) {
             const unitText = sl.getUnitText()
@@ -2686,7 +2653,7 @@ class GpuOverlayManager {
             const ink = mark > 0.005 ? cssMix(tokens.modified, valCol, clamp(mark, 0, 1)) : valCol
             const unitInk = withAlpha(ink, rowAlpha)
             const valPx = tokens.textControl
-            let rightEdge = vRect.right + stretchX * 0.35
+            let rightEdge = vRect.right
             // The decile pop scales the whole readout about its right edge.
             const popAge = clock - sl.poppedAt
             const pop = reducedMotion ? 1 : popScale(popAge)
@@ -2792,7 +2759,7 @@ class GpuOverlayManager {
               })
             }
           }
-          this.drawRowOverlay(row.row, rRect, cardClip, stretchX)
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "choice" && row.menu && row.row.dataset.display === "menu") {
           // The same row as a compact drop-down button.
           this.drawRowHover(row.row, rRect, hovered)
