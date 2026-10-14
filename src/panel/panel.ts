@@ -1487,7 +1487,8 @@ function buildPanel<S extends Schema>(
           (r) => r.group === groupName && r.keys.some((k) => !same(values[k], locked[k])),
         )
         if (groupMod) anyMod = true
-        const shown = groupMod && bound("reset")
+        // A group's reset is a coarse reset, so it follows `resetAll`.
+        const shown = groupMod && bound("resetAll")
         if (gReset.disabled !== !shown) gReset.disabled = !shown
         const s = String(shown)
         if (gReset.dataset.shown !== s) gReset.dataset.shown = s

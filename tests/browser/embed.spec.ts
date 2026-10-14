@@ -287,6 +287,39 @@ test("flat spring, prototype settings over postMessage, modified dot, fine-grain
   expect(touched).toEqual(["stops"])
 })
 
+test("the row menu offers only what's on, and stays out of the way when nothing is", async ({
+  page,
+}) => {
+  await open(page)
+  const contextMenu = (locator: ReturnType<Page["locator"]>) =>
+    locator.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: r.left + 20,
+        clientY: r.top + r.height / 2,
+      })
+      el.dispatchEvent(event)
+      return event.defaultPrevented
+    })
+  // Parameters: random, lock and copy are off; reset is on.
+  expect(await contextMenu(params(page).locator('[data-field="stops"] .knobs-track'))).toBe(true)
+  const menu = page.getByRole("menu")
+  await expect(menu.getByRole("menuitem")).toHaveText(["Reset⌫"])
+  await page.keyboard.press("Escape")
+  await expect(menu).toHaveCount(0)
+  // Prototype settings: no command is left, so the page's own menu shows.
+  expect(await contextMenu(settings(page).locator('[data-field="0.2"]'))).toBe(false)
+  // The dev dock turns the menu off outright.
+  expect(
+    await contextMenu(
+      page.getByRole("region", { name: "prototype-dock controls" }).locator('[data-field="panel"]'),
+    ),
+  ).toBe(false)
+  await expect(page.getByRole("menu")).toHaveCount(0)
+})
+
 test("no forced layout per pointer move while dragging (DOM renderer)", async ({ page }) => {
   await open(page, "?dom")
   const cdp = await page.context().newCDPSession(page)

@@ -341,6 +341,8 @@ interface TextOpts {
   px?: number
   weight?: number
   mono?: boolean
+  /** A face other than the panel's (the readout's --k-value-font). */
+  family?: string
   align?: "left" | "center" | "right"
   clip?: Clip
   blurY?: number
@@ -899,7 +901,7 @@ class GpuOverlayManager {
     const t = this.curTokens
     const px = opts.px ?? t.fontSize
     const weight = opts.weight ?? t.labelWeight
-    const family = opts.mono ? t.monoFamily : t.fontFamily
+    const family = opts.family ?? (opts.mono ? t.monoFamily : t.fontFamily)
     const entry = this.atlas.get(text, px, weight, family, this.curScale, opts.track ?? 0)
     const align = opts.align ?? "left"
     const drawX =
@@ -1592,17 +1594,30 @@ class GpuOverlayManager {
       kind: 1,
     })
     const clip = intersectClip(cardClip, [box.left, box.top, box.right, box.bottom])
-    for (const y of row.guides())
-      this.pushLine(
-        [box.left + 6, box.top + y, box.right - 6, box.top + y],
-        withAlpha(t.line, rowAlpha),
-        1,
-        clip,
-      )
+    const inset = t.curveInset
+    for (const y of row.guides()) {
+      if (!t.curveDashed) {
+        this.pushLine(
+          [box.left + inset, box.top + y, box.right - inset, box.top + y],
+          withAlpha(t.line, rowAlpha),
+          1,
+          clip,
+        )
+        continue
+      }
+      // 4 px dashes, 4 px apart, as the DOM's stroke-dasharray draws them.
+      for (let x = box.left + inset; x < box.right - inset; x += 8)
+        this.pushLine(
+          [x, box.top + y, Math.min(x + 4, box.right - inset), box.top + y],
+          withAlpha(t.lineHi, rowAlpha),
+          1,
+          clip,
+        )
+    }
     const curve = this.morph(row.box, row.curve(), row.wave.at - clock, row.snap(), box)
     this.pushLine(at(curve, box), withAlpha(t.accent, rowAlpha), 1.5, clip)
     const run = row.dot()
-    if (!run || this.curReduced) return
+    if (!run || this.curReduced || t.curveDot <= 0) return
     const p = (clock - run.at) / run.ms
     if (p > 1) return
     this.easeMoving = true
@@ -1619,9 +1634,9 @@ class GpuOverlayManager {
       w: 5,
       h: 5,
       radius: 2.5,
-      fill: withAlpha(t.accent, fade * rowAlpha),
+      fill: withAlpha(t.accent, fade * rowAlpha * t.curveDot),
       glow: t.glowStrength * 8,
-      glowColor: withAlpha(t.accent, fade * rowAlpha),
+      glowColor: withAlpha(t.accent, fade * rowAlpha * t.curveDot),
       clip,
     })
   }
@@ -2042,21 +2057,22 @@ class GpuOverlayManager {
       if (!pageB) this.placeBackdrop(panel, card, outerClip, cardRadius, glass, tokens.glassTone)
       // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
       const shadow = tokens.isLight ? 0.16 : 0.48
-      if (!pageB)
+      const chrome = panel.inline ? tokens.chrome : 1
+      if (!pageB && chrome > 0.005)
         this.pushPrim({
           x: card.left,
           y: card.top,
           w: card.width,
           h: card.height,
           clip: outerClip,
-          color: withAlpha(tokens.bg, 1 - glass * 0.2 * shown),
-          color2: tokens.line,
+          color: withAlpha(tokens.bg, (1 - glass * 0.2 * shown) * chrome),
+          color2: withAlpha(tokens.line, tokens.line[3] * chrome),
           radius: cardRadius,
           strokeWidth: 1,
           glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
           kind: 0,
           p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
-          aux2: shown < 1 ? withAlpha(tokens.rim, shown) : tokens.rim,
+          aux2: withAlpha(tokens.rim, (shown < 1 ? shown : tokens.rim[3]) * chrome),
         })
       if (morph && this.maskCount < MAX_MASKS) {
         this.masks.set(
@@ -2341,9 +2357,19 @@ class GpuOverlayManager {
               : (g.labelEl.textContent ?? ""),
             lr.left,
             lr.top + lr.height * 0.5,
-            tokens.dim,
-            { px: Math.max(9, tokens.textCap), weight: 600, track: 0.04 },
+            tokens.groupColor,
+            { px: Math.max(9, tokens.groupSize), weight: 600, track: tokens.groupTracking },
           )
+        // --k-group-divider: a hairline over every group but the first.
+        if (!g.title && tokens.groupDivider[3] > 0 && g.element.previousElementSibling)
+          this.pushPrim({
+            x: gr.left,
+            y: gr.top,
+            w: gr.width,
+            h: 1,
+            color: tokens.groupDivider,
+            kind: 1,
+          })
         if (g.presets) anyMoving = this.drawChips(g.presets, hinting, reducedMotion) || anyMoving
         for (const gb of g.buttons) {
           this.drawButton(
@@ -2542,7 +2568,11 @@ class GpuOverlayManager {
             (Math.abs(springVel) > Math.abs(dragVel) ? springVel : dragVel) * rRect.width
           const blurX = clamp(rawVelPx * 0.022 * blurMul, -28, 28)
           const fillTint = mixColor(
-            tokens.fillRest,
+            mixColor(
+              tokens.fillRest,
+              tokens.fillHover,
+              this.ease(row.row, "fillHover", hovered ? 1 : 0, this.hoverOmega(hovered)),
+            ),
             tokens.fillActive,
             this.ease(row.row, "fill", dragging ? 1 : 0),
           )
@@ -2586,7 +2616,7 @@ class GpuOverlayManager {
             w: rRect.width,
             h: rRect.height,
             color: withAlpha(fillTint, rowAlpha),
-            color2: withAlpha(tokens.accent, rowAlpha),
+            color2: withAlpha(tokens.handle, rowAlpha),
             corners: this.rowCorners(row.row),
             // Rows always pass corners, so the radius slot carries the speed.
             radius: speed,
@@ -2595,6 +2625,8 @@ class GpuOverlayManager {
             glowOrBlur: tokens.glowStrength,
             kind: 2,
             blurX,
+            // Kind 2 has no vertical blur; the slot carries the handle's inset from the fill edge.
+            blurY: tokens.handleInset,
             stretchX,
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
@@ -2617,6 +2649,13 @@ class GpuOverlayManager {
           if (!sl.isEditing()) {
             const unitText = sl.getUnitText()
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
+            // --k-readout-mark: a modified value takes the modified colour behind a dot.
+            const mark =
+              tokens.readoutMark > 0
+                ? this.ease(row.row, "mark", row.isModified() ? 1 : 0, 26, 0.6)
+                : 0
+            const ink = mark > 0.005 ? cssMix(tokens.modified, valCol, clamp(mark, 0, 1)) : valCol
+            const unitInk = withAlpha(ink, rowAlpha)
             const valPx = tokens.textControl
             let rightEdge = vRect.right + stretchX * 0.35
             // The decile pop scales the whole readout about its right edge.
@@ -2626,13 +2665,19 @@ class GpuOverlayManager {
             const zoom = { scale: pop, origin: [rightEdge, rowCenterY] as const }
             if (unitText) {
               rightEdge -=
-                this.drawText(unitText, rightEdge, rowCenterY, withAlpha(tokens.dim, rowAlpha), {
-                  px: valPx,
-                  weight: 400,
-                  align: "right",
-                  ...zoom,
-                }) +
-                valPx * 0.28
+                this.drawText(
+                  unitText,
+                  rightEdge,
+                  rowCenterY,
+                  tokens.unitColor ? withAlpha(tokens.unitColor, rowAlpha) : unitInk,
+                  {
+                    px: valPx,
+                    weight: 400,
+                    align: "right",
+                    family: tokens.valueFamily,
+                    ...zoom,
+                  },
+                ) + tokens.unitGap
             }
 
             {
@@ -2654,14 +2699,30 @@ class GpuOverlayManager {
                 align: "right" as const,
                 clip: slotClip,
                 feather,
+                family: tokens.valueFamily,
                 ...zoom,
               }
               const maxBlur = faceH * 0.45 * blurMul
-              const cell = this.getDigitCellWidth(valPx, tokens.fontFamily)
+              const cell = this.getDigitCellWidth(valPx, tokens.valueFamily)
               const advance = (ch: string) =>
                 ch >= "0" && ch <= "9"
                   ? cell
-                  : this.atlas.measure(ch, valPx, 400, tokens.fontFamily)
+                  : this.atlas.measure(ch, valPx, 400, tokens.valueFamily)
+              let digitsW = 0
+              for (const ch of digitsText) digitsW += advance(ch)
+              if (mark > 0.005) {
+                const r = 2.5 * Math.max(0, Math.min(1.2, mark))
+                const cx = rightEdge - digitsW - 6 - 2.5
+                this.shape({
+                  x: cx - r,
+                  y: rowCenterY - r,
+                  w: r * 2,
+                  h: r * 2,
+                  radius: r,
+                  fill: withAlpha(tokens.modified, rowAlpha * clamp(mark, 0, 1)),
+                  clip: bodyClip,
+                })
+              }
               sl.digitPlaces.forEach((place, j) => {
                 const presence = clamp(place.presence.sample(clock).position, 0, 1)
                 if (presence <= 0.005) return
@@ -2678,7 +2739,7 @@ class GpuOverlayManager {
                 }
                 const cx = rightEdge - (offset ?? 0)
                 const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
-                const col = withAlpha(valCol, presence)
+                const col = withAlpha(ink, presence)
                 const isDigit = place.ch >= "0" && place.ch <= "9"
                 if (!isDigit) {
                   this.drawText(place.ch, cx, rowCenterY + rise, col, { ...text, align: "center" })

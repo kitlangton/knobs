@@ -36,7 +36,7 @@ const glide = /* @__PURE__ */ springCss({ duration: 0.185, bounce: 0.14 })
  * The Problems viewer's parameter panel: separate 34 px bars 4 px apart, its blue fill and
  * labels, a spring card that stacks its curve over two sliders, washes that arrive at once and
  * leave over 100 ms, and Problems' own slider spring (ω 34, ζ 0.86). An inline panel sheds its
- * chrome to sit in the host's column.
+ * chrome to sit in the host's column. Every difference from the defaults is a token.
  */
 export const problemsPreset: TokenPreset = {
   name: "problems",
@@ -77,9 +77,23 @@ export const problemsPreset: TokenPreset = {
     "handle-inset": "7.5px",
     "fill-base": "transparent",
     "fill-rest-mix": "24%",
+    "fill-hover-mix": "36%",
     "fill-active-mix": "36%",
+    chrome: 0,
     "group-transform": "none",
     "value-font": "var(--k-mono)",
+    "unit-gap": "0px",
+    "unit-color": "currentColor",
+    "readout-mark": 1,
+    "group-size": "12px",
+    "group-color": "rgba(235,235,245,.62)",
+    "group-inset": "0px",
+    "group-tracking": "-.01em",
+    "group-divider": "rgba(255,255,255,.075)",
+    "group-divider-gap": "8px",
+    "curve-inset": "0px",
+    "curve-guide": "dashed",
+    "curve-dot": 0,
     spring: "0.185 0.14",
     "fill-ease": glide.easing,
     "fill-ms": glide.duration,
@@ -100,13 +114,8 @@ export const problemsPreset: TokenPreset = {
     "toggle-track": "rgba(120,120,128,.2)",
     "toggle-thumb": "#fff",
     rim: "transparent",
+    "group-color": "rgba(60,60,67,.66)",
+    "group-divider": "rgba(0,0,0,.07)",
     "color-scheme": "light",
   },
-  css:
-    "&.knobs-inline{background:transparent;border:0;box-shadow:none;padding:0;-webkit-backdrop-filter:none;backdrop-filter:none}" +
-    "& .knobs-slider.knobs-modified .knobs-value{color:var(--kv-modified)}" +
-    "& .knobs-value{gap:0}& .knobs-unit{color:inherit}" +
-    "& .knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}" +
-    "& .knobs-group-head{padding:0;color:var(--kv-label);font-size:12px;letter-spacing:-.01em}" +
-    "& .knobs-group-head:not(:first-child){margin-top:10px;padding-top:8px;border-top:1px solid var(--kv-line)}",
 }

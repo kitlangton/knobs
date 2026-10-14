@@ -364,13 +364,13 @@ const SPRING_WINDOW = 1.2
 const SPRING_Y: readonly [number, number] = [-0.05, 1.6]
 
 /** The step response over a fixed 1.2 s window in a w×h box, as x,y pairs (px). */
-export function springCurve(value: SpringValue, w: number, h: number, pad = 6) {
+export function springCurve(value: SpringValue, w: number, h: number, pad = 6, padX = pad) {
   const { omega, zeta } = springMotion(value)
   const ys = springResponse(omega, zeta, SPRING_WINDOW, SPRING_WINDOW / 60)
   const out: number[] = []
   ys.forEach((y, i) => {
     out.push(
-      pad + (i / (ys.length - 1)) * (w - pad * 2),
+      padX + (i / (ys.length - 1)) * (w - padX * 2),
       pad + ((SPRING_Y[1] - y) / (SPRING_Y[1] - SPRING_Y[0])) * (h - pad * 2),
     )
   })
@@ -428,15 +428,35 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   let shown = c.field.value
   let dotRun: { at: number; frames: number[]; ms: number } | null = null
   let pending = false
-  const points = () => (size.w ? springCurve(shown, size.w, size.h) : [])
+  // --k-curve-inset and --k-curve-guide, read when the box resizes (never per frame).
+  const look = { inset: 6, dashed: false }
+  const readLook = () => {
+    const cs = getComputedStyle(box)
+    const inset = parseFloat(cs.getPropertyValue("--k-curve-inset"))
+    look.inset = Number.isFinite(inset) ? inset : 6
+    look.dashed = cs.getPropertyValue("--k-curve-guide").trim() === "dashed"
+  }
+  const guideYs = () => (look.dashed ? [1] : [0, 1]).map((y) => springGuideY(y, size.h))
+  const points = () => (size.w ? springCurve(shown, size.w, size.h, 6, look.inset) : [])
   const draw = (instant: boolean) => {
     if (!size.w) return
     plot.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`)
-    const g = [0, 1].map((y) => springGuideY(y, size.h))
-    guides.setAttribute("d", g.map((y) => `M6 ${y.toFixed(2)}H${size.w - 6}`).join(""))
+    const i = look.inset
+    guides.setAttribute(
+      "d",
+      guideYs()
+        .map((y) => `M${i} ${y.toFixed(2)}H${size.w - i}`)
+        .join(""),
+    )
+    if (look.dashed) guides.setAttribute("stroke-dasharray", "4 4")
+    else guides.removeAttribute("stroke-dasharray")
+    guides.classList.toggle("knobs-guide-dashed", look.dashed)
     place([curve], instant, () => setPath(curve, points()))
   }
-  const size = measure(box, () => draw(true))
+  const size = measure(box, () => {
+    readLook()
+    draw(true)
+  })
   const dragging = () => parts.some((p) => p.slider.isDragging())
   // The dot runs the curve in real time: x is time, y the spring's position.
   const play = (delay: number) => {
@@ -469,7 +489,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     row,
     box,
     curve: points,
-    guides: () => (size.w ? [0, 1].map((y) => springGuideY(y, size.h)) : []),
+    guides: () => (size.w ? guideYs() : []),
     dot: () => dotRun,
     snap: dragging,
     wave: c.wave,

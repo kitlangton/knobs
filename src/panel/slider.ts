@@ -288,7 +288,7 @@ export function createSlider(
     fill.style.setProperty("--k-fill", `${p}%`)
     handle.style.left = `${p}%`
     // Dodge the text when the handle would sit on top of it.
-    handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
+    handle.classList.toggle("knobs-dodge", p < 28 || p > 76)
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
   const fastPatchDigits = (text: string): boolean => {

@@ -210,12 +210,14 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   // Handle pill at fillX
   let handleScale = clamp(p.extra.y, 0.0, 1.0);
   if (handleScale > 0.01) {
-    let dodge = select(1.0, 0.28, fillRatio < 0.22 || fillRatio > 0.78);
-    let hScaleY = select(1.0, 0.76, fillRatio < 0.22 || fillRatio > 0.78);
+    // Near the ends (where the label and readout sit) it dims to a quarter and shortens.
+    let dodge = select(1.0, 0.25, fillRatio < 0.28 || fillRatio > 0.76);
+    let hScaleY = select(1.0, 0.75, fillRatio < 0.28 || fillRatio > 0.76);
     // Like the CSS handle: 3px wide at rest, scaled from 25% width as it appears.
     let hw = 3.0 * clamp(0.25 + handleScale * 1.15, 0.25, 1.0);
     let hh = max(6.0, (size.y - 12.0) * hScaleY);
-    let hp = local - vec2f(fillX - hw * 0.5, (size.y - hh) * 0.5);
+    // motion.y: how far inside the fill's edge the handle sits (--k-handle-inset).
+    let hp = local - vec2f(fillX - hw * 0.5 - p.motion.y, (size.y - hh) * 0.5);
     let hDist = roundedBox(hp, vec2f(hw, hh), hw * 0.5);
     let hCov = covSd(hDist);
     let hAlpha = p.color2.a * handleScale * dodge;
@@ -273,7 +275,7 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
       let tCov = covSd(tDist) * clear;
       if (tCov > 0.0) {
         let ta = tCov * tickAlpha * 0.22;
-        acc = over(acc, vec4f(p.color2.rgb * ta, ta));
+        acc = over(acc, vec4f(p.aux2.rgb * ta, ta));
       }
     }
   }

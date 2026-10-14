@@ -75,7 +75,7 @@ const defaultsCss = `
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-active-mix:30%;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -112,6 +112,9 @@ const css = `
   --k-fill-rest:color-mix(in srgb,var(--k-accent) var(--k-fill-rest-mix),var(--k-fill-base));
   --k-fill-active:color-mix(in srgb,var(--k-accent) var(--k-fill-active-mix),var(--k-fill-base));
   --k-disabled-opacity:.32;
+  --k-unit-gap:.28em;--k-unit-color:var(--k-dim);--k-readout-mark:0;
+  --k-group-size:var(--k-text-cap);--k-group-color:var(--k-dim);--k-group-inset:var(--k-inset);--k-group-tracking:.04em;--k-group-divider:transparent;--k-group-divider-gap:0px;
+  --k-curve-inset:6px;--k-curve-guide:solid;--k-curve-dot:1;
   --k-hint-typed-opacity:.42;
 }
 /* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
@@ -164,7 +167,9 @@ const css = `
 .knobs-morph::after{box-shadow:var(--k-shadow);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
-.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 var(--k-rim);animation:none}
+.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--k-chrome) * 100%),transparent);animation:none;
+  /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column. */
+  background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:color-mix(in srgb,var(--k-line) calc(var(--k-chrome) * 100%),transparent)}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
 
@@ -208,7 +213,8 @@ const css = `
 .knobs-preset-save:hover{color:var(--k-text)!important}
 
 /* Group headers */
-.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-inset);color:var(--k-dim);font-size:var(--k-text-cap);font-weight:600;letter-spacing:.04em;text-transform:var(--k-group-transform)}
+.knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-group-inset);color:var(--k-group-color);font-size:var(--k-group-size);font-weight:600;letter-spacing:var(--k-group-tracking);text-transform:var(--k-group-transform)}
+.knobs-panel:not(.knobs-page) .knobs-group-head:not(:first-child){border-top:1px solid var(--k-group-divider);padding-top:var(--k-group-divider-gap)}
 .knobs-group-head:first-child{margin-top:0}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer}
@@ -251,7 +257,8 @@ const css = `
 .knobs-fill{position:absolute;inset:0;pointer-events:none;--k-fill-mix:var(--k-fill-rest-mix);--k-fill-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-mix),var(--k-fill-base));
   background:linear-gradient(to left,color-mix(in srgb,var(--k-accent) min(calc(var(--k-glow) * (20% + var(--k-speed) * 40%)),100%),transparent),transparent calc(24px + var(--k-speed) * 24px)) 0 0/var(--k-fill) 100% no-repeat,linear-gradient(var(--k-fill-tint),var(--k-fill-tint)) 0 0/var(--k-fill) 100% no-repeat;
   transition:--k-fill-mix .15s}
-.knobs-active .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
+.knobs-slider:hover .knobs-fill{--k-fill-mix:var(--k-fill-hover-mix)}
+.knobs-active .knobs-fill,.knobs-active:hover .knobs-fill{--k-fill-mix:var(--k-fill-active-mix)}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,left .1s cubic-bezier(.25,1,.5,1),opacity .15s,transform .22s var(--k-ease)}
 .knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
@@ -271,9 +278,14 @@ const css = `
 .knobs-card>.knobs-slider.knobs-active{transition:background var(--k-hover-t),--k-speed .12s ease-out}
 .knobs-card>.knobs-slider.knobs-release{transition:background var(--k-hover-t),--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
 .knobs-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
-.knobs-unit{color:var(--k-dim)}
+.knobs-unit{color:var(--k-unit-color);margin-left:var(--k-unit-gap)}
+/* --k-readout-mark (0 or 1): a modified value takes the modified colour behind a small dot. */
+.knobs-value::before{content:"";flex:none;width:calc(5px * var(--k-readout-mark));height:5px;margin-right:calc(6px * var(--k-readout-mark));border-radius:50%;background:var(--k-modified);opacity:0;transform:scale(0);transition:opacity .16s ease,transform .3s cubic-bezier(.34,1.56,.64,1)}
+:is(.knobs-slider,.knobs-sub).knobs-modified .knobs-value{color:color-mix(in srgb,var(--k-modified) calc(var(--k-readout-mark) * 100%),var(--k-label))}
+:is(.knobs-slider,.knobs-sub).knobs-modified:is(.knobs-active,:has(.knobs-track:focus-visible)) .knobs-value{color:color-mix(in srgb,var(--k-modified) calc(var(--k-readout-mark) * 100%),var(--k-text))}
+:is(.knobs-slider,.knobs-sub).knobs-modified .knobs-value::before{opacity:var(--k-readout-mark);transform:none}
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - var(--k-inset) * 2 - var(--k-readout,48px) - 8px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
-.knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:.28em;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
+.knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:0;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
   color:var(--k-label);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
   border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .4s}
 .knobs-value:hover{border-bottom-color:var(--k-label)}
@@ -336,7 +348,8 @@ const css = `
 .knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
 .knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1;transition:d ${FILL_T} ${DELAY}}
 .knobs-curve{fill:none;stroke:var(--k-accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:d ${FILL_T} ${DELAY}}
-.knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0}
+.knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0;scale:var(--k-curve-dot)}
+.knobs-guide-dashed{stroke:var(--k-line-hi)}
 .knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
 
 .knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}

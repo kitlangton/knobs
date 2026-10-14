@@ -455,7 +455,7 @@ function App(): JSX.Element {
     </div>
     <div class="proto-dock">
       <button>Prototype ▾</button>
-      <${KnobsPanel} controls=${dock} header=${false} variants=${false} theme="auto" preset=${problemsPreset} keys=${{ random: false, mutate: false, hint: false }} />
+      <${KnobsPanel} controls=${dock} header=${false} variants=${false} theme="auto" preset=${problemsPreset} keys=${{ random: false, mutate: false, hint: false, menu: false }} />
     </div>
   ` as unknown as JSX.Element
 }
