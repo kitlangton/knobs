@@ -80,6 +80,20 @@ const metaSchema = {
     label: "Motion & blur",
     group: "Typography & Motion",
   }),
+  edgeBlur: knob(0, {
+    min: 0,
+    max: 1,
+    step: 0.05,
+    label: "Edge motion blur",
+    group: "Typography & Motion",
+  }),
+  stepResist: knob(0.25, {
+    min: 0,
+    max: 1,
+    step: 0.05,
+    label: "Step resistance",
+    group: "Typography & Motion",
+  }),
   glow: knob(0.5, {
     min: 0,
     max: 1.5,
@@ -172,6 +186,8 @@ function tokensFor(v: MetaValues): [string, string][] {
     ["--k-font-size", `${fontSize}px`],
     ["--k-label-weight", String(v.labelWeight)],
     ["--k-blur", String(v.motionBlur)],
+    ["--k-motion-blur", String(v.edgeBlur)],
+    ["--k-step-resist", String(v.stepResist)],
     ["--k-glow", String(v.glow)],
     ["--k-cascade", String(v.cascade)],
     ["--k-glass", String(v.glass)],
@@ -304,6 +320,7 @@ const synthSpecimen = defineControls(
       label: "Detune",
       group: "Oscillator",
     }),
+    voices: knob(3, { min: 1, max: 7, step: 1, label: "Unison voices", group: "Oscillator" }),
     chorus: toggle(true, { label: "Stereo chorus", group: "Oscillator" }),
   },
   {
