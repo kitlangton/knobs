@@ -35,7 +35,7 @@ const CARDS: Record<string, string> = {
   promotion: "Glide",
   jump: "Glide",
   follow: "Glide",
-  header: "Header",
+  header: "Header Style",
   level: "Level picker",
   controls: "Controls",
   expand: "Controls",

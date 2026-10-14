@@ -1171,7 +1171,9 @@ function buildPanel<S extends Schema>(
             : (at + step + cardsNow.length) % cardsNow.length
         const first = nodes.find((node) => cardsNow[at]!.contains(node))
         if (first) {
+          wholeCard = true
           first.focus({ preventScroll: true })
+          wholeCard = false
           break
         }
       }
@@ -1445,6 +1447,8 @@ function buildPanel<S extends Schema>(
   // A page scrolls the window: focus that lands out of view (or under the header) glides into it,
   // retargeting from where the last glide was headed so held keys don't fall behind.
   let scrollGoal: number | undefined
+  /** Set while Tab moves to a group, which brings the whole card into view where it fits. */
+  let wholeCard = false
   let hintScrollY = 0
   const onScroll = () => {
     if (!win) return
@@ -1489,7 +1493,14 @@ function buildPanel<S extends Schema>(
       // A card's first row brings the card's header along.
       const tile = t.closest<HTMLElement>(".knobs-tile")
       const firstRow = tile?.querySelector(".knobs-card > :not([hidden])")
-      bringIntoView(tile && firstRow === item ? tile : item, item)
+      const fits =
+        tile &&
+        tile.getBoundingClientRect().height <
+          (win?.innerHeight ?? 0) - header.getBoundingClientRect().bottom - 24
+      bringIntoView(
+        tile && (firstRow === item || (wholeCard && fits)) ? tile : item,
+        wholeCard && fits ? tile! : item,
+      )
     })
     for (const tile of body.querySelectorAll<HTMLElement>(".knobs-tile")) tileSizes.observe(tile)
     // The floating shortcuts sit just under the header, however tall it is.

@@ -1349,3 +1349,92 @@ test("design-system geometry contracts: left/right column alignment, concentric 
   }
   expect(errors).toEqual([])
 })
+
+test("full page: cards in columns under a sticky header, keys across cards, numbered presets and custom cards", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const tune = page.getByRole("region", { name: "iPhone Tune controls" })
+  const card = (name: string) => tune.locator(`.knobs-tile[aria-label="${name}"]`)
+  // Groups become cards in sections; custom cards join them; the columns follow the width.
+  await expect(tune.locator(".knobs-section-head")).toHaveText([
+    "Playground",
+    "Session List",
+    "Transcript",
+    "Composer",
+  ])
+  await expect(card("Spacing")).toBeVisible()
+  await expect(tune.locator(".knobs-live")).toHaveCount(2)
+  await expect(tune.locator(".knobs-section").nth(1).locator(".knobs-column")).toHaveCount(4)
+
+  // j runs off the end of one card into the next; Tab and ⇧Tab move between groups.
+  await page.getByRole("slider", { name: "Room below a header" }).focus()
+  await page.keyboard.press("j")
+  await expect(page.getByRole("slider", { name: "Fade below the title" })).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(page.getByRole("slider", { name: "Search morph duration" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(page.getByRole("slider", { name: "Fade below the title" })).toBeFocused()
+  await page.keyboard.press("k")
+  await expect(page.getByRole("slider", { name: "Room below a header" })).toBeFocused()
+
+  // 1–9 apply the focused group's numbered preset; the phone applies its own and agrees.
+  const rowHeight = page.getByRole("slider", { name: "Row height" })
+  await rowHeight.focus()
+  await page.keyboard.press("2")
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
+  await expect(card("Spacing").getByRole("radio", { name: "2 Compact" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await expect(card("Spacing").locator(".knobs-group-head")).toHaveAttribute("data-peek", "")
+  await page.waitForTimeout(400)
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
+  await page.keyboard.press("u")
+  await expect(rowHeight).toHaveAttribute("aria-valuenow", "44")
+  await expect(card("Spacing").getByRole("radio", { name: "1 Today" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+
+  // A custom card's controls round-trip through the phone.
+  const speed = card("Playground & Slow Motion").getByRole("radiogroup", { name: "Speed" })
+  await speed.getByRole("radio", { name: "0.25×" }).click()
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => (window as any).__tune.remote.get()["drawer.row.height"])).toBe(
+    44,
+  )
+  await expect(speed.getByRole("radio", { name: "0.25×" })).toHaveAttribute("aria-checked", "true")
+  await speed.focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(speed.getByRole("radio", { name: "0.5×" })).toHaveAttribute("aria-checked", "true")
+
+  // `/` filters rows live and Esc brings them back.
+  await rowHeight.focus()
+  await page.keyboard.press("/")
+  await page.keyboard.type("corner")
+  await expect(tune.locator(".knobs-tile:visible")).toHaveCount(3)
+  await expect(rowHeight).toBeHidden()
+  await page.keyboard.press("Escape")
+  await expect(rowHeight).toBeVisible()
+
+  // The header stays put while the page scrolls under it.
+  const header = tune.locator(":scope > header")
+  await page.mouse.move(700, 500)
+  await page.mouse.wheel(0, 700)
+  await expect(header).toHaveAttribute("data-scrolled", "")
+  expect((await header.boundingBox())!.y).toBe(0)
+  await page.mouse.wheel(0, -2000)
+  await expect(header).not.toHaveAttribute("data-scrolled", "")
+
+  // The GPU overlay draws the page too.
+  await page.goto("/tune.html?gpu")
+  await expect(tune.locator(".knobs-tile").first()).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(errors).toEqual([])
+})

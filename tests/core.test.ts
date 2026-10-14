@@ -1135,3 +1135,14 @@ describe("sections and group presets", () => {
     }
   })
 })
+
+describe("page layout", () => {
+  it("splits cards into balanced runs that keep their order down each column", async () => {
+    const { balancedRuns } = await import("../src/panel/page.js")
+    expect(balancedRuns([100, 100, 100, 100], 2)).toEqual([2, 2])
+    expect(balancedRuns([300, 100, 100, 100], 2, 10)).toEqual([1, 3])
+    expect(balancedRuns([50, 60], 4)).toEqual([1, 1])
+    expect(balancedRuns([], 3)).toEqual([])
+    expect(balancedRuns([80, 400, 90, 120, 60], 3)).toEqual([1, 1, 3])
+  })
+})
