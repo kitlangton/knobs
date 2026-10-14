@@ -21,6 +21,7 @@ import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
 import { computeHintPrefixes } from "../src/panel/hints.js"
 import { readableTitle } from "../src/panel/panel.js"
+import { Edges, LEAD, popScale, Spring, springEasing, TRAIL } from "../src/panel/motion.js"
 import {
   nextPresetIndex,
   resolveActivePresetEntry,
@@ -557,5 +558,50 @@ describe("panel titles", () => {
     expect(readableTitle("phone_tune")).toBe("Phone tune")
     expect(readableTitle("iOS-tune")).toBe("iOS tune")
     expect(readableTitle("Drawer motion")).toBe("Drawer motion")
+  })
+})
+
+describe("motion", () => {
+  it("holds a delayed retarget for its cascade turn, then springs; the same target doesn't restart the wait", () => {
+    let now = 1000
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now)
+    const s = new Spring(0, 30, 1)
+    s.set(1, 50)
+    expect(s.resting).toBe(false)
+    now += 30
+    s.step(1 / 60)
+    expect(s.x).toBe(0)
+    s.set(1, 50)
+    now += 25
+    s.step(1 / 60)
+    expect(s.x).toBeGreaterThan(0)
+    s.snap(0)
+    expect(s.resting).toBe(true)
+    clock.mockRestore()
+  })
+
+  it("leads with the edge facing the move and trails the other, longer as --k-blur grows", () => {
+    const e = new Edges(0, 20)
+    e.to(100, 120, 0, 1)
+    expect(e.end.omega).toBe(LEAD.omega)
+    expect(e.start.omega).toBe(TRAIL.omega)
+    e.step(0.08)
+    expect(e.end.x - e.start.x).toBeGreaterThan(30)
+    e.to(0, 20, 0, 1.4)
+    expect(e.start.omega).toBe(LEAD.omega)
+    expect(e.end.omega).toBeCloseTo(TRAIL.omega / 1.4)
+    for (let i = 0; i < 120; i++) e.step(1 / 60)
+    expect(e.resting).toBe(true)
+    expect([e.start.x, e.end.x]).toEqual([0, 20])
+  })
+
+  it("samples springs into CSS linear() easings and pops readouts by a hair", () => {
+    const { easing, ms } = springEasing(LEAD.omega, LEAD.zeta)
+    expect(easing).toMatch(/^linear\(0,.*,1\)$/)
+    expect(ms).toBeGreaterThan(150)
+    expect(ms).toBeLessThan(600)
+    expect(popScale(55)).toBeCloseTo(1.04, 3)
+    expect(popScale(0)).toBe(1)
+    expect(popScale(400)).toBe(1)
   })
 })

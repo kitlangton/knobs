@@ -3,6 +3,8 @@
 export class Spring {
   v = 0
   target: number
+  /** A retarget waiting for its turn in a cascade (performance.now() ms). */
+  private next: { target: number; at: number } | undefined
   constructor(
     public x: number,
     public omega = 24,
@@ -10,16 +12,28 @@ export class Spring {
   ) {
     this.target = x
   }
-  set(target: number) {
+  /** With a `delay` (ms) the new target applies later; repeating the same target is a no-op. */
+  set(target: number, delay = 0) {
+    if (delay > 0) {
+      if (target !== (this.next?.target ?? this.target))
+        this.next = { target, at: performance.now() + delay }
+      return this
+    }
+    this.next = undefined
     this.target = target
     return this
   }
   snap(x: number) {
+    this.next = undefined
     this.x = this.target = x
     this.v = 0
     return this
   }
   step(dt: number) {
+    if (this.next && performance.now() >= this.next.at) {
+      this.target = this.next.target
+      this.next = undefined
+    }
     if (this.x === this.target && this.v === 0) return this.x
     const clampedDt = Math.min(dt, 0.1)
     const h = 1 / 480
@@ -37,8 +51,84 @@ export class Spring {
     return this.x
   }
   get resting() {
-    return Math.abs(this.x - this.target) < 0.005 && Math.abs(this.v) < 0.02
+    return !this.next && Math.abs(this.x - this.target) < 0.005 && Math.abs(this.v) < 0.02
   }
+}
+
+/** The slider fill, and its rubber band springing back from past an end. */
+export const FILL = { omega: 26, zeta: 0.84 }
+export const RELEASE = { omega: 30, zeta: 0.6 }
+export const LEAD = { omega: 30, zeta: 0.82 }
+export const TRAIL = { omega: 21, zeta: 1 }
+/** How far the trailing edge lags at a `--k-blur` strength (0 keeps both edges together). */
+export const trailScale = (blur: number) => 0.6 + 0.4 * clamp(blur, 0, 2)
+
+/**
+ * A sliding shape's two edges (like iOS's page-dot thumb): the edge facing the motion leads on a
+ * snappy spring and the other trails on a softer one, so the shape stretches toward its
+ * destination and settles back to size.
+ */
+export class Edges {
+  readonly start: Spring
+  readonly end: Spring
+  constructor(start = 0, end = 0) {
+    this.start = new Spring(start, LEAD.omega, LEAD.zeta)
+    this.end = new Spring(end, LEAD.omega, LEAD.zeta)
+  }
+  to(start: number, end: number, delay = 0, trail = 1) {
+    const pending = start !== this.start.target || end !== this.end.target
+    if (pending && delay <= 0) {
+      const forward = start + end > this.start.target + this.end.target
+      const [lead, tail] = forward ? [this.end, this.start] : [this.start, this.end]
+      lead.omega = LEAD.omega
+      lead.zeta = LEAD.zeta
+      tail.omega = TRAIL.omega / trail
+      tail.zeta = TRAIL.zeta
+    }
+    this.start.set(start, delay)
+    this.end.set(end, delay)
+    return this
+  }
+  snap(start: number, end: number) {
+    this.start.snap(start)
+    this.end.snap(end)
+    return this
+  }
+  step(dt: number) {
+    this.start.step(dt)
+    this.end.step(dt)
+    return this
+  }
+  get resting() {
+    return this.start.resting && this.end.resting
+  }
+  /** Signed travel speed (px/s) of the shape's centre. */
+  get velocity() {
+    return (this.start.v + this.end.v) / 2
+  }
+}
+
+/** The spring's step response as a CSS `linear()` easing plus its settle time, so CSS transitions move like the GPU springs. */
+export function springEasing(omega: number, zeta: number): { easing: string; ms: number } {
+  const s = new Spring(0, omega, zeta).set(1)
+  const points = ["0"]
+  const dt = 1 / 60
+  let t = 0
+  while (t < 2 && !(Math.abs(s.x - 1) < 0.002 && Math.abs(s.v) < 0.05)) {
+    s.step(dt)
+    t += dt
+    points.push(String(Math.round(s.x * 1000) / 1000))
+  }
+  points[points.length - 1] = "1"
+  return { easing: `linear(${points.join(",")})`, ms: Math.round(t * 1000) }
+}
+
+export const POP_MS = 360
+/** Decile pop: a critically damped kick that swells to `peak` at 55 ms and settles (t in ms). */
+export function popScale(t: number, peak = 0.04): number {
+  if (t <= 0 || t >= POP_MS) return 1
+  const u = t / 55
+  return 1 + peak * u * Math.exp(1 - u)
 }
 
 export class VelocityTracker {
