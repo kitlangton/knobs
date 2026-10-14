@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — die</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0e0e10; color: rgba(255,255,255,.92); font: 13px/1.4 system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+      main { display: grid; gap: 28px; justify-items: center; }
+      .grid { display: grid; grid-template-columns: auto auto auto; gap: 28px 48px; align-items: center; justify-items: center; }
+      .label { color: rgba(255,255,255,.42); font-size: 12px; }
+      .header { display: flex; gap: 2px; padding: 6px; border-radius: 12px; background: #1c1c1e; }
+      .btn { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; border: 0; background: transparent; color: rgba(255,255,255,.64); cursor: pointer; padding: 0; }
+      .btn:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.92); }
+      .big .knobs-die { --die: 120px; }
+      canvas { display: block; }
+      .controls { display: flex; gap: 16px; align-items: center; color: rgba(255,255,255,.64); }
+      .value { font-variant-numeric: tabular-nums; min-width: 1ch; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="grid">
+        <span></span><span class="label">DOM</span><span class="label">GPU</span>
+        <span class="label">header</span>
+        <div class="header"><button class="btn" id="dom-small" aria-label="Random"></button></div>
+        <div class="header"><button class="btn" id="gpu-small" aria-label="Random"></button></div>
+        <span class="label">×8</span>
+        <div class="big" id="dom-big"></div>
+        <div id="gpu-big"></div>
+      </div>
+      <div class="controls">
+        <span>face <span class="value" id="value">5</span></span>
+        <label>slow <input id="slow" type="range" min="1" max="10" value="1" /></label>
+        <span class="label">click any die · space rolls</span>
+      </div>
+    </main>
+    <script type="module" src="./die.ts"></script>
+  </body>
+</html>
