@@ -61,6 +61,20 @@ try {
   await page.mouse.move(count.x + count.width * 0.5, count.y + count.height / 2)
   for (let i = 0; i < 4; i++) await page.mouse.wheel(12, 0)
   await report("wheel")
+  // A trackpad flick across the preset strip: the pill follows the fingers, then springs home.
+  await page.evaluate(() => {
+    const el = document.querySelector('[aria-label="splat controls"] .knobs-presets')!
+    let t = performance.now()
+    const send = (dx: number, dt: number) => {
+      const e = new WheelEvent("wheel", { deltaX: dx, bubbles: true, cancelable: true })
+      Object.defineProperty(e, "timeStamp", { value: (t += dt) })
+      el.dispatchEvent(e)
+    }
+    for (const d of [3, 6, 9, 12, 12]) send(-d, 8)
+    send(-28, 25)
+    for (let m = 25; m >= 0.6; m *= 0.92) send(-Math.round(m), 16.7)
+  })
+  await report("preset pan")
   await panel.getByRole("button", { name: "Copy", exact: true }).click()
   await report("status")
   await sleep(3500)
