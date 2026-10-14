@@ -151,8 +151,9 @@ const css = `
 .knobs-active .knobs-fill{--k-fill-mix:30%}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .18s cubic-bezier(.3,1.35,.5,1),--k-fill-mix .15s,left .18s cubic-bezier(.3,1.35,.5,1),opacity .15s,transform .22s var(--k-ease)}
-.knobs-notch{position:absolute;bottom:0;width:1px;height:5px;margin-left:-.5px;border-radius:1px 1px 0 0;background:var(--k-text);opacity:.2;pointer-events:none;transition:opacity .2s}
-.knobs-slider.knobs-modified .knobs-notch{opacity:.5}
+.knobs-notch{position:absolute;bottom:0;width:1px;height:5px;margin-left:-.5px;border-radius:1px 1px 0 0;background:var(--k-text);opacity:0;pointer-events:none;transition:opacity .2s}
+.knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.3}
+.knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.5}
 .knobs-magnet .knobs-notch{opacity:.9}
 .knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:-1.5px;border-radius:999px;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
   opacity:0;transform:translateY(-50%) scaleX(.25);transition:opacity .15s,transform .22s var(--k-ease)}

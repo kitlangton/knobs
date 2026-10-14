@@ -1859,7 +1859,14 @@ class GpuOverlayManager {
           const notch = this.ease(
             row.row,
             "notch",
-            sl.isMagnetized() ? 0.9 : row.isModified() ? 0.5 : 0.2,
+            // Only while the slider is in hand: at rest a stray tick reads as an artifact.
+            sl.isMagnetized()
+              ? 0.9
+              : !(hovered || focused || dragging)
+                ? 0
+                : row.isModified()
+                  ? 0.5
+                  : 0.3,
             22,
           )
 
