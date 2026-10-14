@@ -1,6 +1,7 @@
 import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
+import { onSwipe } from "./swipe.js"
 
 export interface PresetEntry<V = Record<string, unknown>> {
   readonly id: string
@@ -129,6 +130,8 @@ export function createPresetStrip<S extends Schema>(
   let prevActiveIndex = -2
   let prevIsCustom = false
   let initializedPill = false
+  /** While the pill slides to a new chip, a resize retargets it instead of snapping it there. */
+  let slideUntil = 0
 
   function buildEntries(): PresetEntry<Values<S>>[] {
     const presetEntries: PresetEntry<Values<S>>[] = Object.entries(controls.presets).map(
@@ -177,7 +180,10 @@ export function createPresetStrip<S extends Schema>(
       pill.style.transition = "none"
     } else {
       const at = parseFloat(pill.style.left) || 0
-      if (left !== at) pill.dataset.dir = left > at ? "right" : "left"
+      if (left !== at) {
+        pill.dataset.dir = left > at ? "right" : "left"
+        slideUntil = performance.now() + 400
+      }
     }
     pill.style.left = `${left}px`
     pill.style.right = `${track.clientWidth - right}px`
@@ -185,10 +191,7 @@ export function createPresetStrip<S extends Schema>(
     pill.style.height = `${btn.offsetHeight}px`
     pill.style.opacity = "1"
     pill.style.scale = ""
-    if (first) {
-      void pill.offsetWidth
-      pill.style.transition = ""
-    }
+    if (first) doc.defaultView?.requestAnimationFrame(() => (pill.style.transition = ""))
   }
 
   function syncSelection(snap = false) {
@@ -407,8 +410,21 @@ export function createPresetStrip<S extends Schema>(
     }
   }
 
+  // A sideways swipe moves one chip per gesture, stopping at the ends.
+  onSwipe(root, (direction) => {
+    if (entries.length === 0) return
+    const at = resolveActivePresetEntry(entries, controls.get(), lastAppliedId).activeIndex
+    const next =
+      at < 0
+        ? direction > 0
+          ? 0
+          : entries.length - 1
+        : Math.max(0, Math.min(entries.length - 1, at + direction))
+    if (next !== at) selectAt(next)
+  })
+
   void doc.fonts?.ready.then(fitColumns)
-  const ro = new ResizeObserver(() => measurePill(true))
+  const ro = new ResizeObserver(() => measurePill(performance.now() >= slideUntil))
   ro.observe(track)
 
   return {

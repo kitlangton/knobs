@@ -1,5 +1,6 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
+import { GESTURE_GAP, sideways } from "./swipe.js"
 import {
   clamp,
   FILL,
@@ -495,19 +496,16 @@ export function createSlider(
   track.addEventListener(
     "wheel",
     (event) => {
-      let dx = event.deltaX
-      if (event.shiftKey && dx === 0) dx = event.deltaY
-      else if (Math.abs(dx) <= Math.abs(event.deltaY)) return
-      if (!dx || dragging || !number.hidden) return
+      const px = sideways(event)
+      if (!px || dragging || !number.hidden) return
       event.preventDefault()
       const now = performance.now()
       // A pause, or any other change (an undo, a key), starts a new gesture.
-      if (now - wheelAt > 250 || current !== wheelValue) {
+      if (now - wheelAt > GESTURE_GAP || current !== wheelValue) {
         wheelRaw = wheelValue = current
         wheelCommitted = false
       }
       wheelAt = now
-      const px = dx * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1)
       wheelRaw = Math.min(
         field.max,
         Math.max(field.min, wheelRaw + (px / track.offsetWidth) * span * 0.5),

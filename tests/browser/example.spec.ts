@@ -539,6 +539,66 @@ test("sliders: default notch magnet, ⌥ fine drag, horizontal wheel nudge", asy
   await expect.poll(now).toBe(before)
 })
 
+test("sideways swipes step presets and choices once per gesture, as one undo entry each", async ({
+  page,
+}) => {
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const strip = synth.getByRole("radiogroup", { name: "Preset or variant" })
+  const waveform = synth.getByRole("radiogroup", { name: "Waveform" })
+  // A trackpad flick: rising deltas, then a long fading momentum tail, all as one stream.
+  const flick = (sign: number) =>
+    page.evaluate(async (sign) => {
+      const el = document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!
+      const deltas = [4, 12, 26, 40, ...Array.from({ length: 40 }, (_, i) => 40 * 0.9 ** (i + 1))]
+      let blocked = 0
+      for (const d of deltas) {
+        const e = new WheelEvent("wheel", { deltaX: d * sign, bubbles: true, cancelable: true })
+        el.dispatchEvent(e)
+        if (e.defaultPrevented) blocked++
+        await new Promise((r) => setTimeout(r, 8))
+      }
+      return blocked === deltas.length
+    }, sign)
+  const checked = () => strip.locator('[aria-checked="true"]').textContent()
+  expect(await checked()).toBe("default")
+  expect(await flick(1)).toBe(true)
+  expect(await checked()).toBe("warm")
+  await page.waitForTimeout(300)
+  await flick(1)
+  expect(await checked()).toBe("acid")
+  await page.waitForTimeout(300)
+  await flick(-1)
+  expect(await checked()).toBe("warm")
+  // Each gesture is one undo entry; the cascade still ripples the rows.
+  await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
+  await synth.getByRole("button", { name: "Undo" }).click()
+  expect(await checked()).toBe("acid")
+
+  // Over a segmented choice it steps the options, stopping at the ends.
+  const option = () => waveform.locator('[aria-checked="true"]').textContent()
+  const before = await option()
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      '[aria-label="synth-voice controls"] [role="radiogroup"][aria-label="Waveform"]',
+    )!
+    for (const d of [10, 20, 30, 20, 10, 5, 2])
+      el.dispatchEvent(new WheelEvent("wheel", { deltaX: -d, bubbles: true, cancelable: true }))
+  })
+  const options = ["sine", "tri", "saw", "pulse"]
+  expect(await option()).toBe(options[Math.max(0, options.indexOf(before!) - 1)])
+
+  // Vertical scrolling over the strip is left to the page.
+  const vertical = await page.evaluate(() => {
+    const e = new WheelEvent("wheel", { deltaX: 2, deltaY: 40, bubbles: true, cancelable: true })
+    document.querySelector('[aria-label="synth-voice controls"] .knobs-presets')!.dispatchEvent(e)
+    return e.defaultPrevented
+  })
+  expect(vertical).toBe(false)
+})
+
 test("group reset appears only while its group differs from defaults", async ({ page }) => {
   await page.goto("/meta.html")
   await page.evaluate(() => localStorage.clear())

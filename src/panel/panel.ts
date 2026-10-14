@@ -24,6 +24,7 @@ import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { createSlider, type Slider } from "./slider.js"
 import { injectStyles } from "./styles.js"
+import { onSwipe } from "./swipe.js"
 
 export interface Panel {
   element: HTMLElement
@@ -381,6 +382,12 @@ function buildPanel<S extends Schema>(
         return b
       })
       seg.tabIndex = 0
+      // A sideways swipe moves one option per gesture, stopping at the ends.
+      onSwipe(seg, (direction) => {
+        const at = field.options.indexOf(String(controls.get()[key]))
+        const next = field.options[Math.max(0, Math.min(field.options.length - 1, at + direction))]
+        if (next !== undefined && next !== controls.get()[key]) run(() => set(next))
+      })
       new ResizeObserver(() =>
         placeSegPill(seg, buttons, String(controls.get()[key]), true),
       ).observe(seg)
@@ -530,18 +537,24 @@ function buildPanel<S extends Schema>(
     if (!pill || !active) return
     // Placed by its edges, so the edge facing the move can lead (see .knobs-seg-pill). A resize
     // (a token gliding) carries the pill with its option instead of animating it.
-    const first = !pill.dataset.placed || (resized && pill.dataset.value === value)
+    const now = performance.now()
+    const sliding = now < Number(pill.dataset.slideUntil ?? 0)
+    const first = !pill.dataset.placed || (resized && pill.dataset.value === value && !sliding)
     pill.dataset.value = value
     const left = active.offsetLeft
     const at = parseFloat(pill.style.left)
     if (first) pill.style.transition = "none"
-    else if (left !== at) pill.dataset.dir = left > at ? "right" : "left"
+    else if (left !== at && !resized) {
+      pill.dataset.dir = left > at ? "right" : "left"
+      pill.dataset.slideUntil = String(now + 400)
+    }
     pill.style.left = `${left}px`
     pill.style.right = `${seg.clientWidth - left - active.offsetWidth}px`
     if (first) {
       pill.dataset.placed = "true"
-      void pill.offsetWidth
-      pill.style.transition = ""
+      // Restored a frame later rather than by forcing layout, which a gliding token would do
+      // on every frame.
+      doc.defaultView?.requestAnimationFrame(() => (pill.style.transition = ""))
     }
   }
 
