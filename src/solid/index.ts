@@ -8,7 +8,8 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import type { Choice, Schema, Values } from "../core/schema.js"
+import type { ControlDescriptor, RemoteControls } from "../core/remote.js"
+import { same, type Choice, type Schema, type State, type Values } from "../core/schema.js"
 import type { Controls, MountPanelOptions } from "../core/store.js"
 
 type ChoiceKey<S extends Schema> = {
@@ -27,6 +28,32 @@ export function useControls<S extends Schema>(controls: Controls<S>): Accessor<V
   })
   onCleanup(unsubscribe)
   return values
+}
+
+/**
+ * One key's value as an accessor that changes only when that key does, so a component reading
+ * it re-runs for its own row and no other.
+ */
+export function useValue<S extends Schema, K extends keyof Values<S> & string>(
+  controls: Controls<S>,
+  key: K,
+): Accessor<Values<S>[K]> {
+  const [value, setValue] = createSignal(controls.get()[key], { equals: same })
+  onCleanup(controls.subscribe(() => setValue(() => controls.get()[key])))
+  return value
+}
+
+/**
+ * Whether a key (or, without one, anything) differs from its default, as an accessor that
+ * changes only when the answer does: a "modified" dot beside a heading.
+ */
+export function useModified<S extends Schema>(
+  controls: Controls<S>,
+  key?: keyof S & string,
+): Accessor<boolean> {
+  const [modified, setModified] = createSignal(controls.isModified(key))
+  onCleanup(controls.subscribe(() => setModified(controls.isModified(key))))
+  return modified
 }
 
 /**
@@ -76,12 +103,25 @@ export function Knobs<S extends Schema>(props: {
   return resolved as unknown as JSX.Element
 }
 
+export type KnobsPanelProps<S extends Schema> = MountPanelOptions & {
+  controls: Controls<S>
+  /**
+   * Remote controls only: the descriptors to show. A new array swaps rows in place
+   * (`remote.update`); the same array with new `values` just syncs them.
+   */
+  descriptors?: readonly ControlDescriptor[]
+  /** The values to show, from your own state. Keys in hand keep theirs until let go. */
+  values?: State
+  /** While true, a different item is arriving: values land without springing or rolling. */
+  land?: boolean
+}
+
 /**
- * Mounts an inline `knobs` panel inside a Solid component tree.
+ * Mounts an inline `knobs` panel inside a Solid component tree. The panel mounts once per
+ * `controls`; `descriptors` and `values` flow into it as updates, so a change touches only the rows
+ * it changes and the panel never re-renders as a whole.
  */
-export function KnobsPanel<S extends Schema>(
-  props: MountPanelOptions & { controls: Controls<S> },
-): JSX.Element {
+export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Element {
   if (typeof document === "undefined") return null as unknown as JSX.Element
   const host = document.createElement("div")
   createEffect(() => {
@@ -91,19 +131,35 @@ export function KnobsPanel<S extends Schema>(
       host.replaceChildren()
       return
     }
-    const dispose = c.mount(host, {
-      title: props.title,
-      // Theme and density restyle the mounted panel in place (below), so its tokens glide.
-      theme: untrack(() => props.theme),
-      density: untrack(() => props.density),
-      renderer: props.renderer,
-      variants: props.variants,
-      history: props.history,
-      footer: props.footer,
-      actions: props.actions,
-      onClose: props.onClose,
-    })
+    const dispose = untrack(() =>
+      c.mount(host, {
+        title: props.title,
+        // Theme and density restyle the mounted panel in place (below), so its tokens glide.
+        theme: props.theme,
+        density: props.density,
+        renderer: props.renderer,
+        variants: props.variants,
+        history: props.history,
+        footer: props.footer,
+        header: props.header,
+        keys: props.keys,
+        preset: props.preset,
+        copy: props.copy,
+        actions: props.actions,
+        onClose: props.onClose,
+        onReady: props.onReady,
+      }),
+    )
     onCleanup(dispose)
+  })
+  createEffect(() => {
+    const c = props.controls
+    const descriptors = props.descriptors
+    const values = props.values
+    const land = Boolean(props.land)
+    if (!c.enabled || (!descriptors && !values)) return
+    if (descriptors && "update" in c) (c as unknown as RemoteControls).update(descriptors, values, { land })
+    else if (values) c.sync(values as Partial<Values<S>>, { replace: true, land })
   })
   createEffect(() => {
     const theme = props.theme ?? props.controls.theme

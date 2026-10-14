@@ -2,6 +2,7 @@ import { formatCode, type CodeFormat } from "./code.js"
 import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
 import { RESHAPE, type Reshape } from "./internal.js"
+import type { TokenPreset } from "./theme.js"
 import {
   equal,
   normalize,
@@ -82,6 +83,12 @@ export interface MountPanelOptions {
    * The `?` popover and hint badges list only what's enabled.
    */
   readonly keys?: PanelKeys
+  /** Token values to style the panel with, e.g. `problemsPreset` (see `TokenPreset`). */
+  readonly preset?: TokenPreset
+  /** `false` drops the header (title and buttons) for a host that draws its own. */
+  readonly header?: boolean
+  /** Called once the panel is mounted, with a handle to focus it (a host's "Tune" key). */
+  readonly onReady?: (panel: { readonly element: HTMLElement; focus(): void }) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
   readonly theme?: ThemeMode
@@ -788,7 +795,10 @@ export function defineControls<const S extends Schema>(
         let panel: { dispose(): void } | undefined
         void import("../panel/panel.js")
           .then((module) => {
-            if (!disposed && enabled()) panel = module.mountPanel(controls, container, mountOptions)
+            if (!disposed && enabled()) {
+              panel = module.mountPanel(controls, container, mountOptions)
+              mountOptions?.onReady?.(panel as unknown as { element: HTMLElement; focus(): void })
+            }
           })
           .catch((cause) => {
             error = String(cause)

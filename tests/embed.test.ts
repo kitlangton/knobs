@@ -287,3 +287,37 @@ describe("intents: onSet and onReset", () => {
     expect(seen).toEqual([true])
   })
 })
+
+describe("viewer.js settings", () => {
+  it("maps pv:settings groups to descriptors and values, titles as groups", async () => {
+    const { fromSettings } = await import("../src/index.js")
+    const { descriptors, values } = fromSettings([
+      {
+        title: "Scenario",
+        items: [
+          { id: "0.0", label: "Theme", kind: "choice", choices: [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }], value: "light" },
+          { id: "0.1", label: "Reduce Motion", kind: "toggle", value: true },
+        ],
+      },
+      { title: "", items: [{ id: "1.0", label: "Replay", kind: "action" }] },
+    ])
+    expect(descriptors).toEqual([
+      { key: "0.0", label: "Theme", group: "Scenario", kind: "choice", default: "dark", choices: [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }] },
+      { key: "0.1", label: "Reduce Motion", group: "Scenario", kind: "toggle", default: false },
+      { key: "1.0", label: "Replay", kind: "action" },
+    ])
+    expect(values).toEqual({ "0.0": "light", "0.1": true })
+    const r = createRemoteControls("pv", descriptors, { values })
+    expect(r.get()).toEqual(values)
+  })
+
+  it("update with the same array only syncs values (no reshape, history kept)", () => {
+    const list = params()
+    const r = createRemoteControls("same", list)
+    const schema = r.schema
+    r.set({ size: 2 })
+    r.update(list, { size: 9 })
+    expect(r.schema).toBe(schema)
+    expect(r.canUndo).toBe(true)
+  })
+})

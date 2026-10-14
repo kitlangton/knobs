@@ -1,4 +1,5 @@
 import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" }
+import { presetCss, type TokenPreset } from "../core/theme.js"
 import { FILL, LEAD, RELEASE, springEasing, TRAIL } from "./motion.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
@@ -501,6 +502,19 @@ const css = `
 .knobs-card>.knobs-item:focus-visible::after{opacity:1}
 .knobs-item-detail{flex:none;color:var(--k-dim);font-size:var(--k-text-control);font-variant-numeric:tabular-nums;white-space:nowrap}
 `
+/** Adds a token preset's stylesheet once per document. */
+export function injectPreset(doc: Document, preset: TokenPreset) {
+  const content = presetCss(preset)
+  const existing = doc.querySelector<HTMLStyleElement>(`style[data-knobs-preset="${preset.name}"]`)
+  if (existing) {
+    if (existing.textContent !== content) existing.textContent = content
+    return
+  }
+  const style = doc.createElement("style")
+  style.dataset.knobsPreset = preset.name
+  style.textContent = content
+  doc.head.append(style)
+}
 export function injectStyles(doc: Document) {
   const content = rolling + DRIVERS + defaultsCss + aliased(css)
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")

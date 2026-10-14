@@ -17,6 +17,7 @@ for (const [name, entry] of [
   ["react", "src/react/index.ts"],
   ["solid", "src/solid/index.ts"],
   ["panel", "src/panel/index.ts"],
+  ["themes", "src/themes/index.ts"],
 ]) {
   const result = await Bun.build({
     entrypoints: [entry],

@@ -51,6 +51,9 @@ export {
   descriptorToField,
   formatSwift,
   fromDescriptors,
+  fromSettings,
+  type SettingsGroup,
+  type SettingsItem,
   type ActionDescriptor,
   type ChoiceOption,
   type ControlDescriptor,
@@ -60,5 +63,6 @@ export {
   type RemoteControlsOptions,
 } from "./core/remote.js"
 export { memoryStorage, urlFlag, type StoragePort } from "./core/storage.js"
+export type { TokenPreset } from "./core/theme.js"
 export { formatCode, type CodeFormat } from "./core/code.js"
 export type { Variant, Variants } from "./core/variants.js"

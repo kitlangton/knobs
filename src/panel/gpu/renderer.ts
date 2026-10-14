@@ -2089,8 +2089,8 @@ class GpuOverlayManager {
       if (pageB) this.curBypassRectCache = true
       this.curClip = headClip
 
-      // 2. Header
-      {
+      // 2. Header (an embedded panel may have none)
+      if (!panel.header.hidden) {
         this.curSubHovered = this.curPanelHovered && panel.header.matches(":hover")
         const tRect = this.rectOf(panel.titleEl)
         const px = pageB ? tokens.fontSize + 3 : tokens.textTitle

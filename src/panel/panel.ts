@@ -51,7 +51,7 @@ import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill } from "./seg.js"
 import { createSlider, type Slider } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
-import { injectStyles } from "./styles.js"
+import { injectPreset, injectStyles } from "./styles.js"
 import { onSwipe } from "./swipe.js"
 
 export interface Panel {
@@ -186,6 +186,10 @@ function buildPanel<S extends Schema>(
   root.dataset.controls = controls.id
   root.dataset.theme = options.theme ?? controls.theme
   root.dataset.density = options.density ?? controls.density
+  if (options.preset) {
+    injectPreset(doc, options.preset)
+    root.dataset.preset = options.preset.name
+  }
   const titleText = options.title === undefined ? controls.id : options.title
   if (options.restored) root.dataset.restored = ""
   root.setAttribute("role", inline ? "region" : "dialog")
@@ -394,6 +398,7 @@ function buildPanel<S extends Schema>(
     tools.append(headActions)
     header.append(titleEl, presetStrip.element, tools)
   } else header.append(titleEl, headActions)
+  if (options.header === false && !page) header.hidden = true
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),

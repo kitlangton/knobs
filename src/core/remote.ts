@@ -330,6 +330,7 @@ export function createRemoteControls(
   options: RemoteControlsOptions = {},
 ): RemoteControls {
   let frozenDescriptors = Object.freeze([...descriptors])
+  let given = descriptors
   const nullDefaults = options.nullDefaults !== false
   const controls = defineControls(id, fromDescriptors(frozenDescriptors), {
     enabled: options.enabled ?? true,
@@ -369,10 +370,56 @@ export function createRemoteControls(
       return frozenDescriptors
     },
     update(next: readonly ControlDescriptor[], values: State = {}, opts?: { land?: boolean }) {
+      // The same array: only the values can have changed.
+      if (next === given || next === frozenDescriptors)
+        return controls.sync(values, { replace: true, land: opts?.land })
+      given = next
       frozenDescriptors = Object.freeze([...next])
       reshape(fromDescriptors(frozenDescriptors), values, opts)
     },
     sync: (values: State, syncOptions?: SyncOptions) => controls.sync(values, syncOptions),
     swift: (group?: string) => formatSwift(frozenDescriptors, controls.modified() as State, group),
   })
+}
+
+/** A titled section of settings, as a hosted prototype reports them (viewer.js `pv:settings`). */
+export interface SettingsGroup {
+  readonly title?: string
+  readonly items: readonly SettingsItem[]
+}
+export type SettingsItem =
+  | {
+      readonly id: string
+      readonly label: string
+      readonly kind: "choice"
+      readonly choices: readonly { readonly id: string; readonly label?: string }[]
+      readonly value?: string | null
+    }
+  | { readonly id: string; readonly label: string; readonly kind: "toggle"; readonly value?: boolean }
+  | { readonly id: string; readonly label: string; readonly kind: "action"; readonly value?: boolean }
+
+/**
+ * Settings sections as descriptors and values, one row per item: choices (a menu past four
+ * options), switches and buttons, each section's title its group. A choice's home is its first
+ * option and a switch's is off, so the shape stays put while the values move.
+ */
+export function fromSettings(groups: readonly SettingsGroup[]): {
+  descriptors: ControlDescriptor[]
+  values: State
+} {
+  const descriptors: ControlDescriptor[] = []
+  const values: Record<string, Value> = {}
+  for (const g of groups)
+    for (const item of g.items) {
+      const meta = { key: item.id, label: item.label, ...(g.title ? { group: g.title } : {}) }
+      if (item.kind === "action") descriptors.push({ ...meta, kind: "action" })
+      else if (item.kind === "toggle") {
+        descriptors.push({ ...meta, kind: "toggle", default: false })
+        values[item.id] = Boolean(item.value)
+      } else if (item.choices.length) {
+        descriptors.push({ ...meta, kind: "choice", default: item.choices[0]!.id, choices: item.choices })
+        values[item.id] = item.value ?? item.choices[0]!.id
+      }
+    }
+  return { descriptors, values }
 }
