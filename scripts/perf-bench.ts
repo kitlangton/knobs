@@ -86,19 +86,24 @@ function median(values: number[]): number {
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2
 }
 
+// --port=N runs its own server there instead of reusing the live preview on 4540.
+const OWN_PORT = Number(process.argv.find((a) => a.startsWith("--port="))?.split("=")[1]) || 0
+
 async function ensureServer(): Promise<{ baseUrl: string; server?: ChildProcess }> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/`)
-    if (res.ok) return { baseUrl: `http://127.0.0.1:${DEFAULT_PORT}` }
-  } catch {}
+  if (!OWN_PORT)
+    try {
+      const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/`)
+      if (res.ok) return { baseUrl: `http://127.0.0.1:${DEFAULT_PORT}` }
+    } catch {}
+  const port = OWN_PORT || FALLBACK_PORT
   const server = spawn("bunx", ["vite", "--config", "examples/vite.config.ts"], {
-    env: { ...process.env, PORT: String(FALLBACK_PORT) },
+    env: { ...process.env, PORT: String(port) },
     stdio: "ignore",
   })
   for (let i = 0; i < 50; i++) {
     try {
-      if ((await fetch(`http://127.0.0.1:${FALLBACK_PORT}/`)).ok) {
-        return { baseUrl: `http://127.0.0.1:${FALLBACK_PORT}`, server }
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        return { baseUrl: `http://127.0.0.1:${port}`, server }
       }
     } catch {}
     await sleep(150)
