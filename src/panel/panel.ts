@@ -1475,6 +1475,9 @@ function buildPanel<S extends Schema>(
     const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
     win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
   }
+  const headSize = new ResizeObserver(() =>
+    root.style.setProperty("--k-head-h", `${Math.round(header.getBoundingClientRect().height)}px`),
+  )
   // Cards that change size (an editor opening, a custom card's content) move the ones below.
   const tileSizes = new ResizeObserver(() => {
     layoutTick++
@@ -1504,12 +1507,7 @@ function buildPanel<S extends Schema>(
     })
     for (const tile of body.querySelectorAll<HTMLElement>(".knobs-tile")) tileSizes.observe(tile)
     // The floating shortcuts sit just under the header, however tall it is.
-    new ResizeObserver(() =>
-      root.style.setProperty(
-        "--k-head-h",
-        `${Math.round(header.getBoundingClientRect().height)}px`,
-      ),
-    ).observe(header)
+    headSize.observe(header)
     layout?.pack(true)
   }
   const unsubscribe = controls.subscribe(update)
@@ -1639,6 +1637,7 @@ function buildPanel<S extends Schema>(
       for (const t of peekTimers.values()) clearTimeout(t)
       layout?.dispose()
       tileSizes.disconnect()
+      headSize.disconnect()
       win?.removeEventListener("scroll", onScroll)
       win?.removeEventListener("scrollend", onScrollEnd)
       endScrub()

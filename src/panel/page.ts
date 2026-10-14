@@ -175,8 +175,14 @@ export function createPageLayout(
     const first = sections[0]
     if (!first) return
     const gap = gapOf(first.grid)
-    const width = host.clientWidth
-    const n = Math.max(1, Math.min(8, Math.floor((width + gap) / (options.columnWidth + gap))))
+    const width = first.grid.clientWidth
+    // As many columns as fit, but no more than the fullest section fills: wider cards beat empty
+    // columns.
+    const most = Math.max(1, ...sections.map((s) => s.tiles.filter((t) => !t.hidden).length))
+    const n = Math.max(
+      1,
+      Math.min(8, most, Math.floor((width + gap) / (options.columnWidth + gap))),
+    )
     if (n === cols && !force) return
     cols = n
     host.style.setProperty("--k-cols", String(n))

@@ -228,6 +228,77 @@ Colours leave as sRGB components (the OKLCH value is already inside sRGB). Point
 
 See [`docs/migration.md`](./docs/migration.md) for full migration sketches for the OpenCode iOS Tune Page and Problems board config panels.
 
+## Full page
+
+When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections**, each a heading over its groups. Every group is a card, and the cards pack into balanced columns that follow the viewport (as many as fit at `columnWidth`, never more than the fullest section fills), reading down each column and on to the next.
+
+```ts
+import { createRemoteControls } from "knobs"
+import { mountPage } from "knobs/panel"
+
+const tune = createRemoteControls("iphone-tune", descriptors, {
+  values: phone.values,
+  // Numbered presets per group: 1, 2, 3… in the card's header. Keys a preset leaves out are at
+  // their defaults, so { name: "Today", values: {} } is the shipped look.
+  groupPresets: {
+    Rhythm: [
+      { name: "Today", values: {} },
+      { name: "Compact", values: { "transcript.row.flowHalf": 6, "transcript.row.turnHalf": 9 } },
+    ],
+  },
+  onSet: (key, value) => send({ type: "set", key, value }),
+  // The peer applies its own preset (and sends back its state) instead of getting a set per key.
+  onPreset: ({ group, index }) => send({ type: "preset", key: presetSetKey[group], index }),
+})
+
+const page = mountPage(tune, document.querySelector("#app")!, {
+  title: "iPhone Tune",
+  sections: ["Playground", "Session List", "Transcript"], // order; others follow as they appear
+  columnWidth: 300, // the narrowest a column gets (px)
+  copy: () => tune.swift(), // what Copy and ⇧C put on the clipboard
+})
+```
+
+Fields and descriptors take a `section` beside their `group` (`knob(44, { min: 28, max: 72, group: "Spacing", section: "Session List" })`); panels ignore it. `defineControls` takes `groupPresets` and `onPreset` too, and every store has `groupPresets`, `groupPreset(group, index)` (one undo step, `source: "preset"` with its `group`) and `matchingGroupPreset(group)`. Hovering a numbered chip shows its preset's name where the card's title is; applying one by key shows it briefly.
+
+**Custom cards** sit in the same grid, in the same material, for anything that isn't a field: a playground switcher, a list of motion jumps, a video player. Small primitives come with them, each built from the panel's own rows; `set` shows a value that arrived from elsewhere without calling `onChange`:
+
+```ts
+const playground = page.card({ title: "Playground & Slow Motion", section: "Playground" })
+const screen = playground.choice({
+  options: [{ value: "transcript", label: "Transcript" }, { value: "composer", label: "Composer" }],
+  value: "transcript",
+  onChange: (v) => send({ type: "playground", playground: v }),
+}) // no label: the segments span the card
+const speed = playground.choice({
+  label: "Speed",
+  options: ["0.1", "0.25", "0.5", "1", "2"].map((v) => ({ value: v, label: `${v}×` })),
+  value: "1",
+  onChange: (v) => send({ type: "slowmo", scale: Number(v) }),
+})
+playground.actions([{ label: "Live arrival", run: () => replay("liveArrival") }])
+playground.toggle({ label: "Reduce motion", value: false, onChange: (on) => setReduceMotion(on) })
+
+const watch = page.card({ title: "Motion Watch", section: "Playground" })
+watch.item({ label: "Layout jump · toolRow", detail: "14.2 pt · f212", onSelect: () => inspect(jump) })
+watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `remove()` drops the card
+speed.set("0.25") // the phone changed it
+```
+
+On a page, the keyboard spans every card:
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
+| `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits) |
+| `1`–`9` | Apply the focused group's numbered preset (in groups without them, digits still edit numbers; `Enter` always does) |
+| `/` | Filter rows by label, group or section, live; cards with nothing left fold away and the columns re-balance; `Esc` clears |
+| `s` | Hints for what's on screen, custom cards included |
+
+Focus that lands off screen (or under the header) glides into view, retargeting from where the last glide was headed so held keys don't fall behind. The rest (`[` `]`, `r`, `g`, `⇧L`, selection, the row menu, hold `\`) works as in a panel.
+
+Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling wakes the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
+
 ## Theming, Density & WebGPU Renderer
 
 Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
@@ -307,7 +378,7 @@ The package has two core exports selected through the standard `development` con
 
 | Function | Behavior |
 | --- | --- |
-| `knob(value, { min, max, step?, unit?, shortcut?, label?, group? })` | Numeric slider control with rolling readout and inline editor. |
+| `knob(value, { min, max, step?, unit?, shortcut?, label?, group?, section? })` | Numeric slider control with rolling readout and inline editor. |
 | `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
 | `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
@@ -316,7 +387,8 @@ The package has two core exports selected through the standard `development` con
 | `easing([x1, y1, x2, y2] \| name, meta?)` | Cubic bezier with a mini curve, a handle editor and named curves. |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
-| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen. |
+| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen; `sync` holds keys changed here for 600 ms against stale echoes, then applies the peer's latest state. |
+| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element })` adds custom cards. |
 
 ### Store (`Controls<S>`)
 
@@ -330,6 +402,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
 - `controls.preset(id)` / `controls.matchingPreset()`
+- `controls.groupPresets` / `controls.groupPreset(group, index)` / `controls.matchingGroupPreset(group)`
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel
