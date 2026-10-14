@@ -340,3 +340,102 @@ export function createDieCanvas(doc: Document, size: number) {
     },
   }
 }
+
+/** Phosphor's dice-N glyph (regular weight) as an even-odd SVG path on the 256 grid. */
+export function facePath(value: number): string {
+  const rr = (h: number, r: number) =>
+    `M${128 - h + r},${128 - h}H${128 + h - r}A${r},${r},0,0,1,${128 + h},${128 - h + r}V${128 + h - r}A${r},${r},0,0,1,${128 + h - r},${128 + h}H${128 - h + r}A${r},${r},0,0,1,${128 - h},${128 + h - r}V${128 - h + r}A${r},${r},0,0,1,${128 - h + r},${128 - h}Z`
+  const pip = DIE.pip
+  const dots = (PIPS[value] ?? []).map(
+    ([x, y]) =>
+      `M${128 + x - pip},${128 + y}a${pip},${pip},0,1,0,${2 * pip},0a${pip},${pip},0,1,0,${-2 * pip},0Z`,
+  )
+  // The hole winds the other way, so it stays open under nonzero filling too (the GPU atlas).
+  const hole = (h: number, r: number) =>
+    `M${128 - h + r},${128 - h}A${r},${r},0,0,0,${128 - h},${128 - h + r}V${128 + h - r}A${r},${r},0,0,0,${128 - h + r},${128 + h}H${128 + h - r}A${r},${r},0,0,0,${128 + h},${128 + h - r}V${128 - h + r}A${r},${r},0,0,0,${128 + h - r},${128 - h}Z`
+  return rr(96, 32) + hole(80, 16) + dots.join("")
+}
+
+/** Icon size of the header die (px), matching the other header icons. */
+export const HEADER_DIE = 15
+
+/**
+ * The Random button's die. At rest it is the face's glyph (an SVG, so hover colours transition like
+ * every icon); a roll swaps in the traced canvas until it settles. In GPU mode the canvas is skipped
+ * and the renderer draws `view` itself; `onFrame` wakes it.
+ */
+export function createHeaderDie(doc: Document, onFrame: () => void) {
+  const node = doc.createElement("span")
+  node.className = "knobs-die-icon"
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", "0 0 256 256")
+  svg.setAttribute("aria-hidden", "true")
+  svg.setAttribute("class", "knobs-icon")
+  const path = doc.createElementNS("http://www.w3.org/2000/svg", "path")
+  path.setAttribute("fill", "currentColor")
+  path.setAttribute("fill-rule", "evenodd")
+  svg.append(path)
+  const traced = createDieCanvas(doc, HEADER_DIE)
+  traced.canvas.hidden = true
+  node.append(svg, traced.canvas)
+
+  const motion = new DieMotion()
+  let view: DieView = { rx: 0, ry: 0, energy: 0 }
+  let frame = 0
+  let last = 0
+  const show = (rolling: boolean) => {
+    traced.canvas.hidden = !rolling
+    svg.style.visibility = rolling ? "hidden" : ""
+    if (!rolling) path.setAttribute("d", facePath(motion.value))
+  }
+  show(false)
+  const gpu = () => node.closest('[data-gpu-active="true"]') !== null
+  const tick = (now: number) => {
+    view = motion.step((now - last) / 1000)
+    last = now
+    if (!gpu()) {
+      const [r, g, b, a] = getComputedStyle(node)
+        .color.match(/[\d.]+/g)!
+        .map(Number)
+      traced.render(view, DIE_LOOK, [r!, g!, b!, a ?? 1])
+    }
+    onFrame()
+    if (motion.resting) {
+      frame = 0
+      show(false)
+      onFrame()
+    } else frame = requestAnimationFrame(tick)
+  }
+  return {
+    node,
+    roll() {
+      const still = doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      if (still) {
+        const others = FACES.filter((f) => f.value !== motion.value)
+        motion.snapTo(others[Math.floor(Math.random() * others.length)]!.value)
+        show(false)
+        onFrame()
+        return
+      }
+      motion.roll()
+      show(true)
+      if (!frame) {
+        last = performance.now()
+        frame = requestAnimationFrame(tick)
+      }
+    },
+    get view() {
+      return view
+    },
+    get value() {
+      return motion.value
+    },
+    get rolling() {
+      return frame !== 0
+    },
+    dispose() {
+      cancelAnimationFrame(frame)
+    },
+  }
+}
+export type HeaderDie = ReturnType<typeof createHeaderDie>

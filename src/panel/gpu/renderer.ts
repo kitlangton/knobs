@@ -1,5 +1,6 @@
 import { oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
+import { DIE_LOOK, dieBox, facePath, HEADER_DIE, type HeaderDie } from "../die.js"
 import { ICONS, type IconName } from "../icons.js"
 import {
   clamp,
@@ -174,6 +175,8 @@ export interface GpuPanelBinding {
   readonly header: HTMLElement
   readonly titleEl: HTMLElement
   readonly headerButtons: readonly { button: HTMLButtonElement; icon: IconName }[]
+  /** The Random button's die: drawn as its face's glyph at rest, ray-traced while it rolls. */
+  readonly headerDie?: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
   readonly presetStrip: PresetStrip
   readonly groups: readonly GpuGroupBinding[]
   readonly cards: readonly HTMLElement[]
@@ -854,7 +857,6 @@ class GpuOverlayManager {
         radius,
         glowOrBlur: t.glowStrength * 7,
         kind: 1,
-        p1: focused ? 1 : 0,
       })
     }
     this.drawText(
@@ -900,16 +902,10 @@ class GpuOverlayManager {
     })
   }
 
-  /** The hairline above every row but a card's first, and the focus wash (plus ring for sliders). */
-  private drawRowOverlay(
-    row: HTMLElement,
-    rRect: DOMRect,
-    cardClip: Clip,
-    ring: boolean,
-    stretchX = 0,
-  ) {
+  /** The hairline above every row but a card's first, and the focus wash. */
+  private drawRowOverlay(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     this.drawSeparator(row, rRect, cardClip, stretchX)
-    this.drawFocus(row, row.matches(":has(:focus-visible)"), rRect, cardClip, ring, stretchX)
+    this.drawFocus(row, row.matches(":has(:focus-visible)"), rRect, cardClip, stretchX)
   }
 
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
@@ -931,14 +927,7 @@ class GpuOverlayManager {
   }
 
   /** The focus wash, with a ring for sliders and disclosure heads. */
-  private drawFocus(
-    el: HTMLElement,
-    on: boolean,
-    rRect: DOMRect,
-    cardClip: Clip,
-    ring: boolean,
-    stretchX = 0,
-  ) {
+  private drawFocus(el: HTMLElement, on: boolean, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     const t = this.curTokens
     const focus = this.ease(el, "focus", on ? 1 : 0)
     if (focus < 0.005) return
@@ -954,7 +943,6 @@ class GpuOverlayManager {
       glowOrBlur: t.glowStrength * 8,
       kind: 1,
       stretchX,
-      p1: ring ? focus : 0,
     })
   }
 
@@ -971,6 +959,43 @@ class GpuOverlayManager {
       uv: entry.uv,
       color,
       kind: 5,
+    })
+  }
+
+  private drawDie(die: HeaderDie, box: DOMRect, color: Rgba, clip?: Clip) {
+    if (!die.rolling) {
+      const entry = this.atlas.icon(facePath(die.value), HEADER_DIE, this.curScale)
+      const s = this.curScale
+      this.pushPrim({
+        x: Math.round((box.left + (box.width - entry.w) * 0.5) * s) / s,
+        y: Math.round((box.top + (box.height - entry.h) * 0.5) * s) / s,
+        w: entry.w,
+        h: entry.h,
+        clip,
+        uv: entry.uv,
+        color,
+        kind: 5,
+      })
+      return
+    }
+    // Same box as the DOM canvas: room for the corners while it tumbles and lifts.
+    const b = dieBox(HEADER_DIE)
+    const { rx, ry, energy } = die.view
+    const d2r = Math.PI / 180
+    this.pushPrim({
+      x: box.left + (box.width - b) * 0.5,
+      y: box.top + (box.height - b) * 0.5,
+      w: b,
+      h: b,
+      clip,
+      color,
+      kind: 11,
+      strokeWidth: DIE_LOOK.shade,
+      p0: rx * d2r,
+      p1: ry * d2r,
+      p2: energy,
+      p3: HEADER_DIE,
+      aux: [DIE_LOOK.perspective, DIE_LOOK.lift, Math.cos(DIE_LOOK.bevel * d2r), DIE_LOOK.fill],
     })
   }
 
@@ -1095,24 +1120,6 @@ class GpuOverlayManager {
   }
 
   /** An outline like CSS `outline: 1.5px` at `offset`, following `radius`; drawn while focus-visible. */
-  private focusRing(el: Element, r: DOMRect, offset: number, radius: number, clip?: Clip) {
-    if (!el.matches(":focus-visible")) return
-    const o = offset + 1.5
-    this.pushPrim({
-      x: r.left - o,
-      y: r.top - o,
-      w: r.width + o * 2,
-      h: r.height + o * 2,
-      clip,
-      color: [0, 0, 0, 0],
-      color2: this.curTokens.accent,
-      radius: Math.max(0, radius + o),
-      glowOrBlur: this.curTokens.glowStrength * 8,
-      kind: 1,
-      p1: 1,
-    })
-  }
-
   private readout(el: HTMLElement, centerY: number, color: Rgba, clip?: Clip) {
     const r = el.getBoundingClientRect()
     this.drawText(el.textContent ?? "", r.right, centerY, color, {
@@ -1163,7 +1170,7 @@ class GpuOverlayManager {
         cy + chevron[i]! * sin + chevron[i + 1]! * cos,
       )
     this.pushLine(pts, withAlpha(this.hot(x.caret, hot, t.dim, t.label), rowAlpha), 1.4)
-    this.drawFocus(x.head, x.head.matches(":focus-visible"), hRect, cardClip, true)
+    this.drawFocus(x.head, x.head.matches(":focus-visible"), hRect, cardClip)
     const bRect = x.body.getBoundingClientRect()
     if (x.body.hidden || bRect.height < 0.5) return undefined
     return intersectClip(cardClip, [bRect.left, bRect.top, bRect.right, bRect.bottom])
@@ -1299,9 +1306,9 @@ class GpuOverlayManager {
           aux: [col.l, s.mode === 0 ? Math.max(col.c, 0.06) : col.c, col.h, s.veil()],
           aux2: withAlpha(t.bg, 0.62),
         })
-        this.focusRing(s.track, tr, 2, h / 2, body)
         const [x] = this.morph(s.track, [s.thumbX()], row.wave.at - clock, s.dragging(), tr)
-        const d = (h + 2) * this.ease(s.track, "grab", s.dragging() ? 1.1 : 1, 30)
+        const lift = s.dragging() || s.track.matches(":focus-visible")
+        const d = (h + 2) * this.ease(s.track, "grab", lift ? 1.1 : 1, 30)
         this.shape({
           x: tr.left + x! - d / 2,
           y: lineY - d / 2,
@@ -1378,7 +1385,8 @@ class GpuOverlayManager {
         ringColor: withAlpha(t.dim, rowAlpha),
         clip,
       })
-      const d = 12 * this.ease(row.pad, "grab", active ? 1.2 : 1, 30)
+      const lift = active || row.pad.matches(":focus-visible")
+      const d = 12 * this.ease(row.pad, "grab", lift ? 1.2 : 1, 30)
       this.shape({
         x: pr.left + px! - d / 2,
         y: pr.top + py! - d / 2,
@@ -1392,7 +1400,6 @@ class GpuOverlayManager {
         glowColor: withAlpha(t.accent, 0.5 * rowAlpha),
         clip,
       })
-      this.focusRing(row.pad, pr, -1.5, radius, body)
     })
   }
 
@@ -1442,7 +1449,7 @@ class GpuOverlayManager {
       this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
       row.handles.forEach((h, i) => {
         if (arms.length !== 8) return
-        const d = 12 * this.ease(h, "grab", h.matches(":active") ? 1.2 : 1, 30)
+        const d = 12 * this.ease(h, "grab", h.matches(":active, :focus-visible") ? 1.2 : 1, 30)
         const cx = arms[i * 4 + 2]!
         const cy = arms[i * 4 + 3]!
         this.shape({
@@ -1457,7 +1464,6 @@ class GpuOverlayManager {
           shadow: [0.3, 3, 1],
           clip: body,
         })
-        this.focusRing(h, new DOMRect(cx - 6, cy - 6, 12, 12), 2, 6, body)
       })
       const chipsEl = row.chips[0]?.parentElement
       if (!chipsEl) return
@@ -1494,11 +1500,10 @@ class GpuOverlayManager {
           chip.textContent ?? "",
           r.left + r.width / 2,
           r.top + r.height / 2,
-          withAlpha(this.hot(chip, checked || chip.matches(":hover")), rowAlpha),
+          withAlpha(this.hot(chip, checked || chip.matches(":hover, :focus-visible")), rowAlpha),
           { px: t.fontSize - 0.5, align: "center", clip: body },
         )
       }
-      this.focusRing(chipsEl, cr, -1.5, radius, body)
     })
   }
 
@@ -1619,10 +1624,12 @@ class GpuOverlayManager {
               radius: bRect.height * 0.5,
               glowOrBlur: tokens.glowStrength * 8,
               kind: 1,
-              p1: focused ? 1 : 0,
             })
           }
-          this.drawIcon(hb.icon, 15, bRect, withAlpha(this.hot(hb.button, on), alpha), panelClip)
+          const iconColor = withAlpha(this.hot(hb.button, on), alpha)
+          const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
+          if (die) this.drawDie(die, bRect, iconColor, panelClip)
+          else this.drawIcon(hb.icon, 15, bRect, iconColor, panelClip)
         }
       }
 
@@ -1767,7 +1774,6 @@ class GpuOverlayManager {
               radius: br.height * 0.5,
               glowOrBlur: tokens.glowStrength * 7,
               kind: 1,
-              p1: focused ? 1 : 0,
             })
           this.drawIcon(
             "reset",
@@ -1974,7 +1980,7 @@ class GpuOverlayManager {
               })
             }
           }
-          this.drawRowOverlay(row.row, rRect, cardClip, focused, stretchX)
+          this.drawRowOverlay(row.row, rRect, cardClip, stretchX)
         } else if (row.kind === "choice") {
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
@@ -2032,7 +2038,7 @@ class GpuOverlayManager {
               },
             )
           }
-          this.drawRowOverlay(row.row, rRect, cardClip, false)
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "spring") {
           this.drawSpring(row, rRect, cardClip, rowAlpha, clock)
         } else if (row.kind === "color") {
@@ -2081,11 +2087,10 @@ class GpuOverlayManager {
             glowOrBlur: tokens.glowStrength,
             kind: 4,
             p0: prog,
-            p1: focused ? 1 : 0,
             p2: th.start.x,
             p3: th.end.x,
           })
-          this.drawRowOverlay(row.row, rRect, cardClip, false)
+          this.drawRowOverlay(row.row, rRect, cardClip)
         }
       }
       this.curClip = bodyClip
