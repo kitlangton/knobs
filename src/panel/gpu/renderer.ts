@@ -15,7 +15,7 @@ import {
   trailScale,
 } from "../motion.js"
 import type { PresetStrip } from "../presets.js"
-import { getRevealVersion, isAnyRevealing } from "../reveal.js"
+import { getRevealVersion, isAnyRevealing, isRevealingIn } from "../reveal.js"
 import type { Slider } from "../slider.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -412,7 +412,6 @@ class GpuOverlayManager {
     panel.root.dataset.renderer = "gpu"
     this.attachGlobalListeners()
     const ro = new ResizeObserver(() => {
-      this.layoutVersion++
       this.wake()
     })
     ro.observe(panel.root)
@@ -1748,7 +1747,9 @@ class GpuOverlayManager {
         0
       const opening = clock < (this.openUntil.get(panel) ?? 0)
       const leaving = panel.root.dataset.leaving === "true"
-      this.curBypassRectCache = revealing || opening || leaving
+      const panelRevealing = revealing && isRevealingIn(panel.root)
+      const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
+      this.curBypassRectCache = opening || leaving || (panelRevealing && !bodyRevealing)
 
       const tokens = this.smoothTokens(panel, rawTokens, reducedMotion ? 0 : dt)
       this.curTokens = tokens
@@ -1971,6 +1972,7 @@ class GpuOverlayManager {
       }
 
       // 4. Group headers
+      if (bodyRevealing) this.curBypassRectCache = true
       const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
       this.curSubHovered = bodyHovered
       for (const g of panel.groups) {

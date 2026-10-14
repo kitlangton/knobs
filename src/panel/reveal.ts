@@ -2,10 +2,16 @@ const EASE_OUT = "cubic-bezier(.2,.8,.2,1)"
 const EASE_IN = "cubic-bezier(.4,0,.8,.4)"
 
 const running = new WeakMap<HTMLElement, Animation>()
-let activeReveals = 0
+const activeNodes = new Set<HTMLElement>()
 let revealVersion = 0
 
-export const isAnyRevealing = () => activeReveals > 0
+export const isAnyRevealing = () => activeNodes.size > 0
+export const isRevealingIn = (root: HTMLElement) => {
+  for (const node of activeNodes) {
+    if (root.contains(node)) return true
+  }
+  return false
+}
 export const getRevealVersion = () => revealVersion
 
 /**
@@ -23,7 +29,7 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
   const prev = running.get(node)
   if (prev) {
     running.delete(node)
-    activeReveals = Math.max(0, activeReveals - 1)
+    activeNodes.delete(node)
     revealVersion++
     prev.cancel()
   }
@@ -71,12 +77,12 @@ export function reveal(node: HTMLElement, show: boolean, after?: () => void) {
     easing: show ? ease : EASE_IN,
   })
   running.set(node, animation)
-  activeReveals++
+  activeNodes.add(node)
   revealVersion++
   const settle = () => {
     if (running.get(node) === animation) {
       running.delete(node)
-      activeReveals = Math.max(0, activeReveals - 1)
+      activeNodes.delete(node)
       revealVersion++
     }
   }
