@@ -116,6 +116,8 @@ export interface RemoteControlsOptions {
   readonly renderer?: RendererMode
   /** Default key bindings for its panels (see `MountPanelOptions.keys`). */
   readonly keys?: PanelKeys
+  /** `false`: its panels show no modified marks or resets (see `MountPanelOptions.marks`). */
+  readonly marks?: boolean
   readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
   /** A key, a group, or (`{}`) everything was reset. */
   readonly onReset?: (target: { key?: string; group?: string }) => void
@@ -348,6 +350,7 @@ export function createRemoteControls(
     density: options.density,
     renderer: options.renderer,
     keys: options.keys,
+    marks: options.marks,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return
@@ -414,13 +417,17 @@ export type SettingsItem =
 
 /**
  * Settings sections as descriptors and values, one row per item: choices (a menu past four
- * options), switches and buttons, each section's title its group. A choice's home is its first
- * option and a switch's is off, so the shape stays put while the values move.
+ * options), switches and buttons, each section's title its group.
+ *
+ * The prototype owns these values, so each setting's default is its `home`: the value the
+ * prototype first reported. Pass the first call's `values` back as `home` (merging in settings
+ * that appear later) so the shape stays put while the values move; without it, the values
+ * reported now are the defaults.
  */
-export function fromSettings(groups: readonly SettingsGroup[]): {
-  descriptors: ControlDescriptor[]
-  values: State
-} {
+export function fromSettings(
+  groups: readonly SettingsGroup[],
+  home: State = {},
+): { descriptors: ControlDescriptor[]; values: State } {
   const descriptors: ControlDescriptor[] = []
   const values: Record<string, Value> = {}
   for (const g of groups)
@@ -428,16 +435,23 @@ export function fromSettings(groups: readonly SettingsGroup[]): {
       const meta = { key: item.id, label: item.label, ...(g.title ? { group: g.title } : {}) }
       if (item.kind === "action") descriptors.push({ ...meta, kind: "action" })
       else if (item.kind === "toggle") {
-        descriptors.push({ ...meta, kind: "toggle", default: false })
         values[item.id] = Boolean(item.value)
+        const def = home[item.id]
+        descriptors.push({
+          ...meta,
+          kind: "toggle",
+          default: typeof def === "boolean" ? def : values[item.id]!,
+        })
       } else if (item.choices.length) {
+        const ids = item.choices.map((c) => c.id)
+        values[item.id] = item.value != null && ids.includes(item.value) ? item.value : ids[0]!
+        const def = home[item.id]
         descriptors.push({
           ...meta,
           kind: "choice",
-          default: item.choices[0]!.id,
+          default: typeof def === "string" && ids.includes(def) ? def : values[item.id]!,
           choices: item.choices,
         })
-        values[item.id] = item.value ?? item.choices[0]!.id
       }
     }
   return { descriptors, values }

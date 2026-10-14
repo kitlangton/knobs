@@ -143,6 +143,7 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Ele
         footer: props.footer,
         header: props.header,
         keys: props.keys,
+        marks: props.marks,
         preset: props.preset,
         copy: props.copy,
         actions: props.actions,

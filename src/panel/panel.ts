@@ -174,6 +174,7 @@ function buildPanel<S extends Schema>(
   const showHistory = options.history !== false
   const showFooter = options.footer !== false
   const given = options.keys ?? controls.keys
+  const marks = (options.marks ?? controls.marks) !== false
   const keys = resolveKeys(given, Boolean(page))
   // Locks and group dice only mean something while something can roll.
   if (!keys.random.length && !keys.mutate.length) keys.lock = keys.group = []
@@ -309,7 +310,7 @@ function buildPanel<S extends Schema>(
   randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
   const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), controls.reset)
-  if (!bound("resetAll")) resetBtn.hidden = true
+  if (!bound("resetAll") || !marks) resetBtn.hidden = true
   const copyButton = command("copy", "Copy", ariaKeys(keys.copy), copyValues)
   if (!bound("copy")) copyButton.hidden = true
   const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), controls.undo)
@@ -665,7 +666,7 @@ function buildPanel<S extends Schema>(
     const plain = (values: Record<string, unknown>) => values[key]
     // No way to reset a row (`keys: { reset: false }`), no modified marks.
     const isModified = () =>
-      bound("reset") && spec.keys.some((k) => controls.isModified(k as keyof S & string))
+      marks && bound("reset") && spec.keys.some((k) => controls.isModified(k as keyof S & string))
     const resetRow = () => {
       if (bound("reset")) run(() => controls.reset(spec.keys as (keyof S & string)[]))
     }
@@ -1467,7 +1468,7 @@ function buildPanel<S extends Schema>(
         row.wave.at = row.wave.until = 0
         row.row.style.removeProperty("--k-delay")
       }
-      const modified = bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
+      const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)
         row.row.classList.toggle("knobs-modified", modified)
       if (row.slider) row.slider.update(Number(value), delay, instant)
@@ -1488,7 +1489,7 @@ function buildPanel<S extends Schema>(
         )
         if (groupMod) anyMod = true
         // A group's reset is a coarse reset, so it follows `resetAll`.
-        const shown = groupMod && bound("resetAll")
+        const shown = marks && groupMod && bound("resetAll")
         if (gReset.disabled !== !shown) gReset.disabled = !shown
         const s = String(shown)
         if (gReset.dataset.shown !== s) gReset.dataset.shown = s

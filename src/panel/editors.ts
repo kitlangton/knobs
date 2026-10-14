@@ -502,7 +502,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     row: p.slider.element,
     slider: p.slider,
     wave: c.wave,
-    isModified: () => p.get() !== p.field.value,
+    isModified: () => c.isModified() && p.get() !== p.field.value,
   }))
   return {
     row,
@@ -517,7 +517,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
       for (const [i, p] of parts.entries())
         p.slider.element.classList.toggle(
           "knobs-modified",
-          shown[i === 0 ? "duration" : "bounce"] !== p.field.value,
+          shown[i === 0 ? "duration" : "bounce"] !== p.field.value && c.isModified(),
         )
     },
     update(value, delay, instant = false) {
@@ -529,7 +529,10 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
         const key = i === 0 ? "duration" : "bounce"
         if (!initialized || instant || v[key] !== prev[key]) {
           p.slider.update(v[key], delay, instant)
-          p.slider.element.classList.toggle("knobs-modified", v[key] !== p.field.value)
+          p.slider.element.classList.toggle(
+            "knobs-modified",
+            v[key] !== p.field.value && c.isModified(),
+          )
         }
       }
       if (!changed && initialized) return

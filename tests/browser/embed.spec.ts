@@ -258,8 +258,10 @@ test("flat spring, prototype settings over postMessage, modified dot, fine-grain
     .toBe(true)
   await settings(page).getByRole("button", { name: "Replay arrival" }).click()
   await expect.poll(() => page.evaluate(() => (window as any).__problems.prototype.replays)).toBe(1)
-  // No reset in the settings panel: no modified marks or group reset.
+  // marks: false — values the prototype owns show no modified dots, readout marks or resets,
+  // even once they've moved from what it first reported.
   await expect(settings(page).locator(".knobs-modified")).toHaveCount(0)
+  await expect(settings(page).locator('.knobs-group-reset[data-shown="true"]')).toHaveCount(0)
   // A value from props touches its own row and nothing else in the panel.
   await page.waitForTimeout(800)
   const touched = await page.evaluate(async () => {
@@ -285,6 +287,28 @@ test("flat spring, prototype settings over postMessage, modified dot, fine-grain
     return [...rows]
   })
   expect(touched).toEqual(["stops"])
+})
+
+test("marks: false hides modified dots, readout marks, group reset and Reset", async ({ page }) => {
+  await open(page)
+  await params(page).getByRole("slider", { name: "Duration" }).focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(params(page).locator(".knobs-modified")).not.toHaveCount(0)
+  // The same store in a second panel, with its header, without marks.
+  await page.evaluate(() => {
+    const host = document.createElement("div")
+    host.id = "bare"
+    host.style.cssText = "position:fixed;right:0;top:0;width:300px"
+    document.body.append(host)
+    ;(window as any).__problems.params.mount(host, { marks: false, variants: false, title: "Bare" })
+  })
+  const bare = page.locator("#bare .knobs-panel")
+  await expect(bare.locator(".knobs-slider").first()).toBeVisible()
+  await expect(bare.locator(".knobs-modified")).toHaveCount(0)
+  await expect(bare.locator('.knobs-group-reset[data-shown="true"]')).toHaveCount(0)
+  await expect(
+    bare.locator("header").getByRole("button", { name: "Reset", exact: true }),
+  ).toBeHidden()
 })
 
 test("the row menu offers only what's on, and stays out of the way when nothing is", async ({

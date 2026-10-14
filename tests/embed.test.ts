@@ -316,18 +316,56 @@ describe("viewer.js settings", () => {
         label: "Theme",
         group: "Scenario",
         kind: "choice",
-        default: "dark",
+        default: "light",
         choices: [
           { id: "dark", label: "Dark" },
           { id: "light", label: "Light" },
         ],
       },
-      { key: "0.1", label: "Reduce Motion", group: "Scenario", kind: "toggle", default: false },
+      { key: "0.1", label: "Reduce Motion", group: "Scenario", kind: "toggle", default: true },
       { key: "1.0", label: "Replay", kind: "action" },
     ])
     expect(values).toEqual({ "0.0": "light", "0.1": true })
     const r = createRemoteControls("pv", descriptors, { values })
     expect(r.get()).toEqual(values)
+    // What the prototype reported is home: nothing reads as modified.
+    expect(r.isModified()).toBe(false)
+  })
+
+  it("keeps the first report as home while values move", async () => {
+    const { fromSettings } = await import("../src/index.js")
+    const report = (theme: string, motion: boolean) => [
+      {
+        title: "Scenario",
+        items: [
+          {
+            id: "t",
+            label: "Theme",
+            kind: "choice" as const,
+            choices: [{ id: "light" }, { id: "dark" }],
+            value: theme,
+          },
+          { id: "m", label: "Reduce Motion", kind: "toggle" as const, value: motion },
+        ],
+      },
+    ]
+    const first = fromSettings(report("dark", false))
+    const later = fromSettings(report("light", true), first.values)
+    expect(later.descriptors.map((d) => d.default)).toEqual(["dark", false])
+    expect(later.values).toEqual({ t: "light", m: true })
+    expect(JSON.stringify(later.descriptors)).toBe(JSON.stringify(first.descriptors))
+    const r = createRemoteControls("pv-home", first.descriptors, { values: first.values })
+    r.update(first.descriptors, later.values)
+    expect(r.isModified("t")).toBe(true)
+  })
+
+  it("marks: false is the store's default for its panels", () => {
+    expect(createRemoteControls("m-on", params()).marks).toBe(true)
+    expect(createRemoteControls("m-off", params(), { marks: false }).marks).toBe(false)
+    expect(
+      defineControls("m-local", { a: knob(1, { min: 0, max: 2 }) }, { marks: false, storage: null })
+        .marks,
+    ).toBe(false)
   })
 
   it("update with the same array only syncs values (no reshape, history kept)", () => {

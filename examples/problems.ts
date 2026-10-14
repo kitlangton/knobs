@@ -279,8 +279,13 @@ frame.port2.onmessage = (event) => {
   }, 120)
 }
 const [settings, setSettings] = createSignal(fromSettings([]))
+// Each setting's home is what the prototype first reported: it owns the state.
+let home: State = {}
 frame.port1.onmessage = (event) => {
-  if (event.data.type === "pv:settings") setSettings(fromSettings(event.data.groups))
+  if (event.data.type !== "pv:settings") return
+  const next = fromSettings(event.data.groups, home)
+  home = { ...next.values, ...home }
+  setSettings(next)
 }
 let settingsShape = ""
 const settingsDescriptors = createRoot(() =>
@@ -295,6 +300,8 @@ const settingsDescriptors = createRoot(() =>
 )
 const prototypeSettings = createRemoteControls("prototype-settings", [], {
   nullDefaults: false,
+  // The prototype's values aren't "modified" from anything: no dots, no resets.
+  marks: false,
   storage: null,
   onSet: (id, value) => {
     note(`board:setting ${id} = ${value}`)

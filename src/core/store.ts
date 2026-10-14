@@ -95,6 +95,12 @@ export interface MountPanelOptions {
    * The `?` popover and hint badges list only what's enabled.
    */
   readonly keys?: PanelKeys
+  /**
+   * `false` hides what says a value differs from its default: modified dots and readout marks,
+   * group reset icons and the header's Reset. For panels whose values belong to someone else
+   * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
+   */
+  readonly marks?: boolean
   /** Token values to style the panel with, e.g. `problemsPreset` (see `TokenPreset`). */
   readonly preset?: TokenPreset
   /** `false` drops the header (title and buttons) for a host that draws its own. */
@@ -167,6 +173,8 @@ export interface ControlsOptions<S extends Schema> {
   renderer?: RendererMode
   /** Default key bindings for this store's panels (see `MountPanelOptions.keys`). */
   keys?: PanelKeys
+  /** `false`: its panels show no modified marks or resets (see `MountPanelOptions.marks`). */
+  marks?: boolean
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   onReset?: (target: { key?: keyof S & string; group?: string }) => void
   /** An action row was pressed (after its own `run`). */
@@ -187,6 +195,7 @@ export interface Controls<S extends Schema = Schema> {
   readonly density: DensityMode
   readonly renderer: RendererMode
   readonly keys: PanelKeys | undefined
+  readonly marks: boolean
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -624,6 +633,7 @@ export function defineControls<const S extends Schema>(
     density,
     renderer,
     keys: options.keys,
+    marks: options.marks !== false,
     get,
     set,
     sync,
