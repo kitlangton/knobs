@@ -8,7 +8,11 @@ export default defineConfig({
     launchOptions: {
       // CI runners have no GPU: Chromium's software WebGPU adapter (SwiftShader) stands in.
       args: process.env.CI
-        ? ["--enable-unsafe-webgpu", "--enable-unsafe-swiftshader", "--use-webgpu-adapter=swiftshader"]
+        ? [
+            "--enable-unsafe-webgpu",
+            "--enable-unsafe-swiftshader",
+            "--use-webgpu-adapter=swiftshader",
+          ]
         : ["--enable-gpu"],
     },
   },

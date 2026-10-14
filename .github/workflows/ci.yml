@@ -15,12 +15,13 @@ jobs:
       - run: bun run test
       - run: bun run build
   browser:
-    runs-on: ubuntu-latest
+    # macOS: the panels are measured against Apple's system fonts.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      - run: bunx playwright install chromium
       - run: bun run test:browser
       - uses: actions/upload-artifact@v4
         if: failure()
