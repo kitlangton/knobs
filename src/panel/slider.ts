@@ -147,6 +147,7 @@ export function createSlider(
   })
   ro.observe(value)
   ro.observe(track)
+  ro.observe(label)
 
   const places = decimals(field.step)
   const fmtDigits = (v: number) => v.toFixed(places)

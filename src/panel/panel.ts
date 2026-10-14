@@ -16,9 +16,10 @@ import {
   type SubTrack,
 } from "./editors.js"
 import { createHintController, type HintTarget } from "./hints.js"
-import { createHeaderDie } from "./die.js"
+import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Edges } from "./motion.js"
+import { openMenu, type Menu } from "./menu.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
@@ -164,6 +165,12 @@ function buildPanel<S extends Schema>(
     ["0–9 / Enter", "Edit number inline"],
     ["⌫", "Reset row · delete saved preset"],
     ["r / ⇧R", "Random / Reset all"],
+    ["⌥R", "Mutate: nudge the values"],
+    ["g / ⌥G", "Random / Mutate the group"],
+    ["⇧L", "Lock from Random"],
+    ["⇧↑↓ / ⇧ click", "Select rows (⌘ click adds)"],
+    ["⇧F10", "Menu for the rows"],
+    ["hold \\", "Compare with before"],
     ["⇧C", "Copy values"],
     ...(showVariants ? ([["⇧S", "Save as preset"]] as [string, string][]) : []),
     ["u / ⇧u", "Undo / Redo"],
@@ -192,11 +199,20 @@ function buildPanel<S extends Schema>(
   }
   // Random rolls a die in place of the dice icon (see die.ts).
   const die = createHeaderDie(doc, () => wakeGpu())
-  const randomize = () => {
-    die.roll()
-    controls.randomize()
+  // Random re-rolls, Mutate (⌥) nudges; both skip locked fields and roll `roller` only when
+  // something can change. A selection narrows `r` and ⌥R to its rows.
+  const reroll = (keys: readonly string[] | undefined, nudge: boolean, roller: HeaderDie = die) => {
+    const pool = (keys ?? rows.map((r) => r.key)).filter(
+      (k) => !controls.isLocked(k as keyof S & string),
+    ) as (keyof S & string)[]
+    if (pool.length === 0) return
+    roller.roll(nudge)
+    if (nudge) controls.mutate(keys ? pool : undefined)
+    else controls.randomize(keys ? pool : undefined)
   }
-  const randomButton = command("random", "Random", "r", randomize)
+  const randomButton = command("random", "Random", "r", () => {})
+  randomButton.setAttribute("aria-keyshortcuts", "r Alt+r")
+  randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
   const resetBtn = command("reset", "Reset", "Shift+R", controls.reset)
   command("copy", "Copy", "Shift+C", copyValues)
@@ -226,6 +242,7 @@ function buildPanel<S extends Schema>(
   let currentGroup: string | undefined
   const cards: HTMLElement[] = []
   const groupResetButtons = new Map<string, HTMLButtonElement>()
+  const groupDice = new Map<string, { button: HTMLButtonElement; die: HeaderDie }>()
   const gpuGroups: GpuGroupBinding[] = []
   const gpuRows: GpuRowBinding[] = []
   const cardFor = (group: string | undefined) => {
@@ -260,9 +277,23 @@ function buildPanel<S extends Schema>(
     gReset.className = "knobs-group-reset"
     gReset.dataset.hint = `${groupName} reset`
     groupResetButtons.set(groupName, gReset)
-    gRight.append(gReset)
+    // The group's own die: Random for just these rows (⌥ mutates them).
+    const gDie = createHeaderDie(doc, () => wakeGpu(), GROUP_DIE)
+    const gRandom = iconButton("random", `Randomize ${groupName}`, "g Alt+g", () => {})
+    gRandom.className = "knobs-group-die"
+    gRandom.dataset.hint = `${groupName} random`
+    gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
+    gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
+    groupDice.set(groupName, { button: gRandom, die: gDie })
+    gRight.append(gReset, gRandom)
     gHead.append(gLabel, gRight)
-    gpuGroups.push({ element: gHead, labelEl: gLabel, buttons: gBtns, reset: gReset })
+    gpuGroups.push({
+      element: gHead,
+      labelEl: gLabel,
+      buttons: gBtns,
+      reset: gReset,
+      die: { button: gRandom, die: gDie },
+    })
     return gHead
   }
 
@@ -466,6 +497,120 @@ function buildPanel<S extends Schema>(
     }
   })
 
+  // A locked row carries a small lock after its label (see .knobs-lock); the GPU finds it by label.
+  const lockIcons = new Map<HTMLElement, HTMLElement>()
+  for (const r of rows) {
+    const lock = el("span")
+    lock.className = "knobs-lock"
+    lock.setAttribute("aria-hidden", "true")
+    lock.append(iconSvg(doc, "lock"))
+    r.labelEl.append(lock)
+    lockIcons.set(r.labelEl, lock)
+  }
+  const keyOf = (i: number) => rows[i]!.key as keyof S & string
+  const groupKeys = (group: string) => rows.filter((r) => r.field.group === group).map((r) => r.key)
+  const rerollGroup = (group: string, nudge: boolean) => {
+    const roller = groupDice.get(group)?.die
+    if (roller) reroll(groupKeys(group), nudge, roller)
+  }
+
+  // Selection: ⇧-click selects a range, ⌘-click toggles a row, ⇧↑↓ extends from the focused row.
+  // Commands (r, ⌥R, ⌫, ⇧L, ⇧C and the menu) act on the selection when there is one.
+  const selected = new Set<number>()
+  let anchor = -1
+  let head = -1
+  const rowAt = (node: Node | null) => (node ? rows.findIndex((r) => r.row.contains(node)) : -1)
+  const paintSelection = () => {
+    rows.forEach((r, i) => {
+      const on = selected.has(i)
+      if (r.row.classList.contains("knobs-selected") !== on)
+        r.row.classList.toggle("knobs-selected", on)
+    })
+    wakeGpu()
+  }
+  const selectRange = (from: number, to: number) => {
+    selected.clear()
+    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) selected.add(i)
+    paintSelection()
+  }
+  const clearSelection = () => {
+    anchor = head = -1
+    if (selected.size === 0) return
+    selected.clear()
+    paintSelection()
+  }
+  /** What a command acts on: the selection, else the focused row. */
+  const targets = () => {
+    if (selected.size) return [...selected].sort((a, b) => a - b)
+    const at = rowAt(doc.activeElement)
+    return at >= 0 ? [at] : []
+  }
+  const selectionKeys = () =>
+    selected.size ? [...selected].sort((a, b) => a - b).map(keyOf) : undefined
+  const toggleLock = (indices = targets()) => {
+    const keys = indices.map(keyOf)
+    if (keys.length)
+      controls.lock(
+        keys,
+        keys.some((k) => !controls.isLocked(k)),
+      )
+  }
+  const copyKeys = (keys: readonly string[]) => {
+    const values = controls.get() as Record<string, unknown>
+    void copy(controls.code("ts", Object.fromEntries(keys.map((k) => [k, values[k]])) as Values<S>))
+  }
+  const focusRow = (i: number) =>
+    rows[i]?.input.focus({ preventScroll: false, focusVisible: false } as FocusOptions)
+
+  let menu: Menu | undefined
+  const showMenu = (at: { x: number; y: number }, keyboard: boolean, from?: number) => {
+    const indices = targets()
+    if (!indices.length) return
+    // The menu's rows stay selected, so its shortcuts mean the same thing after it closes.
+    if (!selected.size) {
+      anchor = head = indices[0]!
+      selectRange(anchor, head)
+    }
+    const keys = indices.map(keyOf)
+    const locked = keys.every((k) => controls.isLocked(k))
+    const active = doc.activeElement as HTMLElement | null
+    const returnTo = active && root.contains(active) ? active : rows[from ?? indices[0]!]!.input
+    menu?.close(false)
+    menu = openMenu(
+      doc,
+      root,
+      [
+        {
+          label: locked ? "Unlock" : "Lock from Random",
+          shortcut: "⇧L",
+          run: () => toggleLock(indices),
+        },
+        {
+          label: "Randomize",
+          shortcut: "r",
+          disabled: locked,
+          run: () => run(() => reroll(keys, false)),
+        },
+        {
+          label: "Reset",
+          shortcut: "⌫",
+          disabled: !keys.some((k) => controls.isModified(k)),
+          run: () => run(() => controls.reset(keys)),
+        },
+        { label: "Copy", shortcut: "⇧C", separated: true, run: () => copyKeys(keys) },
+      ],
+      at,
+      { keyboard, returnTo, onClose: () => (menu = undefined) },
+    )
+  }
+  const menuFromKeyboard = () => {
+    const at = targets()[0]
+    const row = at === undefined ? undefined : rows[at]
+    if (!row) return
+    const r = row.labelEl.getBoundingClientRect()
+    showMenu({ x: r.left, y: r.bottom + 4 }, true)
+  }
+
   const text = el("textarea")
   text.hidden = true
   text.name = "variant-json"
@@ -635,6 +780,21 @@ function buildPanel<S extends Schema>(
         anyMod || rows.some((r) => !r.field.group && !same(values[r.key], controls.locked[r.key]))
       if (resetBtn.disabled !== !totalMod) resetBtn.disabled = !totalMod
     }
+    let unlocked = 0
+    for (const row of rows) {
+      const locked = controls.isLocked(row.key as keyof S & string)
+      if (!locked) unlocked++
+      if (row.row.classList.contains("knobs-locked") === locked) continue
+      row.row.classList.toggle("knobs-locked", locked)
+      lockIcons.get(row.labelEl)!.dataset.on = String(locked)
+    }
+    if (randomButton.disabled !== (unlocked === 0)) randomButton.disabled = unlocked === 0
+    for (const [group, { button }] of groupDice) {
+      const off = groupKeys(group).every((k) => controls.isLocked(k as keyof S & string))
+      if (button.disabled !== off) button.disabled = off
+    }
+    if (root.hasAttribute("data-comparing") !== controls.comparing)
+      root.toggleAttribute("data-comparing", controls.comparing)
     if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
@@ -703,18 +863,37 @@ function buildPanel<S extends Schema>(
       ),
     ].filter((n) => n.tabIndex >= 0 && visible(n) && !(n as HTMLButtonElement).disabled)
 
+  /** The group of the focused row or group header. */
+  const focusedGroup = (target: HTMLElement) =>
+    rows[rowAt(target)]?.field.group ??
+    target.closest<HTMLElement>(".knobs-group-head")?.dataset.group
   root.onkeydown = (event) => {
-    if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return
-    if (hintCtrl.handleKey(event)) return
+    if (event.isComposing || event.metaKey || event.ctrlKey) return
     const target = event.target as HTMLElement
     const typing =
       target === text || (target instanceof HTMLInputElement && target.type === "number")
+    if (event.altKey) {
+      // ⌥R and ⌥G mutate (by code: ⌥ changes the character on macOS).
+      if (typing || hintCtrl.isActive || (event.code !== "KeyR" && event.code !== "KeyG")) return
+      event.preventDefault()
+      const group = event.code === "KeyG" ? focusedGroup(target) : undefined
+      if (event.code === "KeyR") run(() => reroll(selectionKeys(), true))
+      else if (group) run(() => rerollGroup(group, true))
+      return
+    }
+    if (hintCtrl.handleKey(event)) return
     if (event.key === "Escape") {
       if (!popover.hidden) {
         event.preventDefault()
         event.stopPropagation()
         togglePopover(false)
         helpButton?.focus({ preventScroll: true })
+        return
+      }
+      if (selected.size && !typing) {
+        event.preventDefault()
+        event.stopPropagation()
+        clearSelection()
         return
       }
       if (close) {
@@ -735,6 +914,18 @@ function buildPanel<S extends Schema>(
     }
     if (typing) return
     const key = event.key
+    if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+      event.preventDefault()
+      event.stopPropagation()
+      menuFromKeyboard()
+      return
+    }
+    if (key === "\\") {
+      // Held: the values from before the last change; released on keyup or blur.
+      event.preventDefault()
+      if (!event.repeat) controls.compare(true)
+      return
+    }
     if (key === "?" && showFooter) {
       event.preventDefault()
       event.stopPropagation()
@@ -765,12 +956,27 @@ function buildPanel<S extends Schema>(
     }
     if (key === "r" || key === "R") {
       event.preventDefault()
-      run(key === "R" ? controls.reset : randomize)
+      run(key === "R" ? controls.reset : () => reroll(selectionKeys(), false))
+      return
+    }
+    if (key === "g") {
+      const group = focusedGroup(target)
+      if (group) {
+        event.preventDefault()
+        run(() => rerollGroup(group, false))
+      }
+      return
+    }
+    if (key === "L") {
+      event.preventDefault()
+      toggleLock()
       return
     }
     if (key === "C") {
       event.preventDefault()
-      copyValues()
+      const keys = selectionKeys()
+      if (keys) copyKeys(keys)
+      else copyValues()
       return
     }
     if (key === "S" && showVariants) {
@@ -778,14 +984,21 @@ function buildPanel<S extends Schema>(
       presetStrip.save()
       return
     }
-    const index = rows.findIndex((r) => r.row.contains(target))
-    if (
-      (key === "Backspace" || key === "Delete") &&
-      index >= 0 &&
-      !(target instanceof HTMLInputElement)
-    ) {
+    const index = rowAt(target)
+    if ((key === "Backspace" || key === "Delete") && !(target instanceof HTMLInputElement)) {
+      const keys = selectionKeys()
+      if (keys || index >= 0) event.preventDefault()
+      if (keys) run(() => controls.reset(keys))
+      else if (index >= 0) run(() => controls.resetKey(rows[index].key))
+      return
+    }
+    if ((key === "ArrowDown" || key === "ArrowUp") && event.shiftKey && index >= 0) {
       event.preventDefault()
-      run(() => controls.resetKey(rows[index].key))
+      event.stopPropagation()
+      if (!selected.size || anchor < 0) anchor = head = index
+      head = Math.max(0, Math.min(rows.length - 1, head + (key === "ArrowDown" ? 1 : -1)))
+      selectRange(anchor, head)
+      focusRow(head)
       return
     }
     const down = key === "ArrowDown" || key === "j"
@@ -842,6 +1055,68 @@ function buildPanel<S extends Schema>(
     }
   }
   root.onpointerdown = raise
+  // ⇧ and ⌘ clicks select instead of reaching the control, so a slider never jumps; a plain
+  // click anywhere clears the selection.
+  let swallowClick = false
+  root.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (event.button !== 0) return
+      const at = rowAt(event.target as Node)
+      if (at < 0 || !(event.shiftKey || event.metaKey)) {
+        if (!event.shiftKey && !event.metaKey) clearSelection()
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      swallowClick = true
+      if (event.metaKey) {
+        if (selected.has(at)) selected.delete(at)
+        else {
+          // ⌘ on a lone focused row keeps it and adds this one.
+          const focused = rowAt(doc.activeElement)
+          if (!selected.size && focused >= 0 && focused !== at) selected.add(focused)
+          selected.add(at)
+        }
+        anchor = head = at
+        paintSelection()
+      } else {
+        if (anchor < 0 || !selected.size) {
+          const focused = rowAt(doc.activeElement)
+          anchor = focused >= 0 ? focused : at
+        }
+        head = at
+        selectRange(anchor, head)
+      }
+      focusRow(at)
+    },
+    true,
+  )
+  root.addEventListener(
+    "click",
+    (event) => {
+      if (!swallowClick) return
+      swallowClick = false
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    true,
+  )
+  root.addEventListener("contextmenu", (event) => {
+    const at = rowAt(event.target as Node)
+    if (at < 0) return
+    event.preventDefault()
+    if (!selected.has(at)) {
+      anchor = head = at
+      selectRange(at, at)
+    }
+    showMenu({ x: event.clientX, y: event.clientY }, false, at)
+  })
+  const endCompare = (event: Event) => {
+    if (event.type === "blur" || (event as KeyboardEvent).key === "\\") controls.compare(false)
+  }
+  doc.addEventListener("keyup", endCompare, true)
+  doc.defaultView?.addEventListener("blur", endCompare)
   if (remember) {
     root.addEventListener("focusin", (event) => {
       const stop = stops().findIndex((s) => s.contains(event.target as Node))
@@ -898,6 +1173,7 @@ function buildPanel<S extends Schema>(
     titleEl,
     headerButtons,
     headerDie: { button: randomButton, die },
+    locks: lockIcons,
     presetStrip,
     groups: gpuGroups,
     cards,
@@ -972,6 +1248,11 @@ function buildPanel<S extends Schema>(
       unsubscribe()
       positioned?.dispose()
       die.dispose()
+      for (const g of groupDice.values()) g.die.dispose()
+      menu?.close(false)
+      doc.removeEventListener("keyup", endCompare, true)
+      doc.defaultView?.removeEventListener("blur", endCompare)
+      controls.compare(false)
       root.remove()
     },
   }

@@ -152,6 +152,17 @@ export class DieMotion {
     return face.value
   }
 
+  /** A quarter turn onto a neighbouring face: a nudge rather than a roll. */
+  nudge(random = Math.random) {
+    const opposite = 7 - this.value
+    const near = FACES.filter((f) => f.value !== this.value && f.value !== opposite)
+    const face = near[Math.floor(random() * near.length)]!
+    this.value = face.value
+    this.rx.set(nearest(face.front[0], this.rx.target))
+    this.ry.set(nearest(face.front[1], this.ry.target))
+    return face.value
+  }
+
   snapTo(value: number) {
     const face = FACES.find((f) => f.value === value) ?? FACES[0]!
     this.value = face.value
@@ -364,24 +375,28 @@ export function facePath(value: number): string {
 
 /** Icon size of the header die (px), matching the other header icons. */
 export const HEADER_DIE = 15
+/** A group's die, beside its reset icon. */
+export const GROUP_DIE = 13
 
 /**
- * The Random button's die. At rest it is the face's glyph (an SVG, so hover colours transition like
- * every icon); a roll swaps in the traced canvas until it settles. In GPU mode the canvas is skipped
- * and the renderer draws `view` itself; `onFrame` wakes it.
+ * A Random button's die, `size` px. At rest it is the face's glyph (an SVG, so hover colours
+ * transition like every icon); a roll swaps in the traced canvas until it settles. In GPU mode the
+ * canvas is skipped and the renderer draws `view` itself; `onFrame` wakes it.
  */
-export function createHeaderDie(doc: Document, onFrame: () => void) {
+export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADER_DIE) {
   const node = doc.createElement("span")
   node.className = "knobs-die-icon"
+  node.style.width = node.style.height = `${size}px`
   const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
   svg.setAttribute("viewBox", "0 0 256 256")
   svg.setAttribute("aria-hidden", "true")
   svg.setAttribute("class", "knobs-icon")
+  svg.style.width = svg.style.height = `${size}px`
   const path = doc.createElementNS("http://www.w3.org/2000/svg", "path")
   path.setAttribute("fill", "currentColor")
   path.setAttribute("fill-rule", "evenodd")
   svg.append(path)
-  const traced = createDieCanvas(doc, HEADER_DIE)
+  const traced = createDieCanvas(doc, size)
   traced.canvas.hidden = true
   node.append(svg, traced.canvas)
 
@@ -412,7 +427,9 @@ export function createHeaderDie(doc: Document, onFrame: () => void) {
   }
   return {
     node,
-    roll() {
+    size,
+    /** Tumble to another face; `nudge` turns a quarter onto a neighbour instead (Mutate). */
+    roll(nudge = false) {
       const still = doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches
       if (still) {
         const others = FACES.filter((f) => f.value !== motion.value)
@@ -427,7 +444,8 @@ export function createHeaderDie(doc: Document, onFrame: () => void) {
           cachedColor = [Number(m[0]), Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : 1]
         }
       }
-      motion.roll()
+      if (nudge) motion.nudge()
+      else motion.roll()
       show(true)
       if (!frame) {
         last = performance.now()

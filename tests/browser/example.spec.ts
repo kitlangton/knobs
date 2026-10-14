@@ -889,3 +889,180 @@ test("a reload reopens floating panels, open editors and the focused stop, witho
   await expect(panel).toBeHidden()
   expect(errors).toEqual([])
 })
+
+test("locks keep rows out of Random and persist; selection; the context menu by keyboard", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const cutoff = synth.getByRole("slider", { name: "Filter cutoff", exact: true })
+  const resonance = synth.getByRole("slider", { name: "Resonance", exact: true })
+  const drive = synth.getByRole("slider", { name: "Drive", exact: true })
+  const row = (field: string) => synth.locator(`[data-field="${field}"]`)
+  const selection = () =>
+    synth.evaluate((el) =>
+      [...el.querySelectorAll<HTMLElement>(".knobs-selected")].map((n) => n.dataset.field),
+    )
+
+  // ⇧L locks the focused row; Random leaves it alone, and the lock survives a reload.
+  await cutoff.focus()
+  await page.keyboard.press("Shift+L")
+  await expect(row("cutoff")).toHaveClass(/knobs-locked/)
+  await expect(row("cutoff").locator(".knobs-lock")).toHaveAttribute("data-on", "true")
+  for (let i = 0; i < 6; i++) await page.keyboard.press("r")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2400")
+  await page.keyboard.press("Alt+r")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2400")
+  await page.reload()
+  await expect(row("cutoff")).toHaveClass(/knobs-locked/)
+  await cutoff.focus()
+  await page.keyboard.press("Shift+L")
+  await expect(row("cutoff")).not.toHaveClass(/knobs-locked/)
+  await page.keyboard.press("Shift+R")
+
+  // ⇧-click selects a range without moving the slider; ⌘-click toggles; ⇧↓ extends; Esc clears.
+  await cutoff.focus()
+  const before = await drive.getAttribute("aria-valuenow")
+  await row("drive").click({ modifiers: ["Shift"], position: { x: 200, y: 10 } })
+  expect(await selection()).toEqual(["cutoff", "resonance", "drive"])
+  await expect(drive).toHaveAttribute("aria-valuenow", before!)
+  await row("resonance").click({ modifiers: ["Meta"], position: { x: 200, y: 10 } })
+  expect(await selection()).toEqual(["cutoff", "drive"])
+  await page.keyboard.press("Escape")
+  expect(await selection()).toEqual([])
+  await resonance.focus()
+  await page.keyboard.press("Shift+ArrowDown")
+  await page.keyboard.press("Shift+ArrowDown")
+  expect(await selection()).toEqual(["resonance", "drive", "waveform"])
+  await page.keyboard.press("Shift+ArrowUp")
+  expect(await selection()).toEqual(["resonance", "drive"])
+  // A plain click clears it.
+  await synth.locator("header strong").click()
+  expect(await selection()).toEqual([])
+
+  // ⇧F10 opens the menu on the focused row, fully from the keyboard: type to jump, Enter, Esc.
+  await resonance.focus()
+  await page.keyboard.press("Shift+F10")
+  const menu = page.getByRole("menu")
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    /Lock from Random/,
+    /Randomize/,
+    /Reset/,
+    /Copy/,
+  ])
+  await expect(menu.getByRole("menuitem", { name: /Reset/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  )
+  await page.keyboard.press("l")
+  await expect(menu.getByRole("menuitem", { name: /Lock/ })).toHaveAttribute("data-active", "")
+  await page.keyboard.press("Enter")
+  await expect(menu).toBeHidden()
+  await expect(row("resonance")).toHaveClass(/knobs-locked/)
+  await expect(resonance).toBeFocused()
+  await page.keyboard.press("Shift+F10")
+  await expect(menu.getByRole("menuitem").first()).toHaveText(/Unlock/)
+  await page.keyboard.press("Escape")
+  await expect(menu).toBeHidden()
+  await expect(resonance).toBeFocused()
+
+  // Right-click a selection: Randomize changes only those rows, as one undo step.
+  await cutoff.focus()
+  await row("drive").click({ modifiers: ["Shift"], position: { x: 200, y: 10 } })
+  await page.keyboard.press("Escape")
+  await cutoff.focus()
+  await page.keyboard.press("Shift+ArrowDown")
+  const box = (await row("cutoff").boundingBox())!
+  await page.mouse.click(box.x + 40, box.y + box.height / 2, { button: "right" })
+  await expect(menu).toBeVisible()
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("ArrowDown")
+  await expect(menu.getByRole("menuitem", { name: /Randomize/ })).toHaveAttribute("data-active", "")
+  const detune = synth.getByRole("slider", { name: "Detune", exact: true })
+  const detuneBefore = await detune.getAttribute("aria-valuenow")
+  await page.keyboard.press("Enter")
+  await expect(cutoff).not.toHaveAttribute("aria-valuenow", "2400")
+  await expect(resonance).toHaveAttribute("aria-valuenow", "0.42")
+  await expect(detune).toHaveAttribute("aria-valuenow", detuneBefore!)
+  await page.keyboard.press("u")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2400")
+  expect(errors).toEqual([])
+})
+
+test("group dice, mutate and hold-to-compare", async ({ page }) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const cutoff = synth.getByRole("slider", { name: "Filter cutoff", exact: true })
+  const detune = synth.getByRole("slider", { name: "Detune", exact: true })
+  const waveform = synth.getByRole("radiogroup", { name: "Waveform" })
+  const state = () =>
+    synth.evaluate((el) =>
+      [...el.querySelectorAll<HTMLElement>("[role=slider],[role=switch],[role=radio]")].map(
+        (n) => n.getAttribute("aria-valuenow") ?? n.getAttribute("aria-checked"),
+      ),
+    )
+  const initial = await state()
+
+  // A die beside each group's reset randomizes only that group, as one undo step.
+  const oscillator = synth.getByRole("button", { name: "Randomize Oscillator" })
+  await expect(oscillator).toBeVisible()
+  for (let i = 0; i < 4 && (await detune.getAttribute("aria-valuenow")) === "12"; i++)
+    await oscillator.click()
+  await expect(detune).not.toHaveAttribute("aria-valuenow", "12")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2400")
+  await synth.getByRole("button", { name: "Reset", exact: true }).click()
+  expect(await state()).toEqual(initial)
+
+  // g from inside the group does the same; locked rows stay put.
+  await waveform.focus()
+  await page.keyboard.press("Shift+L")
+  for (let i = 0; i < 4 && (await detune.getAttribute("aria-valuenow")) === "12"; i++)
+    await page.keyboard.press("g")
+  await expect(detune).not.toHaveAttribute("aria-valuenow", "12")
+  await expect(waveform.locator('[aria-checked="true"]')).toHaveText("saw")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2400")
+  await page.keyboard.press("Shift+L")
+  await page.keyboard.press("Shift+R")
+
+  // Hint mode reaches the group dice.
+  await cutoff.focus()
+  await page.keyboard.press("s")
+  await expect(oscillator).toHaveClass(/knobs-hint-match/)
+  await page.keyboard.press("Escape")
+
+  // ⌥R nudges every value a little, in one undo step.
+  await cutoff.focus()
+  await page.keyboard.press("Alt+r")
+  await expect.poll(async () => Number(await cutoff.getAttribute("aria-valuenow"))).not.toBe(2400)
+  const moved = Math.abs(Number(await cutoff.getAttribute("aria-valuenow")) - 2400)
+  expect(moved).toBeLessThanOrEqual((12000 - 80) * 0.12 + 20)
+  expect(moved).toBeGreaterThanOrEqual((12000 - 80) * 0.08 - 20)
+  await page.keyboard.press("u")
+  expect(await state()).toEqual(initial)
+
+  // Holding \ shows the values from before the last change; letting go restores them exactly.
+  await cutoff.focus()
+  await page.keyboard.press("ArrowRight")
+  await page.keyboard.press("ArrowRight")
+  const changed = await state()
+  const stored = await page.evaluate(() => JSON.stringify(localStorage))
+  await page.keyboard.down("\\")
+  await expect(synth).toHaveAttribute("data-comparing", "")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2420")
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).toBe(stored)
+  await page.keyboard.up("\\")
+  await expect(synth).not.toHaveAttribute("data-comparing", "")
+  expect(await state()).toEqual(changed)
+  await page.keyboard.press("u")
+  await expect(cutoff).toHaveAttribute("aria-valuenow", "2420")
+  expect(errors).toEqual([])
+})

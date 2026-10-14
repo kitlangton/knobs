@@ -129,7 +129,9 @@ const css = `
 .knobs-panel header{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;touch-action:none;padding:0 2px 8px;min-height:24px}
 .knobs-panel.knobs-inline header,.knobs-panel.knobs-inline header:active{cursor:default}
 .knobs-panel header:active{cursor:grabbing}
-.knobs-panel header strong{flex:1;min-width:0;font-weight:600;font-size:calc(var(--k-font-size) + 1px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.knobs-panel header strong{flex:1;min-width:0;font-weight:600;font-size:calc(var(--k-font-size) + 1px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s var(--k-ease)}
+/* Holding \\ shows the values from before the last change; the title dims meanwhile. */
+.knobs-panel[data-comparing] header strong{opacity:.4}
 .knobs-head-actions{display:flex;align-items:center}
 .knobs-head-split{margin-left:6px}
 .knobs-icon{width:15px;height:15px;display:block;flex:none}
@@ -169,6 +171,8 @@ const css = `
   transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1),background .15s,color .15s,visibility 0s}
 .knobs-group-reset .knobs-icon{width:13px;height:13px}
 .knobs-group-reset[data-shown="false"]{opacity:0;visibility:hidden;transform:scale(.55);transition:opacity .14s ease-in,transform .14s ease-in,visibility 0s .14s}
+.knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;color:var(--k-dim)}
+.knobs-group-head .knobs-group-die[disabled]{opacity:.3;cursor:default}
 .knobs-panel :where(header button,.knobs-group-head button){transition:background .15s,color .15s,opacity .2s,transform .12s}
 
 /* Grouped cards: rows share one surface, split by hairlines */
@@ -185,6 +189,11 @@ const css = `
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
 .knobs-modified.knobs-row>span:first-child::after{opacity:.95;transform:none}
+/* A locked row's lock sits after its label: room opens on the lead spring as it scales in. */
+.knobs-lock{position:relative;display:inline-block;width:0;height:10px;vertical-align:-1px;color:var(--k-dim);transition:width ${LEAD_T}}
+.knobs-lock>svg{position:absolute;left:4px;top:0;width:10px;height:10px;opacity:0;transform:scale(.5);transition:opacity .14s ease-in,transform .14s ease-in}
+.knobs-locked .knobs-lock{width:14px}
+.knobs-locked .knobs-lock>svg{opacity:1;transform:none;transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1)}
 
 /* Slider: an accent-tinted fill with a brighter leading edge that fades under the readout */
 .knobs-track{position:absolute;inset:0;overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
@@ -250,6 +259,9 @@ const css = `
 /* Compound rows: a spring's two sliders beside its curve; disclosure rows with an editor body */
 .knobs-card>:is(.knobs-spring,.knobs-x):hover{background:transparent}
 .knobs-card>:is(.knobs-spring,.knobs-x):has(:focus-visible)::after{opacity:0}
+/* Selected rows: one accent-tinted wash, joined across neighbours. */
+.knobs-panel .knobs-card>.knobs-selected{background:color-mix(in srgb,var(--k-accent) 10%,transparent)}
+.knobs-card>.knobs-selected+.knobs-selected::before{opacity:0}
 .knobs-spring{display:flex}
 .knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
 .knobs-sub{position:relative;transition:background .15s}
@@ -328,6 +340,17 @@ const css = `
 .knobs-transfer button{height:24px;padding:0 8px;background:var(--k-surface);font-size:calc(var(--k-font-size) - 1px);color:var(--k-label);cursor:pointer;transition:background .15s,color .15s}
 .knobs-transfer button:is(:hover,:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
 
+/* Context menu: borrows its panel's tokens (see menu.ts) and floats above everything. */
+.knobs-menu{position:fixed;z-index:2147480004;min-width:176px;padding:4px;box-sizing:border-box;font:var(--k-font-size)/1.35 var(--k-font);color:var(--k-text);text-align:left;-webkit-font-smoothing:antialiased;
+  background:linear-gradient(var(--k-surface-hi),var(--k-surface-hi)),color-mix(in srgb,var(--k-bg) 90%,transparent);border:1px solid var(--k-line);border-radius:calc(var(--k-radius) + 2px);
+  box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);outline:none;user-select:none}
+.knobs-menu-item{position:relative;display:flex;align-items:center;justify-content:space-between;gap:28px;height:calc(var(--k-row) - 8px);min-height:22px;padding:0 8px;border-radius:calc(var(--k-radius) - 3px);cursor:default;white-space:nowrap;transition:background .08s}
+.knobs-menu-item[data-active]{background:color-mix(in srgb,var(--k-accent) 14%,transparent)}
+.knobs-menu-item[aria-disabled]{color:var(--k-dim)}
+.knobs-menu-item kbd{font:inherit;color:var(--k-dim);letter-spacing:.04em}
+.knobs-menu-item[data-separated]{margin-top:9px}
+.knobs-menu-item[data-separated]::before{content:"";position:absolute;left:8px;right:8px;top:-5px;height:1px;transform:scaleY(.5);background:var(--k-line)}
+
 /* Status & Transfer Textarea */
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 2px;color:var(--k-label);font-size:calc(var(--k-font-size) - 1px);overflow-wrap:anywhere}
 
@@ -337,7 +360,7 @@ const css = `
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }

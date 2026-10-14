@@ -1,6 +1,6 @@
 import { oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
-import { DIE_LOOK, dieBox, facePath, HEADER_DIE, type HeaderDie } from "../die.js"
+import { DIE_LOOK, dieBox, facePath, type HeaderDie } from "../die.js"
 import { ICONS, type IconName } from "../icons.js"
 import {
   clamp,
@@ -171,6 +171,8 @@ export interface GpuGroupBinding {
   readonly labelEl: HTMLElement
   readonly buttons: readonly HTMLButtonElement[]
   readonly reset: HTMLButtonElement
+  /** The group's Random die. */
+  readonly die?: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
 }
 
 export interface GpuPanelBinding {
@@ -183,6 +185,8 @@ export interface GpuPanelBinding {
   readonly headerButtons: readonly { button: HTMLButtonElement; icon: IconName }[]
   /** The Random button's die: drawn as its face's glyph at rest, ray-traced while it rolls. */
   readonly headerDie?: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
+  /** Each locked-capable row's lock icon, by its label element; `data-on` says it's locked. */
+  readonly locks?: ReadonlyMap<HTMLElement, HTMLElement>
   readonly presetStrip: PresetStrip
   readonly groups: readonly GpuGroupBinding[]
   readonly cards: readonly HTMLElement[]
@@ -974,11 +978,33 @@ class GpuOverlayManager {
       rowCenterY,
       withAlpha(t.label, rowAlpha),
     )
+    // The lock after the label: its room opens on the lead spring (pushing the dot along) while
+    // the icon fades and scales in on the reset icon's spring, like .knobs-lock.
+    const lock = this.curLocks?.get(labelEl)
+    let room = 0
+    if (lock) {
+      const on = lock.dataset.on === "true" ? 1 : 0
+      room = 14 * this.ease(lock, "room", on, LEAD.omega, LEAD.zeta)
+      const shown = this.ease(lock, "shown", on, 28, 0.62)
+      if (shown > 0.005) {
+        const lr = this.rectOf(lock)
+        const cy = lr.height > 0 ? lr.top + lr.height / 2 : rowCenterY
+        const box = { left: lRect.left + w + 4 + stretchOffset, top: cy - 5, width: 10, height: 10 }
+        this.drawIcon(
+          "lock",
+          10,
+          box as DOMRect,
+          withAlpha(t.dim, rowAlpha * clamp(shown, 0, 1)),
+          undefined,
+          0.5 + 0.5 * shown,
+        )
+      }
+    }
     const dot = this.ease(labelEl, "dot", modified ? 1 : 0)
     if (dot > 0.01) {
       const size = 4 * (0.4 + 0.6 * dot)
       this.pushPrim({
-        x: lRect.left + w + 7 + stretchOffset - size / 2,
+        x: lRect.left + w + room + 7 + stretchOffset - size / 2,
         y: rowCenterY - size / 2,
         w: size,
         h: size,
@@ -1051,7 +1077,7 @@ class GpuOverlayManager {
 
   /** A row's hover wash, drawn beneath its control like the DOM row background. */
   private drawRowHover(row: HTMLElement, rRect: DOMRect, hot: boolean, stretchX = 0) {
-    const hover = this.ease(row, "hover", hot ? 1 : 0)
+    const hover = this.ease(row, "hover", hot ? 1 : 0) * (1 - this.curSelected)
     if (hover < 0.005) return
     this.pushPrim({
       x: rRect.left,
@@ -1075,7 +1101,14 @@ class GpuOverlayManager {
     const t = this.curTokens
     // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
     const prev = row.previousElementSibling
-    const sep = this.ease(row, "sep", prev && !this.isHot(row) && !this.isHot(prev) ? 1 : 0, 30)
+    const joined =
+      row.classList.contains("knobs-selected") && prev?.classList.contains("knobs-selected")
+    const sep = this.ease(
+      row,
+      "sep",
+      prev && !joined && !this.isHot(row) && !this.isHot(prev) ? 1 : 0,
+      30,
+    )
     if (prev && sep > 0.005)
       this.pushPrim({
         x: rRect.left,
@@ -1127,7 +1160,7 @@ class GpuOverlayManager {
 
   private drawDie(die: HeaderDie, box: DOMRect, color: Rgba, clip?: Clip) {
     if (!die.rolling) {
-      const entry = this.atlas.icon(facePath(die.value), HEADER_DIE, this.curScale)
+      const entry = this.atlas.icon(facePath(die.value), die.size, this.curScale)
       const s = this.curScale
       this.pushPrim({
         x: Math.round((box.left + (box.width - entry.w) * 0.5) * s) / s,
@@ -1142,7 +1175,7 @@ class GpuOverlayManager {
       return
     }
     // Same box as the DOM canvas: room for the corners while it tumbles and lifts.
-    const b = dieBox(HEADER_DIE)
+    const b = dieBox(die.size)
     const { rx, ry, energy } = die.view
     const d2r = Math.PI / 180
     this.pushPrim({
@@ -1157,7 +1190,7 @@ class GpuOverlayManager {
       p0: rx * d2r,
       p1: ry * d2r,
       p2: energy,
-      p3: HEADER_DIE,
+      p3: die.size,
       aux: [DIE_LOOK.perspective, DIE_LOOK.lift, Math.cos(DIE_LOOK.bevel * d2r), DIE_LOOK.fill],
     })
   }
@@ -1172,6 +1205,9 @@ class GpuOverlayManager {
   }
 
   private curReduced = false
+  private curLocks: ReadonlyMap<HTMLElement, HTMLElement> | undefined
+  /** The current row's selection wash (0…1), which its hover wash gives way to. */
+  private curSelected = 0
 
   /** A stroke through `pts` (x,y pairs in viewport px), round-capped like SVG's. */
   private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip) {
@@ -1785,6 +1821,7 @@ class GpuOverlayManager {
 
       const tokens = rawTokens
       this.curTokens = tokens
+      this.curLocks = panel.locks
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion
       // Follow CSS open/close and reveal animations: fade with the panel, and keep drawing while they run.
@@ -1853,11 +1890,13 @@ class GpuOverlayManager {
         this.curSubHovered = this.curPanelHovered && panel.header.matches(":hover")
         const tRect = this.rectOf(panel.titleEl)
         const px = tokens.fontSize + 1
+        // Dims while compare is held, like the DOM's 0.2 s opacity transition.
+        const comparing = panel.root.hasAttribute("data-comparing")
         this.drawText(
           this.fit(panel.titleEl.textContent ?? "", tRect.width, px, 600),
           tRect.left,
           tRect.top + tRect.height * 0.5,
-          tokens.text,
+          withAlpha(tokens.text, this.ease(panel.titleEl, "compare", comparing ? 0.4 : 1, 26)),
           { px, weight: 600, clip: panelClip, track: -0.01 },
         )
         for (const hb of panel.headerButtons) {
@@ -2052,6 +2091,28 @@ class GpuOverlayManager {
             0.55 + 0.45 * resetShown,
           )
         }
+        // The group's die: quiet (dim) until hovered or focused.
+        if (g.die) {
+          const { button, die } = g.die
+          const dr = this.rectOf(button)
+          const on = !button.disabled && (this.isHovered(button) || this.isFocused(button))
+          const dimmed =
+            this.ease(button, "dim", button.disabled ? 0.3 : 1, 30) * this.missed(button, hinting)
+          const wash = this.wash(button, on)
+          if (wash > 0.005)
+            this.pushPrim({
+              x: dr.left,
+              y: dr.top,
+              w: dr.width,
+              h: dr.height,
+              color: withAlpha(tokens.surfaceHi, dimmed * wash),
+              color2: tokens.accent,
+              radius: dr.height * 0.5,
+              glowOrBlur: tokens.glowStrength * 7,
+              kind: 1,
+            })
+          this.drawDie(die, dr, withAlpha(this.hot(button, on, tokens.dim), dimmed))
+        }
       }
 
       // 5. Grouped cards, then their rows
@@ -2070,6 +2131,7 @@ class GpuOverlayManager {
           kind: 1,
         })
       }
+      const washed = new Set<HTMLElement>()
       for (const row of panel.rows) {
         this.curSubHovered = bodyHovered
         const rRect = this.rectOf(row.row)
@@ -2092,6 +2154,29 @@ class GpuOverlayManager {
         const card = cardRects.get(parentEl) ?? this.rectOf(parentEl)
         const cardClip = intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom])
         this.curClip = cardClip
+        // The selection wash covers the whole item (a spring's sliders and curve, an open
+        // editor), once, beneath everything the item draws, like its DOM background.
+        const item = parentEl.classList.contains("knobs-card")
+          ? row.row
+          : row.row.closest<HTMLElement>(".knobs-card > *")
+        this.curSelected = 0
+        if (item && !washed.has(item)) {
+          washed.add(item)
+          const sel = this.ease(item, "sel", item.classList.contains("knobs-selected") ? 1 : 0, 30)
+          if (item === row.row) this.curSelected = sel
+          if (sel > 0.005) {
+            const ir = item === row.row ? rRect : this.rectOf(item)
+            this.pushPrim({
+              x: ir.left,
+              y: ir.top,
+              w: ir.width,
+              h: ir.height,
+              color: withAlpha(tokens.accent, 0.1 * sel),
+              corners: this.rowCorners(item),
+              kind: 1,
+            })
+          }
+        }
 
         if (row.kind === "knob") {
           const sl = row.slider
@@ -2398,6 +2483,7 @@ class GpuOverlayManager {
         }
       }
       this.curClip = bodyClip
+      this.curSelected = 0
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered
