@@ -662,7 +662,7 @@ async function runSuite(
     }),
   )
 
-  // 3. Continuous slider drag (60 rAF-paced pointer moves + rubber band stretch)
+  // 3. Continuous slider drag (60 rAF-paced pointer moves, past both ends)
   benchmarks.push(
     await measureScenario(page, cdp, "slider_drag", mode, throttle, async () => {
       const count = splatPanel.getByRole("slider", { name: "count", exact: true })

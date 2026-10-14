@@ -4,11 +4,11 @@ Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
 Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock follows its label. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
+Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, and the momentum after you lift is ignored, so it stops where your fingers did. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, a faint notch at the default that pulls drags onto it, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, and the momentum after you lift is ignored, so it stops where your fingers did. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
 
@@ -290,6 +290,11 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
 - **Marks.** `marks: false` (on the store or the mount) hides modified dots, readout marks, group
   resets and Reset, for values that belong to someone else. A command that's off takes its marks
   too: with `reset: false` rows show nothing to reset, and group resets follow `resetAll`.
+- **Haptics.** On phones, a stepped slider crossing a stop, the default's notch catching a drag, a
+  choice changing mid-pan and a switch flipping each give a light tick: `navigator.vibrate` on
+  Android; on iPhone, Safari's switch tick (iOS 17.4–26.4 for every tick; from iOS 26.5, which only
+  plays it for a tap, switches alone). `haptics: false` on the mount turns them off, and so does
+  reduced motion.
 - **Reading values.** `useValue(controls, key)` and `useModified(controls, key?)` change only when
   their answer does; a panel update touches only the rows that changed.
 
@@ -321,7 +326,9 @@ Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a prese
 | `--k-hover-in` / `--k-hover-out` | `150` / `150` | Hover washes in and out (ms) |
 | `--k-chrome` | `1` | `0` drops an inline panel's card: background, border and rim |
 | `--k-fill-base`, `--k-fill-rest-mix`, `--k-fill-hover-mix`, `--k-fill-active-mix` | surface-hi, 20%, rest, 30% | The fill: accent mixed into the base at rest, hovered and dragged |
-| `--k-handle`, `--k-handle-rest`, `--k-handle-inset` | accent, `0`, `0px` | The handle's colour, its opacity at rest (a quarter, and shorter, near the ends), and how far inside the fill's edge it sits |
+| `--k-handle`, `--k-handle-rest`, `--k-handle-inset` | accent, `0`, `0px` | The handle's colour, its opacity at rest, and how far inside the fill's edge it sits; it fades where it passes under the label or readout |
+| `--k-step-resist` | `0.25` | How far a stepped slider's fill follows the pointer off its stop while dragged: `0` snaps, `1` follows freely |
+| `--k-motion-blur` | `0` | Up to `1`: moving fill edges and selection pills smear by their speed |
 | `--k-value-font`, `--k-unit-gap`, `--k-unit-color` | font, `.28em`, dim | The readout's face, and the unit's spacing and colour (`currentColor` matches the value) |
 | `--k-readout-mark` | `0` | `1`: a modified value takes `--k-modified` behind a small dot |
 | `--k-group-transform`, `--k-group-size`, `--k-group-color`, `--k-group-tracking`, `--k-group-inset` | uppercase, text-cap, dim, `.04em`, inset | Group headings |
@@ -442,7 +449,9 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-panel-radius: 12px;
   --k-font-size: 12px;
   --k-label-weight: 500;
-  --k-blur: 1;          /* motion strength: blur, rubber band and pill stretch */
+  --k-blur: 1;          /* motion strength: readout blur and pill stretch */
+  --k-motion-blur: 0;   /* up to 1: moving fill edges and pills smear by their speed */
+  --k-step-resist: 0.25; /* a stepped slider's pull off its stop (0 snaps, 1 follows) */
   --k-glow: 0.5;
   --k-roll: 420;        /* readout roll (ms) */
   --k-drag-roll: 0;     /* roll while dragging (ms; 0 snaps) */
@@ -461,7 +470,7 @@ Changing a token glides: colours, lengths, weights, glass and glow move on the p
 
 A floating panel opens out of its chip like the Dynamic Island: one shape springs from the chip's pill to the panel's card (position, size and corners), the chip's label fades as it goes and the content, laid out at full size, is revealed top first. Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is. A reload brings an open panel back in place, with no morph.
 
-Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, the stretch, the spring dot and the editors' height reveals, and panels simply fade in and out.
+Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot and the editors' height reveals, and panels simply fade in and out.
 
 ### Reacting to Random, Reset and presets
 

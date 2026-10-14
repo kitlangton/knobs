@@ -61,7 +61,7 @@ try {
     log(
       "drag past edge ->",
       await panel.getByRole("slider", { name: "count" }).getAttribute("aria-valuenow"),
-      "stretch while held:",
+      "transform while held (none: no rubber band):",
       midTransform,
     )
     await page.keyboard.press("u")
