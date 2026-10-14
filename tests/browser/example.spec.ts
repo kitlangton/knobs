@@ -75,8 +75,8 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("count:")
   await page.reload()
   await expect(rendered("splat")).toHaveAttribute("data-render", randomized!)
-  await page.locator('[data-study="splat"]').focus()
-  await page.getByRole("button", { name: "Tune splat", exact: true }).click()
+  // The panel was open, so the reload reopens it.
+  await expect(panel).toBeVisible()
   await expect(presetStrip.getByRole("radio", { name: "Variant 1" })).toBeVisible()
   await panel.getByRole("button", { name: "Reset", exact: true }).click()
   await expect(rendered("splat")).toHaveAttribute("data-render", beforeSplat!)
