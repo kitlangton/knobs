@@ -1,5 +1,20 @@
-import { same, type Field, type Schema, type Values } from "../core/schema.js"
-import type { ControlAction, Controls, MountPanelOptions } from "../core/store.js"
+import {
+  same,
+  type Choice,
+  type Field,
+  type Knob,
+  type Schema,
+  type Value,
+  type Values,
+} from "../core/schema.js"
+import type { SpringValue } from "../core/spring.js"
+import type {
+  ControlAction,
+  Controls,
+  MountPanelOptions,
+  PanelCommand,
+  PanelKeys,
+} from "../core/store.js"
 import {
   getGpuOverlayManager,
   resolveRendererMode,
@@ -76,6 +91,76 @@ interface InternalPanelOptions extends MountPanelOptions {
   readonly page?: MountPageOptions
 }
 
+/** Each command's default keys. */
+const DEFAULT_KEYS: Readonly<Record<PanelCommand, readonly string[]>> = {
+  random: ["r"],
+  mutate: ["r"],
+  reset: ["Backspace", "Delete"],
+  resetAll: ["R"],
+  compare: ["\\"],
+  hint: ["s"],
+  undo: ["u", "z"],
+  redo: ["U", "Z"],
+  copy: ["C"],
+  save: ["S"],
+  lock: ["L"],
+  presets: ["[", "]"],
+  group: ["g"],
+  first: ["f"],
+  help: ["?"],
+  menu: ["ContextMenu"],
+  leave: ["Escape"],
+}
+/** ⌥ commands and Tab-like keys that a remap may share with a plain command. */
+const ALT_COMMANDS = new Set<PanelCommand>(["mutate"])
+
+/**
+ * The keys each command answers to. An explicit binding wins: a default that collides with one
+ * is dropped (`{ hint: "f" }` takes `f` from "first row"). `presets` takes two characters, back
+ * then forward (`"[]"`).
+ */
+export function resolveKeys(
+  given: PanelKeys | undefined,
+  page = false,
+): Record<PanelCommand, string[]> {
+  const out = {} as Record<PanelCommand, string[]>
+  const explicit = new Set<string>()
+  for (const [command, value] of Object.entries(given ?? {}) as [PanelCommand, string | boolean][])
+    if (typeof value === "string" && !ALT_COMMANDS.has(command))
+      for (const k of command === "presets" ? [...value] : [value]) explicit.add(k)
+  for (const command of Object.keys(DEFAULT_KEYS) as PanelCommand[]) {
+    const value = given?.[command]
+    if (value === false) out[command] = []
+    else if (typeof value === "string")
+      out[command] = command === "presets" ? [...value].slice(0, 2) : [value]
+    else
+      out[command] = DEFAULT_KEYS[command].filter(
+        (k) => ALT_COMMANDS.has(command) || !explicit.has(k),
+      )
+  }
+  if (page) out.leave = []
+  return out
+}
+/** How a key reads in the shortcuts popover. */
+export function keyLabel(key: string, alt = false): string {
+  const named: Record<string, string> = {
+    Backspace: "⌫",
+    Delete: "⌦",
+    Escape: "Esc",
+    ContextMenu: "Menu",
+    ArrowUp: "↑",
+    ArrowDown: "↓",
+    ArrowLeft: "←",
+    ArrowRight: "→",
+    " ": "Space",
+  }
+  if (alt) return `⌥${key.toUpperCase()}`
+  if (named[key]) return named[key]
+  return /^[A-Z]$/.test(key) ? `⇧${key}` : key
+}
+const ariaKeys = (keys: readonly string[]) =>
+  keys.map((k) => (/^[A-Z]$/.test(k) ? `Shift+${k.toLowerCase()}` : k)).join(" ")
+
 function buildPanel<S extends Schema>(
   controls: Controls<S>,
   host: HTMLElement,
@@ -150,6 +235,13 @@ function buildPanel<S extends Schema>(
   const showVariants = options.variants !== false
   const showHistory = options.history !== false
   const showFooter = options.footer !== false
+  const keys = resolveKeys(options.keys ?? controls.keys, Boolean(page))
+  /** Whether a command is on (it has a key, or its button stays). */
+  const bound = (command: PanelCommand) => keys[command].length > 0
+  const pressed = (command: PanelCommand, event: KeyboardEvent) => keys[command].includes(event.key)
+  /** ⌥ commands match by physical key: ⌥ changes the character on macOS. */
+  const pressedAlt = (command: PanelCommand, event: KeyboardEvent) =>
+    keys[command].some((k) => k.length === 1 && event.code === `Key${k.toUpperCase()}`)
 
   const header = el("header")
   const headerButtons: { button: HTMLButtonElement; icon: IconName }[] = []
@@ -177,6 +269,10 @@ function buildPanel<S extends Schema>(
   popover.setAttribute("aria-label", "Keyboard shortcuts")
   const popGrid = el("div")
   popGrid.className = "knobs-popover-grid"
+  const show = (command: PanelCommand, alt = false) =>
+    keys[command].map((k) => keyLabel(k, alt)).join(" / ")
+  const pair = (a: PanelCommand, b: PanelCommand, what: string) =>
+    bound(a) && bound(b) ? [[`${show(a)} / ${show(b)}`, what]] : []
   for (const [k, desc] of [
     ["↑↓ / j k", "Move between rows"],
     ...((page
@@ -188,22 +284,35 @@ function buildPanel<S extends Schema>(
       : [["Tab", "Next control"]]) as [string, string][]),
     ["←→ / h l", "Adjust value (⇧ ×10)"],
     ["⌥ drag", "Fine adjust"],
-    ["[ / ]", "Cycle presets"],
-    ["s", "Jump to anything by code"],
+    ...(bound("presets") ? [[show("presets"), "Cycle presets"]] : []),
+    ...(bound("hint") ? [[show("hint"), "Jump to anything by code"]] : []),
     [page ? "Enter" : "0–9 / Enter", "Edit number inline"],
-    ["⌫", "Reset row · delete saved preset"],
-    ["r / ⇧R", "Random / Reset all"],
-    ["⌥R", "Mutate: small changes"],
-    ["g / ⌥G", "Random / Mutate group"],
-    ["⇧L", "Lock from Random"],
+    ...(bound("reset") ? [[keyLabel(keys.reset[0]!), "Reset row · delete saved preset"]] : []),
+    ...(bound("random") && bound("resetAll")
+      ? [[`${show("random")} / ${show("resetAll")}`, "Random / Reset all"]]
+      : bound("random")
+        ? [[show("random"), "Random"]]
+        : bound("resetAll")
+          ? [[show("resetAll"), "Reset all"]]
+          : []),
+    ...(bound("mutate") ? [[show("mutate", true), "Mutate: small changes"]] : []),
+    ...(bound("group") && (bound("random") || bound("mutate"))
+      ? [[`${show("group")} / ${show("group", true)}`, "Random / Mutate group"]]
+      : []),
+    ...(bound("lock") ? [[show("lock"), "Lock from Random"]] : []),
     ["⇧ click / ⇧↑↓", "Select rows (⌘ adds)"],
-    ["⇧F10", "Row menu"],
-    ["hold \\", "Compare with before"],
-    ["⇧C", "Copy values"],
-    ...(showVariants ? ([["⇧S", "Save as preset"]] as [string, string][]) : []),
-    ["u / ⇧u", "Undo / Redo"],
-    ...(close ? ([["Esc", "Close panel"]] as [string, string][]) : []),
-  ]) {
+    ...(bound("menu") ? [["⇧F10", "Row menu"]] : []),
+    ...(bound("compare") ? [[`hold ${show("compare")}`, "Compare with before"]] : []),
+    ...(bound("copy") ? [[show("copy"), "Copy values"]] : []),
+    ...(showVariants && bound("save") ? [[show("save"), "Save as preset"]] : []),
+    ...(pair("undo", "redo", "Undo / Redo") as [string, string][]),
+    ...(bound("undo") && !bound("redo") ? [[show("undo"), "Undo"]] : []),
+    ...(close
+      ? [["Esc", "Close panel"]]
+      : inline && !page && bound("leave")
+        ? [[show("leave"), "Leave the panel"]]
+        : []),
+  ] as [string, string][]) {
     popGrid.append(el("kbd", k), el("span", desc))
   }
   popover.append(popGrid)
@@ -230,7 +339,7 @@ function buildPanel<S extends Schema>(
   // Random re-rolls, Mutate (⌥) nudges; both skip locked fields and roll `roller` only when
   // something can change. A selection narrows `r` and ⌥R to its rows.
   const reroll = (keys: readonly string[] | undefined, nudge: boolean, roller: HeaderDie = die) => {
-    const pool = (keys ?? rows.map((r) => r.key)).filter(
+    const pool = (keys ?? rows.flatMap((r) => r.keys)).filter(
       (k) => !controls.isLocked(k as keyof S & string),
     ) as (keyof S & string)[]
     if (pool.length === 0) return
@@ -239,18 +348,26 @@ function buildPanel<S extends Schema>(
     else controls.randomize(keys ? pool : undefined)
   }
   const randomButton = command("random", "Random", "r", () => {})
-  randomButton.setAttribute("aria-keyshortcuts", "r Alt+r")
+  randomButton.setAttribute(
+    "aria-keyshortcuts",
+    [...keys.random, ...keys.mutate.map((k) => `Alt+${k}`)].join(" "),
+  )
+  if (!bound("random") && !bound("mutate")) randomButton.hidden = true
   randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
-  const resetBtn = command("reset", "Reset", "Shift+R", controls.reset)
-  command("copy", "Copy", "Shift+C", copyValues)
-  const undoButton = iconButton("undo", "Undo", "u", controls.undo)
-  const redoButton = iconButton("redo", "Redo", "Shift+u", controls.redo)
-  if (showHistory) {
+  const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), controls.reset)
+  if (!bound("resetAll")) resetBtn.hidden = true
+  const copyButton = command("copy", "Copy", ariaKeys(keys.copy), copyValues)
+  if (!bound("copy")) copyButton.hidden = true
+  const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), controls.undo)
+  const redoButton = iconButton("redo", "Redo", ariaKeys(keys.redo), controls.redo)
+  if (showHistory && (bound("undo") || bound("redo"))) {
     place(undoButton, "undo").classList.add("knobs-head-split")
     place(redoButton, "redo")
+    if (!bound("undo")) undoButton.hidden = true
+    if (!bound("redo")) redoButton.hidden = true
   }
-  if (showFooter) {
+  if (showFooter && bound("help")) {
     helpButton = headButton("help", "Keyboard shortcuts", "?", () => togglePopover())
     helpButton.setAttribute("aria-expanded", "false")
     helpButton.classList.add("knobs-head-split")
@@ -282,9 +399,16 @@ function buildPanel<S extends Schema>(
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
   ]
   const body = el("div")
-  // Rows share one inset-grouped card per group (and per run of ungrouped rows).
-  let card: HTMLElement | undefined
-  let currentGroup: string | undefined
+  // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
+  // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
+  interface Block {
+    group: string | undefined
+    head?: HTMLElement
+    card: HTMLElement
+    gpuGroup?: GpuGroupBinding
+    leaving?: boolean
+  }
+  const blocks: Block[] = []
   const cards: HTMLElement[] = []
   const groupResetButtons = new Map<string, HTMLButtonElement>()
   const groupDice = new Map<string, { button: HTMLButtonElement; die: HeaderDie }>()
@@ -311,35 +435,37 @@ function buildPanel<S extends Schema>(
       },
     })
   }
-  const cardFor = (group: string | undefined, section?: string) => {
-    if (layout) {
-      const id = group ?? `\u0000${section ?? ""}`
-      const known = tiles.get(id)
-      if (known) return known
-      const tile = el("div")
-      tile.className = "knobs-tile"
-      if (group) {
-        tile.dataset.group = group
-        tile.setAttribute("aria-label", group)
-        tile.append(groupHead(group))
-      }
-      const inner = el("div")
-      inner.className = "knobs-card"
-      tile.append(inner)
-      cards.push(inner)
-      gpuTiles.push(tile)
-      layout.add(tile, section ?? "")
-      tiles.set(id, inner)
-      return inner
+  const tileFor = (group: string | undefined, section?: string) => {
+    const id = group ?? `\u0000${section ?? ""}`
+    const known = tiles.get(id)
+    if (known) return known
+    const tile = el("div")
+    tile.className = "knobs-tile"
+    if (group) {
+      tile.dataset.group = group
+      tile.setAttribute("aria-label", group)
+      tile.append(groupHead(group))
     }
-    if (card && group === currentGroup) return card
-    currentGroup = group
-    if (group) body.append(groupHead(group))
-    card = el("div")
+    const inner = el("div")
+    inner.className = "knobs-card"
+    tile.append(inner)
+    cards.push(inner)
+    gpuTiles.push(tile)
+    layout!.add(tile, section ?? "")
+    tiles.set(id, inner)
+    return inner
+  }
+  const newBlock = (group: string | undefined): Block => {
+    const card = el("div")
     card.className = "knobs-card"
-    body.append(card)
+    if (group) card.dataset.group = group
+    const block: Block = { group, card }
+    if (group) {
+      block.head = groupHead(group)
+      block.gpuGroup = gpuGroups.at(-1)
+    }
     cards.push(card)
-    return card
+    return block
   }
 
   function groupHead(groupName: string) {
@@ -359,10 +485,12 @@ function buildPanel<S extends Schema>(
     const gReset = iconButton("reset", `Reset ${groupName}`, "", () => {
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
-        rows.find((r) => r.field.group === groupName)?.input.focus({ preventScroll: true })
+        rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
     })
     gReset.className = "knobs-group-reset"
     gReset.dataset.hint = `${groupName} reset`
+    gReset.dataset.shown = "false"
+    gReset.disabled = true
     groupResetButtons.set(groupName, gReset)
     // The group's own die: Random for just these rows (⌥ mutates them).
     const gDie = createHeaderDie(doc, () => wakeGpu(), GROUP_DIE)
@@ -371,6 +499,7 @@ function buildPanel<S extends Schema>(
     gRandom.dataset.hint = `${groupName} random`
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
+    if (!bound("random") && !bound("mutate")) gRandom.hidden = true
     groupDice.set(groupName, { button: gRandom, die: gDie })
     // On a page, the group's numbered presets sit in its header; hovering one shows its name
     // where the title is.
@@ -463,9 +592,17 @@ function buildPanel<S extends Schema>(
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()
   interface Row {
+    /** The row's identity: its key, or `spring:<id>` for a flat spring's pair of keys. */
+    id: string
+    /** The value keys it shows (two for a flat spring, none for an action). */
+    keys: string[]
     key: string
     display: string
     field: Field
+    /** What must match for a descriptor swap to keep this row's DOM. */
+    shape: string
+    group: string | undefined
+    section: string | undefined
     wave: { at: number; until: number }
     row: HTMLElement
     labelEl: HTMLElement
@@ -474,53 +611,199 @@ function buildPanel<S extends Schema>(
     slider?: Slider
     buttons?: HTMLButtonElement[]
     editor?: EditorRow
+    select?: HTMLButtonElement
+    gpu: GpuRowBinding[]
+    /** This row's value, from the store's values (a flat spring composes its two keys). */
+    value(values: Record<string, unknown>): unknown
     set(value: unknown, options?: { coalesce?: boolean }): void
+    /** Takes a compatible field change in place (a new range, label or unit). */
+    retune(spec: RowSpec): void
+    /** Set while it plays its exit, before it leaves the DOM. */
+    leaving?: boolean
   }
-  const rows = Object.entries(controls.schema as Record<string, Field>).map(([key, field]): Row => {
-    const host = cardFor(field.group, field.section)
+  interface RowSpec {
+    id: string
+    keys: string[]
+    field: Field
+    parts?: { duration: Knob; bounce: Knob }
+    group: string | undefined
+    section: string | undefined
+  }
+  const COMPACT_CHOICES = 4
+  /** A schema as rows: a flat spring's two halves become one row, at the first half's place. */
+  const planRows = (schema: Schema): RowSpec[] => {
+    const entries = Object.entries(schema as Record<string, Field>)
+    const halves = new Map<string, { duration?: [string, Knob]; bounce?: [string, Knob] }>()
+    for (const [key, field] of entries)
+      if (field.kind === "knob" && field.spring) {
+        const pair = halves.get(field.spring.id) ?? {}
+        pair[field.spring.part] = [key, field]
+        halves.set(field.spring.id, pair)
+      }
+    const specs: RowSpec[] = []
+    const placed = new Set<string>()
+    for (const [key, field] of entries) {
+      const pair = field.kind === "knob" && field.spring ? halves.get(field.spring.id) : undefined
+      if (pair?.duration && pair.bounce && field.kind === "knob" && field.spring) {
+        if (placed.has(field.spring.id)) continue
+        placed.add(field.spring.id)
+        const [dk, duration] = pair.duration
+        const [bk, bounce] = pair.bounce
+        const label = duration.spring?.label ?? field.spring.label ?? duration.label ?? dk
+        specs.push({
+          id: `spring:${field.spring.id}`,
+          keys: [dk, bk],
+          field: {
+            kind: "spring",
+            value: { duration: duration.value, bounce: bounce.value },
+            label,
+            ...(duration.group !== undefined ? { group: duration.group } : {}),
+            ...(duration.section !== undefined ? { section: duration.section } : {}),
+            ...(duration.shortcut !== undefined ? { shortcut: duration.shortcut } : {}),
+          },
+          parts: { duration, bounce },
+          group: duration.group,
+          section: duration.section,
+        })
+        continue
+      }
+      specs.push({
+        id: key,
+        keys: field.kind === "action" ? [] : [key],
+        field,
+        group: field.group,
+        section: field.section,
+      })
+    }
+    return specs
+  }
+  const shapeOf = (spec: RowSpec) => {
+    const f = spec.field
+    const where = `${spec.group ?? ""}\u0000${page ? (spec.section ?? "") : ""}`
+    if (spec.parts) return `pair\u0000${spec.keys.join("\u0000")}\u0000${where}`
+    if (f.kind === "knob" || f.kind === "toggle" || f.kind === "action")
+      return `${f.kind}\u0000${where}`
+    if (f.kind === "choice")
+      return `${f.options.length > COMPACT_CHOICES ? "select" : "choice"}\u0000${f.options.join("\u0000")}\u0000${where}`
+    const { label: _l, shortcut: _s, ...rest } = f
+    return `${f.kind}\u0000${JSON.stringify(rest)}\u0000${where}`
+  }
+  const choiceLabel = (field: Choice, value: string) => field.labels?.[value] ?? value
+
+  function buildRow(spec: RowSpec): Row {
+    const { id: key, field } = spec
     // When this row's current motion starts and roughly ends, for the preset cascade.
     const wave = { at: 0, until: 0 }
-    const display = field.label ?? key
+    const display = field.label ?? (spec.parts ? key.slice(7) : key)
+    const base = {
+      id: spec.id,
+      keys: spec.keys,
+      key,
+      display,
+      field,
+      shape: shapeOf(spec),
+      group: spec.group,
+      section: spec.section,
+      wave,
+    }
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
-    const isModified = () => !same(controls.get()[key], controls.locked[key])
+    const plain = (values: Record<string, unknown>) => values[key]
+    const isModified = () => spec.keys.some((k) => controls.isModified(k as keyof S & string))
+    const resetRow = () => run(() => controls.reset(spec.keys as (keyof S & string)[]))
+    let label: (text: string) => void = () => {}
+    const retuneBase = (row: Row, next: RowSpec) => {
+      row.field = next.field
+      const text = next.field.label ?? row.display
+      if (text !== row.display) {
+        row.display = text
+        label(text)
+      }
+    }
     if (field.kind === "knob") {
       const slider = createSlider(doc, key, field, set, () => wakeGpu())
       slider.element.dataset.field = key
       if (field.shortcut) slider.track.setAttribute("aria-keyshortcuts", field.shortcut)
       slider.element.ondblclick = (event) => {
         if ((event.target as HTMLElement).closest(".knobs-value,.knobs-number")) return
-        run(() => controls.resetKey(key))
+        resetRow()
       }
-      host.append(slider.element)
-      tracks.set(slider.track, {
+      const track: SubTrack = {
         slider,
-        field,
+        get field() {
+          return slider.field
+        },
         get: () => controls.get()[key] as number,
         set: (v) => set(v),
-      })
-      gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, wave, isModified })
+      }
+      tracks.set(slider.track, track)
       return {
-        key,
-        display,
-        field,
-        wave,
+        ...base,
         row: slider.element,
         labelEl: slider.label,
         input: slider.track,
         number: slider.number,
         slider,
+        gpu: [{ kind: "knob", key, display, row: slider.element, slider, wave, isModified }],
+        value: plain,
         set,
+        retune(next) {
+          this.field = next.field
+          this.display = next.field.label ?? key
+          slider.retune(next.field as Knob)
+        },
+      }
+    }
+    if (field.kind === "action") {
+      const row = el("div")
+      row.className = "knobs-row knobs-action-row"
+      row.dataset.field = key
+      const press = el("button", display)
+      press.type = "button"
+      press.className = "knobs-action"
+      if (field.shortcut) press.setAttribute("aria-keyshortcuts", field.shortcut)
+      press.onclick = () => run(() => controls.action(key as keyof S & string))
+      row.append(press)
+      label = (text) => (press.textContent = text)
+      return {
+        ...base,
+        row,
+        labelEl: press,
+        input: press,
+        gpu: [{ kind: "action", key, display, row, button: press, wave, isModified: () => false }],
+        value: () => undefined,
+        set: () => {},
+        retune(next) {
+          retuneBase(this, next)
+        },
       }
     }
     if (field.kind !== "choice" && field.kind !== "toggle") {
+      const keys = spec.keys
       const context = {
         doc,
         key,
         display,
         wave,
-        get: () => controls.get()[key],
-        set: (value: unknown, setOpts?: { coalesce?: boolean }) => run(() => set(value, setOpts)),
+        get: (): Value =>
+          spec.parts
+            ? ({
+                duration: controls.get()[keys[0]!],
+                bounce: controls.get()[keys[1]!],
+              } as SpringValue)
+            : (controls.get()[key] as Value),
+        set: (value: unknown, setOpts?: { coalesce?: boolean }) =>
+          run(() =>
+            spec.parts
+              ? controls.set(
+                  {
+                    [keys[0]!]: (value as SpringValue).duration,
+                    [keys[1]!]: (value as SpringValue).bounce,
+                  } as Partial<Values<S>>,
+                  setOpts,
+                )
+              : set(value, setOpts),
+          ),
         isModified,
         wake: () => wakeGpu(),
         expanded: session.expanded?.includes(key),
@@ -529,6 +812,7 @@ function buildPanel<S extends Schema>(
           const others = (readSession(controls.id).expanded ?? []).filter((k) => k !== key)
           writeSession(controls.id, { expanded: open ? [...others, key] : others })
         },
+        ...(spec.parts ? { parts: spec.parts } : {}),
       }
       const editor =
         field.kind === "spring"
@@ -539,28 +823,110 @@ function buildPanel<S extends Schema>(
               ? pointRow({ ...context, field })
               : easingRow({ ...context, field })
       if (field.shortcut) editor.input.setAttribute("aria-keyshortcuts", field.shortcut)
-      editor.labelEl.ondblclick = () => run(() => controls.resetKey(key))
+      editor.labelEl.ondblclick = resetRow
       for (const t of editor.tracks) tracks.set(t.slider.track, t)
-      host.append(editor.row)
-      gpuRows.push(...editor.gpu)
+      if (spec.parts) editor.row.dataset.spring = spec.id.slice(7)
       return {
-        key,
-        display,
-        field,
-        wave,
+        ...base,
         row: editor.row,
         labelEl: editor.labelEl,
         input: editor.input,
         editor,
-        set,
+        gpu: [...editor.gpu],
+        value: spec.parts
+          ? (values) => ({ duration: values[keys[0]!], bounce: values[keys[1]!] })
+          : plain,
+        set: context.set,
+        retune(next) {
+          this.field = next.field
+          if (next.parts) editor.retune?.(next.parts)
+        },
       }
     }
     const row = el("div")
     row.className = "knobs-row"
     row.dataset.field = key
     const rowLabel = el("span", display)
-    rowLabel.ondblclick = () => run(() => controls.resetKey(key))
+    rowLabel.ondblclick = resetRow
     row.append(rowLabel)
+    label = (text) => {
+      rowLabel.firstChild!.textContent = text
+    }
+    if (field.kind === "choice" && field.options.length > COMPACT_CHOICES) {
+      // Long lists drop down from a compact button instead of a row of segments.
+      const pick = el("button")
+      pick.type = "button"
+      pick.className = "knobs-select"
+      pick.setAttribute("aria-haspopup", "menu")
+      pick.setAttribute("aria-label", display)
+      if (field.shortcut) pick.setAttribute("aria-keyshortcuts", field.shortcut)
+      const text = el("span")
+      text.className = "knobs-select-value"
+      pick.append(text, iconSvg(doc, "caret"))
+      const open = (keyboard: boolean) => {
+        const f = this_.field as Choice
+        const current = String(controls.get()[key])
+        const r = pick.getBoundingClientRect()
+        menu?.close(false)
+        pick.setAttribute("aria-expanded", "true")
+        menu = openMenu(
+          doc,
+          root,
+          f.options.map((value) => ({
+            label: choiceLabel(f, value),
+            checked: value === current,
+            run: () => run(() => set(value)),
+          })),
+          { x: r.left, y: r.bottom + 4 },
+          {
+            keyboard,
+            returnTo: pick,
+            active: f.options.indexOf(current),
+            minWidth: r.width,
+            onClose: () => {
+              menu = undefined
+              pick.setAttribute("aria-expanded", "false")
+            },
+          },
+        )
+      }
+      pick.onclick = (event) => open(event.detail === 0)
+      onSwipe(pick, (direction) => {
+        const f = this_.field as Choice
+        const at = f.options.indexOf(String(controls.get()[key]))
+        const next = f.options[Math.max(0, Math.min(f.options.length - 1, at + direction))]
+        if (next !== undefined && next !== controls.get()[key]) run(() => set(next))
+      })
+      row.append(pick)
+      const this_: Row = {
+        ...base,
+        row,
+        labelEl: rowLabel,
+        input: pick,
+        select: pick,
+        gpu: [
+          {
+            kind: "select",
+            key,
+            display,
+            row,
+            labelEl: rowLabel,
+            button: pick,
+            valueEl: text,
+            wave,
+            isModified,
+          },
+        ],
+        value: plain,
+        set,
+        retune(next) {
+          retuneBase(this, next)
+          pick.setAttribute("aria-label", this.display)
+          text.textContent = choiceLabel(next.field as Choice, String(controls.get()[key]))
+        },
+      }
+      return this_
+    }
     if (field.kind === "choice") {
       const seg = el("div")
       seg.className = "knobs-seg"
@@ -572,7 +938,7 @@ function buildPanel<S extends Schema>(
       seg.setAttribute("aria-label", display)
       if (field.shortcut) seg.setAttribute("aria-keyshortcuts", field.shortcut)
       const buttons = field.options.map((value) => {
-        const b = el("button", value)
+        const b = el("button", choiceLabel(field, value))
         b.type = "button"
         b.tabIndex = -1
         b.dataset.value = value
@@ -596,30 +962,34 @@ function buildPanel<S extends Schema>(
         placeSegPill(seg, buttons, String(controls.get()[key]), true),
       ).observe(seg)
       row.append(seg)
-      host.append(row)
-      gpuRows.push({
-        kind: "choice",
-        key,
-        display,
-        row,
-        labelEl: rowLabel,
-        segEl: seg,
-        buttons,
-        pill: new Edges(),
-        wave,
-        isModified,
-      })
       return {
-        key,
-        display,
-        field,
-        wave,
+        ...base,
         row,
         labelEl: rowLabel,
         input: seg,
-        number: undefined,
         buttons,
+        gpu: [
+          {
+            kind: "choice",
+            key,
+            display,
+            row,
+            labelEl: rowLabel,
+            segEl: seg,
+            buttons,
+            pill: new Edges(),
+            wave,
+            isModified,
+          },
+        ],
+        value: plain,
         set,
+        retune(next) {
+          retuneBase(this, next)
+          seg.setAttribute("aria-label", this.display)
+          const f = next.field as Choice
+          buttons.forEach((b, i) => (b.textContent = choiceLabel(f, f.options[i]!)))
+        },
       }
     }
     const toggle = el("button")
@@ -631,30 +1001,221 @@ function buildPanel<S extends Schema>(
     toggle.append(el("i"))
     toggle.onclick = () => run(() => set(!controls.get()[key]))
     row.append(toggle)
-    host.append(row)
-    gpuRows.push({
-      kind: "toggle",
-      key,
-      display,
-      row,
-      labelEl: rowLabel,
-      toggleEl: toggle,
-      thumb: new Edges(),
-      wave,
-      isModified,
-    })
     return {
-      key,
-      display,
-      field,
-      wave,
+      ...base,
       row,
       labelEl: rowLabel,
       input: toggle,
-      number: undefined,
+      gpu: [
+        {
+          kind: "toggle",
+          key,
+          display,
+          row,
+          labelEl: rowLabel,
+          toggleEl: toggle,
+          thumb: new Edges(),
+          wave,
+          isModified,
+        },
+      ],
+      value: plain,
       set,
+      retune(next) {
+        retuneBase(this, next)
+        toggle.setAttribute("aria-label", this.display)
+      },
     }
-  })
+  }
+
+  let rows: Row[] = []
+  /** Rows playing their exit; still drawn, no longer reachable. */
+  const leavingRows = new Set<Row>()
+  let presenceRuns = 0
+  /** Shows or hides a row, card or group head with the reveal motion, after `delay` ms. */
+  const present = (node: HTMLElement, show: boolean, delay: number, after?: () => void) => {
+    presenceRuns++
+    node.dataset.presence = show ? "in" : "out"
+    if (show) node.hidden = true
+    reveal(
+      node,
+      show,
+      () => {
+        presenceRuns--
+        delete node.dataset.presence
+        after?.()
+        wakeGpu()
+      },
+      delay,
+    )
+    wakeGpu()
+  }
+  const dropGpu = (row: Row) => {
+    for (const g of row.gpu) {
+      const at = gpuRows.indexOf(g)
+      if (at >= 0) gpuRows.splice(at, 1)
+    }
+    for (const t of row.editor?.tracks ?? []) tracks.delete(t.slider.track)
+    if (row.slider) tracks.delete(row.slider.track)
+  }
+  const dropBlock = (block: Block) => {
+    block.head?.remove()
+    block.card.remove()
+    const ci = cards.indexOf(block.card)
+    if (ci >= 0) cards.splice(ci, 1)
+    if (block.gpuGroup) {
+      const gi = gpuGroups.indexOf(block.gpuGroup)
+      if (gi >= 0) gpuGroups.splice(gi, 1)
+    }
+    const bi = blocks.indexOf(block)
+    if (bi >= 0) blocks.splice(bi, 1)
+    if (block.group && groupResetButtons.get(block.group) === block.gpuGroup?.reset) {
+      groupResetButtons.delete(block.group)
+      groupDice.get(block.group)?.die.dispose()
+      groupDice.delete(block.group)
+      groupChips.delete(block.group)
+    }
+  }
+  /** Puts `nodes` into `parent` in this order, moving only what's out of place. */
+  const arrange = (parent: HTMLElement, nodes: readonly HTMLElement[]) => {
+    let cursor: ChildNode | null = null
+    for (const node of nodes) {
+      const want: ChildNode | null = cursor ? cursor.nextSibling : parent.firstChild
+      // Leaving nodes keep their place; skip past them.
+      let next: ChildNode | null = want
+      while (next && next !== node && (next as HTMLElement).dataset?.presence === "out")
+        next = next.nextSibling
+      if (next !== node) parent.insertBefore(node, want)
+      cursor = node
+    }
+  }
+
+  /**
+   * Builds rows for the current schema, keeping those whose identity and shape persist. Rows and
+   * blocks that arrive or leave reveal or fold, each starting its turn in the cascade.
+   */
+  function layoutRows(animate: boolean) {
+    const specs = planRows(controls.schema)
+    const kept = new Map(rows.map((r) => [r.id, r]))
+    const next: Row[] = []
+    const entering = new Set<Row>()
+    const focused = doc.activeElement as HTMLElement | null
+    for (const spec of specs) {
+      const existing = kept.get(spec.id)
+      if (existing && existing.shape === shapeOf(spec)) {
+        kept.delete(spec.id)
+        existing.retune(spec)
+        next.push(existing)
+        continue
+      }
+      const row = buildRow(spec)
+      gpuRows.push(...row.gpu)
+      entering.add(row)
+      next.push(row)
+    }
+    const leaving = [...kept.values()]
+    rows = next
+    const motion: { node: HTMLElement; show: boolean; after?: () => void }[] = []
+    if (page) {
+      for (const r of next) {
+        if (!entering.has(r)) continue
+        tileFor(r.group, r.section).append(r.row)
+        if (animate) motion.push({ node: r.row, show: true })
+      }
+      for (const r of leaving) {
+        r.leaving = true
+        leavingRows.add(r)
+        const done = () => {
+          r.row.remove()
+          leavingRows.delete(r)
+          dropGpu(r)
+        }
+        if (animate) motion.push({ node: r.row, show: false, after: done })
+        else done()
+      }
+      layout?.pack(true)
+    } else {
+      // Runs of rows sharing a group make blocks; a run reuses its group's block if there is one.
+      const runs: { group: string | undefined; rows: Row[] }[] = []
+      for (const r of next) {
+        const last = runs.at(-1)
+        if (last && last.group === r.group) last.rows.push(r)
+        else runs.push({ group: r.group, rows: [r] })
+      }
+      const free = blocks.filter((b) => !b.leaving)
+      const chosen: Block[] = []
+      for (const run of runs) {
+        const at = free.findIndex((b) => b.group === run.group)
+        const block = at >= 0 ? free.splice(at, 1)[0]! : newBlock(run.group)
+        if (at < 0) {
+          blocks.push(block)
+          if (animate) {
+            if (block.head) motion.push({ node: block.head, show: true })
+            motion.push({ node: block.card, show: true })
+          }
+        }
+        chosen.push(block)
+        arrange(
+          block.card,
+          run.rows.map((r) => r.row),
+        )
+        if (animate && at >= 0)
+          for (const r of run.rows) if (entering.has(r)) motion.push({ node: r.row, show: true })
+      }
+      arrange(
+        body,
+        chosen.flatMap((b) => (b.head ? [b.head, b.card] : [b.card])),
+      )
+      for (const block of free) {
+        block.leaving = true
+        const fold = () => {
+          for (const r of leaving) if (block.card.contains(r.row)) dropGpu(r)
+          dropBlock(block)
+        }
+        if (animate) {
+          if (block.head) motion.push({ node: block.head, show: false })
+          motion.push({ node: block.card, show: false, after: fold })
+        } else fold()
+      }
+      for (const r of leaving) {
+        r.leaving = true
+        const block = blocks.find((b) => b.card.contains(r.row))
+        if (block?.leaving) continue
+        leavingRows.add(r)
+        const done = () => {
+          r.row.remove()
+          leavingRows.delete(r)
+          dropGpu(r)
+        }
+        if (animate) motion.push({ node: r.row, show: false, after: done })
+        else done()
+      }
+    }
+    if (motion.length) {
+      motion.sort((a, b) =>
+        a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+      )
+      const stagger = cascade(motion.length)
+      motion.forEach((m, i) => present(m.node, m.show, i * stagger, m.after))
+    }
+    if (focused && root.contains(focused) && doc.activeElement !== focused && focused.isConnected)
+      focused.focus({ preventScroll: true })
+    // Focus on a row that left goes to the nearest row that's still here, not the page.
+    const gone = focused ? leaving.find((r) => r.row.contains(focused)) : undefined
+    if (gone) {
+      const after = rows.find(
+        (r) => gone.row.compareDocumentPosition(r.row) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+      const near = after ?? rows.at(-1)
+      if (near) near.input.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+      else root.focus({ preventScroll: true })
+    }
+    if (selected.size) {
+      selected.clear()
+      paintSelection()
+    }
+    anchor = head = -1
+  }
 
   // A locked row carries a small lock after its label (see .knobs-lock), added the first time it's
   // locked; the GPU finds it by label.
@@ -676,8 +1237,9 @@ function buildPanel<S extends Schema>(
     }
     return lock
   }
-  const keyOf = (i: number) => rows[i]!.key as keyof S & string
-  const groupKeys = (group: string) => rows.filter((r) => r.field.group === group).map((r) => r.key)
+  const keysOf = (indices: readonly number[]) =>
+    indices.flatMap((i) => rows[i]?.keys ?? []) as (keyof S & string)[]
+  const groupKeys = (group: string) => rows.filter((r) => r.group === group).flatMap((r) => r.keys)
   const rerollGroup = (group: string, nudge: boolean) => {
     const roller = groupDice.get(group)?.die
     if (roller) reroll(groupKeys(group), nudge, roller)
@@ -715,9 +1277,9 @@ function buildPanel<S extends Schema>(
     return at >= 0 ? [at] : []
   }
   const selectionKeys = () =>
-    selected.size ? [...selected].sort((a, b) => a - b).map(keyOf) : undefined
+    selected.size ? keysOf([...selected].sort((a, b) => a - b)) : undefined
   const toggleLock = (indices = targets()) => {
-    const keys = indices.map(keyOf)
+    const keys = keysOf(indices)
     if (keys.length)
       controls.lock(
         keys,
@@ -740,7 +1302,8 @@ function buildPanel<S extends Schema>(
       anchor = head = indices[0]!
       selectRange(anchor, head)
     }
-    const keys = indices.map(keyOf)
+    const keys = keysOf(indices)
+    if (!keys.length) return
     const locked = keys.every((k) => controls.isLocked(k))
     const active = doc.activeElement as HTMLElement | null
     const returnTo = active && root.contains(active) ? active : rows[from ?? indices[0]!]!.input
@@ -871,43 +1434,78 @@ function buildPanel<S extends Schema>(
     const base = Number.isFinite(ms) ? Math.max(0, ms) : 12
     return changedCount > 8 ? Math.min(base, Math.floor(96 / (changedCount - 1))) : base
   }
+  let shape = controls.schema
+  let landTimer = 0
+  /** A different item arrived: transitions are off until the values have painted. */
+  const land = () => {
+    root.dataset.landing = ""
+    const win = doc.defaultView
+    if (!win) return
+    win.cancelAnimationFrame(landTimer)
+    landTimer = win.requestAnimationFrame(() => {
+      landTimer = win.requestAnimationFrame(() => {
+        delete root.dataset.landing
+        wakeGpu()
+      })
+    })
+  }
   function update() {
     if (!controls.enabled) {
       close?.()
       return
     }
-    const values = controls.get()
-    let changedCount = 0
-    if (initialized) {
-      for (const r of rows) if (!same(values[r.key], shown[r.key])) changedCount++
+    const landing = controls.landing
+    if (landing) land()
+    if (controls.schema !== shape) {
+      shape = controls.schema
+      layoutRows(initialized && !landing)
     }
+    const values = controls.get() as Record<string, unknown>
+    const before = shown as Record<string, unknown>
+    const locked = controls.locked as Record<string, unknown>
+    // A row with nothing shown yet (it just arrived) places its value without motion.
+    const fresh = (r: Row) => r.row.dataset.shown === undefined
+    const changed = (r: Row) => fresh(r) || r.keys.some((k) => !same(values[k], before[k]))
+    let changedCount = 0
+    if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
     const now = performance.now()
     let turn = 0
     for (const row of rows) {
-      const value = values[row.key]
-      const rowChanged = !initialized || !same(value, shown[row.key])
-      if (!rowChanged) continue
+      if (initialized && !changed(row)) continue
+      const instant = !initialized || landing || fresh(row)
+      row.row.dataset.shown = ""
+      const value = row.value(values)
       let delay = 0
-      if (initialized) {
+      if (!instant) {
         const moving = row.wave.at <= now && now < row.wave.until
         delay = moving ? 0 : turn * stagger
         turn++
         row.wave.at = now + delay
         row.wave.until = row.wave.at + 280
         row.row.style.setProperty("--k-delay", `${delay}ms`)
+      } else {
+        row.wave.at = row.wave.until = 0
+        row.row.style.removeProperty("--k-delay")
       }
-      row.row.classList.toggle("knobs-modified", !same(value, controls.locked[row.key]))
-      if (row.slider) row.slider.update(Number(value), delay)
-      else if (row.buttons) placeSegPill(row.input, row.buttons, String(value))
-      else if (row.editor) row.editor.update(value, delay)
-      else row.input.setAttribute("aria-checked", String(Boolean(value)))
+      const modified = row.keys.some((k) => !same(values[k], locked[k]))
+      if (row.row.classList.contains("knobs-modified") !== modified)
+        row.row.classList.toggle("knobs-modified", modified)
+      if (row.slider) row.slider.update(Number(value), delay, instant)
+      else if (row.buttons) placeSegPill(row.input, row.buttons, String(value), instant)
+      else if (row.select) {
+        const text = row.select.firstElementChild as HTMLElement
+        const label = choiceLabel(row.field as Choice, String(value))
+        if (text.textContent !== label) text.textContent = label
+      } else if (row.editor) row.editor.update(value as Value, delay, instant)
+      else if (row.field.kind === "toggle")
+        row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
-    if (!initialized || changedCount > 0) {
+    if (!initialized || changedCount > 0 || landing || turn > 0 || rows.some(fresh)) {
       let anyMod = false
       for (const [groupName, gReset] of groupResetButtons) {
         const groupMod = rows.some(
-          (r) => r.field.group === groupName && !same(values[r.key], controls.locked[r.key]),
+          (r) => r.group === groupName && r.keys.some((k) => !same(values[k], locked[k])),
         )
         if (groupMod) anyMod = true
         if (gReset.disabled !== !groupMod) gReset.disabled = !groupMod
@@ -915,12 +1513,13 @@ function buildPanel<S extends Schema>(
         if (gReset.dataset.shown !== s) gReset.dataset.shown = s
       }
       const totalMod =
-        anyMod || rows.some((r) => !r.field.group && !same(values[r.key], controls.locked[r.key]))
+        anyMod || rows.some((r) => !r.group && r.keys.some((k) => !same(values[k], locked[k])))
       if (resetBtn.disabled !== !totalMod) resetBtn.disabled = !totalMod
     }
     let unlocked = 0
     for (const row of rows) {
-      const locked = controls.isLocked(row.key as keyof S & string)
+      if (!row.keys.length) continue
+      const locked = row.keys.every((k) => controls.isLocked(k as keyof S & string))
       if (!locked) unlocked++
       if (row.row.classList.contains("knobs-locked") === locked) continue
       lockIcon(row.labelEl, initialized).dataset.on = String(locked)
@@ -939,7 +1538,7 @@ function buildPanel<S extends Schema>(
     for (const [group, c] of groupChips)
       placeSegPill(c.seg, c.buttons, String(controls.matchingGroupPreset(group)))
     presetStrip.update()
-    shown = values
+    shown = values as Values<S>
     initialized = true
 
     wakeGpu()
@@ -1050,7 +1649,7 @@ function buildPanel<S extends Schema>(
     const query = filterEl.value.trim()
     root.toggleAttribute("data-filtering", Boolean(query))
     for (const r of rows) {
-      const show = !query || matchesFilter(query, r.display, r.key, r.field.group, r.field.section)
+      const show = !query || matchesFilter(query, r.display, r.key, r.group, r.section)
       if (r.row.hidden === show) r.row.hidden = !show
     }
     for (const inner of tiles.values()) {
@@ -1107,9 +1706,13 @@ function buildPanel<S extends Schema>(
 
   /** The group of the focused row or group header. */
   const focusedGroup = (target: HTMLElement) =>
-    rows[rowAt(target)]?.field.group ??
-    target.closest<HTMLElement>(".knobs-group-head")?.dataset.group
+    rows[rowAt(target)]?.group ?? target.closest<HTMLElement>(".knobs-group-head")?.dataset.group
+  // Keys the panel handles stop here, so a host's own window-level shortcuts don't see them too.
   root.onkeydown = (event) => {
+    onKey(event)
+    if (event.defaultPrevented) event.stopPropagation()
+  }
+  const onKey = (event: KeyboardEvent) => {
     if (event.isComposing || event.metaKey || event.ctrlKey) return
     const target = event.target as HTMLElement
     const typing =
@@ -1120,10 +1723,13 @@ function buildPanel<S extends Schema>(
         !["range", "checkbox", "radio", "button"].includes(target.type))
     if (event.altKey) {
       // ⌥R and ⌥G mutate (by code: ⌥ changes the character on macOS).
-      if (typing || hintCtrl.isActive || (event.code !== "KeyR" && event.code !== "KeyG")) return
+      if (typing || hintCtrl.isActive) return
+      const all = pressedAlt("mutate", event)
+      const group =
+        !all && bound("mutate") && pressedAlt("group", event) ? focusedGroup(target) : undefined
+      if (!all && !group) return
       event.preventDefault()
-      const group = event.code === "KeyG" ? focusedGroup(target) : undefined
-      if (event.code === "KeyR") run(() => reroll(selectionKeys(), true))
+      if (all) run(() => reroll(selectionKeys(), true))
       else if (group) run(() => rerollGroup(group, true))
       return
     }
@@ -1154,6 +1760,15 @@ function buildPanel<S extends Schema>(
         close()
         return
       }
+    }
+    // An inline panel's Esc hands focus back to the page (Tab or the host's own key brings it back).
+    if (!close && !page && !typing && pressed("leave", event)) {
+      const active = doc.activeElement as HTMLElement | null
+      if (active && root.contains(active)) {
+        event.preventDefault()
+        active.blur()
+      }
+      return
     }
     if (event.key === "Tab" && page && !typing) {
       // Tab and ⇧Tab go from group to group.
@@ -1190,37 +1805,41 @@ function buildPanel<S extends Schema>(
     }
     if (typing) return
     const key = event.key
-    if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+    if (bound("menu") && (key === "ContextMenu" || (key === "F10" && event.shiftKey))) {
       event.preventDefault()
       event.stopPropagation()
       menuFromKeyboard()
       return
     }
-    if (key === "\\") {
+    if (pressed("compare", event)) {
       // Held: the values from before the last change; released on keyup or blur.
       event.preventDefault()
       if (!event.repeat) controls.compare(true)
       return
     }
-    if (key === "?" && showFooter) {
+    if (pressed("help", event) && showFooter) {
       event.preventDefault()
       event.stopPropagation()
       togglePopover()
       return
     }
-    if (key === "[" || key === "]") {
+    if (pressed("presets", event)) {
       event.preventDefault()
       event.stopPropagation()
-      presetStrip.cycle(key === "[" ? -1 : 1)
+      presetStrip.cycle(key === keys.presets[0] ? -1 : 1)
       return
     }
-    if (key === "u" || key === "U" || key === "z" || key === "Z") {
+    if (pressed("redo", event)) {
       event.preventDefault()
-      if (event.shiftKey) controls.redo()
-      else controls.undo()
+      controls.redo()
       return
     }
-    if (key === "f") {
+    if (pressed("undo", event)) {
+      event.preventDefault()
+      controls.undo()
+      return
+    }
+    if (pressed("first", event)) {
       event.preventDefault()
       rows.find((r) => visible(r.input))?.input.focus(page ? { preventScroll: true } : undefined)
       return
@@ -1239,18 +1858,23 @@ function buildPanel<S extends Schema>(
         return
       }
     }
-    if (key === "s") {
+    if (pressed("hint", event)) {
       event.preventDefault()
       hintScrollY = win?.scrollY ?? 0
       hintCtrl.start(collectHintTargets())
       return
     }
-    if (key === "r" || key === "R") {
+    if (pressed("resetAll", event)) {
       event.preventDefault()
-      run(key === "R" ? controls.reset : () => reroll(selectionKeys(), false))
+      run(controls.reset)
       return
     }
-    if (key === "g") {
+    if (pressed("random", event)) {
+      event.preventDefault()
+      run(() => reroll(selectionKeys(), false))
+      return
+    }
+    if (pressed("group", event) && bound("random")) {
       const group = focusedGroup(target)
       if (group) {
         event.preventDefault()
@@ -1258,29 +1882,30 @@ function buildPanel<S extends Schema>(
       }
       return
     }
-    if (key === "L") {
+    if (pressed("lock", event)) {
       event.preventDefault()
       toggleLock()
       return
     }
-    if (key === "C") {
+    if (pressed("copy", event)) {
       event.preventDefault()
       const keys = selectionKeys()
       if (keys) copyKeys(keys)
       else copyValues()
       return
     }
-    if (key === "S" && showVariants) {
+    if (pressed("save", event) && showVariants) {
       event.preventDefault()
       presetStrip.save()
       return
     }
     const index = rowAt(target)
-    if ((key === "Backspace" || key === "Delete") && !(target instanceof HTMLInputElement)) {
-      const keys = selectionKeys()
-      if (keys || index >= 0) event.preventDefault()
-      if (keys) run(() => controls.reset(keys))
-      else if (index >= 0) run(() => controls.resetKey(rows[index].key))
+    if (pressed("reset", event) && !(target instanceof HTMLInputElement)) {
+      const chosen = selectionKeys() ?? (index >= 0 ? keysOf([index]) : undefined)
+      if (chosen?.length) {
+        event.preventDefault()
+        run(() => controls.reset(chosen))
+      }
       return
     }
     if ((key === "ArrowDown" || key === "ArrowUp") && event.shiftKey && index >= 0) {
@@ -1316,10 +1941,15 @@ function buildPanel<S extends Schema>(
       event.stopPropagation()
       const t = tracks.get(target)!
       t.set(t.get() + (right ? 1 : -1) * t.field.step * (event.shiftKey ? 10 : 1))
-    } else if ((left || right) && index >= 0 && target === rows[index].input) {
+    } else if (
+      (left || right) &&
+      index >= 0 &&
+      target === rows[index]!.input &&
+      rows[index]!.keys.length
+    ) {
       event.preventDefault()
       event.stopPropagation()
-      const row = rows[index],
+      const row = rows[index]!,
         field = row.field,
         value = controls.get()[row.key]
       const direction = right ? 1 : -1
@@ -1510,8 +2140,48 @@ function buildPanel<S extends Schema>(
     headSize.observe(header)
     layout?.pack(true)
   }
+  // Rows in hand (a drag, an inline edit) hold their key against incoming values until let go.
+  const inHand = new Set<string>()
+  const grab = (target: EventTarget | null) => {
+    const at = rowAt(target as Node | null)
+    for (const k of rows[at]?.keys ?? []) {
+      inHand.add(k)
+      controls.hold(k)
+    }
+  }
+  const letGo = () => {
+    if (!inHand.size || root.querySelector(".knobs-number:not([hidden])")) return
+    const held = [...inHand]
+    inHand.clear()
+    for (const k of held) controls.hold(k, false)
+  }
+  root.addEventListener("pointerdown", (event) => grab(event.target), true)
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+    root.addEventListener(type, () => setTimeout(letGo))
+  root.addEventListener("focusin", (event) => {
+    if ((event.target as HTMLElement).classList?.contains("knobs-number")) grab(event.target)
+  })
+  root.addEventListener("focusout", (event) => {
+    if ((event.target as HTMLElement).classList?.contains("knobs-number")) setTimeout(letGo)
+  })
+  // --k-row-gap above 0 draws each row as its own bar (see .knobs-panel[data-rows]).
+  const syncRows = () => {
+    const gap = parseFloat(getComputedStyle(root).getPropertyValue("--k-row-gap")) || 0
+    const want = gap > 0 ? "separate" : undefined
+    if (root.dataset.rows !== want) {
+      if (want) root.dataset.rows = want
+      else delete root.dataset.rows
+    }
+  }
+  const rowsObserver = new MutationObserver(syncRows)
+  rowsObserver.observe(root, {
+    attributes: true,
+    attributeFilter: ["style", "class", "data-theme"],
+  })
+  layoutRows(false)
   const unsubscribe = controls.subscribe(update)
   update()
+  syncRows()
   positioned =
     !inline && options.anchor
       ? positionPanel(root, header, options.anchor, controls.id, () => controls.storage)
@@ -1552,6 +2222,8 @@ function buildPanel<S extends Schema>(
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,
     morph: morph?.frame,
+    presence: () => presenceRuns > 0,
+    landing: () => "landing" in root.dataset,
     ...(layout
       ? {
           page: {
@@ -1579,8 +2251,9 @@ function buildPanel<S extends Schema>(
       root.dataset.renderer = "dom"
       const cur = controls.get()
       for (const r of rows) {
-        if (r.slider) r.slider.update(Number(cur[r.key]), 0)
-        else if (r.editor) r.editor.update(cur[r.key], 0)
+        const value = r.value(cur as Record<string, unknown>)
+        if (r.slider) r.slider.update(Number(value), 0, true)
+        else if (r.editor) r.editor.update(value as Value, 0, true)
       }
     } else {
       root.dataset.renderer = "dom"
@@ -1588,7 +2261,10 @@ function buildPanel<S extends Schema>(
   }
   syncRendererMode()
 
-  const modeObserver = new MutationObserver(syncRendererMode)
+  const modeObserver = new MutationObserver(() => {
+    syncRendererMode()
+    syncRows()
+  })
   modeObserver.observe(doc.documentElement, {
     attributes: true,
     attributeFilter: ["data-knobs-renderer", "data-theme", "style"],
@@ -1645,6 +2321,9 @@ function buildPanel<S extends Schema>(
       modeObserver.disconnect()
       unregisterGpu?.()
       unsubscribe()
+      rowsObserver.disconnect()
+      doc.defaultView?.cancelAnimationFrame(landTimer)
+      for (const k of inHand) controls.hold(k, false)
       positioned?.dispose()
       die.dispose()
       for (const g of groupDice.values()) g.die.dispose()

@@ -74,6 +74,7 @@ const defaultsCss = `
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};--k-release:${release.easing};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -112,6 +113,10 @@ const css = `
   --k-disabled-opacity:.32;
   --k-hint-typed-opacity:.42;
 }
+/* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
+   hovered card doesn't hand its quick entrance to the rows inside it. */
+:where(.knobs-panel,.knobs-menu) *{--k-hover-t:calc(var(--k-hover-out) * 1ms)}
+:where(.knobs-panel,.knobs-menu) :is(:hover,.knobs-active){--k-hover-t:calc(var(--k-hover-in) * 1ms)}
 
 .knobs-panel,.knobs-chip{
   box-sizing:border-box;font:var(--k-font-size)/1.35 var(--k-font);color:var(--k-text);text-align:left;color-scheme:dark;
@@ -218,7 +223,7 @@ const css = `
 /* Grouped cards: rows share one surface, split by hairlines */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
 .knobs-card:last-child{margin-bottom:0}
-.knobs-card>*{position:relative;min-height:var(--k-row);transition:background .15s}
+.knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t)}
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)::before,.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)+*::before{opacity:0}
@@ -236,7 +241,7 @@ const css = `
 .knobs-locked .knobs-lock>svg{opacity:1;transform:none;transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1)}
 
 /* Slider: an accent-tinted fill with a brighter leading edge and centerline scale ticks */
-.knobs-track{position:absolute;inset:0;overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
+.knobs-track{position:absolute;left:0;right:0;top:0;height:var(--k-row);overflow:hidden;contain:layout style paint;cursor:ew-resize;user-select:none;touch-action:none;transition:--k-readout .25s var(--k-ease)}
 .knobs-panel .knobs-track:focus-visible{outline:none;box-shadow:none}
 .knobs-marks{position:absolute;inset:0;pointer-events:none;
   -webkit-mask:linear-gradient(to right,transparent calc(var(--k-label-end,0px) + 4px),#000 calc(var(--k-label-end,0px) + 12px),#000 calc(100% - var(--k-inset) - var(--k-readout) - 12px),transparent calc(100% - var(--k-inset) - var(--k-readout) - 4px));
@@ -260,9 +265,9 @@ const css = `
 .knobs-slider:is(:hover,:has(:focus-visible)) .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
 .knobs-active .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
 /* Drag speed eases quickly while dragging and fades gently after; the rubber band springs back. */
-.knobs-card>.knobs-slider{transition:background .15s,--k-speed .35s ease-out}
-.knobs-card>.knobs-slider.knobs-active{transition:background .15s,--k-speed .12s ease-out}
-.knobs-card>.knobs-slider.knobs-release{transition:background .15s,--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
+.knobs-card>.knobs-slider{transition:background var(--k-hover-t),--k-speed .35s ease-out}
+.knobs-card>.knobs-slider.knobs-active{transition:background var(--k-hover-t),--k-speed .12s ease-out}
+.knobs-card>.knobs-slider.knobs-release{transition:background var(--k-hover-t),--k-speed .35s ease-out,transform ${release.ms}ms var(--k-release)}
 .knobs-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-unit{color:var(--k-dim)}
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - var(--k-inset) * 2 - var(--k-readout,48px) - 8px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
@@ -286,6 +291,20 @@ const css = `
 .knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}
 
+/* Long choices: a compact button that drops down a menu */
+.knobs-panel .knobs-select{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:62%;height:var(--k-control-h);padding:0 6px 0 10px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-label);font-size:var(--k-text-control);font-weight:var(--k-label-weight);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
+.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 2px);height:calc(var(--k-icon-sm) - 2px);color:var(--k-dim)}
+.knobs-menu[data-checks] .knobs-menu-item{padding-left:24px}
+.knobs-menu-item[aria-checked="true"]::before{content:"";position:absolute;left:9px;top:50%;width:7px;height:4px;margin-top:-3.5px;border:solid currentColor;border-width:0 0 1.5px 1.5px;transform:rotate(-45deg)}
+
+/* Action rows: a button the width of the row */
+.knobs-panel .knobs-action-row{padding:0}
+.knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-text);font-size:calc(var(--k-text-control) + .5px);font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t)}
+.knobs-panel .knobs-action:is(:hover,:focus-visible){color:var(--k-accent)}
+.knobs-panel .knobs-action:active{opacity:.7}
+
 /* Switch */
 /* The thumb spans two edges: the leading one springs ahead and the other follows, so it stretches
    into a capsule as it travels; a press widens it toward where it will go. */
@@ -304,7 +323,7 @@ const css = `
 .knobs-card>.knobs-selected+.knobs-selected::before{opacity:0}
 .knobs-spring{display:flex}
 .knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
-.knobs-sub{position:relative;transition:background .15s}
+.knobs-sub{position:relative;transition:background var(--k-hover-t)}
 .knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
@@ -318,7 +337,7 @@ const css = `
 .knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0}
 .knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
 
-.knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background .15s}
+.knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
 .knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
 .knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}
 .knobs-x-label::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
@@ -361,6 +380,20 @@ const css = `
 .knobs-panel .knobs-ease-chip:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:var(--k-pill-bg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 
+/* Rows as separate bars (--k-row-gap above 0): each row carries its own surface, no hairlines.
+   A spring stacks its curve over its two sliders. */
+.knobs-panel[data-rows] .knobs-card{display:flex;flex-direction:column;gap:var(--k-row-gap);background:transparent;overflow:visible}
+.knobs-panel[data-rows] .knobs-card>*{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden}
+.knobs-panel[data-rows] .knobs-card>:is(:hover,.knobs-active){background:color-mix(in srgb,var(--k-surface-hi) 50%,var(--k-surface))}
+.knobs-panel[data-rows] :is(.knobs-card>*,.knobs-sub)::before{display:none}
+.knobs-panel[data-rows] .knobs-card>.knobs-spring{flex-direction:column-reverse;gap:var(--k-row-gap);background:transparent;overflow:visible}
+.knobs-panel[data-rows] .knobs-spring-tracks{display:flex;flex-direction:column;gap:var(--k-row-gap);overflow:visible}
+.knobs-panel[data-rows] .knobs-sub{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden}
+.knobs-panel[data-rows] .knobs-sub:is(:hover,.knobs-active){background:color-mix(in srgb,var(--k-surface-hi) 50%,var(--k-surface))}
+.knobs-panel[data-rows] .knobs-spring-curve{width:auto;height:calc(var(--k-row) * 2.8);margin:0;border-radius:var(--k-radius);background:var(--k-surface)}
+/* A different item landing: values are placed, nothing glides. */
+.knobs-panel[data-landing] :is(*,*::before,*::after){transition:none!important}
+
 /* Hint mode: stable short codes, zero layout shift */
 .knobs-hinting .knobs-hint-miss{opacity:var(--k-disabled-opacity);transition:opacity .1s}
 .knobs-hint-layer{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5;animation:knobs-in .1s var(--k-ease)}
@@ -400,7 +433,7 @@ const css = `
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible):not(.knobs-live *){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }

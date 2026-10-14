@@ -68,7 +68,14 @@ export interface ActionField extends FieldMeta {
   readonly kind: "action"
   readonly run?: () => void
 }
-export type ValueField = Knob | Choice | Toggle | SpringField | ColorField | PointField | EasingField
+export type ValueField =
+  | Knob
+  | Choice
+  | Toggle
+  | SpringField
+  | ColorField
+  | PointField
+  | EasingField
 export type Field = ValueField | ActionField
 export type Schema = Readonly<Record<string, Field>>
 export type FieldValue<F extends Field> = F extends Knob
@@ -129,7 +136,10 @@ export function knob(
     step <= 0
   )
     throw new Error("A knob needs finite bounds and a positive step.")
-  if (options.decimals !== undefined && !(Number.isInteger(options.decimals) && options.decimals >= 0))
+  if (
+    options.decimals !== undefined &&
+    !(Number.isInteger(options.decimals) && options.decimals >= 0)
+  )
     throw new Error("A knob's decimals must be a whole number.")
   checkShortcut(options.shortcut)
   const field: Knob = { ...options, kind: "knob", value, step }
@@ -193,10 +203,17 @@ export function flatSpring(
       ...(base.label === undefined ? { label: part === "duration" ? "Duration" : "Bounce" } : {}),
       ...(meta.group !== undefined ? { group: meta.group } : {}),
       ...(meta.section !== undefined ? { section: meta.section } : {}),
-      spring: Object.freeze({ id, part, ...(meta.label !== undefined ? { label: meta.label } : {}) }),
+      spring: Object.freeze({
+        id,
+        part,
+        ...(meta.label !== undefined ? { label: meta.label } : {}),
+      }),
     }) as Knob
   }
-  return { duration: half("duration", parts.duration, 0.5), bounce: half("bounce", parts.bounce, 0) }
+  return {
+    duration: half("duration", parts.duration, 0.5),
+    bounce: half("bounce", parts.bounce, 0),
+  }
 }
 let springIds = 0
 export function toggle(value: boolean, meta?: FieldMeta): Toggle {

@@ -45,6 +45,8 @@ export interface RowContext<F> {
   wake(): void
   /** Opens a disclosure row's editor at once, as it was before a reload. */
   readonly expanded?: boolean
+  /** A flat spring's two number fields: their ranges, labels and units replace the defaults. */
+  readonly parts?: { readonly duration: Knob; readonly bounce: Knob }
   onExpand?(open: boolean): void
 }
 
@@ -63,7 +65,10 @@ export interface EditorRow {
   readonly input: HTMLElement
   /** Every ↑↓ stop in the row, in order (an open editor's parts follow its head). */
   stops(): HTMLElement[]
-  update(value: Value, delay: number): void
+  /** `instant` places the value without motion (a different item arrived). */
+  update(value: Value, delay: number, instant?: boolean): void
+  /** A flat spring's halves changed range or label (see `RowContext.parts`). */
+  retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
   readonly tracks: readonly SubTrack[]
   readonly gpu: readonly GpuRowBinding[]
 }
@@ -385,25 +390,33 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   row.dataset.field = c.key
   const tracksEl = el("div", "knobs-spring-tracks")
   const current = () => c.get() as SpringValue
-  const parts = (["duration", "bounce"] as const).map((part) => {
-    const field: Knob = {
+  const fieldFor = (part: "duration" | "bounce"): Knob =>
+    c.parts?.[part] ?? {
       kind: "knob",
       ...SPRING[part],
       value: c.field.value[part],
       label: part === "duration" ? c.display : "Bounce",
       ...(part === "duration" ? { unit: "s" } : {}),
     }
+  const parts = (["duration", "bounce"] as const).map((part) => {
     const set = (v: number, options?: { coalesce?: boolean }) =>
       c.set({ ...current(), [part]: v }, options)
-    const slider = createSlider(c.doc, `${c.key}-${part}`, field, set, c.wake)
+    const slider = createSlider(c.doc, `${c.key}-${part}`, fieldFor(part), set, c.wake)
     slider.element.classList.add("knobs-sub")
-    slider.track.setAttribute("aria-label", `${c.display} ${part}`)
+    if (!c.parts) slider.track.setAttribute("aria-label", `${c.display} ${part}`)
     slider.element.ondblclick = (event) => {
       if (!(event.target as HTMLElement).closest(".knobs-value,.knobs-number"))
-        set(c.field.value[part])
+        set(slider.field.value)
     }
     tracksEl.append(slider.element)
-    const track: SubTrack = { slider, field, get: () => current()[part], set: (v) => set(v) }
+    const track: SubTrack = {
+      slider,
+      get field() {
+        return slider.field
+      },
+      get: () => current()[part],
+      set: (v) => set(v),
+    }
     return track
   })
   const box = el("div", "knobs-spring-curve")
@@ -482,21 +495,30 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     stops: () => parts.map((p) => p.slider.track),
     tracks: parts,
     gpu: [...knobRows, gpu],
-    update(value, delay) {
+    retune(next) {
+      parts[0]!.slider.retune(next.duration)
+      parts[1]!.slider.retune(next.bounce)
+      for (const [i, p] of parts.entries())
+        p.slider.element.classList.toggle(
+          "knobs-modified",
+          shown[i === 0 ? "duration" : "bounce"] !== p.field.value,
+        )
+    },
+    update(value, delay, instant = false) {
       const v = value as SpringValue
       const prev = shown
       const changed = !same(v, prev)
       shown = v
       for (const [i, p] of parts.entries()) {
         const key = i === 0 ? "duration" : "bounce"
-        if (!initialized || v[key] !== prev[key]) {
-          p.slider.update(v[key], delay)
+        if (!initialized || instant || v[key] !== prev[key]) {
+          p.slider.update(v[key], delay, instant)
           p.slider.element.classList.toggle("knobs-modified", v[key] !== p.field.value)
         }
       }
       if (!changed && initialized) return
-      draw(!initialized || dragging())
-      if (initialized) {
+      draw(!initialized || instant || dragging())
+      if (initialized && !instant) {
         if (dragging()) pending = true
         else play(delay)
       }

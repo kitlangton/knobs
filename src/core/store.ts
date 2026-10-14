@@ -67,6 +67,7 @@ export type PanelCommand =
   | "first"
   | "help"
   | "menu"
+  | "leave"
 /**
  * Remaps (a single character, or a key name such as `"F2"`) or turns off (`false`) a panel's key
  * bindings. Unlisted commands keep their default key. `true` keeps the default.
@@ -120,6 +121,8 @@ export interface ControlsOptions<S extends Schema> {
   theme?: ThemeMode
   density?: DensityMode
   renderer?: RendererMode
+  /** Default key bindings for this store's panels (see `MountPanelOptions.keys`). */
+  keys?: PanelKeys
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   onReset?: (target: { key?: keyof S & string; group?: string }) => void
   /** An action row was pressed (after its own `run`). */
@@ -139,6 +142,7 @@ export interface Controls<S extends Schema = Schema> {
   readonly theme: ThemeMode
   readonly density: DensityMode
   readonly renderer: RendererMode
+  readonly keys: PanelKeys | undefined
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -272,42 +276,43 @@ export function defineControls<const S extends Schema>(
       ]),
     ) as Readonly<Record<string, Values<S>>>
   let presets = buildPresets()
-  const buildGroupPresets = () => Object.freeze(
-    Object.fromEntries(
-      Object.entries(options.groupPresets ?? {}).map(([group, list]) => {
-        const named = list.flatMap((p) =>
-          Object.keys(p.values).filter((k) => Object.hasOwn(schema, k)),
-        )
-        const covered = new Set(
-          (named.length
-            ? named
-            : Object.keys(schema).filter((k) => schema[k]!.group === group)
-          ).filter((k) => schema[k]!.kind !== "action"),
-        )
-        return [
-          group,
-          Object.freeze(
-            list.map((p) =>
-              Object.freeze({
-                name: p.name,
-                values: Object.freeze(
-                  Object.fromEntries(
-                    [...covered].map((k) => [
-                      k,
-                      normalizeField(
-                        schema[k] as ValueField,
-                        (p.values as Record<string, unknown>)[k] ?? locked[k],
-                      ),
-                    ]),
-                  ),
-                ) as Partial<Values<S>>,
-              }),
+  const buildGroupPresets = () =>
+    Object.freeze(
+      Object.fromEntries(
+        Object.entries(options.groupPresets ?? {}).map(([group, list]) => {
+          const named = list.flatMap((p) =>
+            Object.keys(p.values).filter((k) => Object.hasOwn(schema, k)),
+          )
+          const covered = new Set(
+            (named.length
+              ? named
+              : Object.keys(schema).filter((k) => schema[k]!.group === group)
+            ).filter((k) => schema[k]!.kind !== "action"),
+          )
+          return [
+            group,
+            Object.freeze(
+              list.map((p) =>
+                Object.freeze({
+                  name: p.name,
+                  values: Object.freeze(
+                    Object.fromEntries(
+                      [...covered].map((k) => [
+                        k,
+                        normalizeField(
+                          schema[k] as ValueField,
+                          (p.values as Record<string, unknown>)[k] ?? locked[k],
+                        ),
+                      ]),
+                    ),
+                  ) as Partial<Values<S>>,
+                }),
+              ),
             ),
-          ),
-        ]
-      }),
-    ),
-  ) as Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
+          ]
+        }),
+      ),
+    ) as Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   let groupPresets = buildGroupPresets()
   /** The committed values, read from storage on first use. */
   function load() {
@@ -572,6 +577,7 @@ export function defineControls<const S extends Schema>(
     theme,
     density,
     renderer,
+    keys: options.keys,
     get,
     set,
     sync,

@@ -38,6 +38,8 @@ const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 /** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
 const MAX_MASKS = 16
+/** An `ease` omega this high places the value at once (a 0 ms token). */
+const SNAP_OMEGA = 1e4
 type Clip = readonly [number, number, number, number]
 
 /** When a row's motion starts (performance.now() ms), so a preset cascade reaches it in turn. */
@@ -160,7 +162,31 @@ export interface GpuEasingRow {
   readonly wave: RowWave
   isModified(): boolean
 }
+/** A button row (an action). */
+export interface GpuActionRow {
+  readonly kind: "action"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly button: HTMLButtonElement
+  readonly wave: RowWave
+  isModified(): boolean
+}
+/** A long choice: a compact button showing the current option, dropping down a menu. */
+export interface GpuSelectRow {
+  readonly kind: "select"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly labelEl: HTMLElement
+  readonly button: HTMLButtonElement
+  readonly valueEl: HTMLElement
+  readonly wave: RowWave
+  isModified(): boolean
+}
 export type GpuRowBinding =
+  | GpuActionRow
+  | GpuSelectRow
   | GpuKnobRow
   | GpuChoiceRow
   | GpuToggleRow
@@ -208,6 +234,10 @@ export interface GpuPanelBinding {
   isPopoverOpen(): boolean
   /** While the panel grows out of (or into) its chip: the shape at a frame time. */
   readonly morph?: (now: number) => MorphFrame | undefined
+  /** True while rows, cards or group heads arrive or leave (a descriptor swap). */
+  presence?(): boolean
+  /** True while a different item lands: everything snaps instead of springing. */
+  landing?(): boolean
   /** A full page (see `mountPage`): no panel card; a sticky header the body scrolls under. */
   readonly page?: {
     /** Group cards the overlay draws (custom cards stay in the DOM). */
@@ -920,6 +950,10 @@ class GpuOverlayManager {
       slots.set(slot, sp)
     }
     target ??= sp.target
+    if (omega >= SNAP_OMEGA) {
+      sp.snap(target)
+      return sp.x
+    }
     sp.omega = omega
     sp.zeta = zeta
     sp.eps = eps
@@ -1010,9 +1044,21 @@ class GpuOverlayManager {
     )
   }
 
+  /** How far an arriving or leaving node has revealed (its opacity while the reveal runs). */
+  private presence(el: HTMLElement) {
+    if (el.dataset.presence === undefined) return 1
+    return Number(getComputedStyle(el).opacity) || 0
+  }
+
   /** A control's hover/press wash, faded in and out over the DOM's 0.15 s. */
   private wash(el: object, on: boolean) {
-    return this.ease(el, "wash", on ? 1 : 0, 30)
+    return this.ease(el, "wash", on ? 1 : 0, this.hoverOmega(on))
+  }
+
+  /** A spring as quick as the hover tokens: --k-hover-in on the way in, --k-hover-out out. */
+  private hoverOmega(on: boolean) {
+    const ms = on ? this.curTokens.hoverIn : this.curTokens.hoverOut
+    return ms <= 1 ? SNAP_OMEGA : 4500 / ms
   }
 
   private drawRowLabel(
@@ -1126,6 +1172,7 @@ class GpuOverlayManager {
   /** Square inside its card, except the card's own rounded corners on the first and last rows. */
   private rowCorners(row: HTMLElement, open = false): [number, number, number, number] {
     const r = this.curTokens.radius
+    if (this.curTokens.rowGap > 0) return open ? [r, r, 0, 0] : [r, r, r, r]
     // A spring's sliders sit inside its row, beside the curve: only their left corners can round.
     const item = row.parentElement?.classList.contains("knobs-card")
       ? row
@@ -1139,7 +1186,8 @@ class GpuOverlayManager {
 
   /** A row's hover wash, drawn beneath its control like the DOM row background. */
   private drawRowHover(row: HTMLElement, rRect: DOMRect, hot: boolean, stretchX = 0) {
-    const hover = this.ease(row, "hover", hot ? 1 : 0) * (1 - this.curSelected)
+    const hover =
+      this.ease(row, "hover", hot ? 1 : 0, this.hoverOmega(hot)) * (1 - this.curSelected)
     if (hover < 0.005) return
     this.pushPrim({
       x: rRect.left,
@@ -1161,6 +1209,7 @@ class GpuOverlayManager {
 
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     const t = this.curTokens
+    if (t.rowGap > 0) return
     // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
     const prev = shownSibling(row, -1)
     const joined =
@@ -1532,13 +1581,14 @@ class GpuOverlayManager {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
     const box = this.rectOf(row.box)
+    const bar = t.rowGap > 0
     this.pushPrim({
       x: box.left,
       y: box.top,
       w: box.width,
       h: box.height,
-      color: withAlpha(t.segBg, rowAlpha),
-      radius: t.radiusSm,
+      color: withAlpha(bar ? t.surface : t.segBg, rowAlpha),
+      radius: bar ? t.radius : t.radiusSm,
       kind: 1,
     })
     const clip = intersectClip(cardClip, [box.left, box.top, box.right, box.bottom])
@@ -1880,7 +1930,8 @@ class GpuOverlayManager {
     return cell
   }
 
-  private buildScene(dt: number, scale: number, reducedMotion: boolean): boolean {
+  private buildScene(dt: number, scale: number, reducedGlobal: boolean): boolean {
+    let reducedMotion = reducedGlobal
     this.primCount = 0
     this.pointCount = 0
     this.maskCount = 0
@@ -1924,6 +1975,9 @@ class GpuOverlayManager {
         continue
       }
 
+      reducedMotion = reducedGlobal || (panel.landing?.() ?? false)
+      const presenceRunning = panel.presence?.() ?? false
+      if (presenceRunning) anyMoving = true
       const rawTokens = readPanelTokens(panel.root, this.styleVersion)
       const pageB = panel.page
       this.curPanelRect = pRect
@@ -1945,7 +1999,7 @@ class GpuOverlayManager {
       const panelRevealing = revealing && isRevealingIn(panel.root)
       const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
       this.curBypassRectCache =
-        opening || leaving || (panelRevealing && !bodyRevealing) || layoutGliding
+        opening || leaving || (panelRevealing && !bodyRevealing) || layoutGliding || presenceRunning
 
       const tokens = rawTokens
       this.curTokens = tokens
@@ -2251,7 +2305,9 @@ class GpuOverlayManager {
       if (bodyRevealing) this.curBypassRectCache = true
       const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
       this.curSubHovered = bodyHovered
+      const panelAlpha = this.curAlpha
       for (const g of panel.groups) {
+        this.curAlpha = panelAlpha * this.presence(g.element)
         const gr = this.rectOf(g.element)
         if (gr.width <= 0 || gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
         const lr = this.rectOf(g.labelEl)
@@ -2328,7 +2384,7 @@ class GpuOverlayManager {
           )
         }
         // The group's die: quiet (dim) until hovered or focused.
-        if (g.die) {
+        if (g.die && !g.die.button.hidden) {
           const { button, die } = g.die
           const dr = this.rectOf(button)
           const on = !button.disabled && (this.isHovered(button) || this.isFocused(button))
@@ -2352,25 +2408,43 @@ class GpuOverlayManager {
         }
       }
 
-      // 5. Grouped cards, then their rows
+      this.curAlpha = panelAlpha
+      // 5. Grouped cards, then their rows. With --k-row-gap each row is its own bar instead.
+      const separate = tokens.rowGap > 0
       const cardRects = new Map<HTMLElement, DOMRect>()
       for (const card of panel.cards) {
         const cr = this.rectOf(card)
         cardRects.set(card, cr)
         if (cr.width <= 0 || cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
-        this.pushPrim({
-          x: cr.left,
-          y: cr.top,
-          w: cr.width,
-          h: cr.height,
-          color: tokens.surface,
-          radius: tokens.radius,
-          kind: 1,
-        })
+        this.curAlpha = panelAlpha * this.presence(card)
+        const bars = separate
+          ? [...(card.children as HTMLCollectionOf<HTMLElement>)].flatMap((c) =>
+              c.classList.contains("knobs-spring")
+                ? [...c.querySelectorAll<HTMLElement>(".knobs-sub")]
+                : [c],
+            )
+          : [card]
+        for (const bar of bars) {
+          if (bar.hidden) continue
+          const br = bar === card ? cr : this.rectOf(bar)
+          if (br.height < 0.5) continue
+          const a = bar === card ? 1 : this.presence(bar)
+          this.pushPrim({
+            x: br.left,
+            y: br.top,
+            w: br.width,
+            h: br.height,
+            color: withAlpha(tokens.surface, a),
+            radius: tokens.radius,
+            kind: 1,
+          })
+        }
       }
+      this.curAlpha = panelAlpha
       const washed = new Set<HTMLElement>()
       for (const row of panel.rows) {
         this.curSubHovered = bodyHovered
+        this.curAlpha = panelAlpha
         const rRect = this.rectOf(row.row)
         if (rRect.width <= 0 || rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
         const rowAlpha = this.missed(row.row, hinting)
@@ -2391,13 +2465,22 @@ class GpuOverlayManager {
         }
         const parentEl = row.row.parentElement!
         const card = cardRects.get(parentEl) ?? this.rectOf(parentEl)
-        const cardClip = intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom])
-        this.curClip = cardClip
         // The selection wash covers the whole item (a spring's sliders and curve, an open
         // editor), once, beneath everything the item draws, like its DOM background.
         const item = parentEl.classList.contains("knobs-card")
           ? row.row
           : row.row.closest<HTMLElement>(".knobs-card > *")
+        let cardClip = intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom])
+        // Arriving or leaving: fade with the DOM's reveal, clipped to the folding height.
+        if (item) {
+          const shown = this.presence(item) * this.presence(item.parentElement!)
+          if (shown < 1) {
+            this.curAlpha = panelAlpha * shown
+            const ir = item === row.row ? rRect : this.rectOf(item)
+            cardClip = intersectClip(cardClip, [ir.left, ir.top, ir.right, ir.bottom])
+          }
+        }
+        this.curClip = cardClip
         this.curSelected = 0
         if (item && !washed.has(item)) {
           washed.add(item)
@@ -2672,6 +2755,61 @@ class GpuOverlayManager {
             )
           }
           this.drawRowOverlay(row.row, rRect, cardClip)
+        } else if (row.kind === "action") {
+          const b = row.button
+          const on = hovered || this.isFocused(b)
+          this.drawRowHover(row.row, rRect, hovered)
+          const br = this.rectOf(b)
+          this.drawText(
+            b.textContent ?? "",
+            br.left + tokens.inset,
+            rowCenterY,
+            withAlpha(this.hot(b, on, tokens.text, tokens.accent), rowAlpha),
+            { px: tokens.textControl + 0.5, weight: tokens.labelWeight, clip: cardClip },
+          )
+          this.drawRowOverlay(row.row, rRect, cardClip)
+        } else if (row.kind === "select") {
+          this.drawRowHover(row.row, rRect, hovered)
+          this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
+          const b = row.button
+          const br = this.rectOf(b)
+          const open = b.getAttribute("aria-expanded") === "true"
+          const on = this.isHovered(b) || this.isFocused(b) || open
+          const wash = this.wash(b, on)
+          this.pushPrim({
+            x: br.left,
+            y: br.top,
+            w: br.width,
+            h: br.height,
+            color: withAlpha(cssMix(tokens.surfaceHi, tokens.segBg, wash), rowAlpha),
+            color2: tokens.accent,
+            radius: tokens.radiusMd,
+            glowOrBlur: tokens.glowStrength * 8,
+            kind: 1,
+          })
+          const vr = this.rectOf(row.valueEl)
+          this.drawText(
+            this.fit(
+              row.valueEl.textContent ?? "",
+              vr.width + 1,
+              tokens.textControl,
+              tokens.labelWeight,
+            ),
+            vr.left,
+            rowCenterY,
+            withAlpha(this.hot(b, on), rowAlpha),
+            { px: tokens.textControl, weight: tokens.labelWeight, clip: cardClip },
+          )
+          const caret = b.querySelector("svg")
+          if (caret)
+            this.drawIcon(
+              "caret",
+              tokens.iconSm - 2,
+              this.rectOf(caret),
+              withAlpha(this.hot(b, on, tokens.dim, tokens.label), rowAlpha),
+              cardClip,
+            )
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "spring") {
           this.drawSpring(row, rRect, cardClip, rowAlpha, clock)
         } else if (row.kind === "color") {
@@ -2725,6 +2863,7 @@ class GpuOverlayManager {
       }
       this.curClip = bodyClip
       this.curSelected = 0
+      this.curAlpha = panelAlpha
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered

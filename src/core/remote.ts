@@ -28,6 +28,7 @@ import {
   type GroupPreset,
   type Controls,
   type DensityMode,
+  type PanelKeys,
   type RendererMode,
   type SyncOptions,
   type ThemeMode,
@@ -110,6 +111,8 @@ export interface RemoteControlsOptions {
   readonly theme?: ThemeMode
   readonly density?: DensityMode
   readonly renderer?: RendererMode
+  /** Default key bindings for its panels (see `MountPanelOptions.keys`). */
+  readonly keys?: PanelKeys
   readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
   /** A key, a group, or (`{}`) everything was reset. */
   readonly onReset?: (target: { key?: string; group?: string }) => void
@@ -134,7 +137,11 @@ export interface RemoteControls extends Controls<Schema> {
    * the previous set. `land: true` (a different item arrived) also places every value at once,
    * without springing or rolling.
    */
-  update(descriptors: readonly ControlDescriptor[], values?: State, options?: { land?: boolean }): void
+  update(
+    descriptors: readonly ControlDescriptor[],
+    values?: State,
+    options?: { land?: boolean },
+  ): void
   swift(group?: string): string
 }
 
@@ -335,6 +342,7 @@ export function createRemoteControls(
     theme: options.theme,
     density: options.density,
     renderer: options.renderer,
+    keys: options.keys,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return

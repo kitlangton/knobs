@@ -111,6 +111,11 @@ export interface PanelThemeTokens {
   readonly toggleThumb: Rgba
   readonly rim: Rgba
   readonly rowHover: Rgba
+  /** Space between rows (px); above 0 each row is its own bar rather than part of one card. */
+  readonly rowGap: number
+  /** Hover wash in and out (ms). */
+  readonly hoverIn: number
+  readonly hoverOut: number
   readonly pillBg: Rgba
   readonly pillBorder: Rgba
   readonly fillRest: Rgba
@@ -250,6 +255,9 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     toggleThumb,
     rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
     rowHover: withAlpha(surface, 0.5),
+    rowGap: numProp(style, "row-gap", 0),
+    hoverIn: numProp(style, "hover-in", 150),
+    hoverOut: numProp(style, "hover-out", 150),
     pillBg: cssMix(accent, segActive, 0.18),
     pillBorder: withAlpha(accent, 0.32),
     fillRest: cssMix(accent, surfaceHi, 0.2),
