@@ -1259,3 +1259,57 @@ td:first-child {
     grid-template-columns: 1fr;
   }
 }
+
+/* Full page: the page sits in the flow, its sticky header under the site's top bar. */
+.page-demo {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  overflow: clip;
+}
+.page-demo .knobs-panel.knobs-page {
+  min-height: 0;
+}
+.page-demo .knobs-panel.knobs-page > header {
+  top: var(--top);
+}
+
+/* Embedding: the app's own item switcher beside a chromeless, preset-styled panel. */
+.embed-stage {
+  min-height: 300px;
+}
+.embed-items {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+.embed-items button {
+  border: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.embed-items button:hover,
+.embed-items button:focus-visible {
+  background: var(--wash);
+}
+.embed-items button[aria-selected="true"] {
+  background: var(--wash-strong);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.embed-shape {
+  background: linear-gradient(150deg, var(--accent), color-mix(in oklch, var(--accent) 50%, #000));
+  transition-property: width, height, border-radius, transform;
+}
+.embed-panel {
+  padding: 8px 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+}

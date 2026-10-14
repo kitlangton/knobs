@@ -16,7 +16,7 @@ const keys: [string, string][] = [
   ["u  ⇧u", "Undo or redo"],
   ["⇧C", "Copy the values as code"],
   ["⌥ drag", "Fine adjust"],
-  ["swipe", "Next preset or option"],
+  ["pan", "Two fingers move a slider or pill"],
   ["⇧ click", "Select rows"],
 ]
 

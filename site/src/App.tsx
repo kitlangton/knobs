@@ -26,6 +26,8 @@ const RandomDemo = lazyExample(() => panel().then((m) => ({ default: m.RandomDem
 const ReactingDemo = lazyExample(() => import("./live/Reacting"), 300)
 const ThemingDemo = lazyExample(() => import("./live/Theming"), 560)
 const RemoteDemo = lazyExample(() => import("./live/Remote"), 560)
+const FullPageDemo = lazyExample(() => import("./live/FullPage"), 820)
+const EmbedDemo = lazyExample(() => import("./live/Embed"), 480)
 const AdaptersDemo = lazyExample(() => import("./live/Adapters"), 480)
 const ProductionDemo = lazyExample(() => import("./live/Production"), 240)
 
@@ -201,7 +203,10 @@ export function App() {
         </Section>
 
         <Section title="choice">
-          <p>One of a list of strings, typed as their union.</p>
+          <p>
+            One of a list of strings, typed as their union. Choices are segments while their labels
+            fit, and a compact menu when they don't or there are more than four.
+          </p>
           <Code>{`align: choice("center", ["start", "center", "end"])`}</Code>
           <ChoiceDemo />
         </Section>
@@ -293,6 +298,36 @@ export function App() {
           <RemoteDemo />
         </Section>
 
+        <Section title="Full page">
+          <p>
+            <C>mountPage</C> lays a big set of controls out as a page: each section is a column of
+            cards, with numbered presets per card (press <kbd>1</kbd>–<kbd>3</kbd> on a focused
+            card) and a live filter on <kbd>/</kbd>. The full demo is the{" "}
+            <a href="/examples/tune.html">iPhone Tune page</a>.
+          </p>
+          <Code>{`mountPage(deck, el, { title: "Card deck", sections: ["Layout", "Motion", "Colour"] })`}</Code>
+          <FullPageDemo />
+        </Section>
+
+        <Section title="Embedding in an app">
+          <p>
+            A panel can be part of the product. The app owns the values and the panel reports edits:{" "}
+            <C>ship</C> keeps it live in production, <C>keys</C> and <C>marks</C> fit it to the
+            host, <C>{"remote.update(…, { land: true })"}</C> swaps its rows when the app switches
+            items, and token presets like <C>problemsPreset</C> restyle it. See the{" "}
+            <a href="/examples/problems.html">Problems viewer demo</a>.
+          </p>
+          <Code>{`
+            const params = createRemoteControls("parameters", descriptors, {
+              ship: () => import("knobs/panel"),
+              keys: { random: false, undo: false, vim: false, bigStep: 5 },
+              onSet: (key, value) => save(key, value),
+            })
+            params.update(otherDescriptors, otherValues, { land: true })
+          `}</Code>
+          <EmbedDemo />
+        </Section>
+
         <Section title="Adapters">
           <p>The same store works in React, Solid and plain DOM.</p>
           <AdaptersDemo />
@@ -301,7 +336,7 @@ export function App() {
         <Section title="Production builds">
           <p>
             Production bundles get a locked build of knobs: values are your defaults and no panel
-            code ships. The switch shows the same store turned off.
+            code ships, except for stores you <C>ship</C>. The switch shows a store turned off.
           </p>
           <ProductionDemo />
         </Section>
@@ -322,6 +357,18 @@ export function App() {
               </a>
             </li>
             <li>
+              <a href="/examples/tune.html">
+                <strong>iPhone Tune</strong>
+                <span>A full page of cards driving a simulated phone.</span>
+              </a>
+            </li>
+            <li>
+              <a href="/examples/problems.html">
+                <strong>Problems</strong>
+                <span>Panels embedded in an app that owns their values.</span>
+              </a>
+            </li>
+            <li>
               <a href="/examples/die.html">
                 <strong>Die</strong>
                 <span>The Random die in the DOM and WebGPU renderers.</span>
@@ -329,7 +376,7 @@ export function App() {
             </li>
           </ul>
           <p className="footnote">
-            A full-page mode is in progress. Add <C>?gpu</C> to any page for the WebGPU renderer.{" "}
+            Add <C>?gpu</C> to any page for the WebGPU renderer.{" "}
             <a href="https://github.com/kitlangton/knobs">Source on GitHub</a>.
           </p>
         </footer>
