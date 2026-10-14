@@ -24,6 +24,7 @@ struct View {
 @group(0) @binding(1) var<uniform> view: View;
 @group(0) @binding(2) var labels: texture_2d<f32>;
 @group(0) @binding(3) var smp: sampler;
+@group(0) @binding(4) var<storage, read> pts: array<vec2f>;
 
 struct Out {
   @builtin(position) pos: vec4f,
@@ -49,7 +50,7 @@ struct Out {
   }
 
   // Shadows and the pill/switch glows reach ~14px past their shapes.
-  let wide = p.look.w == 0.0 || p.look.w == 3.0 || p.look.w == 4.0;
+  let wide = p.look.w == 0.0 || p.look.w == 3.0 || p.look.w == 4.0 || p.look.w == 10.0;
   let padGlow = select(p.look.z * 1.6, p.look.z * 2.2 + 8.0, wide);
   let pad = vec2f(padGlow + 2.0) + abs(p.motion.xy) * 0.65;
   let screenPx = (r.xy - pad) + c * (r.zw + pad * 2.0);
@@ -385,6 +386,116 @@ fn shadeDot(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   return vec4f(p.color.rgb * a, a);
 }
 
+// kind 8: Polyline stroke through pts[extra.x .. extra.x + extra.y] (viewport px), look.y wide.
+fn shadeLine(p: Prim, screen: vec2f) -> vec4f {
+  let start = u32(p.extra.x);
+  let count = u32(p.extra.y);
+  var d = 1e5;
+  for (var i = 1u; i < count; i++) {
+    let a = pts[start + i - 1u];
+    let b = pts[start + i];
+    let ab = b - a;
+    let t = clamp(dot(screen - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    d = min(d, length(screen - a - ab * t));
+  }
+  let a = covSd(d - p.look.y * 0.5) * p.color.a;
+  return vec4f(p.color.rgb * a, a);
+}
+
+// OKLCH → gamma sRGB, with chroma trimmed until the colour fits (as core/color.ts does).
+fn oklchLinear(l: f32, c: f32, h: f32) -> vec3f {
+  let a = c * cos(radians(h));
+  let b = c * sin(radians(h));
+  let l1 = l + 0.3963377774 * a + 0.2158037573 * b;
+  let m1 = l - 0.1055613458 * a - 0.0638541728 * b;
+  let s1 = l - 0.0894841775 * a - 1.291485548 * b;
+  let L = l1 * l1 * l1;
+  let M = m1 * m1 * m1;
+  let S = s1 * s1 * s1;
+  return vec3f(
+    4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S,
+    -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S,
+    -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S
+  );
+}
+fn fits(rgb: vec3f) -> bool {
+  return all(rgb >= vec3f(-1e-4)) && all(rgb <= vec3f(1.0 + 1e-4));
+}
+fn maxChroma(l: f32, h: f32) -> f32 {
+  if (l <= 0.0 || l >= 1.0) { return 0.0; }
+  var lo = 0.0;
+  var hi = 0.37;
+  if (fits(oklchLinear(l, hi, h))) { return hi; }
+  for (var i = 0; i < 18; i++) {
+    let mid = (lo + hi) * 0.5;
+    if (fits(oklchLinear(l, mid, h))) { lo = mid; } else { hi = mid; }
+  }
+  return lo;
+}
+fn encode(c: f32) -> f32 {
+  let v = clamp(c, 0.0, 1.0);
+  return select(1.055 * pow(v, 1.0 / 2.4) - 0.055, 12.92 * v, v <= 0.0031308);
+}
+fn oklchRgb(l: f32, c: f32, h: f32) -> vec3f {
+  let rgb = oklchLinear(l, min(c, maxChroma(l, h)), h);
+  return vec3f(encode(rgb.x), encode(rgb.y), encode(rgb.z));
+}
+fn stripColor(p: Prim, r: f32) -> vec3f {
+  let mode = i32(p.extra.x + 0.5);
+  if (mode == 0) { return oklchRgb(p.aux.x, p.aux.y, r * 360.0); }
+  if (mode == 1) { return oklchRgb(p.aux.x, r * 0.37, p.aux.z); }
+  return oklchRgb(r, p.aux.y, p.aux.z);
+}
+
+// kind 9: OKLCH strip. Like the DOM's gradient: 25 stops, a radius (extra.y) in from each end,
+// blended in sRGB; past where sRGB runs out (aux.w) the bg (aux2) veils it. color2 rims it.
+fn shadeStrip(p: Prim, local: vec2f, size: vec2f) -> vec4f {
+  let dist = roundedBox(local, size, size.y * 0.5);
+  let cov = covSd(dist);
+  if (cov <= 0.0) { return vec4f(0.0); }
+  let r = clamp((local.x - p.extra.y) / max(1.0, size.x - p.extra.y * 2.0), 0.0, 1.0);
+  let f = r * 24.0;
+  let i = min(floor(f), 23.0);
+  var rgb = mix(stripColor(p, i / 24.0), stripColor(p, (i + 1.0) / 24.0), f - i);
+  let veilX = p.extra.y + (size.x - p.extra.y * 2.0) * p.aux.w;
+  if (p.aux.w < 1.0) {
+    let veil = clamp(0.5 + (local.x - veilX) * view.dpr, 0.0, 1.0) * p.aux2.a;
+    rgb = mix(rgb, p.aux2.rgb, veil);
+  }
+  var out = vec4f(rgb * p.color.a, p.color.a) * cov;
+  out = over(out, premul(p.color2) * hairline(dist, 1.0));
+  return out;
+}
+
+// kind 10: Plain shape (swatch, thumb, puck, handle): drop shadow, glow, an outer ring
+// (look.y > 0) or inner ring (look.y < 0) in color2, fill in color. extra = shadow a, blur, dy.
+fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
+  let r = p.look.x;
+  let d = roundedBox(local, size, r);
+  let ring = p.look.y;
+  var out = vec4f(0.0);
+  let grown = d - max(ring, 0.0);
+  if (p.extra.x > 0.0) {
+    let sd = roundedBox(local - vec2f(0.0, p.extra.z), size, r) - max(ring, 0.0);
+    let sigma = max(0.5, p.extra.y * 0.5);
+    let sh = p.extra.x * (1.0 - smoothstep(-sigma * 1.5, sigma * 2.0, sd));
+    out = vec4f(0.0, 0.0, 0.0, sh * (1.0 - covSd(grown)));
+  }
+  // Like box-shadow's blur around a small shape: a faint gaussian (σ = blur / 2).
+  if (p.look.z > 0.01 && grown > 0.0) {
+    let k = grown / (p.look.z * 0.5);
+    let glow = 0.3 * exp(-0.5 * k * k) * p.aux2.a;
+    out = over(out, vec4f(p.aux2.rgb * glow, glow));
+  }
+  if (ring > 0.0) { out = over(out, premul(p.color2) * covSd(grown)); }
+  out = over(out, premul(p.color) * covSd(d));
+  if (ring < 0.0) {
+    let band = clamp(0.5 - (abs(d - ring * 0.5) + ring * 0.5) * view.dpr, 0.0, 1.0);
+    out = over(out, premul(p.color2) * band);
+  }
+  return out;
+}
+
 @fragment fn fs_main(in: Out) -> @location(0) vec4f {
   let p = prims[in.id];
   let clipDist = min(
@@ -413,6 +524,9 @@ fn shadeDot(p: Prim, local: vec2f, size: vec2f) -> vec4f {
         out = out * smoothstep(0.0, p.extra.x, edge);
       }
     }
+    case 8: { out = shadeLine(p, in.screenPx); }
+    case 9: { out = shadeStrip(p, local, size); }
+    case 10: { out = shadeShape(p, local, size); }
     default: { out = shadeDot(p, local, size); }
   }
   return out * clipCov;

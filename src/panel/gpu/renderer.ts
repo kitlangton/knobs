@@ -1,9 +1,12 @@
+import { oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
 import { ICONS, type IconName } from "../icons.js"
 import {
   clamp,
   Edges,
   entranceOffset,
+  FILL,
+  LEAD,
   numeral,
   POP_MS,
   popScale,
@@ -24,6 +27,7 @@ import {
 import { FLOATS_PER_PRIM, panelWgsl } from "./shader.wgsl.js"
 
 const MAX_PRIMS = 4096
+const MAX_POINTS = 16384
 type Clip = readonly [number, number, number, number]
 
 /** When a row's motion starts (performance.now() ms), so a preset cascade reaches it in turn. */
@@ -64,7 +68,96 @@ export interface GpuToggleRow {
   readonly wave: RowWave
   isModified(): boolean
 }
-export type GpuRowBinding = GpuKnobRow | GpuChoiceRow | GpuToggleRow
+/** Geometry getters return element-relative px, the same numbers the DOM draws with. */
+export interface GpuSpringRow {
+  readonly kind: "spring"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly box: HTMLElement
+  curve(): readonly number[]
+  guides(): readonly number[]
+  /** The running dot: start time, the x,y frames it visits evenly over `ms`. */
+  dot(): { at: number; frames: readonly number[]; ms: number } | null
+  snap(): boolean
+  readonly wave: RowWave
+  isModified(): boolean
+}
+export interface GpuExpander {
+  readonly head: HTMLElement
+  readonly label: HTMLElement
+  readonly caret: SVGElement
+  readonly body: HTMLElement
+  isOpen(): boolean
+}
+export interface GpuStrip {
+  readonly line: HTMLElement
+  readonly label: HTMLElement
+  readonly track: HTMLElement
+  readonly read: HTMLElement
+  /** 0 hue, 1 chroma, 2 lightness. */
+  mode: number
+  thumbX(): number
+  /** Where sRGB runs out along a chroma strip (0…1; 1 when it doesn't). */
+  veil(): number
+  dragging(): boolean
+}
+export interface GpuColorRow {
+  readonly kind: "color"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly x: GpuExpander
+  readonly swatch: HTMLElement
+  readonly read: HTMLElement
+  readonly strips: readonly GpuStrip[]
+  color(): { l: number; c: number; h: number }
+  readonly wave: RowWave
+  isModified(): boolean
+}
+export interface GpuPointRow {
+  readonly kind: "point"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly x: GpuExpander
+  readonly read: HTMLElement
+  readonly pad: HTMLElement
+  puck(): readonly [number, number]
+  home(): readonly [number, number]
+  dragging(): boolean
+  readonly wave: RowWave
+  isModified(): boolean
+}
+export interface GpuEasingRow {
+  readonly kind: "easing"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly x: GpuExpander
+  readonly read: HTMLElement
+  readonly mini: SVGElement
+  miniCurve(): readonly number[]
+  readonly box: HTMLElement
+  curve(): readonly number[]
+  /** P0, P1, P3, P2: the two arms from the ends to their handles. */
+  arms(): readonly number[]
+  /** (0,0) and (1,1) in the box. */
+  guides(): readonly number[]
+  readonly handles: readonly HTMLElement[]
+  readonly chips: readonly HTMLButtonElement[]
+  snap(): boolean
+  readonly wave: RowWave
+  isModified(): boolean
+}
+export type GpuRowBinding =
+  | GpuKnobRow
+  | GpuChoiceRow
+  | GpuToggleRow
+  | GpuSpringRow
+  | GpuColorRow
+  | GpuPointRow
+  | GpuEasingRow
 
 export interface GpuGroupBinding {
   readonly element: HTMLElement
@@ -143,6 +236,9 @@ function getEffectiveClipRect(el: HTMLElement, win: Window): [number, number, nu
   return [minX, minY, Math.max(minX, maxX), Math.max(minY, maxY)]
 }
 
+/** Element-relative x,y pairs moved onto the viewport. */
+const at = (pts: readonly number[], r: DOMRect) => pts.map((v, i) => v + (i % 2 ? r.top : r.left))
+
 const intersectClip = (a: Clip, b: Clip): [number, number, number, number] => {
   const x0 = Math.max(a[0], b[0]),
     y0 = Math.max(a[1], b[1])
@@ -183,6 +279,17 @@ class GpuOverlayManager {
   private readonly prevData = new Float32Array(MAX_PRIMS * FLOATS_PER_PRIM)
   private primCount = 0
   private prevPrimCount = -1
+  /** Polyline vertices (viewport px) that line primitives index into. */
+  private readonly points = new Float32Array(MAX_POINTS * 2)
+  private readonly prevPoints = new Float32Array(MAX_POINTS * 2)
+  private pointCount = 0
+  private prevPointCount = -1
+  private pointBuffer: any = null
+  /** Point lists easing from where they were toward new targets, like the DOM's `d` and transform transitions. */
+  private readonly morphs = new WeakMap<
+    object,
+    { from: number[]; to: number[]; shown: number[]; p: Spring; w: number; h: number }
+  >()
   private prevCanvasW = 0
   private prevCanvasH = 0
 
@@ -397,6 +504,7 @@ class GpuOverlayManager {
           { binding: 1, visibility: 1 | 2, buffer: { type: "uniform" } },
           { binding: 2, visibility: 2, texture: { sampleType: "float" } },
           { binding: 3, visibility: 2, sampler: { type: "filtering" } },
+          { binding: 4, visibility: 2, buffer: { type: "read-only-storage" } },
         ],
       })
       this.pipeline = device.createRenderPipeline({
@@ -423,6 +531,7 @@ class GpuOverlayManager {
         usage: 0x80 | 0x08,
       })
       this.viewBuffer = device.createBuffer({ size: 16, usage: 0x40 | 0x08 })
+      this.pointBuffer = device.createBuffer({ size: MAX_POINTS * 8, usage: 0x80 | 0x08 })
       this.labelTexture = device.createTexture({
         size: [ATLAS_SIZE, ATLAS_SIZE],
         format: "rgba8unorm",
@@ -436,6 +545,7 @@ class GpuOverlayManager {
           { binding: 1, resource: { buffer: this.viewBuffer } },
           { binding: 2, resource: this.labelTexture.createView() },
           { binding: 3, resource: sampler },
+          { binding: 4, resource: { buffer: this.pointBuffer } },
         ],
       })
 
@@ -622,16 +732,17 @@ class GpuOverlayManager {
 
   /** Springs a per-object scalar toward `target`; keeps the frame loop awake until it settles. */
   /** Omitting `target` keeps the current one. */
-  private ease(key: object, slot: string, target?: number, omega = 26): number {
+  private ease(key: object, slot: string, target?: number, omega = 26, zeta = 1): number {
     let slots = this.eased.get(key)
     if (!slots) this.eased.set(key, (slots = new Map()))
     let sp = slots.get(slot)
     if (!sp) {
-      sp = new Spring(target ?? 0, omega, 1)
+      sp = new Spring(target ?? 0, omega, zeta)
       slots.set(slot, sp)
     }
     target ??= sp.target
     sp.omega = omega
+    sp.zeta = zeta
     sp.set(target).step(this.curDt)
     if (!sp.resting) this.easeMoving = true
     return sp.x
@@ -760,11 +871,17 @@ class GpuOverlayManager {
   }
 
   /** Square inside its card, except the card's own rounded corners on the first and last rows. */
-  private rowCorners(row: HTMLElement): [number, number, number, number] {
+  private rowCorners(row: HTMLElement, open = false): [number, number, number, number] {
     const r = this.curTokens.radius
-    const first = row.previousElementSibling ? 0 : r
-    const last = row.nextElementSibling ? 0 : r
-    return [first, first, last, last]
+    // A spring's sliders sit inside its row, beside the curve: only their left corners can round.
+    const item = row.parentElement?.classList.contains("knobs-card")
+      ? row
+      : row.closest<HTMLElement>(".knobs-card > *")
+    if (!item) return [0, 0, 0, 0]
+    const inner = item !== row
+    const first = !item.previousElementSibling && !(inner && row.previousElementSibling) ? r : 0
+    const last = !item.nextElementSibling && !(inner && row.nextElementSibling) && !open ? r : 0
+    return inner ? [first, 0, 0, last] : [first, first, last, last]
   }
 
   /** A row's hover wash, drawn beneath its control like the DOM row background. */
@@ -791,6 +908,11 @@ class GpuOverlayManager {
     ring: boolean,
     stretchX = 0,
   ) {
+    this.drawSeparator(row, rRect, cardClip, stretchX)
+    this.drawFocus(row, row.matches(":has(:focus-visible)"), rRect, cardClip, ring, stretchX)
+  }
+
+  private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip, stretchX = 0) {
     const t = this.curTokens
     // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
     const prev = row.previousElementSibling
@@ -806,7 +928,19 @@ class GpuOverlayManager {
         kind: 1,
         stretchX,
       })
-    const focus = this.ease(row, "focus", row.matches(":has(:focus-visible)") ? 1 : 0)
+  }
+
+  /** The focus wash, with a ring for sliders and disclosure heads. */
+  private drawFocus(
+    el: HTMLElement,
+    on: boolean,
+    rRect: DOMRect,
+    cardClip: Clip,
+    ring: boolean,
+    stretchX = 0,
+  ) {
+    const t = this.curTokens
+    const focus = this.ease(el, "focus", on ? 1 : 0)
     if (focus < 0.005) return
     this.pushPrim({
       x: rRect.left,
@@ -849,8 +983,528 @@ class GpuOverlayManager {
     return n > 0 ? `${text.slice(0, n).trimEnd()}…` : ""
   }
 
+  private curReduced = false
+
+  /** A stroke through `pts` (x,y pairs in viewport px), round-capped like SVG's. */
+  private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip) {
+    const n = pts.length >> 1
+    if (n < 2 || this.pointCount + n > MAX_POINTS) return
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (let i = 0; i < pts.length; i += 2) {
+      x0 = Math.min(x0, pts[i]!)
+      x1 = Math.max(x1, pts[i]!)
+      y0 = Math.min(y0, pts[i + 1]!)
+      y1 = Math.max(y1, pts[i + 1]!)
+    }
+    this.points.set(pts, this.pointCount * 2)
+    const pad = width + 1
+    this.pushPrim({
+      x: x0 - pad,
+      y: y0 - pad,
+      w: x1 - x0 + pad * 2,
+      h: y1 - y0 + pad * 2,
+      clip,
+      color,
+      strokeWidth: width,
+      kind: 8,
+      p0: this.pointCount,
+      p1: n,
+    })
+    this.pointCount += n
+  }
+
+  /**
+   * Eases a list of numbers toward `target` on the fill spring, the way the DOM transitions the
+   * same geometry (`d`, `transform`, `left`); snaps on drags, resizes and reduced motion.
+   */
+  private morph(
+    key: object,
+    target: readonly number[],
+    delay: number,
+    snap: boolean,
+    box: DOMRect,
+  ) {
+    let m = this.morphs.get(key)
+    const resized = m && (Math.abs(m.w - box.width) > 0.5 || Math.abs(m.h - box.height) > 0.5)
+    if (!m || snap || resized || this.curReduced || m.to.length !== target.length) {
+      const fresh = [...target]
+      m ??= {
+        from: fresh,
+        to: fresh,
+        shown: fresh,
+        p: new Spring(1, FILL.omega, FILL.zeta),
+        w: 0,
+        h: 0,
+      }
+      m.from = m.to = m.shown = fresh
+      m.p.snap(1)
+      m.w = box.width
+      m.h = box.height
+      this.morphs.set(key, m)
+      return m.shown
+    }
+    if (target.some((v, i) => v !== m.to[i])) {
+      m.from = m.shown
+      m.to = [...target]
+      m.p.snap(0).set(1, delay)
+    }
+    m.p.omega = FILL.omega / clamp(this.curTokens.blurStrength, 0.1, 2)
+    m.p.step(this.curDt)
+    if (!m.p.resting) this.easeMoving = true
+    const k = m.p.x
+    const { from, to } = m
+    m.shown = to.map((v, i) => from[i]! + (v - from[i]!) * k)
+    return m.shown
+  }
+
+  /** A shape with an outer (ring > 0) or inner (ring < 0) ring, drop shadow and glow. */
+  private shape(o: {
+    x: number
+    y: number
+    w: number
+    h: number
+    radius: number
+    fill: Rgba
+    ring?: number
+    ringColor?: Rgba
+    shadow?: readonly [number, number, number]
+    glow?: number
+    glowColor?: Rgba
+    clip?: Clip
+  }) {
+    this.pushPrim({
+      x: o.x,
+      y: o.y,
+      w: o.w,
+      h: o.h,
+      clip: o.clip,
+      color: o.fill,
+      color2: o.ringColor ?? [0, 0, 0, 0],
+      radius: o.radius,
+      strokeWidth: o.ring ?? 0,
+      glowOrBlur: o.glow ?? 0,
+      kind: 10,
+      p0: (o.shadow?.[0] ?? 0) * this.curAlpha,
+      p1: o.shadow?.[1] ?? 0,
+      p2: o.shadow?.[2] ?? 0,
+      aux2: o.glowColor,
+    })
+  }
+
+  /** An outline like CSS `outline: 1.5px` at `offset`, following `radius`; drawn while focus-visible. */
+  private focusRing(el: Element, r: DOMRect, offset: number, radius: number, clip?: Clip) {
+    if (!el.matches(":focus-visible")) return
+    const o = offset + 1.5
+    this.pushPrim({
+      x: r.left - o,
+      y: r.top - o,
+      w: r.width + o * 2,
+      h: r.height + o * 2,
+      clip,
+      color: [0, 0, 0, 0],
+      color2: this.curTokens.accent,
+      radius: Math.max(0, radius + o),
+      glowOrBlur: this.curTokens.glowStrength * 8,
+      kind: 1,
+      p1: 1,
+    })
+  }
+
+  private readout(el: HTMLElement, centerY: number, color: Rgba, clip?: Clip) {
+    const r = el.getBoundingClientRect()
+    this.drawText(el.textContent ?? "", r.right, centerY, color, {
+      px: this.curTokens.fontSize - 0.5,
+      weight: 400,
+      align: "right",
+      clip,
+    })
+  }
+
+  /** A disclosure head (hover, label and changed dot, caret, focus); returns the body's clip, if open. */
+  private drawHead(
+    item: HTMLElement,
+    x: GpuExpander,
+    display: string,
+    modified: boolean,
+    cardClip: Clip,
+    rowAlpha: number,
+  ): Clip | undefined {
+    const t = this.curTokens
+    const hRect = x.head.getBoundingClientRect()
+    const centerY = hRect.top + hRect.height / 2
+    const hot = x.head.matches(":hover")
+    const hover = this.ease(x.head, "hover", hot ? 1 : 0)
+    if (hover > 0.005)
+      this.pushPrim({
+        x: hRect.left,
+        y: hRect.top,
+        w: hRect.width,
+        h: hRect.height,
+        color: withAlpha(t.surface, 0.5 * hover),
+        corners: this.rowCorners(item, x.isOpen()),
+        kind: 1,
+      })
+    this.drawRowLabel(x.label, display, modified, centerY, rowAlpha)
+    const cRect = x.caret.getBoundingClientRect()
+    const turn =
+      (this.ease(x.caret, "turn", x.isOpen() ? 1 : 0, LEAD.omega, LEAD.zeta) * Math.PI) / 2
+    const cx = cRect.left + cRect.width / 2
+    const cy = cRect.top + cRect.height / 2
+    const cos = Math.cos(turn)
+    const sin = Math.sin(turn)
+    const chevron = [-1.25, -2.75, 1.5, 0, -1.25, 2.75]
+    const pts: number[] = []
+    for (let i = 0; i < 6; i += 2)
+      pts.push(
+        cx + chevron[i]! * cos - chevron[i + 1]! * sin,
+        cy + chevron[i]! * sin + chevron[i + 1]! * cos,
+      )
+    this.pushLine(pts, withAlpha(this.hot(x.caret, hot, t.dim, t.label), rowAlpha), 1.4)
+    this.drawFocus(x.head, x.head.matches(":focus-visible"), hRect, cardClip, true)
+    const bRect = x.body.getBoundingClientRect()
+    if (x.body.hidden || bRect.height < 0.5) return undefined
+    return intersectClip(cardClip, [bRect.left, bRect.top, bRect.right, bRect.bottom])
+  }
+
+  /** Draws an open body at its reveal's opacity. */
+  private inBody(x: GpuExpander, draw: () => void) {
+    const alpha = this.curAlpha
+    this.curAlpha *= Number(getComputedStyle(x.body).opacity) || 0
+    draw()
+    this.curAlpha = alpha
+  }
+
+  private drawSpring(
+    row: GpuSpringRow,
+    rRect: DOMRect,
+    cardClip: Clip,
+    rowAlpha: number,
+    clock: number,
+  ) {
+    const t = this.curTokens
+    this.drawSeparator(row.row, rRect, cardClip)
+    const box = row.box.getBoundingClientRect()
+    this.pushPrim({
+      x: box.left,
+      y: box.top,
+      w: box.width,
+      h: box.height,
+      color: withAlpha(t.segBg, rowAlpha),
+      radius: Math.max(0, t.radius - 3),
+      kind: 1,
+    })
+    const clip = intersectClip(cardClip, [box.left, box.top, box.right, box.bottom])
+    for (const y of row.guides())
+      this.pushLine(
+        [box.left + 6, box.top + y, box.right - 6, box.top + y],
+        withAlpha(t.line, rowAlpha),
+        1,
+        clip,
+      )
+    const curve = this.morph(row.box, row.curve(), row.wave.at - clock, row.snap(), box)
+    this.pushLine(at(curve, box), withAlpha(t.accent, rowAlpha), 1.5, clip)
+    const run = row.dot()
+    if (!run || this.curReduced) return
+    const p = (clock - run.at) / run.ms
+    if (p > 1) return
+    this.easeMoving = true
+    if (p < 0) return
+    const n = run.frames.length / 2 - 1
+    const i = Math.min(n - 1, Math.floor(p * n))
+    const f = p * n - i
+    const dx = run.frames[i * 2]! + (run.frames[i * 2 + 2]! - run.frames[i * 2]!) * f
+    const dy = run.frames[i * 2 + 1]! + (run.frames[i * 2 + 3]! - run.frames[i * 2 + 1]!) * f
+    const fade = p < 0.06 ? p / 0.06 : p > 0.88 ? (1 - p) / 0.12 : 1
+    this.shape({
+      x: box.left + dx - 2.5,
+      y: box.top + dy - 2.5,
+      w: 5,
+      h: 5,
+      radius: 2.5,
+      fill: withAlpha(t.accent, fade * rowAlpha),
+      glow: t.glowStrength * 8,
+      glowColor: withAlpha(t.accent, fade * rowAlpha),
+      clip,
+    })
+  }
+
+  private drawColor(
+    row: GpuColorRow,
+    rRect: DOMRect,
+    cardClip: Clip,
+    rowAlpha: number,
+    clock: number,
+  ) {
+    const t = this.curTokens
+    this.drawSeparator(row.row, rRect, cardClip)
+    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
+    const col = row.color()
+    const target = oklchToRgb(col)
+    const waiting = clock < row.wave.at
+    if (waiting) this.easeMoving = true
+    const rgb: Rgba = [
+      this.ease(row.swatch, "r", waiting ? undefined : target[0], 30),
+      this.ease(row.swatch, "g", waiting ? undefined : target[1], 30),
+      this.ease(row.swatch, "b", waiting ? undefined : target[2], 30),
+      rowAlpha,
+    ]
+    const sw = row.swatch.getBoundingClientRect()
+    const centerY = sw.top + sw.height / 2
+    this.shape({
+      x: sw.left,
+      y: sw.top,
+      w: sw.width,
+      h: sw.height,
+      radius: Math.max(0, t.radius - 3),
+      fill: rgb,
+      ring: -1,
+      ringColor: withAlpha(t.line, rowAlpha),
+    })
+    this.readout(row.read, centerY, withAlpha(t.label, rowAlpha))
+    if (!body) return
+    this.inBody(row.x, () => {
+      for (const s of row.strips) {
+        const tr = s.track.getBoundingClientRect()
+        if (tr.bottom < body[1] || tr.top > body[3]) continue
+        const lineY = tr.top + tr.height / 2
+        const lr = s.label.getBoundingClientRect()
+        this.drawText(
+          s.label.textContent ?? "",
+          lr.left + lr.width / 2,
+          lineY,
+          withAlpha(t.dim, rowAlpha),
+          {
+            px: t.fontSize - 1.5,
+            weight: 600,
+            align: "center",
+            clip: body,
+          },
+        )
+        this.readout(s.read, lineY, withAlpha(t.label, rowAlpha), body)
+        const h = tr.height
+        this.pushPrim({
+          x: tr.left,
+          y: tr.top,
+          w: tr.width,
+          h,
+          clip: body,
+          color: [1, 1, 1, rowAlpha],
+          color2: withAlpha(t.line, rowAlpha),
+          kind: 9,
+          p0: s.mode,
+          p1: h / 2,
+          aux: [col.l, s.mode === 0 ? Math.max(col.c, 0.06) : col.c, col.h, s.veil()],
+          aux2: withAlpha(t.bg, 0.62),
+        })
+        this.focusRing(s.track, tr, 2, h / 2, body)
+        const [x] = this.morph(s.track, [s.thumbX()], row.wave.at - clock, s.dragging(), tr)
+        const d = (h + 2) * this.ease(s.track, "grab", s.dragging() ? 1.1 : 1, 30)
+        this.shape({
+          x: tr.left + x! - d / 2,
+          y: lineY - d / 2,
+          w: d,
+          h: d,
+          radius: d / 2,
+          fill: rgb,
+          ring: 2,
+          ringColor: [1, 1, 1, rowAlpha],
+          shadow: [0.4, 4, 1],
+          clip: body,
+        })
+      }
+    })
+  }
+
+  private drawPoint(
+    row: GpuPointRow,
+    rRect: DOMRect,
+    cardClip: Clip,
+    rowAlpha: number,
+    clock: number,
+  ) {
+    const t = this.curTokens
+    this.drawSeparator(row.row, rRect, cardClip)
+    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
+    const hRect = row.x.head.getBoundingClientRect()
+    this.readout(row.read, hRect.top + hRect.height / 2, withAlpha(t.label, rowAlpha))
+    if (!body) return
+    this.inBody(row.x, () => {
+      const pr = row.pad.getBoundingClientRect()
+      const radius = Math.max(0, t.radius - 2)
+      const clip = intersectClip(body, [pr.left, pr.top, pr.right, pr.bottom])
+      this.pushPrim({
+        x: pr.left,
+        y: pr.top,
+        w: pr.width,
+        h: pr.height,
+        clip: body,
+        color: withAlpha(t.segBg, rowAlpha),
+        radius,
+        kind: 1,
+      })
+      const active = row.dragging()
+      const [px, py] = this.morph(row.pad, row.puck(), row.wave.at - clock, active, pr)
+      const line = withAlpha(t.line, rowAlpha)
+      this.pushPrim({
+        x: pr.left + px! - 0.5,
+        y: pr.top,
+        w: 1,
+        h: pr.height,
+        clip,
+        color: line,
+        kind: 1,
+      })
+      this.pushPrim({
+        x: pr.left,
+        y: pr.top + py! - 0.5,
+        w: pr.width,
+        h: 1,
+        clip,
+        color: line,
+        kind: 1,
+      })
+      const [hx, hy] = row.home()
+      this.shape({
+        x: pr.left + hx - 3.5,
+        y: pr.top + hy - 3.5,
+        w: 7,
+        h: 7,
+        radius: 3.5,
+        fill: [0, 0, 0, 0],
+        ring: -1,
+        ringColor: withAlpha(t.dim, rowAlpha),
+        clip,
+      })
+      const d = 12 * this.ease(row.pad, "grab", active ? 1.2 : 1, 30)
+      this.shape({
+        x: pr.left + px! - d / 2,
+        y: pr.top + py! - d / 2,
+        w: d,
+        h: d,
+        radius: d / 2,
+        fill: withAlpha(t.accent, rowAlpha),
+        ring: 1.5,
+        ringColor: withAlpha(t.bg, rowAlpha),
+        glow: t.glowStrength * 10,
+        glowColor: withAlpha(t.accent, 0.5 * rowAlpha),
+        clip,
+      })
+      this.focusRing(row.pad, pr, -1.5, radius, body)
+    })
+  }
+
+  private drawEasing(
+    row: GpuEasingRow,
+    rRect: DOMRect,
+    cardClip: Clip,
+    rowAlpha: number,
+    clock: number,
+  ) {
+    const t = this.curTokens
+    this.drawSeparator(row.row, rRect, cardClip)
+    const body = this.drawHead(row.row, row.x, row.display, row.isModified(), cardClip, rowAlpha)
+    const delay = row.wave.at - clock
+    const snap = row.snap()
+    const mRect = row.mini.getBoundingClientRect()
+    const accent = withAlpha(t.accent, rowAlpha)
+    this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
+    this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
+    if (!body) return
+    this.inBody(row.x, () => {
+      const br = row.box.getBoundingClientRect()
+      const radius = Math.max(0, t.radius - 2)
+      this.pushPrim({
+        x: br.left,
+        y: br.top,
+        w: br.width,
+        h: br.height,
+        clip: body,
+        color: withAlpha(t.segBg, rowAlpha),
+        radius,
+        kind: 1,
+      })
+      const g = at(row.guides(), br)
+      if (g.length === 4) {
+        const line = withAlpha(t.line, rowAlpha)
+        for (const y of [g[1]!, g[3]!])
+          this.pushLine([br.left + 12, y, br.right - 12, y], line, 1, body)
+        this.pushLine(g, line, 1, body)
+      }
+      const arms = at(this.morph(row.handles[0]!, row.arms(), delay, snap, br), br)
+      if (arms.length === 8) {
+        const dim = withAlpha(t.dim, rowAlpha)
+        this.pushLine(arms.slice(0, 4), dim, 1, body)
+        this.pushLine(arms.slice(4), dim, 1, body)
+      }
+      this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
+      row.handles.forEach((h, i) => {
+        if (arms.length !== 8) return
+        const d = 12 * this.ease(h, "grab", h.matches(":active") ? 1.2 : 1, 30)
+        const cx = arms[i * 4 + 2]!
+        const cy = arms[i * 4 + 3]!
+        this.shape({
+          x: cx - d / 2,
+          y: cy - d / 2,
+          w: d,
+          h: d,
+          radius: d / 2,
+          fill: withAlpha(t.bg, rowAlpha),
+          ring: -2,
+          ringColor: accent,
+          shadow: [0.3, 3, 1],
+          clip: body,
+        })
+        this.focusRing(h, new DOMRect(cx - 6, cy - 6, 12, 12), 2, 6, body)
+      })
+      const chipsEl = row.chips[0]?.parentElement
+      if (!chipsEl) return
+      const cr = chipsEl.getBoundingClientRect()
+      this.pushPrim({
+        x: cr.left,
+        y: cr.top,
+        w: cr.width,
+        h: cr.height,
+        clip: body,
+        color: withAlpha(t.segBg, rowAlpha),
+        radius,
+        kind: 1,
+      })
+      const pill = cssMix(t.accent, t.segActive, 0.18)
+      for (const chip of row.chips) {
+        const r = chip.getBoundingClientRect()
+        const checked = chip.getAttribute("aria-checked") === "true"
+        const on = this.ease(chip, "on", checked ? 1 : 0, 30)
+        if (on > 0.005)
+          this.pushPrim({
+            x: r.left,
+            y: r.top,
+            w: r.width,
+            h: r.height,
+            clip: body,
+            color: withAlpha(pill, on * rowAlpha),
+            color2: [0, 0, 0, 0],
+            radius: Math.max(2, t.radius - 3),
+            glowOrBlur: t.glowStrength * 0.6,
+            kind: 3,
+          })
+        this.drawText(
+          chip.textContent ?? "",
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+          withAlpha(this.hot(chip, checked || chip.matches(":hover")), rowAlpha),
+          { px: t.fontSize - 0.5, align: "center", clip: body },
+        )
+      }
+      this.focusRing(chipsEl, cr, -1.5, radius, body)
+    })
+  }
+
   private buildScene(dt: number, scale: number, reducedMotion: boolean): boolean {
     this.primCount = 0
+    this.pointCount = 0
     this.curScale = scale
     let anyMoving = false
     const win = this.win
@@ -876,6 +1530,7 @@ class GpuOverlayManager {
       const tokens = this.smoothTokens(panel, readPanelTokens(panel.root), reducedMotion ? 0 : dt)
       this.curTokens = tokens
       this.curDt = reducedMotion ? 1 : dt
+      this.curReduced = reducedMotion
       // Follow CSS open/close and reveal animations: fade with the panel, and keep drawing while they run.
       this.curAlpha = Number(getComputedStyle(panel.root).opacity) || 0
       if (panel.root.getAnimations({ subtree: true }).length > 0) anyMoving = true
@@ -1378,7 +2033,15 @@ class GpuOverlayManager {
             )
           }
           this.drawRowOverlay(row.row, rRect, cardClip, false)
-        } else {
+        } else if (row.kind === "spring") {
+          this.drawSpring(row, rRect, cardClip, rowAlpha, clock)
+        } else if (row.kind === "color") {
+          this.drawColor(row, rRect, cardClip, rowAlpha, clock)
+        } else if (row.kind === "point") {
+          this.drawPoint(row, rRect, cardClip, rowAlpha, clock)
+        } else if (row.kind === "easing") {
+          this.drawEasing(row, rRect, cardClip, rowAlpha, clock)
+        } else if (row.kind === "toggle") {
           const focused = row.toggleEl.matches(":focus-visible")
           const tRect = row.toggleEl.getBoundingClientRect()
           // The thumb is a span between two edges: the leading edge springs ahead and the trailing
@@ -1491,6 +2154,9 @@ class GpuOverlayManager {
       return false
     const len = this.primCount * FLOATS_PER_PRIM
     for (let i = 0; i < len; i++) if (this.data[i] !== this.prevData[i]) return false
+    if (this.pointCount !== this.prevPointCount) return false
+    for (let i = 0; i < this.pointCount * 2; i++)
+      if (this.points[i] !== this.prevPoints[i]) return false
     return true
   }
 
@@ -1535,6 +2201,8 @@ class GpuOverlayManager {
     const floatLen = this.primCount * FLOATS_PER_PRIM
     this.prevData.set(this.data.subarray(0, floatLen))
     this.prevPrimCount = this.primCount
+    this.prevPoints.set(this.points.subarray(0, this.pointCount * 2))
+    this.prevPointCount = this.pointCount
     this.prevCanvasW = pixelW
     this.prevCanvasH = pixelH
 
@@ -1549,6 +2217,14 @@ class GpuOverlayManager {
           floatLen * 4,
         )
       }
+      if (this.pointCount > 0)
+        this.device.queue.writeBuffer(
+          this.pointBuffer,
+          0,
+          this.points.buffer,
+          this.points.byteOffset,
+          this.pointCount * 8,
+        )
       this.device.queue.writeBuffer(
         this.viewBuffer,
         0,

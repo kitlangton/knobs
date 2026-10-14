@@ -8,6 +8,7 @@ export const EASINGS = {
   out: [0, 0, 0.58, 1],
   "in-out": [0.42, 0, 0.58, 1],
   linear: [0, 0, 1, 1],
+  smooth: [0.65, 0, 0.35, 1],
   snappy: [0.32, 0.72, 0, 1],
   back: [0.34, 1.56, 0.64, 1],
 } as const satisfies Record<string, Bezier>

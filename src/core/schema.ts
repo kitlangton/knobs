@@ -160,7 +160,7 @@ export function point(
     throw new Error("A point needs finite bounds and positive steps.")
   return withMeta({ ...field, value: normalizeField(field as PointField, value) as Point }, options)
 }
-/** A cubic bezier `[x1, y1, x2, y2]` or a name: ease, ease-in, ease-out, ease-in-out, linear, snappy, back. */
+/** A cubic bezier `[x1, y1, x2, y2]` or a name: ease, ease-in, ease-out, ease-in-out, linear, smooth, snappy, back. */
 export function easing(value: Bezier | EasingName, meta?: FieldMeta): EasingField {
   const curve = typeof value === "string" ? namedEasing(value) : value
   if (!curve || curve.length !== 4 || !curve.every(Number.isFinite))

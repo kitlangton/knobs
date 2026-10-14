@@ -1,4 +1,4 @@
-import type { Schema, Values } from "../core/schema.js"
+import { same, type Field, type Schema, type Values } from "../core/schema.js"
 import type { ControlAction, Controls, MountPanelOptions } from "../core/store.js"
 import {
   getGpuOverlayManager,
@@ -7,13 +7,21 @@ import {
   type GpuPanelBinding,
   type GpuRowBinding,
 } from "./gpu/renderer.js"
+import {
+  colorRow,
+  easingRow,
+  pointRow,
+  springRow,
+  type EditorRow,
+  type SubTrack,
+} from "./editors.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { Edges } from "./motion.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
-import { createSlider } from "./slider.js"
+import { createSlider, type Slider } from "./slider.js"
 import { injectStyles } from "./styles.js"
 
 export interface Panel {
@@ -245,14 +253,30 @@ function buildPanel<S extends Schema>(
     return gHead
   }
 
-  const rows = Object.entries(controls.schema).map(([key, field]) => {
+  // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
+  const tracks = new Map<HTMLElement, SubTrack>()
+  interface Row {
+    key: string
+    display: string
+    field: Field
+    wave: { at: number; until: number }
+    row: HTMLElement
+    labelEl: HTMLElement
+    input: HTMLElement
+    number?: HTMLInputElement
+    slider?: Slider
+    buttons?: HTMLButtonElement[]
+    editor?: EditorRow
+    set(value: unknown, options?: { coalesce?: boolean }): void
+  }
+  const rows = Object.entries(controls.schema as Record<string, Field>).map(([key, field]): Row => {
     const host = cardFor(field.group)
     // When this row's current motion starts and roughly ends, for the preset cascade.
     const wave = { at: 0, until: 0 }
     const display = field.label ?? key
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
-    const isModified = () => controls.get()[key] !== controls.locked[key]
+    const isModified = () => !same(controls.get()[key], controls.locked[key])
     if (field.kind === "knob") {
       const slider = createSlider(doc, key, field, set, () => wakeGpu())
       slider.element.dataset.field = key
@@ -262,6 +286,12 @@ function buildPanel<S extends Schema>(
         run(() => controls.resetKey(key))
       }
       host.append(slider.element)
+      tracks.set(slider.track, {
+        slider,
+        field,
+        get: () => controls.get()[key] as number,
+        set: (v) => set(v),
+      })
       gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, wave, isModified })
       return {
         key,
@@ -273,6 +303,42 @@ function buildPanel<S extends Schema>(
         input: slider.track,
         number: slider.number,
         slider,
+        set,
+      }
+    }
+    if (field.kind !== "choice" && field.kind !== "toggle") {
+      const context = {
+        doc,
+        key,
+        display,
+        wave,
+        get: () => controls.get()[key],
+        set: (value: unknown, setOpts?: { coalesce?: boolean }) => run(() => set(value, setOpts)),
+        isModified,
+        wake: () => wakeGpu(),
+      }
+      const editor =
+        field.kind === "spring"
+          ? springRow({ ...context, field })
+          : field.kind === "color"
+            ? colorRow({ ...context, field })
+            : field.kind === "point"
+              ? pointRow({ ...context, field })
+              : easingRow({ ...context, field })
+      if (field.shortcut) editor.input.setAttribute("aria-keyshortcuts", field.shortcut)
+      editor.labelEl.ondblclick = () => run(() => controls.resetKey(key))
+      for (const t of editor.tracks) tracks.set(t.slider.track, t)
+      host.append(editor.row)
+      gpuRows.push(...editor.gpu)
+      return {
+        key,
+        display,
+        field,
+        wave,
+        row: editor.row,
+        labelEl: editor.labelEl,
+        input: editor.input,
+        editor,
         set,
       }
     }
@@ -467,7 +533,7 @@ function buildPanel<S extends Schema>(
   // at once instead of pausing, so switching again mid-wave stays smooth.
   let shown = controls.get()
   const cascade = (values: Values<S>) => {
-    const changed = rows.filter((r) => values[r.key] !== shown[r.key])
+    const changed = rows.filter((r) => !same(values[r.key], shown[r.key]))
     if (changed.length < 2) return 0
     const win = doc.defaultView
     if (!win || win.matchMedia("(prefers-reduced-motion: reduce)").matches) return 0
@@ -486,7 +552,7 @@ function buildPanel<S extends Schema>(
     for (const row of rows) {
       const value = values[row.key]
       let delay = 0
-      if (value !== shown[row.key]) {
+      if (!same(value, shown[row.key])) {
         const moving = row.wave.at <= now && now < row.wave.until
         delay = moving ? 0 : turn * stagger
         turn++
@@ -494,19 +560,20 @@ function buildPanel<S extends Schema>(
         row.wave.until = row.wave.at + 400
         row.row.style.setProperty("--k-delay", `${delay}ms`)
       }
-      row.row.classList.toggle("knobs-modified", value !== controls.locked[row.key])
-      if ("slider" in row && row.slider) row.slider.update(Number(value), delay)
-      else if ("buttons" in row && row.buttons) placeSegPill(row.input, row.buttons, String(value))
+      row.row.classList.toggle("knobs-modified", !same(value, controls.locked[row.key]))
+      if (row.slider) row.slider.update(Number(value), delay)
+      else if (row.buttons) placeSegPill(row.input, row.buttons, String(value))
+      else if (row.editor) row.editor.update(value, delay)
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
     for (const [groupName, gReset] of groupResetButtons) {
       const shown = rows.some(
-        (r) => r.field.group === groupName && values[r.key] !== controls.locked[r.key],
+        (r) => r.field.group === groupName && !same(values[r.key], controls.locked[r.key]),
       )
       gReset.disabled = !shown
       gReset.dataset.shown = String(shown)
     }
-    resetBtn.disabled = !rows.some((r) => values[r.key] !== controls.locked[r.key])
+    resetBtn.disabled = !rows.some((r) => !same(values[r.key], controls.locked[r.key]))
     undoButton.disabled = !controls.canUndo
     redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
@@ -554,7 +621,8 @@ function buildPanel<S extends Schema>(
         focus: () => presetStrip.element.focus(),
       })
     for (const r of rows)
-      list.push({ contains: (n) => r.row.contains(n), focus: () => r.input.focus() })
+      for (const stop of r.editor?.stops() ?? [r.input])
+        list.push({ contains: (n) => stop.contains(n), focus: () => stop.focus() })
     const bar = actionBarButtons()
     if (bar.length)
       list.push({
@@ -647,7 +715,11 @@ function buildPanel<S extends Schema>(
       return
     }
     const index = rows.findIndex((r) => r.row.contains(target))
-    if ((key === "Backspace" || key === "Delete") && index >= 0 && target !== rows[index].number) {
+    if (
+      (key === "Backspace" || key === "Delete") &&
+      index >= 0 &&
+      !(target instanceof HTMLInputElement)
+    ) {
       event.preventDefault()
       run(() => controls.resetKey(rows[index].key))
       return
@@ -671,33 +743,31 @@ function buildPanel<S extends Schema>(
       event.preventDefault()
       event.stopPropagation()
       bar[(barIndex + (right ? 1 : -1) + bar.length) % bar.length]?.focus()
-    } else if ((left || right) && index >= 0 && target !== rows[index].number) {
+    } else if ((left || right) && tracks.has(target)) {
+      event.preventDefault()
+      event.stopPropagation()
+      const t = tracks.get(target)!
+      t.set(t.get() + (right ? 1 : -1) * t.field.step * (event.shiftKey ? 10 : 1))
+    } else if ((left || right) && index >= 0 && target === rows[index].input) {
       event.preventDefault()
       event.stopPropagation()
       const row = rows[index],
         field = row.field,
         value = controls.get()[row.key]
       const direction = right ? 1 : -1
-      if (field.kind === "knob")
-        row.set(Number(value) + direction * field.step * (event.shiftKey ? 10 : 1))
-      else if (field.kind === "choice")
+      if (field.kind === "choice")
         row.set(
           field.options[
             (field.options.indexOf(String(value)) + direction + field.options.length) %
               field.options.length
           ],
         )
-      else row.set(!value)
-    } else if (
-      index >= 0 &&
-      target === rows[index].input &&
-      "slider" in rows[index] &&
-      /^[0-9.\-]$/.test(event.key)
-    ) {
+      else if (field.kind === "toggle") row.set(!value)
+    } else if (tracks.has(target) && /^[0-9.\-]$/.test(event.key)) {
       event.preventDefault()
-      const row = rows[index] as { slider: { edit(): void }; number: HTMLInputElement }
-      row.slider.edit()
-      row.number.value = event.key
+      const { slider } = tracks.get(target)!
+      slider.edit()
+      slider.number.value = event.key
     }
   }
 

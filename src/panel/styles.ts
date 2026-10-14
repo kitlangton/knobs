@@ -151,7 +151,7 @@ const css = `
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${FILL_T} ${DELAY},--k-fill-mix .15s,left ${FILL_T} ${DELAY},opacity .15s,transform .22s var(--k-ease)}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .18s cubic-bezier(.3,1.35,.5,1),--k-fill-mix .15s,left .18s cubic-bezier(.3,1.35,.5,1),opacity .15s,transform .22s var(--k-ease)}
 .knobs-notch{position:absolute;bottom:0;width:1px;height:5px;margin-left:-.5px;border-radius:1px 1px 0 0;background:var(--k-text);opacity:.2;pointer-events:none;transition:opacity .2s}
-.knobs-modified .knobs-notch{opacity:.5}
+.knobs-slider.knobs-modified .knobs-notch{opacity:.5}
 .knobs-magnet .knobs-notch{opacity:.9}
 .knobs-handle{position:absolute;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-left:-1.5px;border-radius:999px;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * (8px + var(--k-speed) * 12px)) color-mix(in srgb,var(--k-accent) calc(60% + var(--k-speed) * 40%),transparent);pointer-events:none;
   opacity:0;transform:translateY(-50%) scaleX(.25);transition:opacity .15s,transform .22s var(--k-ease)}
@@ -196,6 +196,69 @@ const css = `
 .knobs-toggle:active i{right:12px;transition:right ${LEAD_T},background .2s}
 .knobs-toggle[aria-checked=true]:active i{left:12px;right:2px;transition:left ${LEAD_T},background .2s}
 
+/* Compound rows: a spring's two sliders beside its curve; disclosure rows with an editor body */
+.knobs-card>:is(.knobs-spring,.knobs-x):hover{background:transparent}
+.knobs-card>:is(.knobs-spring,.knobs-x):has(:focus-visible)::after{opacity:0}
+.knobs-spring{display:flex}
+.knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
+.knobs-sub{position:relative;transition:background .15s}
+.knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover{background:color-mix(in srgb,var(--k-surface) 50%,transparent)}
+.knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
+.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
+:is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;border-radius:var(--k-radius);background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
+:is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1;box-shadow:inset 0 0 0 1.5px var(--k-accent),0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
+.knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:5px 5px 5px 0;border-radius:calc(var(--k-radius) - 3px);background:var(--k-seg-bg);pointer-events:none}
+.knobs-panel :is(.knobs-spring-curve,.knobs-ease)>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
+.knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1;transition:d ${FILL_T} ${DELAY}}
+.knobs-curve{fill:none;stroke:var(--k-accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:d ${FILL_T} ${DELAY}}
+.knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0}
+.knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
+
+.knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background .15s}
+.knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
+.knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}
+.knobs-x-label::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
+.knobs-modified .knobs-x-label::after{opacity:.95;transform:none}
+.knobs-x-sum{display:flex;align-items:center;gap:8px;min-width:0}
+.knobs-x-read,.knobs-strip-read{color:var(--k-label);font-size:calc(var(--k-font-size) - 0.5px);white-space:nowrap}
+.knobs-caret{width:10px;height:10px;flex:none;margin-right:-2px;color:var(--k-dim);transition:transform ${LEAD_T},color .15s}
+.knobs-caret path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.knobs-x-head:hover .knobs-caret{color:var(--k-label)}
+.knobs-x-head[aria-expanded="true"] .knobs-caret{transform:rotate(90deg)}
+.knobs-swatch{flex:none;width:calc(var(--k-row) - 14px);height:calc(var(--k-row) - 14px);border-radius:calc(var(--k-radius) - 3px);box-shadow:inset 0 0 0 1px var(--k-line);transition:background-color .2s ${DELAY}}
+.knobs-x-body{padding:0 var(--k-inset) var(--k-inset)}
+.knobs-strips{display:grid}
+.knobs-strip{display:grid;grid-template-columns:10px 1fr 36px;align-items:center;gap:8px;height:calc(var(--k-row) - 4px)}
+.knobs-strip-label{color:var(--k-dim);font-size:calc(var(--k-font-size) - 1.5px);font-weight:600;text-align:center}
+.knobs-strip-read{text-align:right}
+.knobs-strip-track{position:relative;height:calc(var(--k-row) - 14px);border-radius:999px;box-shadow:inset 0 0 0 1px var(--k-line);cursor:ew-resize;touch-action:none}
+.knobs-panel .knobs-strip-track:focus-visible{outline-offset:2px;box-shadow:inset 0 0 0 1px var(--k-line),0 0 calc(var(--k-glow) * 12px) color-mix(in srgb,var(--k-accent) 36%,transparent)}
+.knobs-strip-veil{position:absolute;top:0;bottom:0;right:0;border-radius:0 999px 999px 0;background:color-mix(in srgb,var(--k-bg) 62%,transparent);pointer-events:none}
+.knobs-strip-thumb{position:absolute;top:50%;left:0;width:calc(var(--k-row) - 12px);height:calc(var(--k-row) - 12px);transform:translate(-50%,-50%);border-radius:50%;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.4);pointer-events:none;transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease)}
+.knobs-strip.knobs-active .knobs-strip-thumb{transition:background-color .2s,scale .2s var(--k-ease);scale:1.1}
+.knobs-pad,.knobs-ease{position:relative;border-radius:calc(var(--k-radius) - 2px);background:var(--k-seg-bg);touch-action:none}
+.knobs-pad{height:calc(var(--k-row) * 4);cursor:crosshair;overflow:hidden}
+.knobs-pad>i{position:absolute;left:0;top:0;pointer-events:none;transition:transform ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
+.knobs-pad-v{bottom:0;width:1px;margin-left:-.5px;background:var(--k-line)}
+.knobs-pad-h{right:0;height:1px;margin-top:-.5px;background:var(--k-line)}
+.knobs-pad .knobs-pad-home{width:7px;height:7px;margin:-3.5px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--k-dim);transition:none}
+.knobs-pad-puck{width:12px;height:12px;margin:-6px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 0 1.5px var(--k-bg),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 50%,transparent)}
+.knobs-pad.knobs-active>i{transition:scale .2s var(--k-ease)}
+.knobs-pad.knobs-active .knobs-pad-puck{scale:1.2}
+.knobs-ease{height:calc(var(--k-row) * 4.5)}
+.knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:50%;background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,.3);cursor:grab;touch-action:none;transition:transform ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
+.knobs-ease-handle::before{content:"";position:absolute;inset:-8px;border-radius:50%}
+.knobs-panel .knobs-ease-handle:focus-visible{outline-offset:2px;border-radius:50%}
+.knobs-ease.knobs-active :is(.knobs-curve,.knobs-arm){transition:none}
+.knobs-ease.knobs-active .knobs-ease-handle{transition:scale .2s var(--k-ease)}
+.knobs-ease-handle:active{scale:1.2;cursor:grabbing}
+.knobs-ease-mini{flex:none;width:30px;height:calc(var(--k-row) - 14px);overflow:visible}
+.knobs-ease-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:6px;padding:2px;border-radius:calc(var(--k-radius) - 2px);background:var(--k-seg-bg)}
+.knobs-panel .knobs-ease-chip{min-width:0;height:calc(var(--k-row) - 10px);padding:0 6px;font-size:calc(var(--k-font-size) - 0.5px);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent;border-radius:calc(var(--k-radius) - 3px);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-panel .knobs-ease-chip:hover{color:var(--k-text)}
+.knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));box-shadow:0 1px 2px rgba(0,0,0,.12)}
+
 /* Hint mode: stable short codes, zero layout shift */
 .knobs-hinting .knobs-hint-miss{opacity:.32;transition:opacity .1s}
 .knobs-hint-layer{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5;animation:knobs-in .1s var(--k-ease)}
@@ -224,10 +287,14 @@ const css = `
 /* WebGPU Overlay Active Mirror State */
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible){outline-color:transparent!important;box-shadow:none!important}
-.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button){
+.knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,
+  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
-.knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon),
+.knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
+  .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*),
+.knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::before,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-card>::before,
 .knobs-panel[data-gpu-active="true"] .knobs-card>::after,
 .knobs-panel[data-gpu-active="true"] .knobs-row>span:first-child::after{opacity:0!important}
