@@ -46,6 +46,7 @@ import {
   type MountPageOptions,
   type Page,
   type PageCardOptions,
+  type PageHighlight,
   type PageLayout,
 } from "./page.js"
 import { positionPanel } from "./position.js"
@@ -70,6 +71,8 @@ export interface Panel {
   dispose(): void
 }
 let layer = 2147480001
+/** A highlight's reveal waits this long (ms) after the user last scrolled, typed or touched. */
+const REVEAL_QUIET_MS = 2000
 
 /** "synth-voice" → "Synth voice", "knobsTokens" → "Knobs tokens"; titles with spaces are kept. */
 export function readableTitle(id: string): string {
@@ -1601,6 +1604,19 @@ function buildPanel<S extends Schema>(
     )) {
       add(b, b.dataset.hint ?? b.getAttribute("aria-label") ?? b.textContent ?? "", () => b.focus())
     }
+    // The focused card's presets, by number and name ("1 Native"), or its preset menu.
+    const focusedHead = page
+      ? (doc.activeElement as HTMLElement | null)
+          ?.closest(".knobs-tile")
+          ?.querySelector<HTMLElement>(":scope > .knobs-group-head")
+      : null
+    const presetUi = focusedHead ? groupChips.get(focusedHead.dataset.group ?? "") : undefined
+    if (presetUi?.isMenu?.() && presetUi.menu) {
+      const menuButton = presetUi.menu
+      add(menuButton, menuButton.getAttribute("aria-label") ?? "Presets", () => menuButton.click())
+    } else if (presetUi)
+      for (const b of presetUi.buttons)
+        add(b, b.getAttribute("aria-label") ?? "", () => b.click())
     // Controls in custom cards, by their label (or their card's title).
     if (page)
       for (const stop of body.querySelectorAll<HTMLElement>(
@@ -1817,6 +1833,9 @@ function buildPanel<S extends Schema>(
       const nodes = pageStops()
       const step = event.shiftKey ? -1 : 1
       let at = cardsNow.indexOf(target.closest<HTMLElement>(".knobs-tile")!)
+      // From the header, Tab lands on what's on screen first (the highlighted cards).
+      const lit = cardsNow.findIndex((c) => c.classList.contains("knobs-highlighted"))
+      if (at < 0 && step > 0 && lit >= 0) at = lit - 1
       for (let n = 0; n < cardsNow.length; n++) {
         at =
           at < 0
@@ -2157,8 +2176,19 @@ function buildPanel<S extends Schema>(
   /** Set while Tab moves to a group, which brings the whole card into view where it fits. */
   let wholeCard = false
   let hintScrollY = 0
+  // When the user last scrolled, pressed a key or touched the page (a highlight's reveal waits).
+  let touchedAt = -Infinity
+  let pointersDown = 0
+  const touched = () => (touchedAt = performance.now())
+  const onPointerDown = () => {
+    pointersDown++
+    touched()
+  }
+  const onPointerUp = () => (pointersDown = Math.max(0, pointersDown - 1))
   const onScroll = () => {
     if (!win) return
+    // Scrolls the page makes itself (focus gliding into view, a reveal) have a goal.
+    if (scrollGoal === undefined) touched()
     const scrolled = body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 1
     if (header.hasAttribute("data-scrolled") !== scrolled)
       header.toggleAttribute("data-scrolled", scrolled)
@@ -2194,6 +2224,11 @@ function buildPanel<S extends Schema>(
   if (page) {
     win?.addEventListener("scroll", onScroll, { passive: true })
     win?.addEventListener("scrollend", onScrollEnd)
+    for (const type of ["wheel", "touchstart", "keydown"])
+      doc.addEventListener(type, touched, { capture: true, passive: true })
+    doc.addEventListener("pointerdown", onPointerDown, true)
+    for (const type of ["pointerup", "pointercancel"])
+      doc.addEventListener(type, onPointerUp, true)
     root.addEventListener("focusin", (event) => {
       const t = event.target as HTMLElement
       if (header.contains(t) || popover.contains(t) || !body.contains(t)) return
@@ -2310,6 +2345,7 @@ function buildPanel<S extends Schema>(
             layoutKey: () => layoutTick,
             moving: () => layout!.moving,
             frame: (now: number) => layout!.frame(now),
+            emphasis: (node: HTMLElement) => layout!.emphasis(node),
           },
         }
       : {}),
@@ -2399,6 +2435,11 @@ function buildPanel<S extends Schema>(
       headSize.disconnect()
       win?.removeEventListener("scroll", onScroll)
       win?.removeEventListener("scrollend", onScrollEnd)
+      for (const type of ["wheel", "touchstart", "keydown"])
+        doc.removeEventListener(type, touched, true)
+      doc.removeEventListener("pointerdown", onPointerDown, true)
+      for (const type of ["pointerup", "pointercancel"])
+        doc.removeEventListener(type, onPointerUp, true)
       for (const type of ["pointerup", "pointercancel"])
         doc.removeEventListener(type, endScrub, true)
       doc.defaultView?.removeEventListener("blur", endScrub)
@@ -2426,8 +2467,23 @@ function buildPanel<S extends Schema>(
   const pageLayout = layout
   const pageApi: Page = Object.assign(panel, {
     card(cardOptions: PageCardOptions) {
+      const section = cardOptions.section ?? ""
       const card = createCustomCard(doc, cardOptions, {
         wake: () => wakeGpu(),
+        title: (title) =>
+          options.groupLabels?.[title] ??
+          (section ? cardTitle(title, [section, sectionTitle(section)]) : title),
+        ...(remember
+          ? {
+              folded: {
+                get: (title: string) => readSession(controls.id).folded?.[title],
+                set: (title: string, folded: boolean) =>
+                  writeSession(controls.id, {
+                    folded: { ...readSession(controls.id).folded, [title]: folded },
+                  }),
+              },
+            }
+          : {}),
         remove: (tile) => {
           tileSizes.unobserve(tile)
           pageLayout.remove(tile)
@@ -2440,7 +2496,35 @@ function buildPanel<S extends Schema>(
       else pageLayout.pack(true)
       return card
     },
+    highlight(target: PageHighlight | null, highlightOptions?: { readonly reveal?: boolean }) {
+      pageLayout.highlight(target)
+      if (target && highlightOptions?.reveal) revealHighlight()
+    },
   })
+  /** Glides the first highlighted card (or heading) into view, unless the user is busy here. */
+  function revealHighlight() {
+    if (!win) return
+    const recent = performance.now() - touchedAt < REVEAL_QUIET_MS
+    if (recent || pointersDown > 0 || html.hasAttribute("data-knobs-scrub")) return
+    const first = pageLayout.highlighted()[0]
+    if (!first) return
+    const headBottom = header.getBoundingClientRect().bottom
+    const r = first.getBoundingClientRect()
+    // Already in view (its top showing with room below it): leave the page where it is.
+    if (r.top >= headBottom && r.top <= win.innerHeight - Math.min(160, win.innerHeight / 3)) return
+    const margin = 12
+    const goal = Math.max(
+      0,
+      Math.min(
+        r.top + win.scrollY - headBottom - margin,
+        doc.documentElement.scrollHeight - win.innerHeight,
+      ),
+    )
+    if (Math.abs(goal - win.scrollY) < 1) return
+    scrollGoal = goal
+    const still = win.matchMedia("(prefers-reduced-motion: reduce)").matches
+    win.scrollTo({ top: goal, behavior: still ? "auto" : "smooth" })
+  }
   return pageApi
 }
 

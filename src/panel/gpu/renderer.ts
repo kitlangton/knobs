@@ -243,6 +243,10 @@ export interface GpuPanelBinding {
     readonly moving?: () => boolean
     /** Steps the page's motion at the start of the frame, before its rects are read. */
     readonly frame?: (now: number) => void
+    /** A card's or heading's highlight: how far it's dimmed, and its dot (see `Page.highlight`). */
+    readonly emphasis?: (
+      node: HTMLElement,
+    ) => { readonly dim: number; readonly mark: number; readonly dot?: HTMLElement } | undefined
   }
 }
 
@@ -1423,6 +1427,23 @@ class GpuOverlayManager {
       )
   }
 
+  /** A highlight's dot by a title, where (and as large) as the DOM's `.knobs-mark` is. */
+  private drawMark(dot: HTMLElement, shown: number, clip?: Clip) {
+    if (shown <= 0.002) return
+    const r = dot.getBoundingClientRect()
+    if (r.width <= 0) return
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      clip,
+      color: withAlpha(this.curTokens.accent, this.curTokens.accent[3] * shown),
+      radius: r.width / 2,
+      kind: 1,
+    })
+  }
+
   /** Text that fits `maxW`, ellipsized like `text-overflow: ellipsis`. */
   private fit(text: string, maxW: number, px: number, weight: number): string {
     const m = (t: string) => this.atlas.measure(t, px, weight, this.curTokens.fontFamily)
@@ -2342,8 +2363,10 @@ class GpuOverlayManager {
           if (sr.width <= 0 || sr.bottom < bodyClip[1] || sr.top > bodyClip[3]) continue
           const indent = tokens.pad + tokens.inset + 1
           const px = tokens.fontSize + 3
-          // A label fading in (its section just appeared) carries the DOM's opacity.
-          const shown = head.style.opacity ? Number(head.style.opacity) : 1
+          // A label fading in (its section just appeared) carries the DOM's opacity; one dimmed
+          // by a highlight fades its text toward the page, as the DOM does.
+          const lit = pageB.emphasis?.(head)
+          const shown = (head.style.opacity ? Number(head.style.opacity) : 1) * (1 - (lit?.dim ?? 0))
           this.drawText(
             this.fit(head.textContent ?? "", sr.width - indent * 2, px, 600),
             sr.left + indent,
@@ -2351,6 +2374,7 @@ class GpuOverlayManager {
             withAlpha(tokens.text, shown),
             { px, weight: 600, track: -0.015 },
           )
+          if (lit?.dot) this.drawMark(lit.dot, lit.mark)
         }
         for (const tile of pageB.tiles) {
           const tr = this.rectOf(tile)
@@ -2926,6 +2950,28 @@ class GpuOverlayManager {
       this.curClip = bodyClip
       this.curSelected = 0
       this.curAlpha = panelAlpha
+
+      // A highlight dims the other cards with a veil of the page's colour over all they drew
+      // (the DOM lays the same veil over them), and dots the titles of those highlighted alone.
+      if (pageB?.emphasis)
+        for (const tile of pageB.tiles) {
+          const lit = pageB.emphasis(tile)
+          if (!lit) continue
+          const tr = this.rectOf(tile)
+          if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
+          if (lit.dim > 0.0005)
+            this.pushPrim({
+              x: tr.left,
+              y: tr.top,
+              w: tr.width,
+              h: tr.height,
+              clip: clipToTile(tile, bodyClip),
+              color: withAlpha(tokens.page, lit.dim),
+              radius: tokens.panelRadius,
+              kind: 1,
+            })
+          if (lit.dot) this.drawMark(lit.dot, lit.mark, clipToTile(tile, bodyClip))
+        }
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered

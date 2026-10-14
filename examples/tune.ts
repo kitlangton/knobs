@@ -171,17 +171,76 @@ function mount(phone: Phone) {
   page = mountPage(remote, document.querySelector<HTMLElement>("#app")!, {
     title: "iPhone Tune",
     theme: (params.get("theme") as "dark" | "light" | null) ?? "auto",
-    sections: ["Playground", "Session List", "Transcript", "Composer"],
+    sections: ["Connection", "Playground", "Session List", "Transcript", "Composer"],
     copy: () => remote!.swift() || "// Nothing changed",
+    // The phone's own baseline, shown as such (its id stays "default").
+    defaultLabel: "Native",
   })
   ui = customCards(page)
   ui.update(phone)
+  shownContext = ""
+  highlight(phone)
   ;(window as any).__tune = { remote, page, send }
   // Tests and capture scripts mount pages of their own here.
   ;(window as any).__knobs = { knobs, mountPage }
 }
 
+// What's on the phone's screen, highlighted on the page: its groups are the page's sections.
+let shownContext = ""
+function highlight(phone: Phone) {
+  const key = JSON.stringify(phone.context)
+  if (!page || key === shownContext) return
+  const first = shownContext === ""
+  shownContext = key
+  const sections = [...new Set(phone.context.groups.map((g) => SECTIONS[g] ?? title(g)))]
+  // The first one is where the page opens; later screens glide into view if they're off it.
+  page.highlight({ sections }, { reveal: !first })
+}
+
+/** A stand-in pairing code: a QR-like grid, the same every time. */
+function fakeCode() {
+  const n = 25
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", `-2 -2 ${n + 4} ${n + 4}`)
+  svg.setAttribute("class", "tune-qr")
+  let seed = 7
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const finder = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < 7 && y < 7
+      ? x === 0 || y === 0 || x === 6 || y === 6 || (x > 1 && x < 5 && y > 1 && y < 5)
+      : undefined
+  let d = ""
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const f = finder(x, y) ?? finder(x - (n - 7), y) ?? finder(x, y - (n - 7))
+      const near = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9)
+      if (f ?? (!near && random() < 0.48)) d += `M${x} ${y}h1v1h-1z`
+    }
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  path.setAttribute("d", d)
+  svg.append(path)
+  return svg
+}
+
 function customCards(p: Page) {
+  // Connection: the pairing code until the phone signs in, then just a line saying it's there.
+  const connection = p.card({
+    title: "Connection",
+    section: "Connection",
+    collapsed: false,
+    summary: "Waiting for iPhone…",
+  })
+  const pairing = document.createElement("div")
+  pairing.className = "tune-pairing"
+  const hint = document.createElement("p")
+  hint.textContent = "Scan with the iPhone’s camera to pair and sign in."
+  pairing.append(fakeCode(), hint)
+  connection.body.append(pairing)
+  connection.actions([
+    { label: "Copy Link", run: () => navigator.clipboard?.writeText(location.href) },
+  ])
+  let paired: boolean | undefined
+
   // Playground & Slow Motion: what the phone shows and how fast it moves.
   const pg = p.card({ title: "Playground & Slow Motion", section: "Playground" })
   const command = (c: object) => send({ type: "playgroundCommand", command: c })
@@ -263,6 +322,14 @@ function customCards(p: Page) {
   const set = <T>(control: PageControl<T>, value: T) => control.set(value)
   return {
     update(phone: Phone) {
+      if (phone.paired !== paired) {
+        connection.summary(
+          phone.paired ? `iPhone · ${phone.version} · connected` : "Waiting for iPhone…",
+        )
+        // Signing in folds the code away; a page that opens already paired keeps it as it was.
+        if (phone.paired && paired === false) connection.collapse(true)
+        paired = phone.paired
+      }
       const s = phone.playgroundStatus
       set(screen, s.active ?? "off")
       set(speed, String(s.timeScale))
@@ -319,5 +386,6 @@ ws.onmessage = (event) => {
     // holds against stale echoes for a moment.
     remote.sync(mapping!.fromPhone(phone.values), { replace: true })
     ui?.update(phone)
+    highlight(phone)
   }
 }

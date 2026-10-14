@@ -5,6 +5,8 @@ export interface PanelSession {
   readonly open?: boolean
   readonly expanded?: readonly string[]
   readonly focus?: { readonly inline: boolean; readonly stop: number }
+  /** A page's collapsible custom cards, by title: whether each is folded. */
+  readonly folded?: Readonly<Record<string, boolean>>
 }
 
 const tab = (): Storage | null => {
