@@ -1145,4 +1145,78 @@ describe("page layout", () => {
     expect(balancedRuns([], 3)).toEqual([])
     expect(balancedRuns([80, 400, 90, 120, 60], 3)).toEqual([1, 1, 3])
   })
+
+  it("gives sections their own columns, keeps reading order and makes the tallest column shortest", async () => {
+    const { pageColumns } = await import("../src/panel/page.js")
+    const cards = (section: number, ...heights: number[]) =>
+      heights.map((height) => ({ height, section }))
+    // The tune page: Playground, Session List, Transcript, Composer.
+    const items = [
+      ...cards(0, 300, 100),
+      ...cards(1, 300, 200, 250),
+      ...cards(2, 250, 280, 250, 250),
+      ...cards(3, 210, 240, 210),
+    ]
+    const options = { gap: 16, space: 12, label: () => 30 }
+    const starts = (n: number) => pageColumns(items, n, options).map((c) => c.start)
+    // One section per column when they fit; the longest takes two; short ones stack.
+    expect(starts(4)).toEqual([0, 2, 5, 9])
+    expect(starts(5)).toEqual([0, 2, 5, 7, 9])
+    expect(starts(3)).toEqual([0, 5, 9])
+    expect(starts(1)).toEqual([0])
+    // Labels top each column (blank where a section continues) and each stacked section.
+    const three = pageColumns(items, 3, options)
+    expect(three[0]!.entries).toEqual([
+      { kind: "label", section: 0, continued: false },
+      { kind: "card", index: 0 },
+      { kind: "card", index: 1 },
+      { kind: "label", section: 1, continued: false },
+      { kind: "card", index: 2 },
+      { kind: "card", index: 3 },
+      { kind: "card", index: 4 },
+    ])
+    expect(three[0]!.height).toBe(30 + 16 + 400 + 16 + (30 + 12 + 16) + 750 + 3 * 16)
+    expect(pageColumns(items, 5, options)[3]!.entries[0]).toEqual({
+      kind: "label",
+      section: 2,
+      continued: true,
+    })
+    expect(pageColumns([], 3, options)).toEqual([])
+
+    // Against every valid split of small random pages: order kept, tallest as short as can be.
+    let seed = 7
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    for (let round = 0; round < 200; round++) {
+      const m = 1 + Math.floor(random() * 7)
+      const page: { height: number; section: number }[] = []
+      let section = 0
+      for (let i = 0; i < m; i++) {
+        if (i > 0 && random() < 0.4) section++
+        page.push({ height: 40 + Math.floor(random() * 300), section })
+      }
+      const n = 1 + Math.floor(random() * 4)
+      const got = pageColumns(page, n, options)
+      expect(
+        got.flatMap((c) => c.entries.filter((e) => e.kind === "card").map((e) => e.index)),
+      ).toEqual(page.map((_, i) => i))
+      expect(got.length).toBe(Math.min(n, m))
+      let best = Infinity
+      const k = Math.min(n, m)
+      const sec = page.map((p) => p.section)
+      const valid = (i: number, j: number) =>
+        sec[i] === sec[j - 1] ||
+        ((i === 0 || sec[i - 1] !== sec[i]) && (j === m || sec[j] !== sec[j - 1]))
+      const height = (i: number, j: number) => pageColumns(page.slice(i, j), 1, options)[0]!.height
+      const walk = (i: number, left: number, tallest: number) => {
+        if (left === 0) {
+          if (i === m) best = Math.min(best, tallest)
+          return
+        }
+        for (let j = i + 1; j <= m - left + 1; j++)
+          if (valid(i, j)) walk(j, left - 1, Math.max(tallest, height(i, j)))
+      }
+      walk(0, k, 0)
+      expect(Math.max(...got.map((c) => c.height))).toBeCloseTo(best, 5)
+    }
+  })
 })

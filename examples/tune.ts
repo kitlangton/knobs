@@ -253,6 +253,8 @@ function customCards(p: Page) {
   const count = document.createElement("span")
   count.className = "tune-count"
   watch.accessory.append(count)
+  const jumps = watch.list()
+  const clear = watch.actions([])
   let jumpsKey: string | undefined
 
   const set = <T>(control: PageControl<T>, value: T) => control.set(value)
@@ -279,17 +281,22 @@ function customCards(p: Page) {
       if (key !== jumpsKey) {
         jumpsKey = key
         count.textContent = phone.jumps.length ? String(phone.jumps.length) : ""
-        watch.clear()
-        if (phone.jumps.length === 0)
-          watch.item({ label: "No jumps", detail: `${s.frameCount} frames` })
-        for (const j of [...phone.jumps].reverse())
-          watch.item({
-            label: `${title(j.kind)} · ${j.rows[0]}`,
-            detail: `${j.magnitudePt.toFixed(1)} pt · f${j.frame}`,
-            onSelect: () => command({ action: "replay", value: j.id }),
-          })
-        if (phone.jumps.length)
-          watch.actions([{ label: "Clear", run: () => command({ action: "clearJumps" }) }])
+        // Newest first; new jumps fold in at the top and cleared ones fold away.
+        jumps.set(
+          phone.jumps.length === 0
+            ? [{ key: "none", label: "No jumps", detail: `${s.frameCount} frames` }]
+            : [...phone.jumps].reverse().map((j) => ({
+                key: j.id,
+                label: `${title(j.kind)} · ${j.rows[0]}`,
+                detail: `${j.magnitudePt.toFixed(1)} pt · f${j.frame}`,
+                onSelect: () => command({ action: "replay", value: j.id }),
+              })),
+        )
+        clear.set(
+          phone.jumps.length
+            ? [{ label: "Clear", run: () => command({ action: "clearJumps" }) }]
+            : [],
+        )
       }
     },
   }

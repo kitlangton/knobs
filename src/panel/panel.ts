@@ -309,6 +309,10 @@ function buildPanel<S extends Schema>(
         clearSelection()
         wakeGpu()
       },
+      wake: () => {
+        layoutTick++
+        wakeGpu()
+      },
     })
   }
   const cardFor = (group: string | undefined, section?: string) => {
@@ -946,7 +950,7 @@ function buildPanel<S extends Schema>(
   }
 
   const visible = (node: HTMLElement) =>
-    node.isConnected && !node.closest("[hidden]") && node.getClientRects().length > 0
+    node.isConnected && !node.closest("[hidden],[data-leaving]") && node.getClientRects().length > 0
   const hintCtrl = createHintController(doc, root, () => wakeGpu())
 
   /** On a page, hints go to what's on screen below the header (and the header itself). */
@@ -1049,20 +1053,25 @@ function buildPanel<S extends Schema>(
     if (!layout) return
     const query = filterEl.value.trim()
     root.toggleAttribute("data-filtering", Boolean(query))
-    for (const r of rows) {
-      const show = !query || matchesFilter(query, r.display, r.key, r.field.group, r.field.section)
-      if (r.row.hidden === show) r.row.hidden = !show
-    }
-    for (const inner of tiles.values()) {
-      const tile = inner.parentElement!
-      const empty = ![...inner.children].some((c) => !(c as HTMLElement).hidden)
-      if (tile.hidden !== empty) tile.hidden = empty
-    }
-    for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
-      const hide = Boolean(query) && !matchesFilter(query, tile.dataset.card)
-      if (tile.hidden !== hide) tile.hidden = hide
-    }
-    layout.pack(true)
+    layout.change(
+      () => {
+        for (const r of rows) {
+          const show =
+            !query || matchesFilter(query, r.display, r.key, r.field.group, r.field.section)
+          if (r.row.hidden === show) r.row.hidden = !show
+        }
+        for (const inner of tiles.values()) {
+          const tile = inner.parentElement!
+          const empty = ![...inner.children].some((c) => !(c as HTMLElement).hidden)
+          if (tile.hidden !== empty) tile.hidden = empty
+        }
+        for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
+          const hide = Boolean(query) && !matchesFilter(query, tile.dataset.card)
+          if (tile.hidden !== hide) tile.hidden = hide
+        }
+      },
+      rows.map((r) => r.row),
+    )
   }
   function openFilter() {
     if (!(doc.activeElement === filterEl)) filterReturn = doc.activeElement as HTMLElement | null
@@ -1558,6 +1567,8 @@ function buildPanel<S extends Schema>(
             tiles: gpuTiles,
             sections: () => layout!.sections,
             layoutKey: () => layoutTick,
+            moving: () => layout!.moving,
+            frame: (now: number) => layout!.frame(now),
           },
         }
       : {}),

@@ -1,5 +1,7 @@
+import { Spring } from "../core/spring.js"
 import type { MountPanelOptions } from "../core/store.js"
 import type { Panel } from "./panel.js"
+import { isRevealingIn, resize, reveal } from "./reveal.js"
 import { placeSegPill } from "./seg.js"
 import { onSwipe } from "./swipe.js"
 
@@ -18,6 +20,12 @@ export interface PageCardOptions {
   readonly section?: string
   /** Any content, placed in the card's body (more can follow with `card.body.append`). */
   readonly element?: HTMLElement
+}
+
+export interface PageItem {
+  readonly label: string
+  readonly detail?: string
+  onSelect?(): void
 }
 
 export interface PageAction {
@@ -53,17 +61,26 @@ export interface PageCard {
     readonly value: boolean
     onChange(value: boolean): void
   }): PageControl<boolean>
-  /** A row of buttons; `set` replaces them. */
+  /**
+   * A row of buttons; `set` swaps them, keyed by label: buttons that stay glide to their place,
+   * the rest cross-fade, and the row folds away while it's empty.
+   */
   actions(items: readonly PageAction[]): {
     readonly element: HTMLElement
     set(items: readonly PageAction[]): void
   }
   /** A list row: a label, a quieter detail and, with `onSelect`, a keyboard stop (Enter). */
-  item(options: {
-    readonly label: string
-    readonly detail?: string
-    onSelect?(): void
-  }): HTMLElement
+  item(options: PageItem): HTMLElement
+  /**
+   * Rows kept by key: `set` updates the ones that stay, folds new ones open and removed ones
+   * shut, so the card's height eases and the cards below glide.
+   */
+  list(items?: readonly (PageItem & { readonly key: string })[]): {
+    readonly element: HTMLElement
+    set(items: readonly (PageItem & { readonly key: string })[]): void
+  }
+  /** Folds a row (or anything in the card) open or shut. */
+  show(element: HTMLElement, visible: boolean): void
   /** Empties the body. */
   clear(): void
   remove(): void
@@ -74,22 +91,23 @@ export interface Page extends Panel {
   card(options: PageCardOptions): PageCard
 }
 
-interface Section {
-  readonly name: string
-  readonly rank: number
-  readonly element: HTMLElement
-  readonly head: HTMLElement | null
-  readonly grid: HTMLElement
-  readonly columns: HTMLElement[]
-  readonly tiles: HTMLElement[]
-}
-
 export interface PageLayout {
-  readonly sections: readonly Section[]
+  /** Each showing section's label (the overlay draws their text). */
+  readonly sections: readonly { readonly element: HTMLElement; readonly head: HTMLElement | null }[]
   add(tile: HTMLElement, section: string): void
+  /** Folds the card away, then takes it out of the page. */
   remove(tile: HTMLElement): void
-  /** Columns follow the width; tiles keep their order, split into balanced runs per column. */
+  /** Re-balances the columns when their count changed (or always, with `force`). */
   pack(force?: boolean): void
+  /**
+   * Applies a structural change (the filter, cards shown or hidden) and animates the result:
+   * `rows` whose `hidden` changed fold open or shut, cards glide to their new places.
+   */
+  change(mutate: () => void, rows?: readonly HTMLElement[]): void
+  /** Steps the motion now, at the start of the overlay's frame (`now` from requestAnimationFrame). */
+  frame(now: number): void
+  /** While cards glide or change height, or something folds inside them. */
+  readonly moving: boolean
   readonly version: number
   dispose(): void
 }
@@ -99,144 +117,628 @@ export interface PageLayout {
  * reading down a column and on to the next follows the original order.
  */
 export function balancedRuns(heights: readonly number[], n: number, gap = 0): number[] {
-  const m = heights.length
-  const k = Math.max(1, Math.min(n, m))
+  return pageColumns(
+    heights.map((height) => ({ height, section: 0 })),
+    n,
+    { gap },
+  ).map((c) => c.end - c.start)
+}
+
+export interface PageColumnItem {
+  readonly height: number
+  /** Cards of a section are contiguous; sections are numbered in reading order. */
+  readonly section: number
+}
+
+export type PageColumnEntry =
+  | { readonly kind: "label"; readonly section: number; readonly continued: boolean }
+  | { readonly kind: "card"; readonly index: number }
+
+export interface PageColumn {
+  /** The column holds items `start` to `end - 1`. */
+  readonly start: number
+  readonly end: number
+  readonly height: number
+  /** Top to bottom: a label over each section's first card here, then the cards. */
+  readonly entries: readonly PageColumnEntry[]
+}
+
+/**
+ * Lays a page's cards into `n` independent columns that keep their reading order (down a
+ * column, then the next). A column holds part of one section (a long section takes several
+ * adjacent columns) or several whole sections stacked; it never ends one section and starts
+ * another midway. The tallest column is as short as possible, and the rest as even as they can
+ * be. Each column opens with its section's label (`continued` when the section began in the
+ * column before); a section stacked below another gets a label and `space` above it.
+ */
+export function pageColumns(
+  items: readonly PageColumnItem[],
+  n: number,
+  options: {
+    readonly gap?: number
+    /** A section's label height (0 for none). */
+    readonly label?: (section: number) => number
+    readonly space?: number
+  } = {},
+): PageColumn[] {
+  const m = items.length
   if (m === 0) return []
-  const prefix = [0]
-  for (const h of heights) prefix.push(prefix[prefix.length - 1]! + h)
-  const run = (i: number, j: number) => prefix[j]! - prefix[i]! + gap * (j - i - 1)
-  // best[c][j]: the tallest column when the first j tiles fill c columns.
-  const best = Array.from({ length: k + 1 }, () => new Array<number>(m + 1).fill(Infinity))
-  const cut = Array.from({ length: k + 1 }, () => new Array<number>(m + 1).fill(0))
-  best[0]![0] = 0
-  for (let c = 1; c <= k; c++)
-    for (let j = c; j <= m; j++)
-      for (let i = c - 1; i < j; i++) {
-        const v = Math.max(best[c - 1]![i]!, run(i, j))
-        if (v < best[c]![j]! - 1e-6) {
-          best[c]![j] = v
-          cut[c]![j] = i
-        }
+  const k = Math.max(1, Math.min(n, m))
+  const gap = options.gap ?? 0
+  const space = options.space ?? 0
+  const label = options.label ?? (() => 0)
+  const sec = items.map((i) => i.section)
+  const starts = (i: number) => i === 0 || sec[i - 1] !== sec[i]
+  const ends = (j: number) => j === m || sec[j] !== sec[j - 1]
+  // cost[i][j]: a column of items i…j-1 (Infinity when it would split a section and hold another).
+  const cost = Array.from({ length: m + 1 }, () => new Array<number>(m + 1).fill(Infinity))
+  for (let i = 0; i < m; i++) {
+    const top = label(sec[i]!)
+    let h = top > 0 ? top + gap : 0
+    let mixed = false
+    for (let j = i + 1; j <= m; j++) {
+      const at = j - 1
+      if (at > i && sec[at] !== sec[at - 1]) {
+        mixed = true
+        const l = label(sec[at]!)
+        if (l > 0) h += l + space + gap
       }
-  const sizes: number[] = []
+      h += items[at]!.height + (at > i ? gap : 0)
+      if (!mixed || (starts(i) && ends(j))) cost[i]![j] = h
+    }
+  }
+  const solve = (score: (before: number, run: number) => number, limit: number) => {
+    const best = Array.from({ length: k + 1 }, () => new Array<number>(m + 1).fill(Infinity))
+    const cut = Array.from({ length: k + 1 }, () => new Array<number>(m + 1).fill(0))
+    best[0]![0] = 0
+    for (let c = 1; c <= k; c++)
+      for (let j = c; j <= m; j++)
+        for (let i = c - 1; i < j; i++) {
+          const run = cost[i]![j]!
+          const before = best[c - 1]![i]!
+          if (run > limit || before === Infinity) continue
+          const v = score(before, run)
+          if (v < best[c]![j]! - 1e-6) {
+            best[c]![j] = v
+            cut[c]![j] = i
+          }
+        }
+    return { best, cut }
+  }
+  const tallest = solve(Math.max, Infinity).best[k]![m]!
+  // Among layouts as short as that, the most even (least sum of squared heights).
+  const { cut } = solve((before, run) => before + run * run, tallest + 0.5)
+  const columns: PageColumn[] = []
   let j = m
   for (let c = k; c >= 1; c--) {
     const i = cut[c]![j]!
-    sizes.unshift(j - i)
+    const entries: PageColumnEntry[] = []
+    for (let at = i; at < j; at++) {
+      if ((at === i || sec[at] !== sec[at - 1]) && label(sec[at]!) > 0)
+        entries.push({ kind: "label", section: sec[at]!, continued: !starts(at) })
+      entries.push({ kind: "card", index: at })
+    }
+    columns.unshift({ start: i, end: j, height: cost[i]![j]!, entries })
     j = i
   }
-  return sizes
+  return columns
 }
+
+interface Section {
+  readonly name: string
+  readonly rank: number
+  readonly label: HTMLElement | null
+  readonly tiles: HTMLElement[]
+  /** Blank labels topping the section's later columns, so their cards line up with the first. */
+  readonly spacers: HTMLElement[]
+}
+
+/** A card's motion: its offset from where the layout puts it, and its height while that eases. */
+interface Motion {
+  readonly x: Spring
+  readonly y: Spring
+  h?: Spring
+  /** Growing in from nothing or folding away (from or to this height): padding and the gap below ease with the height. */
+  fold?: number
+}
+
+/** Cards glide on a spring that barely overshoots; heights ease without any. */
+const GLIDE = { omega: 22, zeta: 0.9 }
+const SIZE = { omega: 24, zeta: 1 }
+/** Column changes from a resize wait this long, so dragging the window doesn't churn. */
+const RESIZE_MS = 120
 
 export function createPageLayout(
   doc: Document,
   host: HTMLElement,
-  options: { order: readonly string[]; columnWidth: number; onLayout(): void },
+  options: {
+    order: readonly string[]
+    columnWidth: number
+    /** Cards moved in the DOM (re-sort anything kept in page order). */
+    onLayout(): void
+    /** Motion started or settled (the overlay re-reads rects). */
+    wake(): void
+  },
 ): PageLayout {
+  const win = doc.defaultView!
   const sections: Section[] = []
   let appeared = 0
   let cols = 0
   let version = 0
+  let ready = false
   const el = (cls: string, tag: keyof HTMLElementTagNameMap = "div") => {
     const node = doc.createElement(tag)
     node.className = cls
     return node
   }
+  const grid = el("knobs-columns")
+  host.append(grid)
+  const columns: HTMLElement[] = []
+  /** Cards added since the last layout; they grow in when it runs. */
+  const pending = new Set<HTMLElement>()
+  /** Cards folding away: what to do once they're gone. */
+  const leaving = new Map<HTMLElement, () => void>()
+  const motions = new Map<HTMLElement, Motion>()
+  /** Each card's natural height when last seen, to tell a sudden change from a gradual one. */
+  const known = new WeakMap<HTMLElement, number>()
+  const reduced = () => win.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const gapOf = () => parseFloat(getComputedStyle(grid).columnGap) || 0
+
   const sectionFor = (name: string) => {
     let s = sections.find((x) => x.name === name)
     if (s) return s
     const listed = options.order.indexOf(name)
     const rank =
       name === "" && listed < 0 ? -1 : listed >= 0 ? listed : options.order.length + appeared++
-    const element = el("knobs-section", "section")
-    element.dataset.section = name
-    const head = name ? el("knobs-section-head", "h2") : null
-    if (head) {
-      head.textContent = name
-      element.setAttribute("aria-label", name)
-      element.append(head)
+    let label: HTMLElement | null = null
+    if (name) {
+      label = el("knobs-section-head", "h2")
+      label.dataset.section = name
+      label.textContent = name
     }
-    const grid = el("knobs-columns")
-    element.append(grid)
-    s = { name, rank, element, head, grid, columns: [], tiles: [] }
+    s = { name, rank, label, tiles: [], spacers: [] }
     const after = sections.findIndex((x) => x.rank > rank)
-    if (after < 0) {
-      sections.push(s)
-      host.append(element)
-    } else {
-      host.insertBefore(element, sections[after]!.element)
-      sections.splice(after, 0, s)
-    }
+    if (after < 0) sections.push(s)
+    else sections.splice(after, 0, s)
     return s
   }
-  const gapOf = (grid: HTMLElement) => parseFloat(getComputedStyle(grid).columnGap) || 0
+  const tilesInOrder = () => sections.flatMap((s) => s.tiles)
+  const sectionOf = (tile: HTMLElement) => sections.find((s) => s.tiles.includes(tile))
+  const showing = (tile: HTMLElement) => !tile.hidden && !leaving.has(tile)
 
-  function pack(force = false) {
-    const first = sections[0]
-    if (!first) return
-    const gap = gapOf(first.grid)
-    const width = first.grid.clientWidth
-    // As many columns as fit, but no more than the fullest section fills: wider cards beat empty
-    // columns.
-    const most = Math.max(1, ...sections.map((s) => s.tiles.filter((t) => !t.hidden).length))
-    const n = Math.max(
-      1,
-      Math.min(8, most, Math.floor((width + gap) / (options.columnWidth + gap))),
-    )
-    if (n === cols && !force) return
-    cols = n
-    host.style.setProperty("--k-cols", String(n))
-    const active = doc.activeElement as HTMLElement | null
-    for (const s of sections) {
-      while (s.columns.length < n) {
-        const column = el("knobs-column")
-        s.columns.push(column)
-        s.grid.append(column)
-      }
-      while (s.columns.length > n) s.columns.pop()!.remove()
-      const shown = s.tiles.filter((t) => !t.hidden)
-      s.element.hidden = shown.length === 0
-      // Measured at the column width, all in one column, then split into balanced runs.
-      for (const t of s.tiles) s.columns[0]!.append(t)
-      const sizes = balancedRuns(
-        shown.map((t) => t.offsetHeight),
-        n,
-        gap,
-      )
-      let at = 0
-      sizes.forEach((size, c) => {
-        for (const t of shown.slice(at, at + size)) s.columns[c]!.append(t)
-        at += size
-      })
-    }
-    // Moving a tile takes focus with it; put it back without scrolling.
-    if (active && active !== doc.activeElement && active.isConnected)
-      active.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    version++
-    options.onLayout()
+  function fit() {
+    const gap = gapOf()
+    const shown = tilesInOrder().filter(showing).length
+    const across = Math.floor((grid.clientWidth + gap) / (options.columnWidth + gap))
+    return Math.max(1, Math.min(8, shown, across))
   }
 
-  const resize = new ResizeObserver(() => pack())
-  resize.observe(host)
+  // ── Motion ──────────────────────────────────────────────────────────────────────────────────
+  let raf = 0
+  let last = 0
+  let gapPx = 0
+  const motionFor = (node: HTMLElement) => {
+    let m = motions.get(node)
+    if (!m) {
+      m = {
+        x: new Spring(0, GLIDE.omega, GLIDE.zeta, 0.05),
+        y: new Spring(0, GLIDE.omega, GLIDE.zeta, 0.05),
+      }
+      motions.set(node, m)
+    }
+    return m
+  }
+  const sizeSpring = (from: number, to: number) =>
+    new Spring(from, SIZE.omega, SIZE.zeta, 0.1).set(to)
+  function write(node: HTMLElement, m: Motion) {
+    const x = m.x.x
+    const y = m.y.x
+    node.style.transform =
+      Math.abs(x) > 0.01 || Math.abs(y) > 0.01 ? `translate(${x}px,${y}px)` : ""
+    if (m.h) {
+      const h = Math.max(0, m.h.x)
+      node.style.height = `${h}px`
+      node.style.overflow = "clip"
+      if (m.fold !== undefined) {
+        const f = Math.min(1, m.fold > 0 ? h / m.fold : 0)
+        // Borders can't fold, so the margin takes up what they keep.
+        node.style.paddingTop = node.style.paddingBottom = `calc(var(--k-pad) * ${f})`
+        node.style.marginBottom = `${-gapPx * (1 - f) - Math.max(0, 2 - h)}px`
+      }
+    }
+  }
+  function clear(node: HTMLElement) {
+    node.style.transform = ""
+    node.style.height = ""
+    node.style.overflow = ""
+    node.style.marginBottom = ""
+    node.style.paddingTop = node.style.paddingBottom = ""
+  }
+  function settle(node: HTMLElement, m: Motion) {
+    motions.delete(node)
+    clear(node)
+    if (m.h) known.set(node, m.h.target)
+    const done = leaving.get(node)
+    if (done) {
+      leaving.delete(node)
+      node.removeAttribute("inert")
+      delete node.dataset.leaving
+      done()
+    }
+  }
+  const tick = (now: number) => {
+    raf = 0
+    gapPx = gapOf()
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000))
+    last = now
+    for (const [node, m] of motions) {
+      m.x.step(dt)
+      m.y.step(dt)
+      m.h?.step(dt)
+      if (m.x.resting && m.y.resting && (!m.h || m.h.resting)) settle(node, m)
+      else write(node, m)
+    }
+    if (motions.size) raf = win.requestAnimationFrame(tick)
+    else {
+      version++
+      options.wake()
+    }
+  }
+  function run() {
+    if (raf || !motions.size) return
+    last = performance.now()
+    raf = win.requestAnimationFrame(tick)
+    options.wake()
+  }
+  function snapAll() {
+    for (const [node, m] of motions) {
+      if (m.h) m.h.snap(m.h.target)
+      settle(node, m)
+    }
+  }
+
+  /** Natural heights (as if nothing held them), read in one layout pass. */
+  function naturals(tiles: readonly HTMLElement[]) {
+    const held = tiles.filter((t) => t.style.height)
+    const saved = held.map((t) => t.style.cssText)
+    for (const t of held) {
+      t.style.height = ""
+      t.style.marginBottom = ""
+      t.style.paddingTop = t.style.paddingBottom = ""
+    }
+    const out = new Map(tiles.map((t) => [t, t.offsetHeight]))
+    held.forEach((t, i) => (t.style.cssText = saved[i]!))
+    return out
+  }
+
+  // ── Layout ──────────────────────────────────────────────────────────────────────────────────
+  const spacer = (s: Section, i: number) => {
+    let node = s.spacers[i]
+    if (!node) {
+      node = el("knobs-section-head")
+      node.dataset.continued = s.name
+      node.setAttribute("aria-hidden", "true")
+      node.textContent = "\u00a0"
+      s.spacers.push(node)
+    }
+    return node
+  }
+  const nodes = () => {
+    const out: HTMLElement[] = []
+    for (const column of columns)
+      for (const child of column.children)
+        if (!(child as HTMLElement).hidden) out.push(child as HTMLElement)
+    return out
+  }
+
+  function relayout(mutate?: () => void, rows: readonly HTMLElement[] = []) {
+    const animate = ready && !reduced()
+    if (!animate) snapAll()
+    // First: where everything is drawn now.
+    const first = new Map<HTMLElement, DOMRect>()
+    if (animate) for (const node of nodes()) first.set(node, node.getBoundingClientRect())
+    // Rows still folding shut count as hidden.
+    const closing = new Set(rows.filter((r) => r.dataset.leaving === "true"))
+    for (const r of closing) r.hidden = true
+    const wasHidden = new Map(rows.map((r) => [r, r.hidden]))
+    const wasShowing = new Set(tilesInOrder().filter((t) => t.isConnected && showing(t)))
+    // Cards folding away are hidden as far as the change is concerned.
+    for (const t of leaving.keys()) t.hidden = true
+    mutate?.()
+    for (const t of pending) t.style.display = ""
+    // Cards hidden by the change fold away where they are; ones it brought back stay.
+    for (const t of [...leaving.keys()])
+      if (!t.hidden || !t.isConnected) {
+        leaving.delete(t)
+        t.removeAttribute("inert")
+        delete t.dataset.leaving
+      }
+    for (const t of tilesInOrder())
+      if (t.hidden && wasShowing.has(t) && animate) leaving.set(t, () => (t.hidden = true))
+    for (const t of leaving.keys()) {
+      t.hidden = false
+      t.inert = true
+      t.dataset.leaving = ""
+    }
+
+    // Balance the cards that show, at their final heights.
+    const order = tilesInOrder()
+    const shown = order.filter(showing)
+    const n = Math.max(1, Math.min(8, shown.length || 1, fit()))
+    cols = n
+    host.style.setProperty("--k-cols", String(n))
+    while (columns.length < n) {
+      const column = el("knobs-column")
+      columns.push(column)
+      grid.append(column)
+    }
+    const probe = sections.find((s) => s.label)?.label
+    if (probe && !probe.isConnected) columns[0]!.append(probe)
+    const gap = gapOf()
+    gapPx = gap
+    const labelHeight = probe ? probe.offsetHeight - gap * 0.25 : 0
+    const heights = naturals(shown)
+    const shownSections = sections.filter((s) => s.tiles.some(showing))
+    const plan = pageColumns(
+      shown.map((t) => ({
+        height: heights.get(t)!,
+        section: shownSections.indexOf(sectionOf(t)!),
+      })),
+      n,
+      {
+        gap,
+        space: gap * 0.75,
+        label: (i) => (shownSections[i]!.label ? labelHeight : 0),
+      },
+    )
+    // Columns top to bottom; hidden and folding cards stay after the card before them.
+    const want: HTMLElement[][] = Array.from({ length: n }, () => [])
+    const used = new Map<Section, number>()
+    plan.forEach((column, c) => {
+      for (const e of column.entries) {
+        if (e.kind === "card") want[c]!.push(shown[e.index]!)
+        else {
+          const s = shownSections[e.section]!
+          if (!e.continued) want[c]!.push(s.label!)
+          else {
+            const i = used.get(s) ?? 0
+            used.set(s, i + 1)
+            want[c]!.push(spacer(s, i))
+          }
+        }
+      }
+    })
+    if (!plan.length) want[0]!.push(...order)
+    else
+      order.forEach((t, i) => {
+        if (showing(t)) return
+        for (let p = i - 1; p >= 0; p--) {
+          const c = want.findIndex((list) => list.includes(order[p]!))
+          if (c < 0) continue
+          want[c]!.splice(want[c]!.indexOf(order[p]!) + 1, 0, t)
+          return
+        }
+        const top = want[0]!
+        top.splice(top[0]?.classList.contains("knobs-section-head") ? 1 : 0, 0, t)
+      })
+    // Removed cards fold away after whatever they followed.
+    const orphans = [...leaving.keys()]
+      .filter((t) => !sectionOf(t))
+      .map((t) => [t, t.previousElementSibling] as const)
+    const active = doc.activeElement as HTMLElement | null
+    want.forEach((list, c) => {
+      const column = columns[c]!
+      list.forEach((node, i) => {
+        if (column.children[i] !== node) column.insertBefore(node, column.children[i] ?? null)
+      })
+      while (column.children.length > list.length) column.lastElementChild!.remove()
+    })
+    while (columns.length > n) columns.pop()!.remove()
+    for (const [t, prev] of orphans) {
+      if (prev?.isConnected && prev.parentElement?.classList.contains("knobs-column")) prev.after(t)
+      else {
+        const m = motions.get(t)
+        if (m) settle(t, m)
+        else leaving.get(t)?.()
+        leaving.delete(t)
+      }
+    }
+    // Moving a card takes focus with it; put it back without scrolling.
+    if (active && active !== doc.activeElement && active.isConnected)
+      active.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+
+    // Rows the change showed or hid fold open or shut from where they were.
+    for (const [row, was] of wasHidden) {
+      const now = row.hidden
+      if (closing.has(row)) {
+        // Folding on, or back open from where it got to.
+        row.hidden = false
+        if (!now) reveal(row, true)
+      } else if (now !== was && animate) {
+        row.hidden = was
+        reveal(row, !now)
+      }
+    }
+    for (const t of order) if (!t.hidden) known.set(t, heights.get(t) ?? t.offsetHeight)
+    if (!animate) {
+      for (const t of pending) pending.delete(t)
+      version++
+      options.onLayout()
+      return
+    }
+
+    // Heights: anything that changed at once eases from what was drawn; new cards grow in.
+    const after = naturals(order.filter((t) => !t.hidden))
+    for (const t of order) {
+      if (t.hidden) continue
+      const m = motions.get(t)
+      const was = first.get(t)
+      if (leaving.has(t)) {
+        const from = m?.h?.x ?? was?.height ?? after.get(t)!
+        const mm = motionFor(t)
+        mm.h = mm.h ?? sizeSpring(from, 0)
+        mm.h.set(0)
+        mm.fold = Math.max(mm.fold ?? 0, from)
+      } else if (!was) {
+        const mm = motionFor(t)
+        mm.h = sizeSpring(0, after.get(t)!)
+        mm.fold = after.get(t)!
+      } else {
+        const target = heights.get(t)!
+        const drawn = m?.h ? m.h.x : was.height
+        if (m?.h) {
+          m.h.set(target)
+          if (m.fold !== undefined) m.fold = target
+        } else if (Math.abs(after.get(t)! - drawn) > 0.5 && !isRevealingIn(t)) {
+          const mm = motionFor(t)
+          mm.h = sizeSpring(drawn, target)
+        }
+      }
+    }
+    pending.clear()
+    for (const [node, m] of motions) write(node, m)
+    // Last, then invert: each card and label starts where it was drawn and glides home.
+    for (const node of nodes()) {
+      const from = first.get(node)
+      if (!from) continue
+      const m = motions.get(node)
+      const to = node.getBoundingClientRect()
+      const dx = from.left - (to.left - (m?.x.x ?? 0))
+      const dy = from.top - (to.top - (m?.y.x ?? 0))
+      if (!m && Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
+      const mm = m ?? motionFor(node)
+      mm.x.x = dx
+      mm.y.x = dy
+      mm.x.set(0)
+      mm.y.set(0)
+      write(node, mm)
+    }
+    version++
+    options.onLayout()
+    run()
+  }
+
+  // A card whose content changed at once (rows swapped, a custom card's content) eases to its new
+  // height, before the change is painted; the cards below in its column follow. Folds already
+  // animating inside it are left to move it. Nothing moves to another column.
+  function ease(list: readonly HTMLElement[], heights: ReadonlyMap<HTMLElement, number>) {
+    const animate = ready && !reduced()
+    for (const t of list) {
+      const natural = heights.get(t)!
+      const drawn = known.get(t)
+      known.set(t, natural)
+      if (!animate || leaving.has(t)) continue
+      const m = motions.get(t)
+      if (m?.h) {
+        m.h.set(natural)
+        if (m.fold !== undefined) m.fold = natural
+        continue
+      }
+      if (drawn === undefined || Math.abs(natural - drawn) < 0.5 || isRevealingIn(t)) continue
+      const mm = motionFor(t)
+      mm.h = sizeSpring(drawn, natural)
+      write(t, mm)
+    }
+    run()
+  }
+  const contents = new ResizeObserver((entries) => {
+    const tiles = new Set<HTMLElement>()
+    for (const e of entries) {
+      const tile = (e.target as HTMLElement).parentElement
+      if (tile && !tile.hidden && sectionOf(tile)) tiles.add(tile)
+    }
+    if (tiles.size) ease([...tiles], naturals([...tiles]))
+  })
+  const watch = (tile: HTMLElement) => {
+    for (const child of tile.children) contents.observe(child)
+  }
+
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined
+  const resize = new ResizeObserver(() => {
+    if (!ready || resizeTimer || fit() === cols) return
+    resizeTimer = setTimeout(() => {
+      resizeTimer = undefined
+      pack()
+    }, RESIZE_MS)
+  })
+  resize.observe(grid)
+
+  function pack(force = false) {
+    if (!force && !pending.size && fit() === cols) return
+    relayout()
+    if (!ready) win.requestAnimationFrame(() => (ready = true))
+  }
+
   return {
-    sections,
+    get sections() {
+      return sections
+        .filter((s) => s.label?.isConnected)
+        .map((s) => ({ element: s.label!, head: s.label }))
+    },
     add(tile, name) {
       sectionFor(name).tiles.push(tile)
-      sectionFor(name).columns[0]?.append(tile)
+      if (ready) {
+        pending.add(tile)
+        tile.style.display = "none"
+        queueMicrotask(() => pending.size && pack(true))
+      }
+      ;(columns[0] ?? grid).append(tile)
+      watch(tile)
     },
     remove(tile) {
-      for (const s of sections) {
-        const i = s.tiles.indexOf(tile)
-        if (i >= 0) s.tiles.splice(i, 1)
+      const s = sectionOf(tile)
+      if (s) s.tiles.splice(s.tiles.indexOf(tile), 1)
+      for (const child of tile.children) contents.unobserve(child)
+      pending.delete(tile)
+      const drawn = tile.isConnected && !tile.hidden ? tile.offsetHeight : 0
+      if (!ready || reduced() || !drawn) {
+        leaving.delete(tile)
+        motions.delete(tile)
+        tile.remove()
+        return
       }
-      tile.remove()
+      const m = motionFor(tile)
+      m.h = m.h ?? sizeSpring(drawn, 0)
+      m.h.set(0)
+      m.fold = Math.max(m.fold ?? 0, drawn)
+      gapPx = gapOf()
+      tile.inert = true
+      tile.dataset.leaving = ""
+      leaving.set(tile, () => tile.remove())
+      write(tile, m)
+      run()
     },
     pack,
+    change(mutate, rows) {
+      relayout(mutate, rows)
+    },
+    frame(now) {
+      // The overlay draws before ResizeObserver runs, so sudden height changes are caught here
+      // too, and the motion steps before it reads where things are.
+      if (ready) {
+        const free = tilesInOrder().filter(
+          (t) => !t.hidden && !leaving.has(t) && !motions.get(t)?.h && known.has(t),
+        )
+        const heights = new Map(free.map((t) => [t, t.offsetHeight]))
+        const changed = free.filter((t) => Math.abs(heights.get(t)! - known.get(t)!) >= 0.5)
+        if (changed.length) ease(changed, heights)
+      }
+      if (raf) {
+        win.cancelAnimationFrame(raf)
+        tick(now)
+      }
+    },
+    get moving() {
+      return motions.size > 0 || isRevealingIn(grid)
+    },
     get version() {
       return version
     },
     dispose() {
+      if (raf) win.cancelAnimationFrame(raf)
+      clearTimeout(resizeTimer)
       resize.disconnect()
+      contents.disconnect()
     },
   }
 }
@@ -292,6 +794,33 @@ export function createCustomCard(
         : 0
   const quiet = (node: HTMLElement) =>
     node.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+  const still = () =>
+    doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
+  /** Fills a list row: a label, a quieter detail and, with `onSelect`, a keyboard stop. */
+  const fill = (row: HTMLElement, o: PageItem) => {
+    row.replaceChildren(el("span", undefined, o.label))
+    if (o.detail) row.append(el("span", "knobs-item-detail", o.detail))
+    const select = o.onSelect
+    if (select) {
+      row.tabIndex = 0
+      row.dataset.knobsStop = ""
+      row.setAttribute("role", "button")
+    } else {
+      row.removeAttribute("tabindex")
+      delete row.dataset.knobsStop
+      row.removeAttribute("role")
+    }
+    row.onclick = select ? () => select() : null
+    row.onkeydown = select
+      ? (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          select()
+        }
+      : null
+    return row
+  }
+  const item = (o: PageItem) => fill(el("div", "knobs-row knobs-item"), o)
 
   return {
     element: tile,
@@ -409,7 +938,10 @@ export function createCustomCard(
       bar.tabIndex = -1
       bar.dataset.knobsStop = ""
       let last: HTMLButtonElement | undefined
-      const buttons = () => [...bar.querySelectorAll("button")].filter((b) => !b.disabled)
+      const buttons = () =>
+        [...bar.querySelectorAll<HTMLButtonElement>(":scope > button:not([data-gone])")].filter(
+          (b) => !b.disabled,
+        )
       bar.addEventListener("focus", () => {
         const list = buttons()
         ;(last && list.includes(last) ? last : list[0])?.focus({ preventScroll: true })
@@ -427,42 +959,164 @@ export function createCustomCard(
         list[(at + d + list.length) % list.length]?.focus()
       })
       const set = (next: readonly PageAction[]) => {
-        bar.replaceChildren(
-          ...next.map((a) => {
-            const b = el("button", undefined, a.label)
-            b.type = "button"
-            b.disabled = Boolean(a.disabled)
-            b.onclick = () => {
-              a.run()
-              hooks.wake()
-            }
-            return b
-          }),
+        const kept = new Map(
+          [...bar.querySelectorAll<HTMLButtonElement>(":scope > button:not([data-gone])")].map(
+            (b) => [b.textContent ?? "", b],
+          ),
         )
+        const live = bar.isConnected && !bar.parentElement?.closest("[hidden]") && !still()
+        const from = new Map([...kept.values()].map((b) => [b, b.getBoundingClientRect()]))
+        const box = bar.getBoundingClientRect()
+        const height = bar.hidden || bar.dataset.leaving ? 0 : box.height
+        const list = next.map((a) => {
+          const b = kept.get(a.label) ?? el("button", undefined, a.label)
+          kept.delete(a.label)
+          b.type = "button"
+          b.disabled = Boolean(a.disabled)
+          b.onclick = () => {
+            a.run()
+            hooks.wake()
+          }
+          return b
+        })
+        const gone = [...kept.values()]
+        const ghosts = [...bar.querySelectorAll<HTMLButtonElement>(":scope > [data-gone]")]
+        if (doc.activeElement && gone.includes(doc.activeElement as HTMLButtonElement))
+          (list[0] ?? bar).focus({ preventScroll: true })
+        bar.replaceChildren(...list, ...(live ? [...ghosts, ...gone] : []))
+        if (!live) {
+          bar.hidden = list.length === 0
+          hooks.wake()
+          return
+        }
+        // Buttons that left fade where they were, under the ones arriving (or in place, as the
+        // emptied row folds away).
+        for (const b of gone) {
+          const r = from.get(b)!
+          b.dataset.gone = ""
+          b.tabIndex = -1
+          b.disabled = true
+          if (list.length)
+            b.style.cssText = `position:absolute;left:${r.left - box.left}px;top:${r.top - box.top}px;width:${r.width}px;height:${r.height}px;margin:0`
+          b.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(.97)" }], {
+            duration: 160,
+            easing: "cubic-bezier(.4,0,.8,.4)",
+            fill: "forwards",
+          }).onfinish = () => b.remove()
+        }
+        if (list.length === 0) reveal(bar, false)
+        else if (height === 0) reveal(bar, true)
+        else resize(bar, height)
+        const now = bar.getBoundingClientRect()
+        for (const b of list) {
+          const r = from.get(b)
+          if (r) {
+            const to = b.getBoundingClientRect()
+            const dx = r.left - box.left - (to.left - now.left)
+            const dy = r.top - box.top - (to.top - now.top)
+            if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5)
+              b.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: "none" }], {
+                duration: 240,
+                easing: "cubic-bezier(.2,.8,.2,1)",
+              })
+          } else
+            b.animate(
+              [
+                { opacity: 0, transform: "scale(.97)" },
+                { opacity: 1, transform: "none" },
+              ],
+              {
+                duration: 200,
+                delay: gone.length ? 50 : 0,
+                easing: "cubic-bezier(.2,.8,.2,1)",
+                fill: "backwards",
+              },
+            )
+        }
         hooks.wake()
       }
+      bar.hidden = items.length === 0
       set(items)
       body.append(bar)
       return { element: bar, set }
     },
     item(o) {
-      const row = el("div", "knobs-row knobs-item")
-      row.append(el("span", undefined, o.label))
-      if (o.detail) row.append(el("span", "knobs-item-detail", o.detail))
-      if (o.onSelect) {
-        const select = o.onSelect
-        row.tabIndex = 0
-        row.dataset.knobsStop = ""
-        row.setAttribute("role", "button")
-        row.onclick = () => select()
-        row.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter" && event.key !== " ") return
-          event.preventDefault()
-          select()
-        })
-      }
+      const row = item(o)
       inset().append(row)
       return row
+    },
+    list(items = []) {
+      const card = el("div", "knobs-card")
+      card.style.position = "relative"
+      const rows = new Map<string, HTMLElement>()
+      const set = (next: readonly (PageItem & { readonly key: string })[]) => {
+        const live = card.isConnected && !card.parentElement?.closest("[hidden]") && !still()
+        const keys = new Set(next.map((x) => x.key))
+        const gone = [...rows].filter(([key]) => !keys.has(key))
+        const swap = live && gone.length > 0 && next.some((x) => !rows.has(x.key))
+        const box = card.getBoundingClientRect()
+        const height = card.hidden || card.dataset.leaving ? 0 : box.height
+        // Rows replaced by others cross-fade while the card eases to its new height; rows only
+        // added or only removed fold open or shut, and the rows below glide.
+        for (const [key, row] of gone) {
+          rows.delete(key)
+          row.dataset.gone = ""
+          if (!live) row.remove()
+          else if (!swap) reveal(row, false, () => row.remove())
+          else {
+            const r = row.getBoundingClientRect()
+            row.style.cssText = `position:absolute;left:${r.left - box.left}px;top:${r.top - box.top}px;width:${r.width}px;margin:0`
+            row.animate([{ opacity: 1 }, { opacity: 0 }], {
+              duration: 140,
+              easing: "cubic-bezier(.4,0,.8,.4)",
+              fill: "forwards",
+            }).onfinish = () => row.remove()
+          }
+        }
+        let before: Element | null = card.firstElementChild
+        for (const x of next) {
+          let row = rows.get(x.key)
+          if (row) fill(row, x)
+          else {
+            row = item(x)
+            rows.set(x.key, row)
+            if (live && !swap) row.hidden = true
+            else if (swap)
+              row.animate([{ opacity: 0 }, { opacity: 1 }], {
+                duration: 200,
+                delay: 40,
+                easing: "cubic-bezier(.2,.8,.2,1)",
+                fill: "backwards",
+              })
+          }
+          while (before && (before as HTMLElement).dataset.gone !== undefined && before !== row)
+            before = before.nextElementSibling
+          if (row !== before) card.insertBefore(row, before)
+          else before = before.nextElementSibling
+          if (row.hidden) reveal(row, true)
+        }
+        // Focus on a row that left moves to the first one left.
+        const focused = doc.activeElement as HTMLElement | null
+        if (focused?.closest("[data-gone]") && card.contains(focused))
+          [...rows.values()].find((r) => r.tabIndex >= 0)?.focus({ preventScroll: true })
+        if (!next.length) {
+          if (live) reveal(card, false)
+          else card.hidden = true
+        } else if (card.hidden || card.dataset.leaving) {
+          if (live) reveal(card, true)
+          else card.hidden = false
+        } else if (swap) resize(card, height)
+        hooks.wake()
+      }
+      card.hidden = items.length === 0
+      set(items)
+      body.append(card)
+      return { element: card, set }
+    },
+    show(element, visible) {
+      if (element.isConnected && !still()) reveal(element, visible)
+      else element.hidden = !visible
+      hooks.wake()
     },
     clear() {
       body.replaceChildren()

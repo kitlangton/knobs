@@ -16,7 +16,7 @@ import {
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
-import { getRevealVersion, isAnyRevealing, isRevealingIn } from "../reveal.js"
+import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { Slider } from "../slider.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -218,6 +218,10 @@ export interface GpuPanelBinding {
     }[]
     /** Changes whenever cards move, so cached rects are dropped. */
     readonly layoutKey: () => number
+    /** While cards glide or ease their heights: rects are read fresh and the loop stays awake. */
+    readonly moving?: () => boolean
+    /** Steps the page's motion at the start of the frame, before its rects are read. */
+    readonly frame?: (now: number) => void
   }
 }
 
@@ -1904,6 +1908,7 @@ class GpuOverlayManager {
 
     for (const panel of orderedPanels) {
       this.curMask = 0
+      panel.page?.frame?.(this.frameNow)
       const pRect = panel.root.getBoundingClientRect()
       if (!panel.root.isConnected || panel.root.hidden || pRect.width <= 0 || pRect.height <= 0) {
         this.placeBackdrop(panel)
@@ -1930,8 +1935,10 @@ class GpuOverlayManager {
       const leaving = panel.root.dataset.leaving === "true"
       const panelRevealing = revealing && isRevealingIn(panel.root)
       const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
+      const pageMoving = pageB?.moving?.() ?? false
+      if (pageMoving) anyMoving = true
       this.curBypassRectCache =
-        opening || leaving || (panelRevealing && !bodyRevealing) || layoutGliding
+        opening || leaving || (panelRevealing && !bodyRevealing) || layoutGliding || pageMoving
 
       const tokens = rawTokens
       this.curTokens = tokens
@@ -2185,6 +2192,13 @@ class GpuOverlayManager {
         }
       }
 
+      const tileClips = new Map<HTMLElement, Clip>()
+      const clipToTile = (node: HTMLElement, clip: Clip) => {
+        if (!tileClips.size) return clip
+        const tile = node.closest<HTMLElement>(".knobs-tile")
+        const tc = tile && tileClips.get(tile)
+        return tc ? intersectClip(clip, tc) : clip
+      }
       if (pageB) {
         // A page's own actions sit in its header, quiet until hovered.
         this.curSubHovered = this.curPanelHovered
@@ -2215,6 +2229,9 @@ class GpuOverlayManager {
         }
         for (const tile of pageB.tiles) {
           const tr = this.rectOf(tile)
+          // A card easing its height clips what's inside it, as the DOM's overflow does.
+          if (tile.style.height && tr.width > 0)
+            tileClips.set(tile, intersectClip(bodyClip, [tr.left, tr.top, tr.right, tr.bottom]))
           if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
           this.pushPrim({
             x: tr.left,
@@ -2234,12 +2251,13 @@ class GpuOverlayManager {
       }
 
       // 4. Group headers
-      if (bodyRevealing) this.curBypassRectCache = true
+      if (bodyRevealing || pageMoving) this.curBypassRectCache = true
       const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
       this.curSubHovered = bodyHovered
       for (const g of panel.groups) {
         const gr = this.rectOf(g.element)
         if (gr.width <= 0 || gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
+        this.curClip = clipToTile(g.element, bodyClip)
         const lr = this.rectOf(g.labelEl)
         if (g.title) {
           // A page card's title; a hovered (or just applied) preset's name crossfades over it.
@@ -2344,6 +2362,7 @@ class GpuOverlayManager {
         const cr = this.rectOf(card)
         cardRects.set(card, cr)
         if (cr.width <= 0 || cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
+        this.curClip = clipToTile(card, bodyClip)
         this.pushPrim({
           x: cr.left,
           y: cr.top,
@@ -2354,11 +2373,18 @@ class GpuOverlayManager {
           kind: 1,
         })
       }
+      this.curClip = bodyClip
       const washed = new Set<HTMLElement>()
+      const rowsAlpha = this.curAlpha
       for (const row of panel.rows) {
         this.curSubHovered = bodyHovered
         const rRect = this.rectOf(row.row)
         if (rRect.width <= 0 || rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
+        // A row folding open or shut (the page's filter) fades with its DOM reveal.
+        const folding = revealing && isRevealing(row.row)
+        this.curAlpha = folding
+          ? rowsAlpha * (Number(getComputedStyle(row.row).opacity) || 0)
+          : rowsAlpha
         const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
         const hovered = this.isHovered(row.row)
@@ -2377,7 +2403,12 @@ class GpuOverlayManager {
         }
         const parentEl = row.row.parentElement!
         const card = cardRects.get(parentEl) ?? this.rectOf(parentEl)
-        const cardClip = intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom])
+        let cardClip = clipToTile(
+          row.row,
+          intersectClip(bodyClip, [card.left, card.top, card.right, card.bottom]),
+        )
+        if (folding)
+          cardClip = intersectClip(cardClip, [rRect.left, rRect.top, rRect.right, rRect.bottom])
         this.curClip = cardClip
         // The selection wash covers the whole item (a spring's sliders and curve, an open
         // editor), once, beneath everything the item draws, like its DOM background.
@@ -2709,6 +2740,7 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip)
         }
       }
+      this.curAlpha = rowsAlpha
       this.curClip = bodyClip
       this.curSelected = 0
 
