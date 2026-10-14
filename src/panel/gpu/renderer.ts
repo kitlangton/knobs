@@ -418,7 +418,8 @@ class GpuOverlayManager {
 
   register(panel: GpuPanelBinding): () => void {
     this.panels.add(panel)
-    if (!panel.inline) this.openUntil.set(panel, performance.now() + 220)
+    if (!panel.inline && !("restored" in panel.root.dataset))
+      this.openUntil.set(panel, performance.now() + 220)
     panel.root.dataset.renderer = "gpu"
     this.attachGlobalListeners()
     const ro = new ResizeObserver(() => {

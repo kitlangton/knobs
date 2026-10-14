@@ -1,6 +1,7 @@
 import type { Controls } from "../core/store.js"
 import type { Schema } from "../core/schema.js"
 import type { Panel } from "./panel.js"
+import { readSession, writeSession } from "./session.js"
 import { injectStyles } from "./styles.js"
 
 export function attach<S extends Schema>(controls: Controls<S>, element: HTMLElement): () => void {
@@ -67,7 +68,9 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
     node.addEventListener("focusin", update)
     node.addEventListener("focusout", focusOut)
   }
-  chip.onclick = async () => {
+  // Which panels are open survives a reload in this tab, so editing the library doesn't close them.
+  const remember = controls.storage !== null
+  const open = async (restored = false) => {
     if (panel) {
       panel.focus()
       return
@@ -76,16 +79,23 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
     loading = true
     try {
       const { createPanel } = await import("./panel.js")
-      if (disposed || !controls.enabled) return
-      panel = createPanel(controls, element, () => {
-        panel?.dismiss()
-        panel = undefined
-        chip.setAttribute("aria-expanded", "false")
-        setShown(true)
-        chip.focus({ preventScroll: true })
-      })
+      if (disposed || !controls.enabled || panel) return
+      panel = createPanel(
+        controls,
+        element,
+        () => {
+          panel?.dismiss()
+          panel = undefined
+          if (remember) writeSession(controls.id, { open: false })
+          chip.setAttribute("aria-expanded", "false")
+          setShown(true)
+          chip.focus({ preventScroll: true })
+        },
+        { restored },
+      )
+      if (remember) writeSession(controls.id, { open: true })
       chip.setAttribute("aria-expanded", "true")
-      panel.focus()
+      if (!restored) panel.focus()
     } catch (cause) {
       chip.title = String(cause)
       chip.textContent = "Retry knobs"
@@ -93,6 +103,8 @@ export function attach<S extends Schema>(controls: Controls<S>, element: HTMLEle
       loading = false
     }
   }
+  chip.onclick = () => void open()
+  if (remember && readSession(controls.id).open) void open(true)
   const observer = new ResizeObserver(position)
   observer.observe(element)
   win.addEventListener("scroll", position, true)

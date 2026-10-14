@@ -43,6 +43,9 @@ export interface RowContext<F> {
   set(value: unknown, options?: { coalesce?: boolean }): void
   isModified(): boolean
   wake(): void
+  /** Opens a disclosure row's editor at once, as it was before a reload. */
+  readonly expanded?: boolean
+  onExpand?(open: boolean): void
 }
 
 /** A slider inside a compound row, adjusted by the panel's arrow keys like a knob row. */
@@ -160,7 +163,7 @@ function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   const head = el("div", "knobs-x-head")
   head.tabIndex = 0
   head.setAttribute("role", "button")
-  head.setAttribute("aria-expanded", "false")
+  head.setAttribute("aria-expanded", String(Boolean(c.expanded)))
   head.setAttribute("aria-label", c.display)
   const label = el("span", "knobs-x-label", c.display)
   const sum = el("span", "knobs-x-sum")
@@ -173,13 +176,14 @@ function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   sum.append(...summary, caret)
   head.append(label, sum)
   const bodyEl = el("div", "knobs-x-body")
-  bodyEl.hidden = true
+  bodyEl.hidden = !c.expanded
   bodyEl.append(...body)
   row.append(head, bodyEl)
   const isOpen = () => head.getAttribute("aria-expanded") === "true"
   const open = (next = !isOpen()) => {
     head.setAttribute("aria-expanded", String(next))
     reveal(bodyEl, next)
+    c.onExpand?.(next)
     c.wake()
   }
   head.onclick = () => open()

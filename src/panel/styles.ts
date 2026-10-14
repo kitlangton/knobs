@@ -117,6 +117,7 @@ const css = `
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
   animation:knobs-in .16s var(--k-ease);}
+.knobs-panel[data-restored]{animation:none}
 .knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 var(--k-rim);animation:none}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}

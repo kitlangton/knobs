@@ -810,7 +810,8 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   })
 
   // GPU: the overlay draws the editors (more primitives once they open), shows the same swatch
-  // colour, and sleeps once everything settles.
+  // colour, and sleeps once everything settles. (A fresh tab: open panels and editors carry over.)
+  await page.evaluate(() => sessionStorage.clear())
   await page.goto("/?gpu")
   const gpuPanel = await open()
   await expect(gpuPanel).toHaveAttribute("data-gpu-active", "true")
@@ -839,5 +840,52 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   expect(
     Math.abs(rgb[0]! - 0xef) + Math.abs(rgb[1]! - 0x77) + Math.abs(rgb[2]! - 0x4b),
   ).toBeLessThan(12)
+  expect(errors).toEqual([])
+})
+
+test("a reload reopens floating panels, open editors and the focused stop, without entrances", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto("/?dom")
+  await page.evaluate(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  await page.reload()
+  const study = page.locator('[data-study="motion"]')
+  const b = (await study.boundingBox())!
+  await study.hover({ position: { x: b.width - 20, y: 60 } })
+  await page.getByRole("button", { name: "Tune motion", exact: true }).click()
+  const panel = page.getByRole("dialog", { name: "motion controls", exact: true })
+  await expect(panel).toBeVisible()
+  const tint = panel.getByRole("button", { name: "Tint", exact: true })
+  await tint.click()
+  await expect(tint).toHaveAttribute("aria-expanded", "true")
+  await panel.getByRole("slider", { name: "Tint hue" }).focus()
+
+  // Like Vite's full reload after a library edit.
+  await page.reload()
+  await expect(panel).toBeVisible()
+  expect(await panel.evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await expect(tint).toHaveAttribute("aria-expanded", "true")
+  // The editor is simply open: no reveal runs.
+  expect(
+    await panel.evaluate(
+      (el) =>
+        el.getAnimations({ subtree: true }).filter((a) => !(a instanceof CSSTransition)).length,
+    ),
+  ).toBe(0)
+  await expect(panel.getByRole("slider", { name: "Tint hue" })).toBeFocused()
+
+  // Folding the editor and closing the panel are remembered too.
+  await page.keyboard.press("Escape")
+  await expect(tint).toHaveAttribute("aria-expanded", "false")
+  await page.keyboard.press("Escape")
+  await expect(panel).toBeHidden()
+  await page.reload()
+  await page.waitForTimeout(500)
+  await expect(panel).toBeHidden()
   expect(errors).toEqual([])
 })

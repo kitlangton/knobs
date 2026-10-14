@@ -23,6 +23,7 @@ import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { createSlider, type Slider } from "./slider.js"
+import { readSession, writeSession } from "./session.js"
 import { injectStyles } from "./styles.js"
 import { onSwipe } from "./swipe.js"
 
@@ -53,6 +54,8 @@ interface InternalPanelOptions extends MountPanelOptions {
   readonly inline?: boolean
   readonly anchor?: HTMLElement
   readonly close?: () => void
+  /** Reopened after a reload: no entrance, and focus returns where it was. */
+  readonly restored?: boolean
 }
 
 function buildPanel<S extends Schema>(
@@ -76,6 +79,7 @@ function buildPanel<S extends Schema>(
   root.dataset.theme = options.theme ?? controls.theme
   root.dataset.density = options.density ?? controls.density
   const titleText = options.title === undefined ? controls.id : options.title
+  if (options.restored) root.dataset.restored = ""
   root.setAttribute("role", inline ? "region" : "dialog")
   root.setAttribute("aria-label", `${titleText || controls.id} controls`)
   host.append(root)
@@ -262,6 +266,10 @@ function buildPanel<S extends Schema>(
     return gHead
   }
 
+  // A reload (Vite's included) brings back open editors and the focused stop, per tab.
+  const remember = controls.storage !== null
+  const session = remember ? readSession(controls.id) : {}
+
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()
   interface Row {
@@ -325,6 +333,12 @@ function buildPanel<S extends Schema>(
         set: (value: unknown, setOpts?: { coalesce?: boolean }) => run(() => set(value, setOpts)),
         isModified,
         wake: () => wakeGpu(),
+        expanded: session.expanded?.includes(key),
+        onExpand: (open: boolean) => {
+          if (!remember) return
+          const others = (readSession(controls.id).expanded ?? []).filter((k) => k !== key)
+          writeSession(controls.id, { expanded: open ? [...others, key] : others })
+        },
       }
       const editor =
         field.kind === "spring"
@@ -662,21 +676,23 @@ function buildPanel<S extends Schema>(
     [...customActions.querySelectorAll("button")].filter((b) => visible(b) && !b.disabled)
   let lastActionButton: HTMLButtonElement | undefined
   const stops = () => {
-    const list: { contains(node: Node): boolean; focus(): void }[] = []
+    const list: { contains(node: Node): boolean; focus(options?: FocusOptions): void }[] = []
     if (visible(presetStrip.element))
       list.push({
         contains: (n) => presetStrip.element.contains(n),
-        focus: () => presetStrip.element.focus(),
+        focus: (o) => presetStrip.element.focus(o),
       })
     for (const r of rows)
       for (const stop of r.editor?.stops() ?? [r.input])
-        list.push({ contains: (n) => stop.contains(n), focus: () => stop.focus() })
+        list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
     const bar = actionBarButtons()
     if (bar.length)
       list.push({
         contains: (n) => bar.some((b) => b === n),
-        focus: () =>
-          (lastActionButton && bar.includes(lastActionButton) ? lastActionButton : bar[0])?.focus(),
+        focus: (o) =>
+          (lastActionButton && bar.includes(lastActionButton) ? lastActionButton : bar[0])?.focus(
+            o,
+          ),
       })
     return list
   }
@@ -826,6 +842,20 @@ function buildPanel<S extends Schema>(
     }
   }
   root.onpointerdown = raise
+  if (remember) {
+    root.addEventListener("focusin", (event) => {
+      const stop = stops().findIndex((s) => s.contains(event.target as Node))
+      if (stop >= 0) writeSession(controls.id, { focus: { inline, stop } })
+    })
+    // Focus leaving for somewhere else on the page is forgotten; the window losing it isn't.
+    root.addEventListener("focusout", () =>
+      setTimeout(() => {
+        if (!doc.hasFocus() || root.contains(doc.activeElement)) return
+        if (readSession(controls.id).focus?.inline === inline)
+          writeSession(controls.id, { focus: undefined })
+      }),
+    )
+  }
   // While a control is dragged, token transitions shorten (see --k-token-t) so a slider that
   // tunes the panel itself still tracks the pointer. Releasing restores the spring first.
   const html = doc.documentElement
@@ -853,6 +883,11 @@ function buildPanel<S extends Schema>(
     !inline && options.anchor
       ? positionPanel(root, header, options.anchor, controls.id, () => controls.storage)
       : undefined
+  const restoreFocus = () => {
+    const at = session.focus
+    if (at && at.inline === inline) stops()[at.stop]?.focus({ preventScroll: true })
+  }
+  if (inline || options.restored) restoreFocus()
 
   const gpuBinding: GpuPanelBinding = {
     id: controls.id,
@@ -946,7 +981,7 @@ export function createPanel<S extends Schema>(
   controls: Controls<S>,
   anchor: HTMLElement,
   close: () => void,
-  options?: MountPanelOptions,
+  options?: MountPanelOptions & { readonly restored?: boolean },
 ): Panel {
   return buildPanel(controls, anchor.ownerDocument.body, {
     ...options,
