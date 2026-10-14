@@ -687,12 +687,13 @@ test("stepped sliders resist around their stop, snap past halfway, and land as o
   expect(await now()).toBe(4)
   await expect.poll(fill).toBeCloseTo(stop(4) + (2 / 6 + 0.1 - 3 / 6) * 100 * 0.25, 0)
   // Let go: the fill springs onto its stop, and the whole drag is one undo step.
+  // (It settles exactly on the stop; a looser match could catch the spring passing through.)
   await page.mouse.up()
-  await expect.poll(fill).toBeCloseTo(stop(4), 1)
+  await expect.poll(fill).toBeCloseTo(stop(4), 6)
   await voices.focus()
   await page.keyboard.press("u")
   await expect.poll(now).toBe(3)
-  await expect.poll(fill).toBeCloseTo(stop(3), 1)
+  await expect.poll(fill).toBeCloseTo(stop(3), 6)
   // --k-step-resist 0 is a pure snap: the fill never leaves the stop.
   await synth.evaluate((el) => el.style.setProperty("--k-step-resist", "0"))
   await page.mouse.move(at(2 / 6), y)
