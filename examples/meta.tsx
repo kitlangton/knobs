@@ -40,6 +40,13 @@ const metaSchema = {
     label: "Contrast",
     group: "Appearance",
   }),
+  glass: knob(0.6, {
+    min: 0,
+    max: 1,
+    step: 0.05,
+    label: "Glass",
+    group: "Appearance",
+  }),
   width: knob(288, {
     min: 232,
     max: 384,
@@ -133,6 +140,14 @@ const metaSchema = {
     label: "Roll speed",
     group: "Typography & Motion",
   }),
+  cascade: knob(12, {
+    min: 0,
+    max: 40,
+    step: 1,
+    unit: "ms",
+    label: "Preset cascade",
+    group: "Typography & Motion",
+  }),
   dragRoll: toggle(false, { label: "Roll while dragging", group: "Typography & Motion" }),
   dragRollSpeed: knob(100, {
     min: 40,
@@ -191,6 +206,8 @@ function tokensFor(v: MetaValues): [string, string][] {
     ["--k-glow", String(v.glow)],
     ["--k-roll", String(v.roll)],
     ["--k-drag-roll", String(v.dragRoll ? v.dragRollSpeed : 0)],
+    ["--k-cascade", String(v.cascade)],
+    ["--k-glass", String(v.glass)],
   ]
 }
 
@@ -269,6 +286,8 @@ const knobsMeta = defineControls("knobs-tokens", metaSchema, {
       glow: 1.1,
       motionBlur: 1.5,
     },
+    solid: { glass: 0 },
+    frost: { glass: 1, contrast: 1.1 },
   },
   actions: [
     {

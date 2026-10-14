@@ -6,7 +6,7 @@ Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`)
 
 Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style rubber-band sliders: an accent-tinted fill whose leading edge brightens with drag speed, a faint notch at the default that pulls drags onto it, `⌥`-drag for 1/10 speed, and horizontal scrolling (or `⇧` + wheel) to nudge by steps. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## 30 seconds
 
@@ -182,7 +182,7 @@ See [`docs/migration.md`](./docs/migration.md) for full migration sketches for t
 
 Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
 
-When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels share a single page-level WebGPU overlay canvas and `GPUDevice` with 480 Hz spring physics, velocity-driven directional motion blur, native-rasterized glyph atlas text, and per-column rolling digit smear, while keeping an invisible semantic DOM mirror for keyboard navigation and screen readers. When WebGPU is unavailable, panels fall back to the DOM/CSS renderer automatically.
+When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels share a single page-level WebGPU overlay canvas and `GPUDevice` with 480 Hz spring physics, velocity-driven directional motion blur, native-rasterized glyph atlas text, and per-column rolling digit smear, while keeping an invisible semantic DOM mirror for keyboard navigation and screen readers. The DOM renderer's transitions run on the same springs (sampled into CSS `linear()` easings), so both renderers move alike. The canvas can't sample the page, so each glass panel gets a `backdrop-filter` element just under the canvas; a panel lying over another panel firms up instead. When WebGPU is unavailable, panels fall back to the DOM/CSS renderer automatically.
 
 Override CSS variables on `:root` or `.knobs-panel`:
 
@@ -205,10 +205,18 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-panel-radius: 12px;
   --k-font-size: 12px;
   --k-label-weight: 500;
-  --k-blur: 1;
+  --k-blur: 1;          /* motion strength: blur, rubber band and pill stretch */
   --k-glow: 0.5;
+  --k-roll: 420;        /* readout roll (ms) */
+  --k-drag-roll: 0;     /* roll while dragging (ms; 0 snaps) */
+  --k-cascade: 12;      /* preset ripple between rows (ms; 0 moves them together) */
+  --k-glass: 0.6;       /* 0 is opaque; up to 1 thins the panel over a blurred backdrop */
+  --k-glass-tone: 0.5;  /* backdrop brightness under full glass (light theme: 1.08) */
+  --k-rim: rgba(255, 255, 255, 0.09);
 }
 ```
+
+Reduced motion (`prefers-reduced-motion`) turns off the cascade, the pop and the stretch.
 
 ## Explore in development. Ship constants.
 

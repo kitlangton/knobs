@@ -9,7 +9,7 @@ import {
 } from "./gpu/renderer.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { iconSvg, type IconName } from "./icons.js"
-import { Spring } from "./motion.js"
+import { Edges } from "./motion.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
@@ -247,6 +247,8 @@ function buildPanel<S extends Schema>(
 
   const rows = Object.entries(controls.schema).map(([key, field]) => {
     const host = cardFor(field.group)
+    // When this row's current motion starts and roughly ends, for the preset cascade.
+    const wave = { at: 0, until: 0 }
     const display = field.label ?? key
     const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
@@ -260,11 +262,12 @@ function buildPanel<S extends Schema>(
         run(() => controls.resetKey(key))
       }
       host.append(slider.element)
-      gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, isModified })
+      gpuRows.push({ kind: "knob", key, display, row: slider.element, slider, wave, isModified })
       return {
         key,
         display,
         field,
+        wave,
         row: slider.element,
         labelEl: slider.label,
         input: slider.track,
@@ -315,14 +318,15 @@ function buildPanel<S extends Schema>(
         labelEl: rowLabel,
         segEl: seg,
         buttons,
-        pillX: new Spring(0, 28, 0.84),
-        pillW: new Spring(0, 28, 0.86),
+        pill: new Edges(),
+        wave,
         isModified,
       })
       return {
         key,
         display,
         field,
+        wave,
         row,
         labelEl: rowLabel,
         input: seg,
@@ -348,10 +352,21 @@ function buildPanel<S extends Schema>(
       row,
       labelEl: rowLabel,
       toggleEl: toggle,
-      toggleSpring: new Spring(controls.get()[key] ? 1 : 0, 28, 0.82),
+      thumb: new Edges(),
+      wave,
       isModified,
     })
-    return { key, display, field, row, labelEl: rowLabel, input: toggle, number: undefined, set }
+    return {
+      key,
+      display,
+      field,
+      wave,
+      row,
+      labelEl: rowLabel,
+      input: toggle,
+      number: undefined,
+      set,
+    }
   })
 
   const text = el("textarea")
@@ -432,10 +447,14 @@ function buildPanel<S extends Schema>(
     }
     const pill = seg.querySelector<HTMLElement>(".knobs-seg-pill")
     if (!pill || !active) return
+    // Placed by its edges, so the edge facing the move can lead (see .knobs-seg-pill).
     const first = !pill.dataset.placed
+    const left = active.offsetLeft
+    const at = parseFloat(pill.style.left)
     if (first) pill.style.transition = "none"
-    pill.style.width = `${active.offsetWidth}px`
-    pill.style.transform = `translateX(${active.offsetLeft}px)`
+    else if (left !== at) pill.dataset.dir = left > at ? "right" : "left"
+    pill.style.left = `${left}px`
+    pill.style.right = `${seg.clientWidth - left - active.offsetWidth}px`
     if (first) {
       pill.dataset.placed = "true"
       void pill.offsetWidth
@@ -443,16 +462,40 @@ function buildPanel<S extends Schema>(
     }
   }
 
+  // Changes that move several rows at once (presets, reset, random, undo) ripple down the panel:
+  // each changed row starts --k-cascade ms after the one above. A row already in motion retargets
+  // at once instead of pausing, so switching again mid-wave stays smooth.
+  let shown = controls.get()
+  const cascade = (values: Values<S>) => {
+    const changed = rows.filter((r) => values[r.key] !== shown[r.key])
+    if (changed.length < 2) return 0
+    const win = doc.defaultView
+    if (!win || win.matchMedia("(prefers-reduced-motion: reduce)").matches) return 0
+    const ms = parseFloat(getComputedStyle(root).getPropertyValue("--k-cascade"))
+    return Number.isFinite(ms) ? Math.max(0, ms) : 12
+  }
   function update() {
     if (!controls.enabled) {
       close?.()
       return
     }
     const values = controls.get()
+    const stagger = cascade(values)
+    const now = performance.now()
+    let turn = 0
     for (const row of rows) {
       const value = values[row.key]
+      let delay = 0
+      if (value !== shown[row.key]) {
+        const moving = row.wave.at <= now && now < row.wave.until
+        delay = moving ? 0 : turn * stagger
+        turn++
+        row.wave.at = now + delay
+        row.wave.until = row.wave.at + 400
+        row.row.style.setProperty("--k-delay", `${delay}ms`)
+      }
       row.row.classList.toggle("knobs-modified", value !== controls.locked[row.key])
-      if ("slider" in row && row.slider) row.slider.update(Number(value))
+      if ("slider" in row && row.slider) row.slider.update(Number(value), delay)
       else if ("buttons" in row && row.buttons) placeSegPill(row.input, row.buttons, String(value))
       else row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
@@ -468,6 +511,7 @@ function buildPanel<S extends Schema>(
     redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     presetStrip.update()
+    shown = values
 
     wakeGpu()
   }

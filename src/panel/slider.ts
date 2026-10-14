@@ -1,6 +1,16 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
-import { Roll, rollTarget, Spring, VelocityTracker } from "./motion.js"
+import {
+  clamp,
+  FILL,
+  POP_MS,
+  popScale,
+  RELEASE,
+  Roll,
+  rollTarget,
+  Spring,
+  VelocityTracker,
+} from "./motion.js"
 
 export interface DigitPlace {
   ch: string
@@ -41,6 +51,10 @@ export interface Slider {
   notchRatio: number
   /** Whether a drag is currently held on the default by the notch's magnet. */
   isMagnetized(): boolean
+  /** Drag speed mapped to 0..1 for the fill's leading-edge glow (0 once the pointer rests). */
+  speed(): number
+  /** When the readout last popped (a click landing on a decile, or the default's magnet). */
+  poppedAt: number
   /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
   getDigitsText(): string
   /** Optional unit string (e.g. "px", "s"). */
@@ -49,7 +63,8 @@ export interface Slider {
   isDragging(): boolean
   /** Whether the inline number input is open. */
   isEditing(): boolean
-  update(value: number): void
+  /** `delay` (ms) holds this row's motion for its turn in a preset cascade. */
+  update(value: number, delay?: number): void
   /** Open the inline editor (used when a digit is typed on the track). */
   edit(): void
 }
@@ -157,8 +172,8 @@ export function createSlider(
 
   const notchRatio = ratioOf(field.value)
   notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
-  const fillSpring = new Spring(ratioOf(field.value), 26, 0.84)
-  const stretchSpring = new Spring(0, 32, 0.78)
+  const fillSpring = new Spring(ratioOf(field.value), FILL.omega, FILL.zeta)
+  const stretchSpring = new Spring(0, RELEASE.omega, RELEASE.zeta)
   const handleSpring = new Spring(0, 28, 0.88)
   const digitPlaces: DigitPlace[] = []
   const velocity = new VelocityTracker()
@@ -167,7 +182,7 @@ export function createSlider(
   // Mirrors @kitlangton/rolling-number: each place is a wheel that rolls through every face in
   // the value's direction (98 → 108 rolls the tens 9 → 0 forwards), new places rise in after a
   // short hold, cascading outward, and leaving places fade over ~65% of the duration.
-  function syncDigits(text: string, trend: number, ms: number) {
+  function syncDigits(text: string, trend: number, ms: number, delay: number) {
     const now = performance.now()
     const live = digitPlaces.filter((p) => !p.exiting).length
     const step = Math.min(ms * 0.045, (ms * 0.3) / Math.max(1, text.length - live))
@@ -177,20 +192,20 @@ export function createSlider(
       if (ch === undefined) {
         if (place && !place.exiting) {
           place.exiting = true
-          place.presence.set(0, ms * 0.65, now)
+          place.presence.set(0, ms * 0.65, now, delay)
         }
         continue
       }
       const digit = ch >= "0" && ch <= "9" ? Number(ch) : Number.NaN
       if (!place) {
-        const delay = ms > 0 ? Math.max(0, j - live) * step : 0
+        const hold = ms > 0 ? delay + Math.max(0, j - live) * step : 0
         const presence = new Roll(ms > 0 && initialized ? 0 : 1)
-        if (ms > 0 && initialized) presence.set(1, ms, now, delay)
+        if (ms > 0 && initialized) presence.set(1, ms, now, hold)
         digitPlaces[j] = {
           ch,
           wheel: new Roll(Number.isNaN(digit) ? 0 : digit),
           presence,
-          enterAt: now + delay,
+          enterAt: now + hold,
           enterMs: ms > 0 && initialized ? ms : 0,
           exiting: false,
         }
@@ -198,7 +213,7 @@ export function createSlider(
       }
       if (place.exiting) {
         place.exiting = false
-        place.presence.set(1, ms, now)
+        place.presence.set(1, ms, now, delay)
       }
       const wasDigit = place.ch >= "0" && place.ch <= "9"
       if (!Number.isNaN(digit)) {
@@ -206,7 +221,7 @@ export function createSlider(
         else {
           const at = place.wheel.sample(now).position
           if (((Math.round(at) % 10) + 10) % 10 !== digit || !place.wheel.resting(now))
-            place.wheel.set(rollTarget(at, digit, trend), ms, now)
+            place.wheel.set(rollTarget(at, digit, trend), ms, now, delay)
         }
       }
       place.ch = ch
@@ -232,22 +247,27 @@ export function createSlider(
     // Dodge the text when the handle would sit on top of it.
     handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
   }
-  const update = (v: number) => {
+  let rollTimer: ReturnType<typeof setTimeout> | undefined
+  const update = (v: number, delay = 0) => {
     const previous = current
     current = v
     const r = ratioOf(v)
     velocity.add(r, 0)
     const ms = !initialized ? 0 : rollMs(dragging)
     if (!initialized || (dragging && !settling())) fillSpring.snap(r)
-    else fillSpring.set(r)
-    syncDigits(fmtDigits(v), Math.sign(v - previous), ms)
+    else fillSpring.set(r, delay)
+    syncDigits(fmtDigits(v), Math.sign(v - previous), ms, ms > 0 ? delay : 0)
     initialized = true
     // Random, presets and keys roll at --k-roll; drags snap unless --k-drag-roll is set.
     // Never take rolling-number's unanimated path: its finish() resets the reels, so the next
     // change would jump instead of rolling. A 1 ms roll is a snap that keeps it warm.
     // In GPU mode the canvas draws the readout, so the hidden DOM reel just snaps.
     const gpu = root.closest('[data-gpu-active="true"]') !== null
-    roller.update({ value: v, animated: true, duration: ms > 0 && !gpu ? ms : 1 })
+    const roll = () =>
+      roller.update({ value: v, animated: true, duration: ms > 0 && !gpu ? ms : 1 })
+    clearTimeout(rollTimer)
+    if (delay > 0 && ms > 0 && !gpu) rollTimer = setTimeout(roll, delay)
+    else roll()
     track.setAttribute("aria-valuenow", String(v))
     track.setAttribute("aria-valuetext", fmt(v))
     if (number.hidden) paint(v, !dragging)
@@ -260,17 +280,43 @@ export function createSlider(
     const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     return field.min + t * span
   }
+  // Drag speed for the leading-edge glow: nothing below a slow drag, full bloom by a quick flick.
+  // The DOM eases --k-speed with a transition; the GPU renderer eases speed() itself.
+  let speedTimer: ReturnType<typeof setTimeout> | undefined
+  const speed = () =>
+    dragging ? clamp((Math.abs(velocity.velocity[0]) * track.offsetWidth - 150) / 1350, 0, 1) : 0
+  const glow = (value: number) => {
+    root.style.setProperty("--k-speed", value.toFixed(3))
+    clearTimeout(speedTimer)
+    if (value > 0) speedTimer = setTimeout(() => glow(0), 80)
+  }
+  // A click's pop waits for the rolling digits to land (about a third of the roll); the
+  // magnet's pops at once, since drags don't roll.
+  let poppedAt = -Infinity
+  const pop = (delay = 0) => {
+    if (doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    poppedAt = performance.now() + delay
+    const frames = Array.from({ length: 13 }, (_, i) => ({ scale: popScale((i / 12) * POP_MS) }))
+    value.animate(frames, { duration: POP_MS, delay })
+    onMotionWake?.()
+  }
+
   // Within MAGNET px of the default (at the pointer's current speed), the value sits on it.
   const MAGNET = 4
   const nearDefault = (v: number, factor = 1) =>
     track.offsetWidth > 0 &&
     Math.abs(v - field.value) <= (MAGNET / track.offsetWidth) * span * factor
-  // Clicks snap: to the step when steps are few, otherwise magnetically to deciles.
+  // Clicks snap: to the step when steps are few, otherwise magnetically to deciles. Landing on
+  // the default or a decile pops the readout.
   const snap = (v: number) => {
-    if (nearDefault(v)) return field.value
+    if (nearDefault(v)) {
+      pop(rollMs(false) * 0.35)
+      return field.value
+    }
     if (steps <= 10) return quantize(v)
     const decile = Math.round(((v - field.min) / span) * 10) / 10
     const near = Math.abs((v - field.min) / span - decile) < 0.03125
+    if (near) pop(rollMs(false) * 0.35)
     return quantize(near ? field.min + decile * span : v)
   }
 
@@ -348,14 +394,17 @@ export function createSlider(
       magnet = held
       settleUntil = performance.now() + 200
       root.classList.toggle("knobs-magnet", held)
+      if (held) pop()
     }
     set(held ? field.value : quantize(raw), { coalesce: !first })
+    glow(speed())
     stretch(over)
   }
   const release = (event: PointerEvent) => {
     if (!dragging) return
     dragging = false
     magnet = false
+    glow(0)
     root.classList.remove("knobs-magnet", "knobs-settle")
     stretchSpring.set(0)
     root.classList.remove("knobs-active")
@@ -466,6 +515,10 @@ export function createSlider(
     tickCount: count,
     notchRatio,
     isMagnetized: () => magnet,
+    speed,
+    get poppedAt() {
+      return poppedAt
+    },
     getDigitsText: () => fmtDigits(current),
     getUnitText: () => field.unit ?? "",
     isDragging: () => dragging,

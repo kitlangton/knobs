@@ -79,6 +79,7 @@ fn roundedBox4(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
 }
 
 fn radiiOf(p: Prim) -> vec4f {
+  // Shapes with per-corner radii may reuse look.x (the slider's drag speed).
   return select(vec4f(p.look.x), p.uv, p.motion.w > 0.5);
 }
 
@@ -102,33 +103,34 @@ fn hash21(q: vec2f) -> f32 {
   return fract(52.9829189 * fract(dot(q, vec2f(0.06711056, 0.00583715))));
 }
 
-// kind 0: Panel card surface + elevation shadow + border + specular top catchlight
+// kind 0: Panel card surface + elevation shadow + border + specular rim
 fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let r = p.look.x;
   let dist = roundedBox(local, size, r);
+  let bodyCov = covSd(dist);
   var out = vec4f(0.0);
 
-  // Floating drop shadow when glowOrBlur (look.z) > 0
+  // Floating drop shadow when glowOrBlur (look.z) > 0; like box-shadow, never under the card.
   if (p.look.z > 0.5 && dist > -1.0) {
     let shDist = roundedBox(local - vec2f(0.0, 6.0), size, r);
     let shBlur = max(p.look.z, 2.0);
     let shA = pow(clamp(1.0 - smoothstep(-shBlur * 0.3, shBlur * 1.5, shDist), 0.0, 1.0), 1.8) * p.extra.x;
-    out = vec4f(0.0, 0.0, 0.0, shA);
+    out = vec4f(0.0, 0.0, 0.0, shA * (1.0 - bodyCov));
   }
-
-  let bodyCov = covSd(dist);
   if (bodyCov <= 0.0) { return out; }
 
-  let topSheen = (1.0 - smoothstep(0.0, min(size.y * 0.35, 36.0), local.y)) * p.extra.y;
-  let bodyRgb = clamp(p.color.rgb + vec3f(topSheen * 0.025), vec3f(0.0), vec3f(1.0));
-  var card = vec4f(bodyRgb * p.color.a, p.color.a) * bodyCov;
+  var card = premul(p.color) * bodyCov;
 
-  // 1px outer hairline border + top specular rim
-  let strokeW = max(p.look.y, 1.0);
-  let borderCov = hairline(dist, strokeW);
-  let rimBoost = (1.0 - smoothstep(0.0, 18.0, local.y)) * p.extra.y * 0.35;
-  let borderCol = vec4f(clamp(p.color2.rgb + vec3f(rimBoost), vec3f(0.0), vec3f(1.0)), min(1.0, p.color2.a + rimBoost * 0.5));
-  card = over(card, premul(borderCol) * borderCov);
+  // The rim, built like CSS's inset 0 1px 0: inside the border, minus that shape moved down 1px.
+  let inner = local - vec2f(1.0);
+  let innerSize = size - vec2f(2.0);
+  let rimCov = covSd(roundedBox(inner, innerSize, r - 1.0)) *
+    (1.0 - covSd(roundedBox(inner - vec2f(0.0, 1.0), innerSize, r - 1.0)));
+  card = over(card, premul(p.aux2) * rimCov);
+
+  // 1px border
+  let borderCov = hairline(dist, max(p.look.y, 1.0));
+  card = over(card, premul(p.color2) * borderCov);
 
   return over(out, card);
 }
@@ -177,9 +179,11 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 
   // Accent-tinted fill; its leading 24px brighten toward the edge (look.y = edge alpha), and the
   // whole fill fades to 40% under the readout (aux.x = readout zone width from the right).
+  // Drag speed (look.x, 0..1) widens the bright edge to 48px.
+  let speed = clamp(p.look.x, 0.0, 1.0);
   let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
-    let edge = (1.0 - clamp((fillX - local.x) / 24.0, 0.0, 1.0)) * p.look.y;
+    let edge = (1.0 - clamp((fillX - local.x) / (24.0 + 24.0 * speed), 0.0, 1.0)) * p.look.y;
     let zone = mix(0.4, 1.0, clamp((size.x - p.aux.x - local.x) / 16.0, 0.0, 1.0));
     out = over(premul(p.color), vec4f(p.color2.rgb * edge, edge)) * fillCov * zone;
   }
@@ -199,9 +203,12 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     if (hCov > 0.0) {
       out = over(out, vec4f(p.color2.rgb * hAlpha * hCov, hAlpha * hCov));
     }
-    // Subtle handle glow when active/moving
-    if (p.look.z > 0.1 && hDist > 0.0 && hDist < 12.0) {
-      let glow = exp(-hDist / 3.5) * 0.18 * handleScale * dodge * clamp(p.look.z, 0.0, 1.5);
+    // Handle glow like its box-shadow: a blur of glow × (8 + 12·speed) px (σ is half), at
+    // 60–100% accent. look.z = --k-glow.
+    let sigma = max(0.5, p.look.z * (4.0 + 6.0 * speed));
+    if (p.look.z > 0.01 && hDist > 0.0 && hDist < sigma * 3.0) {
+      let fall = exp(-0.5 * (hDist / sigma) * (hDist / sigma));
+      let glow = fall * (0.6 + 0.4 * speed) * 0.32 * min(1.0, p.look.z * 4.0) * handleScale * dodge;
       out = over(out, vec4f(p.color2.rgb * glow, glow));
     }
   }
@@ -276,7 +283,7 @@ fn samplePillAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let top = 1.0 - smoothstep(0.0, size.y * 0.6, local.y);
   let rgb = clamp(p.color.rgb + vec3f(top * 0.035), vec3f(0.0), vec3f(1.0));
   var pill = vec4f(rgb * p.color.a, p.color.a) * cov;
-  let rimCov = hairline(dist, 1.0) * (0.35 + top * 0.35);
+  let rimCov = hairline(dist, 1.0);
   pill = over(pill, vec4f(p.color2.rgb * p.color2.a * rimCov, p.color2.a * rimCov));
   return over(out, pill);
 }
@@ -321,13 +328,11 @@ fn shadeToggle(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 
   out = over(out, premul(p.color) * trackCov);
 
-  // Thumb capsule inside track
-  let stretch = clamp(abs(p.motion.x) * 0.25, 0.0, 5.5);
+  // Thumb capsule spanning its two edges (extra.z, extra.w), which stretch it while it travels
   let pad = 2.0;
   let baseD = max(8.0, size.y - pad * 2.0);
-  let thumbW = baseD + stretch;
-  let travel = max(0.0, size.x - pad * 2.0 - thumbW);
-  let thumbX = pad + prog * travel;
+  let thumbX = p.extra.z;
+  let thumbW = max(baseD, p.extra.w - p.extra.z);
   let tp = local - vec2f(thumbX, pad);
   let tDist = roundedBox(tp, vec2f(thumbW, baseD), baseD * 0.5);
 

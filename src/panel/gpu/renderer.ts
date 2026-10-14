@@ -1,6 +1,15 @@
 import type { RendererMode } from "../../core/store.js"
 import { ICONS, type IconName } from "../icons.js"
-import { clamp, entranceOffset, numeral, Spring } from "../motion.js"
+import {
+  clamp,
+  Edges,
+  entranceOffset,
+  numeral,
+  POP_MS,
+  popScale,
+  Spring,
+  trailScale,
+} from "../motion.js"
 import type { PresetStrip } from "../presets.js"
 import type { Slider } from "../slider.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
@@ -17,12 +26,17 @@ import { FLOATS_PER_PRIM, panelWgsl } from "./shader.wgsl.js"
 const MAX_PRIMS = 4096
 type Clip = readonly [number, number, number, number]
 
+/** When a row's motion starts (performance.now() ms), so a preset cascade reaches it in turn. */
+export interface RowWave {
+  readonly at: number
+}
 export interface GpuKnobRow {
   readonly kind: "knob"
   readonly key: string
   readonly display: string
   readonly row: HTMLElement
   readonly slider: Slider
+  readonly wave: RowWave
   isModified(): boolean
 }
 export interface GpuChoiceRow {
@@ -33,8 +47,9 @@ export interface GpuChoiceRow {
   readonly labelEl: HTMLElement
   readonly segEl: HTMLElement
   readonly buttons: readonly HTMLButtonElement[]
-  readonly pillX: Spring
-  readonly pillW: Spring
+  /** The selected pill's edges (px from the tray's left). */
+  readonly pill: Edges
+  readonly wave: RowWave
   isModified(): boolean
 }
 export interface GpuToggleRow {
@@ -44,7 +59,9 @@ export interface GpuToggleRow {
   readonly row: HTMLElement
   readonly labelEl: HTMLElement
   readonly toggleEl: HTMLButtonElement
-  readonly toggleSpring: Spring
+  /** The thumb's edges (px from the track's left). */
+  readonly thumb: Edges
+  readonly wave: RowWave
   isModified(): boolean
 }
 export type GpuRowBinding = GpuKnobRow | GpuChoiceRow | GpuToggleRow
@@ -144,6 +161,9 @@ interface TextOpts {
   feather?: number
   /** Skip device-pixel snapping (text in motion). */
   exact?: boolean
+  /** Scales the drawn text about `origin` (the decile pop). */
+  scale?: number
+  origin?: readonly [number, number]
 }
 
 class GpuOverlayManager {
@@ -189,6 +209,7 @@ class GpuOverlayManager {
   /** Small eased scalars keyed by an object and a slot (e.g. a row's "hover" or "focus"). */
   private readonly eased = new WeakMap<object, Map<string, Spring>>()
   private easeMoving = false
+  private readonly backdrops = new Map<GpuPanelBinding, HTMLElement>()
   /** Last on-screen position of each readout character, measured from the right edge. */
   private readonly placeOffsets = new WeakMap<object, number>()
 
@@ -251,6 +272,8 @@ class GpuOverlayManager {
     })
     return () => {
       this.panels.delete(panel)
+      this.backdrops.get(panel)?.remove()
+      this.backdrops.delete(panel)
       delete panel.root.dataset.gpuActive
       delete panel.root.dataset.renderer
       this.publishDiagnostics()
@@ -461,6 +484,16 @@ class GpuOverlayManager {
     aux2?: Rgba
   }) {
     if (this.primCount >= MAX_PRIMS) return
+    // Boxes land on whole device pixels, as Chrome snaps layout boxes when it paints them.
+    if (o.kind <= 4 && o.w >= 1 && o.h >= 1) {
+      const s = this.curScale
+      const x0 = Math.round(o.x * s) / s
+      const y0 = Math.round(o.y * s) / s
+      o.w = Math.round((o.x + o.w) * s) / s - x0
+      o.h = Math.round((o.y + o.h) * s) / s - y0
+      o.x = x0
+      o.y = y0
+    }
     const clip = o.clip ?? this.curClip
     const uv = o.corners ?? o.uv ?? [0, 0, 1, 1]
     const c2 = o.color2 ?? [1, 1, 1, 0]
@@ -503,6 +536,52 @@ class GpuOverlayManager {
     )
   }
 
+  /**
+   * The canvas can't sample the page, so each panel gets a backdrop-filter element just under the
+   * canvas, kept on the panel's rect: the blur shows through the translucent card drawn above it.
+   */
+  private placeBackdrop(
+    panel: GpuPanelBinding,
+    rect?: DOMRect,
+    clip?: Clip,
+    radius = 0,
+    glass = 0,
+    tone = 1,
+  ) {
+    let el = this.backdrops.get(panel)
+    if (!el) {
+      if (!rect || glass <= 0.001) return
+      el = this.doc.createElement("div")
+      el.className = "knobs-gpu-backdrop"
+      el.setAttribute("aria-hidden", "true")
+      this.backdrops.set(panel, el)
+    }
+    if (!el.isConnected) {
+      if (this.canvas?.isConnected) this.canvas.before(el)
+      else this.doc.body.append(el)
+    }
+    let css = "display:none"
+    if (rect && clip && glass > 0.001) {
+      const inset = [
+        clip[1] - rect.top,
+        rect.right - clip[2],
+        rect.bottom - clip[3],
+        clip[0] - rect.left,
+      ]
+      const filter = `blur(${(glass * 24).toFixed(2)}px) saturate(${(1 + glass * 0.8).toFixed(3)}) brightness(${(1 + (tone - 1) * glass).toFixed(3)})`
+      css =
+        `position:fixed;left:0;top:0;z-index:2147480002;pointer-events:none;` +
+        `width:${rect.width}px;height:${rect.height}px;transform:translate(${rect.left}px,${rect.top}px);` +
+        `border-radius:${radius}px;opacity:${this.curAlpha.toFixed(3)};` +
+        `clip-path:inset(${inset.map((v) => `${Math.max(0, v)}px`).join(" ")});` +
+        `-webkit-backdrop-filter:${filter};backdrop-filter:${filter};`
+    }
+    if (el.dataset.css !== css) {
+      el.dataset.css = css
+      el.style.cssText = css
+    }
+  }
+
   private drawText(text: string, x: number, centerY: number, color: Rgba, opts: TextOpts = {}) {
     if (!text) return 0
     const t = this.curTokens
@@ -520,11 +599,17 @@ class GpuOverlayManager {
     // Whole device pixels, so the atlas blits 1:1 instead of being resampled (which reads bolder).
     const s = this.curScale
     const snap = (v: number) => (opts.exact ? v : Math.round(v * s) / s)
+    let box = [snap(drawX), snap(centerY - entry.h * 0.5), entry.w, entry.h]
+    const k = opts.scale ?? 1
+    if (k !== 1 && opts.origin) {
+      const [ox, oy] = opts.origin
+      box = [ox + (box[0]! - ox) * k, oy + (box[1]! - oy) * k, entry.w * k, entry.h * k]
+    }
     this.pushPrim({
-      x: snap(drawX),
-      y: snap(centerY - entry.h * 0.5),
-      w: entry.w,
-      h: entry.h,
+      x: box[0]!,
+      y: box[1]!,
+      w: box[2]!,
+      h: box[3]!,
       clip: opts.clip ?? this.curClip,
       uv: entry.uv,
       color,
@@ -546,9 +631,25 @@ class GpuOverlayManager {
       slots.set(slot, sp)
     }
     target ??= sp.target
+    sp.omega = omega
     sp.set(target).step(this.curDt)
     if (!sp.resting) this.easeMoving = true
     return sp.x
+  }
+
+  /** From `from` (label) to `to` (text) as `el` turns hot, eased like the DOM's 0.15 s colour transitions. */
+  private hot(el: object, on: boolean, from = this.curTokens.label, to = this.curTokens.text) {
+    return cssMix(to, from, this.ease(el, "hot", on ? 1 : 0, 30))
+  }
+
+  /** Hint mode dims what the typed code no longer matches, over the DOM's 0.1 s. */
+  private missed(el: Element, hinting: boolean) {
+    return this.ease(el, "hint", hinting && el.classList.contains("knobs-hint-miss") ? 0.32 : 1, 40)
+  }
+
+  /** A control's hover/press wash, faded in and out over the DOM's 0.15 s. */
+  private wash(el: object, on: boolean) {
+    return this.ease(el, "wash", on ? 1 : 0, 30)
   }
 
   private smoothTokens(
@@ -626,20 +727,22 @@ class GpuOverlayManager {
     const hovered = btn.matches(":hover") && !btn.disabled
     const focused = activeEl === btn && btn.matches(":focus-visible")
     const expanded = btn.getAttribute("aria-expanded") === "true"
-    const alpha =
-      (btn.disabled ? 0.36 : 1) * (hinting && btn.classList.contains("knobs-hint-miss") ? 0.32 : 1)
-    if (alwaysBg || hovered || focused || expanded) {
+    const alpha = this.ease(btn, "dim", btn.disabled ? 0.36 : 1, 30) * this.missed(btn, hinting)
+    const on = hovered || focused || expanded
+    const wash = this.wash(btn, on)
+    if (alwaysBg || wash > 0.005) {
       this.pushPrim({
         x: br.left,
         y: br.top,
         w: br.width,
         h: br.height,
-        color: withAlpha(expanded || !alwaysBg ? t.surfaceHi : t.surface, alpha),
+        color: alwaysBg
+          ? withAlpha(cssMix(t.surfaceHi, t.surface, wash), alpha)
+          : withAlpha(t.surfaceHi, alpha * wash),
         color2: t.accent,
         radius,
         glowOrBlur: t.glowStrength * 7,
         kind: 1,
-        p0: hovered ? 1 : 0,
         p1: focused ? 1 : 0,
       })
     }
@@ -647,9 +750,13 @@ class GpuOverlayManager {
       btn.textContent ?? "",
       br.left + br.width * 0.5,
       br.top + br.height * 0.5,
-      withAlpha(hovered || focused || expanded ? t.text : t.label, alpha),
+      withAlpha(this.hot(btn, on), alpha),
       { px, align: "center" },
     )
+  }
+
+  private isHot(row: Element) {
+    return row.matches(":hover,:has(:focus-visible),.knobs-active")
   }
 
   /** Square inside its card, except the card's own rounded corners on the first and last rows. */
@@ -685,14 +792,17 @@ class GpuOverlayManager {
     stretchX = 0,
   ) {
     const t = this.curTokens
-    if (row.previousElementSibling)
+    // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
+    const prev = row.previousElementSibling
+    const sep = this.ease(row, "sep", prev && !this.isHot(row) && !this.isHot(prev) ? 1 : 0, 30)
+    if (prev && sep > 0.005)
       this.pushPrim({
         x: rRect.left,
         y: rRect.top,
         w: rRect.width,
         h: 0.5,
         clip: cardClip,
-        color: t.line,
+        color: withAlpha(t.line, sep),
         kind: 1,
         stretchX,
       })
@@ -745,7 +855,9 @@ class GpuOverlayManager {
     let anyMoving = false
     const win = this.win
     const activeEl = this.doc.activeElement
+    const clock = performance.now()
 
+    const drawn: DOMRect[] = []
     const orderedPanels = [...this.panels].sort((a, b) => {
       if (a.inline !== b.inline) return a.inline ? -1 : 1
       return (
@@ -755,9 +867,11 @@ class GpuOverlayManager {
     })
 
     for (const panel of orderedPanels) {
-      if (!this.doc.body.contains(panel.root) || panel.root.hidden) continue
       const pRect = panel.root.getBoundingClientRect()
-      if (pRect.width <= 0 || pRect.height <= 0) continue
+      if (!panel.root.isConnected || panel.root.hidden || pRect.width <= 0 || pRect.height <= 0) {
+        this.placeBackdrop(panel)
+        continue
+      }
 
       const tokens = this.smoothTokens(panel, readPanelTokens(panel.root), reducedMotion ? 0 : dt)
       this.curTokens = tokens
@@ -772,21 +886,32 @@ class GpuOverlayManager {
       const panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
       const pillFill = cssMix(tokens.accent, tokens.segActive, 0.18)
 
-      // 1. Panel card
+      // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
+      // lying over another firms up, since the canvas can't blur what it drew below.
+      const covers = drawn.some(
+        (r) =>
+          r.left < pRect.right &&
+          r.right > pRect.left &&
+          r.top < pRect.bottom &&
+          r.bottom > pRect.top,
+      )
+      drawn.push(pRect)
+      const glass = tokens.glass * (1 - this.ease(panel.root, "solid", covers ? 1 : 0, 18))
+      this.placeBackdrop(panel, pRect, outerClip, tokens.panelRadius, glass, tokens.glassTone)
       this.pushPrim({
         x: pRect.left,
         y: pRect.top,
         w: pRect.width,
         h: pRect.height,
         clip: outerClip,
-        color: tokens.bg,
+        color: withAlpha(tokens.bg, 1 - glass * 0.2),
         color2: tokens.line,
         radius: tokens.panelRadius,
         strokeWidth: 1,
         glowOrBlur: panel.inline ? 0 : 18,
         kind: 0,
         p0: panel.inline ? 0 : tokens.isLight ? 0.16 : 0.48,
-        p1: tokens.isLight ? 0.4 : 1,
+        aux2: tokens.rim,
       })
 
       let bodyClip: [number, number, number, number] = [
@@ -825,14 +950,16 @@ class GpuOverlayManager {
           const focused = activeEl === hb.button && hb.button.matches(":focus-visible")
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
           const alpha = Number(getComputedStyle(hb.button).opacity)
-          if (hovered || focused || expanded) {
+          const on = hovered || focused || expanded
+          const wash = this.wash(hb.button, on)
+          if (wash > 0.005) {
             this.pushPrim({
               x: bRect.left,
               y: bRect.top,
               w: bRect.width,
               h: bRect.height,
               clip: panelClip,
-              color: withAlpha(tokens.surfaceHi, alpha),
+              color: withAlpha(tokens.surfaceHi, alpha * wash),
               color2: tokens.accent,
               radius: bRect.height * 0.5,
               glowOrBlur: tokens.glowStrength * 8,
@@ -840,13 +967,7 @@ class GpuOverlayManager {
               p1: focused ? 1 : 0,
             })
           }
-          this.drawIcon(
-            hb.icon,
-            15,
-            bRect,
-            withAlpha(hovered || focused || expanded ? tokens.text : tokens.label, alpha),
-            panelClip,
-          )
+          this.drawIcon(hb.icon, 15, bRect, withAlpha(this.hot(hb.button, on), alpha), panelClip)
         }
       }
 
@@ -871,34 +992,32 @@ class GpuOverlayManager {
         })
 
         const stripClip = intersectClip(bodyClip, [
-          trackRect.left + 1,
-          trackRect.top + 1,
-          trackRect.right - 1,
-          trackRect.bottom - 1,
+          psRect.left,
+          psRect.top,
+          psRect.right,
+          psRect.bottom,
         ])
         const activeState = ps.getActiveState()
         const chipButtons = ps.getButtons()
         const activeBtn =
           activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
+        const pe = ps.pillEdges
         if (activeBtn && !activeState.isCustom) {
-          const tx = activeBtn.offsetLeft,
-            ty = activeBtn.offsetTop,
-            tw = Math.max(18, activeBtn.offsetWidth)
-          if (ps.pillW.x <= 1) {
-            ps.pillX.snap(tx)
-            ps.pillY.snap(ty)
-            ps.pillW.snap(tw)
+          const left = activeBtn.offsetLeft
+          const right = left + Math.max(20, activeBtn.offsetWidth)
+          if (reducedMotion || pe.end.x - pe.start.x <= 1) {
+            pe.snap(left, right)
+            ps.pillY.snap(activeBtn.offsetTop)
           } else {
-            ps.pillX.set(tx)
-            ps.pillY.set(ty)
-            ps.pillW.set(tw)
+            pe.to(left, right, 0, trailScale(tokens.blurStrength))
+            ps.pillY.set(activeBtn.offsetTop)
           }
           ps.pillAlpha.set(1)
         } else {
           ps.pillAlpha.set(0)
         }
 
-        for (const sp of [ps.pillX, ps.pillY, ps.pillW, ps.pillAlpha]) {
+        for (const sp of [pe.start, pe.end, ps.pillY, ps.pillAlpha]) {
           if (reducedMotion) sp.snap(sp.target)
           else {
             sp.step(dt)
@@ -908,12 +1027,10 @@ class GpuOverlayManager {
 
         const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
         if (pillAlpha > 0.01) {
-          const blurX = clamp(ps.pillX.v * 0.018 * blurMul, -24, 24)
-          const stretch = clamp(Math.abs(ps.pillX.v) * 0.008 * blurMul, 0, 8)
           this.pushPrim({
-            x: trackRect.left + ps.pillX.x - stretch * 0.5,
+            x: trackRect.left + pe.start.x,
             y: trackRect.top + ps.pillY.x,
-            w: Math.max(18, ps.pillW.x) + stretch,
+            w: Math.max(18, pe.end.x - pe.start.x),
             h: Math.max(16, activeBtn?.offsetHeight ?? trackRect.height),
             clip: stripClip,
             color: withAlpha(pillFill, pillAlpha),
@@ -921,7 +1038,7 @@ class GpuOverlayManager {
             radius: Math.max(2, tokens.radius - 2),
             glowOrBlur: tokens.glowStrength,
             kind: 3,
-            blurX,
+            blurX: clamp(pe.velocity * 0.006 * blurMul, -8, 8),
           })
         }
 
@@ -930,15 +1047,11 @@ class GpuOverlayManager {
           const br = btn.getBoundingClientRect()
           if (br.right < stripClip[0] || br.left > stripClip[2]) continue
           const isActive = i === activeState.activeIndex
-          const missed = hinting && btn.classList.contains("knobs-hint-miss")
           this.drawText(
             btn.textContent ?? "",
             br.left + br.width * 0.5,
             br.top + br.height * 0.5,
-            withAlpha(
-              isActive || btn.matches(":hover") ? tokens.text : tokens.label,
-              missed ? 0.32 : 1,
-            ),
+            withAlpha(this.hot(btn, isActive || btn.matches(":hover")), this.missed(btn, hinting)),
             {
               px: tokens.fontSize - 0.5,
               weight: isActive ? 600 : tokens.labelWeight,
@@ -955,7 +1068,7 @@ class GpuOverlayManager {
             "+",
             sr.left + sr.width * 0.5,
             sr.top + sr.height * 0.5,
-            hot ? tokens.text : tokens.dim,
+            this.hot(ps.saveButton, hot, tokens.dim),
             {
               px: tokens.fontSize + 2,
               weight: 400,
@@ -982,20 +1095,19 @@ class GpuOverlayManager {
         }
         // The reset fades and scales with its CSS transition, read straight from the DOM.
         const reset = g.reset
-        const alpha =
-          Number(getComputedStyle(reset).opacity) *
-          (hinting && reset.classList.contains("knobs-hint-miss") ? 0.32 : 1)
+        const alpha = Number(getComputedStyle(reset).opacity) * this.missed(reset, hinting)
         if (alpha > 0.005) {
           const br = reset.getBoundingClientRect()
           const hovered = reset.matches(":hover") && !reset.disabled
           const focused = activeEl === reset && reset.matches(":focus-visible")
-          if (hovered || focused)
+          const wash = this.wash(reset, hovered || focused)
+          if (wash > 0.005)
             this.pushPrim({
               x: br.left,
               y: br.top,
               w: br.width,
               h: br.height,
-              color: withAlpha(tokens.surfaceHi, alpha),
+              color: withAlpha(tokens.surfaceHi, alpha * wash),
               color2: tokens.accent,
               radius: br.height * 0.5,
               glowOrBlur: tokens.glowStrength * 7,
@@ -1006,7 +1118,7 @@ class GpuOverlayManager {
             "reset",
             13,
             br,
-            withAlpha(hovered || focused ? tokens.text : tokens.label, alpha),
+            withAlpha(this.hot(reset, hovered || focused), alpha),
             undefined,
             br.width / (reset.offsetWidth || br.width),
           )
@@ -1030,7 +1142,7 @@ class GpuOverlayManager {
       for (const row of panel.rows) {
         const rRect = row.row.getBoundingClientRect()
         if (rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
-        const rowAlpha = hinting && row.row.classList.contains("knobs-hint-miss") ? 0.32 : 1
+        const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
         const hovered = row.row.matches(":hover")
         const card = row.row.parentElement!.getBoundingClientRect()
@@ -1039,7 +1151,6 @@ class GpuOverlayManager {
 
         if (row.kind === "knob") {
           const sl = row.slider
-          const clock = performance.now()
           const rolling =
             !reducedMotion &&
             sl.digitPlaces.some(
@@ -1089,6 +1200,11 @@ class GpuOverlayManager {
             22,
           )
 
+          // Drag speed brightens and widens the fill's leading edge and blooms the handle; it
+          // follows quickly while dragging and fades out gently after (like --k-speed's transitions).
+          const speed = reducedMotion
+            ? 0
+            : this.ease(row.row, "speed", sl.speed(), dragging ? 26 : 12)
           this.pushPrim({
             x: rRect.left,
             y: rRect.top,
@@ -1097,7 +1213,10 @@ class GpuOverlayManager {
             color: withAlpha(fillTint, rowAlpha),
             color2: withAlpha(tokens.accent, rowAlpha),
             corners: this.rowCorners(row.row),
-            strokeWidth: Math.min(1, tokens.glowStrength * 0.2) * tokens.accent[3] * rowAlpha,
+            // Rows always pass corners, so the radius slot carries the speed.
+            radius: speed,
+            strokeWidth:
+              Math.min(1, tokens.glowStrength * (0.2 + 0.4 * speed)) * tokens.accent[3] * rowAlpha,
             glowOrBlur: tokens.glowStrength,
             kind: 2,
             blurX,
@@ -1116,15 +1235,21 @@ class GpuOverlayManager {
             const vRect = sl.valueButton.getBoundingClientRect()
             const unitText = sl.getUnitText()
             const digitsText = sl.getDigitsText()
-            const valCol = withAlpha(dragging || focused ? tokens.text : tokens.label, rowAlpha)
+            const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
             const valPx = tokens.fontSize - 0.5
             let rightEdge = vRect.right + stretchX * 0.35
+            // The decile pop scales the whole readout about its right edge.
+            const popAge = clock - sl.poppedAt
+            const pop = reducedMotion ? 1 : popScale(popAge)
+            if (popAge < POP_MS) anyMoving = true
+            const zoom = { scale: pop, origin: [rightEdge, rowCenterY] as const }
             if (unitText) {
               rightEdge -=
                 this.drawText(unitText, rightEdge, rowCenterY, withAlpha(tokens.dim, rowAlpha), {
                   px: valPx,
                   weight: 400,
                   align: "right",
+                  ...zoom,
                 }) + 3.5
             }
 
@@ -1147,6 +1272,7 @@ class GpuOverlayManager {
                 align: "right" as const,
                 clip: slotClip,
                 feather,
+                ...zoom,
               }
               const maxBlur = faceH * 0.45 * blurMul
               const measure = (t: string) => this.atlas.measure(t, valPx, 400, tokens.fontFamily)
@@ -1214,29 +1340,25 @@ class GpuOverlayManager {
 
           const activeBtn = row.buttons.find((b) => b.getAttribute("aria-checked") === "true")
           if (activeBtn) {
-            const targetX = activeBtn.offsetLeft,
-              targetW = activeBtn.offsetWidth
-            if (reducedMotion || row.pillW.x <= 1) {
-              row.pillX.snap(targetX)
-              row.pillW.snap(targetW)
-            } else {
-              row.pillX.set(targetX)
-              row.pillW.set(targetW)
-              row.pillX.step(dt)
-              row.pillW.step(dt)
-              if (!row.pillX.resting || !row.pillW.resting) anyMoving = true
+            const left = activeBtn.offsetLeft
+            const right = left + activeBtn.offsetWidth
+            const pe = row.pill
+            if (reducedMotion || pe.end.x - pe.start.x <= 1) pe.snap(left, right)
+            else {
+              pe.to(left, right, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
+              if (!pe.resting) anyMoving = true
             }
             this.pushPrim({
-              x: segRect.left + row.pillX.x,
+              x: segRect.left + pe.start.x,
               y: segRect.top + 2,
-              w: Math.max(12, row.pillW.x),
+              w: Math.max(12, pe.end.x - pe.start.x),
               h: Math.max(12, segRect.height - 4),
               color: withAlpha(pillFill, rowAlpha),
               color2: [0, 0, 0, 0],
               radius: Math.max(2, tokens.radius - 3),
               glowOrBlur: tokens.glowStrength * 0.6,
               kind: 3,
-              blurX: clamp(row.pillX.v * 0.016 * blurMul, -18, 18),
+              blurX: clamp(pe.velocity * 0.006 * blurMul, -6, 6),
             })
           }
 
@@ -1247,7 +1369,7 @@ class GpuOverlayManager {
               b.textContent ?? "",
               br.left + br.width * 0.5,
               br.top + br.height * 0.5,
-              withAlpha(checked || b.matches(":hover") ? tokens.text : tokens.label, rowAlpha),
+              withAlpha(this.hot(b, checked || b.matches(":hover")), rowAlpha),
               {
                 px: tokens.fontSize - 0.5,
                 weight: checked ? 600 : tokens.labelWeight,
@@ -1258,19 +1380,31 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip, false)
         } else {
           const focused = row.toggleEl.matches(":focus-visible")
-          const target = row.toggleEl.getAttribute("aria-checked") === "true" ? 1 : 0
-          if (reducedMotion) row.toggleSpring.snap(target)
+          const tRect = row.toggleEl.getBoundingClientRect()
+          // The thumb is a span between two edges: the leading edge springs ahead and the trailing
+          // one follows, so it stretches into a capsule while it travels; a press widens it toward
+          // where it will go, like iOS.
+          const on = row.toggleEl.getAttribute("aria-checked") === "true"
+          const pressed = row.toggleEl.matches(":active")
+          const d = tRect.height - 4
+          const travel = tRect.width - 4 - d
+          const from = 2 + (on ? travel : 0) - (pressed && on ? 4 : 0)
+          const to = 2 + (on ? travel : 0) + d + (pressed && !on ? 4 : 0)
+          const th = row.thumb
+          if (reducedMotion || th.end.x - th.start.x <= 1) th.snap(from, to)
           else {
-            row.toggleSpring.set(target)
-            row.toggleSpring.step(dt)
-            if (!row.toggleSpring.resting) anyMoving = true
+            th.to(from, to, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
+            if (!th.resting) anyMoving = true
           }
 
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
 
-          const tRect = row.toggleEl.getBoundingClientRect()
-          const prog = clamp(row.toggleSpring.x, 0, 1)
+          // Colours follow the state over the DOM's 0.2 s (not the thumb, which a press moves),
+          // starting with the row's turn in a cascade.
+          const waiting = clock < row.wave.at
+          if (waiting) anyMoving = true
+          const prog = this.ease(row.toggleEl, "on", waiting ? undefined : on ? 1 : 0, 22)
           this.pushPrim({
             x: tRect.left,
             y: tRect.top,
@@ -1283,9 +1417,10 @@ class GpuOverlayManager {
             ),
             glowOrBlur: tokens.glowStrength,
             kind: 4,
-            blurX: row.toggleSpring.v * 6 * blurMul,
             p0: prog,
             p1: focused ? 1 : 0,
+            p2: th.start.x,
+            p3: th.end.x,
           })
           this.drawRowOverlay(row.row, rRect, cardClip, false)
         }

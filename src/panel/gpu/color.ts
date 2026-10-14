@@ -106,12 +106,17 @@ export interface PanelThemeTokens {
   readonly segBg: Rgba
   readonly segActive: Rgba
   readonly toggleTrack: Rgba
+  readonly rim: Rgba
   readonly radius: number
   readonly panelRadius: number
   readonly fontSize: number
   readonly labelWeight: number
   readonly blurStrength: number
   readonly glowStrength: number
+  /** 0 is an opaque panel; up to 1 thins it over a blurred backdrop (--k-glass). */
+  readonly glass: number
+  /** Backdrop brightness under full glass (dims what shows through dark panels). */
+  readonly glassTone: number
   readonly fontFamily: string
   readonly monoFamily: string
   readonly isLight: boolean
@@ -189,12 +194,18 @@ export function readPanelTokens(panel: HTMLElement): PanelThemeTokens {
     segBg,
     segActive,
     toggleTrack,
+    rim: parseCssColor(
+      style.getPropertyValue("--k-rim"),
+      isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09],
+    ),
     radius: numProp(style, "--k-radius", 8),
     panelRadius: numProp(style, "--k-panel-radius", 12),
     fontSize: parseFloat(style.fontSize) || numProp(style, "--k-font-size", 12),
     labelWeight: numProp(style, "--k-label-weight", 500),
     blurStrength: numProp(style, "--k-blur", 1),
     glowStrength: numProp(style, "--k-glow", 0.5),
+    glass: Math.min(1, Math.max(0, numProp(style, "--k-glass", 0))),
+    glassTone: numProp(style, "--k-glass-tone", isLight ? 1.08 : 0.5),
     fontFamily:
       style.fontFamily ||
       style.getPropertyValue("--k-font").trim() ||

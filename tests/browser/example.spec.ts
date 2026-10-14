@@ -560,3 +560,75 @@ test("group reset appears only while its group differs from defaults", async ({ 
   await page.keyboard.press("ArrowDown")
   await expect(tokens.getByRole("button", { name: "Copy CSS" })).toBeFocused()
 })
+
+test("presets ripple down the rows, reduced motion moves them together, and glass is a token", async ({
+  page,
+}) => {
+  await page.goto("/meta.html")
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const synth = page.getByRole("region", { name: "synth-voice controls" })
+  const delays = () =>
+    synth
+      .locator("[data-field]")
+      .evaluateAll((rows) =>
+        rows.map((row) => [
+          (row as HTMLElement).dataset.field,
+          (row as HTMLElement).style.getPropertyValue("--k-delay"),
+        ]),
+      )
+
+  // default → acid changes every row but detune; each changed row starts 12 ms after the one above.
+  await synth.getByRole("radio", { name: "acid" }).click()
+  expect(await delays()).toEqual([
+    ["cutoff", "0ms"],
+    ["resonance", "12ms"],
+    ["drive", "24ms"],
+    ["waveform", "36ms"],
+    ["detune", ""],
+    ["chorus", "48ms"],
+  ])
+  // A single change never waits.
+  await page.waitForTimeout(500)
+  await synth.getByRole("radio", { name: "sine" }).click()
+  expect(Object.fromEntries(await delays()).waveform).toBe("0ms")
+
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await synth.getByRole("radio", { name: "glass" }).click()
+  expect(new Set((await delays()).map(([, d]) => d).filter(Boolean))).toEqual(new Set(["0ms"]))
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+
+  // Separators beside a hovered row fade out.
+  const resonance = synth.locator('[data-field="resonance"]')
+  const drive = synth.locator('[data-field="drive"]')
+  await resonance.hover()
+  await expect
+    .poll(() => drive.evaluate((el) => getComputedStyle(el, "::before").opacity))
+    .toBe("0")
+  await page.mouse.move(5, 5)
+  await expect
+    .poll(() => drive.evaluate((el) => getComputedStyle(el, "::before").opacity))
+    .toBe("1")
+
+  // Glass: a blurred backdrop under a translucent panel; the meta page's "solid" preset turns it off.
+  const backdrop = () => synth.evaluate((el) => getComputedStyle(el).backdropFilter)
+  expect(await backdrop()).toContain("blur(14.4px)")
+  const tokens = page.getByRole("region", { name: "knobs-tokens controls" })
+  await tokens.getByRole("radio", { name: "solid" }).click()
+  await expect.poll(backdrop).toContain("blur(0px)")
+  await tokens.getByRole("radio", { name: "default" }).click()
+  await expect.poll(backdrop).toContain("blur(14.4px)")
+
+  // The GPU renderer keeps a backdrop element under its canvas for each glass panel.
+  await page.goto("/meta.html?gpu")
+  await expect(synth).toHaveAttribute("data-gpu-active", "true")
+  await expect(page.locator(".knobs-gpu-backdrop")).toHaveCount(2)
+  await expect
+    .poll(() =>
+      page
+        .locator(".knobs-gpu-backdrop")
+        .first()
+        .evaluate((el) => getComputedStyle(el).backdropFilter),
+    )
+    .toContain("blur(14.4px)")
+})

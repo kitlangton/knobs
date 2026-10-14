@@ -1,6 +1,6 @@
 import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
-import { Spring } from "./motion.js"
+import { Edges, Spring } from "./motion.js"
 
 export interface PresetEntry<V = Record<string, unknown>> {
   readonly id: string
@@ -64,8 +64,8 @@ export interface PresetStrip {
   readonly pill: HTMLElement
   /** Trailing "+" chip that saves the current values as a new variant (absent when variants are off). */
   readonly saveButton: HTMLButtonElement | null
-  readonly pillX: Spring
-  readonly pillW: Spring
+  /** The selected pill's left and right edges (track px); the edge facing the move leads. */
+  readonly pillEdges: Edges
   readonly pillY: Spring
   readonly pillAlpha: Spring
   getEntries(): readonly PresetEntry<any>[]
@@ -115,8 +115,7 @@ export function createPresetStrip<S extends Schema>(
   root.append(track)
   if (saveButton) root.append(saveButton)
 
-  const pillX = new Spring(0, 28, 0.82)
-  const pillW = new Spring(48, 28, 0.86)
+  const pillEdges = new Edges()
   const pillY = new Spring(0, 28, 0.86)
   const pillAlpha = new Spring(1, 26, 0.9)
 
@@ -155,31 +154,37 @@ export function createPresetStrip<S extends Schema>(
     const idx = activeState.activeIndex
     const btn = idx >= 0 ? buttons[idx] : undefined
     if (!btn || activeState.isCustom) {
-      pillAlpha.set(0)
       if (snap) pillAlpha.snap(0)
       pill.style.opacity = "0"
-      pill.style.transform = `translate3d(${pillX.x}px, 0, 0) scale(0.92)`
+      pill.style.scale = "0.92"
       return
     }
-    const targetX = btn.offsetLeft
-    const targetY = btn.offsetTop
-    const targetW = Math.max(20, btn.offsetWidth)
-    if (snap || !initializedPill) {
-      pillX.snap(targetX)
-      pillY.snap(targetY)
-      pillW.snap(targetW)
+    // The pill is placed by its edges so each can move on its own curve: the edge facing the
+    // move leads and the other trails, stretching the pill toward its destination.
+    const left = btn.offsetLeft
+    const right = left + Math.max(20, btn.offsetWidth)
+    const top = btn.offsetTop
+    const first = snap || !initializedPill
+    if (first) {
+      pillEdges.snap(left, right)
+      pillY.snap(top)
       pillAlpha.snap(1)
       initializedPill = true
+      pill.style.transition = "none"
     } else {
-      pillX.set(targetX)
-      pillY.set(targetY)
-      pillW.set(targetW)
-      pillAlpha.set(1)
+      const at = parseFloat(pill.style.left) || 0
+      if (left !== at) pill.dataset.dir = left > at ? "right" : "left"
     }
-    pill.style.width = `${targetW}px`
+    pill.style.left = `${left}px`
+    pill.style.right = `${track.clientWidth - right}px`
+    pill.style.top = `${top}px`
     pill.style.height = `${btn.offsetHeight}px`
     pill.style.opacity = "1"
-    pill.style.transform = `translate3d(${targetX}px, ${targetY}px, 0) scale(1)`
+    pill.style.scale = ""
+    if (first) {
+      void pill.offsetWidth
+      pill.style.transition = ""
+    }
   }
 
   function syncSelection(snap = false) {
@@ -389,8 +394,7 @@ export function createPresetStrip<S extends Schema>(
     track,
     pill,
     saveButton,
-    pillX,
-    pillW,
+    pillEdges,
     pillY,
     pillAlpha,
     getEntries: () => entries,
