@@ -16,5 +16,5 @@
       "knobs/panel": ["./src/panel/index.ts"]
     }
   },
-  "include": ["src", "tests", "examples", "scripts", "*.ts"]
+  "include": ["src", "tests", "examples", "scripts", "site", "*.ts"]
 }
