@@ -47,9 +47,14 @@ const controls = defineControls(
   },
   {
     enabled: true,
-    // The panel's Random (its button or `r`) rolls the demo dice along with its own.
+    // The panel's Random (its button or `r`) rolls the demo dice along with its own; Mutate (⌥R)
+    // nudges them a quarter turn.
     onChange: (_patch, _values, { source }) => {
       if (source === "randomize") roll()
+      if (source === "mutate") {
+        motion.nudge()
+        kick()
+      }
     },
   },
 )
