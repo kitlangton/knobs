@@ -267,8 +267,13 @@ export function createSlider(
     handle.classList.toggle("knobs-dodge", p < 22 || p > 78)
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
+  const slotX = (slot: HTMLElement) =>
+    parseFloat(/translateX\(([-\d.]+)px\)/.exec(slot.style.transform)?.[1] ?? "0")
   const fastPatchDigits = (text: string): boolean => {
-    const slots = digits.querySelectorAll<HTMLElement>(".rn-slot")
+    // Slots are placed by transform, not DOM order: a place added mid-drag (99 → 100) is last.
+    const slots = [...digits.querySelectorAll<HTMLElement>(".rn-slot")].sort(
+      (a, b) => slotX(a) - slotX(b),
+    )
     if (slots.length !== text.length) return false
     for (let i = 0; i < slots.length; i++) {
       const faces = slots[i]!.querySelectorAll<HTMLElement>(".rn-face")
