@@ -23,7 +23,8 @@ const TITLES: Record<string, string> = {
     "Header: at rest (pointer away), panel hovered, after a change (history), an icon hovered",
   copy: "Copy: the header's copy button, clicked (page time after the click)",
   edit: "Inline number edit (radius): display, editing, both overlaid as a difference (black = no shift), typed 123, then Enter",
-  notch: "Default notch (radius, default 4): at rest, row hovered, dragged onto the default",
+  notch:
+    "Default notch (radius, default 4): keyboard focus, at rest, row hovered, dragged onto the default",
   wash: "Frame 6: focus on cells, pointer resting on radius, ] (next preset), the pointer nudged 1px",
   sweep: "Hover moving down the rows (cells → radius → phase) during a preset glide",
 }
@@ -254,6 +255,9 @@ for (const mode of ["dom", "gpu"] as const) {
   await page.keyboard.press("Home")
   await sleep(500)
   await away()
+  await sleep(500)
+  push("notch", tag("keyboard focus, pointer away"), await shot(rowClip))
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await sleep(500)
   push("notch", tag("rest"), await shot(rowClip))
   await page.mouse.move(rb.x + 30, rb.y + rb.height / 2)
