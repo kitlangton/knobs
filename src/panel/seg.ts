@@ -1,4 +1,4 @@
-import { measure } from "./measure.js"
+import { afterBatch, inBatch, measure } from "./measure.js"
 import { livePill } from "./swipe.js"
 
 /**
@@ -30,34 +30,49 @@ export function placeSegPill(
   if (!resized && pill.dataset.placed && !("off" in pill.dataset) && pill.dataset.value === value)
     return
   const button = active
-  measure(
-    () => ({
-      left: button.offsetLeft,
-      right: seg.clientWidth - button.offsetLeft - button.offsetWidth,
-    }),
-    ({ left, right }) => {
-      const wasOff = "off" in pill.dataset
-      delete pill.dataset.off
-      const now = performance.now()
-      const sliding = now < Number(pill.dataset.slideUntil ?? 0)
-      const first =
-        !pill.dataset.placed || wasOff || (resized && pill.dataset.value === value && !sliding)
-      pill.dataset.value = value
-      const at = parseFloat(pill.style.left)
-      // Coming back from no selection, it fades in where it lands instead of sliding there.
-      if (first) pill.style.transition = wasOff ? "opacity .15s" : "none"
-      else if (left !== at && !resized) {
-        pill.dataset.dir = left > at ? "right" : "left"
-        pill.dataset.slideUntil = String(now + 400)
-      }
-      pill.style.left = `${left}px`
-      pill.style.right = `${right}px`
-      if (first) {
-        pill.dataset.placed = "true"
-        // Restored a frame later rather than by forcing layout, which a gliding token would do on
-        // every frame.
-        seg.ownerDocument.defaultView?.requestAnimationFrame(() => (pill.style.transition = ""))
-      }
-    },
-  )
+  const place = ({ left, right }: Box) => {
+    const wasOff = "off" in pill.dataset
+    delete pill.dataset.off
+    const now = performance.now()
+    const sliding = now < Number(pill.dataset.slideUntil ?? 0)
+    const first =
+      !pill.dataset.placed || wasOff || (resized && pill.dataset.value === value && !sliding)
+    pill.dataset.value = value
+    const at = parseFloat(pill.style.left)
+    // Coming back from no selection, it fades in where it lands instead of sliding there.
+    if (first) pill.style.transition = wasOff ? "opacity .15s" : "none"
+    else if (left !== at && !resized) {
+      pill.dataset.dir = left > at ? "right" : "left"
+      pill.dataset.slideUntil = String(now + 400)
+    }
+    pill.style.left = `${left}px`
+    pill.style.right = `${right}px`
+    if (first) {
+      pill.dataset.placed = "true"
+      // Restored a frame later rather than by forcing layout, which a gliding token would do on
+      // every frame.
+      seg.ownerDocument.defaultView?.requestAnimationFrame(() => (pill.style.transition = ""))
+    }
+  }
+  const known = early.get(seg)?.get(button)
+  if (known) place(known)
+  else measure(() => box(seg, button), place)
+}
+
+type Box = { left: number; right: number }
+const box = (seg: HTMLElement, button: HTMLElement): Box => ({
+  left: button.offsetLeft,
+  right: seg.clientWidth - button.offsetLeft - button.offsetWidth,
+})
+const early = new WeakMap<HTMLElement, Map<HTMLElement, Box>>()
+
+/**
+ * Reads where each option sits ahead of a batch's writes (see measure.ts), while layout is still
+ * clean: choosing an option doesn't move any, so the pill then places without reading layout
+ * after the batch has dirtied it.
+ */
+export function primeSegPill(seg: HTMLElement, buttons: readonly HTMLElement[]) {
+  if (!inBatch() || early.has(seg)) return
+  early.set(seg, new Map(buttons.map((b) => [b, box(seg, b)])))
+  afterBatch(() => early.delete(seg))
 }

@@ -54,6 +54,9 @@ const cardPreset = (page: Page, group: string, label: string) =>
 // In order, each one a real change from the state the one before left.
 const SWITCHES: Switch[] = [
   { name: "Lively (click)", act: (p) => presetChip(p, "Lively").click() },
+  // The tune page's order: rows stay modified, so only their values move.
+  { name: "Lively → Compact", act: (p) => presetChip(p, "Compact").click() },
+  { name: "Compact → Lively", act: (p) => presetChip(p, "Lively").click() },
   {
     name: "Reset all (key R)",
     prepare: (p) => focusCard(p, "Rows"),

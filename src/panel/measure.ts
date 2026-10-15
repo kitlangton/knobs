@@ -15,6 +15,8 @@ export function measure<T>(read: () => T, write: (value: T) => void) {
   else write(read())
 }
 
+const ends: (() => void)[] = []
+
 export function batchMeasures(run: () => void) {
   if (queue) return run()
   const list: Measure[] = []
@@ -25,5 +27,15 @@ export function batchMeasures(run: () => void) {
     queue = null
     const values = list.map((m) => m.read())
     list.forEach((m, i) => m.write(values[i]))
+    for (const end of ends.splice(0)) end()
   }
+}
+
+/** Whether a batch is running: reads taken now, before its writes, find layout clean. */
+export const inBatch = () => queue !== null
+
+/** Runs `end` when the running batch has written everything (to drop what was read for it). */
+export function afterBatch(end: () => void) {
+  if (queue) ends.push(end)
+  else end()
 }

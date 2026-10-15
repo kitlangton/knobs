@@ -605,7 +605,6 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     update(value: Value, delay: number, instant?: boolean, isMixed = false) {
       shown = value as readonly [number, number]
       mixed = isMixed
-      row.style.setProperty("--k-delay", `${Math.max(0, delay)}ms`)
       paint(first || Boolean(instant) || dragging)
       first = false
     },
@@ -812,7 +811,6 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
       if (first || instant) {
         value = turn = next as number
       } else follow(next as number)
-      row.style.setProperty("--k-delay", `${Math.max(0, delay)}ms`)
       paint(first || Boolean(instant) || dragging)
       first = false
     },

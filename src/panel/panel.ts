@@ -69,13 +69,13 @@ import {
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
-import { placeSegPill } from "./seg.js"
+import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
-import { injectPreset, injectStyles } from "./styles.js"
+import { DELAYED, injectPreset, injectStyles } from "./styles.js"
 
 export interface Panel {
   element: HTMLElement
@@ -2029,17 +2029,32 @@ function buildPanel<S extends Schema>(
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
     const moving = initialized ? rows.filter(changed) : rows
-    // Reads before writes: every row about to move reads its tokens before any row writes, and
-    // the pills measure once all of it is written (see measure.ts).
-    for (const row of moving) {
-      row.slider?.prime()
-      row.editor?.prime?.()
-    }
-    batchMeasures(() => showValues(values, moving, stagger, landing))
+    // The preset strip first: its chip's weight moves the chips, so it reads after its own writes
+    // and before the rows dirty everything else.
+    presetStrip.update()
+    // Reads before writes: every row about to move reads its tokens, and every segmented pill its
+    // options, before any row writes (see measure.ts).
+    batchMeasures(() => {
+      for (const row of moving) {
+        row.slider?.prime()
+        row.editor?.prime?.()
+        if (row.choice) primeSegPill(row.choice.seg, row.choice.buttons)
+      }
+      for (const chips of groupChips.values()) primeSegPill(chips.seg, chips.buttons)
+      showValues(values, moving, stagger, landing)
+    })
     shown = values as Values<S>
     initialized = true
 
     wakeGpu()
+  }
+  /** Sets a row's turn on what it times (see `DELAYED`), each only when it differs. */
+  function delayRow(row: HTMLElement, wait: string) {
+    for (const el of row.querySelectorAll<HTMLElement>(DELAYED)) {
+      if (el.style.getPropertyValue("--k-delay") === wait) continue
+      if (wait) el.style.setProperty("--k-delay", wait)
+      else el.style.removeProperty("--k-delay")
+    }
   }
   function showValues(
     values: Record<string, unknown>,
@@ -2062,13 +2077,10 @@ function buildPanel<S extends Schema>(
         turn++
         row.wave.at = now + delay
         row.wave.until = row.wave.at + 280
-        // Only when it differs: a custom property set on the row restyles everything in it.
-        const wait = `${delay}ms`
-        if (row.row.style.getPropertyValue("--k-delay") !== wait)
-          row.row.style.setProperty("--k-delay", wait)
+        delayRow(row.row, `${delay}ms`)
       } else {
         row.wave.at = row.wave.until = 0
-        if (row.row.style.getPropertyValue("--k-delay")) row.row.style.removeProperty("--k-delay")
+        delayRow(row.row, "")
       }
       const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)
@@ -2128,7 +2140,6 @@ function buildPanel<S extends Schema>(
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
-    presetStrip.update()
     if (search) {
       const counts = new Map<string, number>()
       for (const [chip, test] of chipTests)

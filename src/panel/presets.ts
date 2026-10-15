@@ -299,8 +299,8 @@ export function createPresetStrip<S extends Schema>(
           b.setAttribute("aria-label", entry.label)
           b.onclick = (e) => {
             e.preventDefault()
-            if (idx !== activeState.activeIndex) selectAt(idx)
             focusQuietly()
+            if (idx !== activeState.activeIndex) selectAt(idx)
           }
           return b
         })
@@ -315,6 +315,7 @@ export function createPresetStrip<S extends Schema>(
   }
 
   // Pointer selections keep keyboard focus in the strip without drawing a keyboard focus ring.
+  // Called before selecting: focusing reads style, which a preset's writes would leave dirty.
   function focusQuietly() {
     root.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
   }
@@ -382,12 +383,12 @@ export function createPresetStrip<S extends Schema>(
     scrubbing = true
     scrubCommitted = false
     track.setPointerCapture(event.pointerId)
+    focusQuietly()
     const idx = chipIndexAt(event.clientX, event.clientY)
     if (idx >= 0 && idx !== activeState.activeIndex) {
       selectAt(idx)
       scrubCommitted = true
     }
-    focusQuietly()
   }
   track.onpointermove = (event) => {
     if (!scrubbing) return
