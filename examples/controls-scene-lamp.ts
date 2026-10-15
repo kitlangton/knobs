@@ -57,7 +57,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
       label: "Temperature",
       group: "bulb",
     }),
-    shade: color("#35584c", { label: "Enamel", group: "shade", groupLabel: "Shade" }),
+    shade: color("#3f7a62", { label: "Enamel", group: "shade", groupLabel: "Shade" }),
     aim: angle(0, { label: "Aim", group: "shade" }),
     beam: range([26, 64], { min: 4, max: 86, step: 1, unit: "°", label: "Beam", group: "shade" }),
     falloff: curve("inverse²", { label: "Falloff", group: "room", groupLabel: "Room" }),
@@ -126,7 +126,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   const lo = stage.val(26, 0.02)
   const hi = stage.val(64, 0.02)
   const haze = stage.val(0.4, 0.001)
-  const shade = new ColorVal(stage, "#35584c")
+  const shade = new ColorVal(stage, "#3f7a62")
   const ys = Array.from({ length: N }, () => stage.val(0, 0.0005))
   const isLight = () => document.documentElement.dataset.theme === "light"
   const tone = stage.val(isLight() ? 1 : 0, 0.001)

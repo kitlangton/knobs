@@ -200,9 +200,14 @@ fn shade(ro: vec3f, rd: vec3f, hit: Hit) -> vec3f {
     let dl = direct(p, n);
     col += (albedo / PI + specK * ggxSpec(n, v, dl.xyz, rough)) * lc * dl.w;
   } else {
-    // The enamel outside: a sheen of the room in its rim.
+    // The enamel outside: a soft neutral key from the room (a window off to the left) so its
+    // own hue reads under the warm bulb, a glossy streak of that window, and a sheen in its rim.
+    let key = normalize(vec3f(-0.6, 0.55, 0.6));
+    let env = mix(0.16, 0.42, tone);
+    col += albedo * env * (0.25 + 0.75 * max(dot(n, key), 0.0));
+    col += vec3f(env * 0.7 * ggxSpec(n, v, key, 0.28));
     let fr = pow(1.0 - max(dot(n, v), 0.0), 4.0);
-    col += vec3f(fr * amb * 0.9);
+    col += vec3f(fr * (amb + env * 0.5));
   }
   return col;
 }
