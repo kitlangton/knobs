@@ -3,6 +3,7 @@
 import { angle, choice, color, point, range, seed, springMotion, vec2, vec3 } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, linearRgb } from "./controls-gpu"
+import { live } from "./controls-live"
 import { ColorVal, oklabRgb, reduced, rolling, SHUTTER_S, Stage } from "./controls-motion"
 import objectWgsl from "./controls-object.wgsl?raw"
 
@@ -170,6 +171,7 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
     if (how === "init") {
       seedFrom = seedTo = v.pattern
     } else if (v.pattern !== seedTo) {
+      live.log(`Pattern ${seedTo} → ${v.pattern}`)
       seedFrom = seedTo
       seedTo = v.pattern
       turn.snap(0).to(1, TURN)

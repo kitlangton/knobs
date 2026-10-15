@@ -7,6 +7,7 @@
 import { angle, color, curve, knob, range, sampleCurve, springMotion, toggle } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
+import { live } from "./controls-live"
 import lampWgsl from "./controls-lamp.wgsl?raw"
 import { ColorVal, oklabRgb, rolling, Stage } from "./controls-motion"
 
@@ -89,6 +90,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     const kelvin = 900 + (temperature.x - 900) * Math.sqrt(hot)
     const lc = kelvinRgb(kelvin)
     const intensity = 13 * k * hot ** 2.4 * flicker
+    live.lumens = 800 * k * hot ** 2.4 * flicker
     if (!data || !view) {
       fallback?.(lc, intensity / 13, oklabRgb(shade.lab))
       return
@@ -140,6 +142,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   on((v, how) => {
     if (how === "init") heat.snap(v.on ? 1 : 0)
     else if (v.on !== lit) {
+      live.log(v.on ? "Lamp struck" : "Lamp off, cooling")
       if (v.on) {
         heat.to(1, IGNITE)
         flick.snap(1).to(0, FLICKER)
@@ -167,6 +170,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     })
     setCaption({ lm: v.on ? v.brightness : 0, k: v.temperature })
   })
+  return store
 }
 
 /** Without WebGPU: a disc of glow, a bulb and a pool on the floor, in the light's colour. */

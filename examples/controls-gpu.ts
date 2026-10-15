@@ -5,6 +5,7 @@
 // (controls-post.wgsl). A view draws only when its Stage asks (something visible changed), so a
 // still page costs nothing. Without WebGPU (or with ?nogpu) `gpuView` returns null and the
 // section keeps its DOM preview.
+import { live } from "./controls-live"
 import postWgsl from "./controls-post.wgsl?raw"
 
 const HDR: GPUTextureFormat = "rgba16float"
@@ -363,6 +364,14 @@ export class GpuView {
     p.draw(3)
     p.end()
     q.submit([enc.finish()])
+    const t0 = performance.now()
+    const label = this.spec.label
+    q.onSubmittedWorkDone().then(() => {
+      const ms = performance.now() - t0
+      const v = live.views.get(label) ?? { renders: 0, ms: 0 }
+      live.views.set(label, { renders: v.renders + 1, ms })
+      live.gpuMs += ms
+    })
   }
 }
 

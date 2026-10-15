@@ -17,6 +17,7 @@ import {
 } from "knobs"
 import { timeline } from "knobs/ui"
 import type { SceneKit } from "./controls"
+import { live } from "./controls-live"
 import { DirBlur, rolling, Speed, Stage, stretchAlong } from "./controls-motion"
 
 /** The timeline: out at 0, back at HALF, four seconds round. */
@@ -260,7 +261,10 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
       setCaption({ t })
       stage.paint()
     },
-    onCross: () => pulse(),
+    onCross: (m) => {
+      pulse()
+      live.log(`Motion: ${m.label ?? m.id}`, "debug")
+    },
   })
   setCaption({ t: T, speed: "1×" })
 

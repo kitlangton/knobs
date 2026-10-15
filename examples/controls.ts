@@ -50,6 +50,7 @@ import dotsWgsl from "./controls-dots.wgsl?raw"
 import skyWgsl from "./controls-sky.wgsl?raw"
 import { Goo, GooGpu } from "./controls-goo"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
+import { live } from "./controls-live"
 import {
   blurFor,
   ColorVal,
@@ -225,7 +226,7 @@ const kit: SceneKit = { section, define, mount, h, theme: () => theme }
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
 category("Scenes")
-lampScene(kit)
+const lamp = lampScene(kit)
 objectScene(kit)
 motionScene(kit)
 
@@ -488,6 +489,7 @@ motionScene(kit)
       }
       shown[i] = on
     }
+    if (how !== "init" && v.count !== count) live.log(`Dots ${count} → ${v.count}`, "debug")
     count = v.count
     setCaption({ n: v.count, size: v.size })
   })
@@ -634,34 +636,30 @@ const SKIES = {
   })
 }
 
-// ── Readouts ─────────────────────────────────────────────────────────────────────────────────
-
-category("Readouts")
-
 {
   const s = section({
     id: "readouts",
     title: "Readouts",
-    code: "watch · sparkline · graph · meter · table · log",
-    what: "Rows that show what a running thing is doing. They hold no value, cost nothing at rest, and sleep when the feed pauses.",
+    shows: ["watch()", "sparkline()", "graph()", "meter()", "table()", "log()", "readout()"],
+    what: "Rows that show what a running thing is doing; here, this page. The shared animation loop's frames, the WebGPU views' work, the lamp's light and what just happened in the scenes above. They hold no value, and sleep when the feed pauses: leave the page still and the graph stops, because nothing is drawing.",
     tries: [
-      "Push Load up: the graph crosses its 60 fps line, the meter turns amber, then red",
-      "Hover the graph for a crosshair; <kbd>←</kbd> <kbd>→</kbd> walk it",
-      "In the log: level chips, <kbd>f</kbd> to filter, scroll up and a “new ↓” pill appears",
+      "Press Flick lamp: frames appear while it strikes, the output climbs through its flicker, then everything sleeps",
+      "Scroll up and throw a slider, then come back: the log says what happened",
+      "Set the lamp's Brightness past 1200 lm: Lamp output turns amber, then red",
+      "Hover the graph for a crosshair; in the log, level chips and <kbd>f</kbd> to filter",
     ],
   })
-  const { store: signal, on } = define("signal", "Signal", {
+  const { store: feed, on } = define("feed", "Feed", {
     running: toggle(true, { label: "Running" }),
-    load: knob(0.35, { min: 0, max: 1, step: 0.01, label: "Load" }),
-    noise: knob(0.3, { min: 0, max: 1, step: 0.01, label: "Noise" }),
-    spike: action("Spike", { run: () => (spikeAt = performance.now()) }),
+    flick: action("Flick lamp", {
+      run: () => lamp.set({ on: !lamp.get().on }, { source: "remote" }),
+    }),
   })
-  mount(signal, s.slot, { title: "Signal" })
-  const { store: live } = define("readouts", "Readouts", {
+  const { store: watched } = define("readouts", "Readouts", {
     frame: graph({
-      label: "Frame time",
+      label: "Frame",
       series: [
-        { id: "cpu", label: "CPU", area: true },
+        { id: "frame", label: "Frame", area: true },
         { id: "gpu", label: "GPU" },
       ],
       unit: "ms",
@@ -671,16 +669,25 @@ category("Readouts")
       thresholds: [{ value: 16.7, label: "60 fps" }],
     }),
     fps: watch({ label: "FPS", decimals: 0 }),
-    drops: sparkline({ label: "Drops", decimals: 0, min: 0 }),
-    memory: meter({ label: "Memory", max: 512, unit: "MB", decimals: 0, warn: 360, critical: 450 }),
-    passes: table({ label: "Passes", columns: ["Pass", "ms", "Draws"] }),
-    events: log({ label: "Events", lines: 5 }),
+    moving: watch({ label: "Moving previews", decimals: 0 }),
+    light: meter({
+      label: "Lamp output",
+      max: 1600,
+      unit: "lm",
+      decimals: 0,
+      warn: 1200,
+      critical: 1500,
+    }),
+    energy: sparkline({ label: "Light", unit: "lm", decimals: 0, min: 0 }),
+    views: table({ label: "WebGPU views", columns: ["View", "Renders", "GPU ms"] }),
+    events: log({ label: "Events", lines: 6 }),
   })
+  mount(watched, s.slot, { title: "This page", header: { title: true, buttons: [] } })
   const right = h("div", "slot")
   s.side.prepend(right)
-  mount(live, right, { title: "Live", header: { title: true, buttons: [] } })
+  mount(feed, right, { title: "Feed" })
   // A readout on its own, outside any panel.
-  const solo = readout(sparkline({ label: "Frame", unit: "ms", decimals: 1, min: 0 }), { theme })
+  const solo = readout(sparkline({ label: "FPS", decimals: 0, min: 0 }), { theme })
   const soloRow = h("div")
   soloRow.style.cssText = "display:flex;flex-direction:column;gap:6px"
   const soloNote = h("div", "", "On its own, outside a panel: <code>readout(sparkline())</code>")
@@ -688,44 +695,41 @@ category("Readouts")
   solo.element.style.cssText += ";max-width:300px"
   soloRow.append(soloNote, solo.element)
   s.side.append(soloRow)
-  let spikeAt = -1e9
   let visible = false
   let timer = 0
-  let t = 0
-  let drops = 0
+  let frames = live.frames
+  let still = 0
+  let lumens = -1
   let n = 0
-  let mem = 220
+  live.log("Page built")
   const tick = () => {
-    const v = signal.get()
-    t += 0.05
     n++
-    const spike = Math.max(0, 1 - (performance.now() - spikeAt) / 600)
-    const jitter = () => (Math.random() - 0.5) * v.noise * 4
-    const cpu = Math.max(0.5, 3 + v.load * 11 + Math.sin(t * 1.7) * 0.8 + jitter() + spike * 14)
-    const gpu = Math.max(0.5, 5 + v.load * 13 + Math.sin(t * 0.6 + 1) * 1.2 + jitter() + spike * 9)
-    const frame = Math.max(cpu, gpu)
-    if (frame > 16.7) drops++
-    mem += (180 + v.load * 300 + spike * 120 - mem) * 0.06 + jitter()
-    live.watch("frame", { cpu, gpu })
-    solo.push(frame)
-    live.watch("fps", Math.min(120, 1000 / frame))
-    live.watch("drops", drops)
-    live.watch("memory", mem)
-    if (n % 10 === 0)
-      live.watch("passes", [
-        ["Shadow", +(gpu * 0.18).toFixed(2), 12],
-        ["Opaque", +(gpu * 0.46).toFixed(2), 84 + Math.round(v.load * 60)],
-        ["Post", +(gpu * 0.2).toFixed(2), 4],
-      ])
-    if (spike > 0.95)
-      live.watch("events", { level: "error", text: `Spike: frame ${frame.toFixed(1)} ms` })
-    else if (frame > 16.7 && n % 8 === 0)
-      live.watch("events", { level: "warn", text: `Over budget: ${frame.toFixed(1)} ms` })
-    else if (n % 40 === 0) live.watch("events", `Streamed tile ${(n / 40) % 64}`)
+    const stepped = live.frames - frames
+    frames = live.frames
+    if (stepped > 0) {
+      still = 0
+      const fps = Math.min(240, 1000 / Math.max(1, live.frameMs))
+      watched.watch("frame", { frame: live.frameMs, gpu: live.gpuMs / stepped })
+      watched.watch("fps", fps)
+      solo.push(fps)
+    } else if (++still === 3) live.log("Nothing moving: the loop sleeps", "debug")
+    live.gpuMs = 0
+    watched.watch("moving", stepped > 0 ? live.moving : 0)
+    if (Math.abs(live.lumens - lumens) > 0.5) {
+      lumens = live.lumens
+      watched.watch("light", lumens)
+      watched.watch("energy", lumens)
+    }
+    if (n % 10 === 1)
+      watched.watch(
+        "views",
+        [...live.views].map(([name, v]) => [name, v.renders, +v.ms.toFixed(2)]),
+      )
+    for (const e of live.events.splice(0)) watched.watch("events", e)
   }
   const sync = () => {
-    const run = visible && signal.get().running
-    if (run && !timer) timer = window.setInterval(tick, 50)
+    const run = visible && feed.get().running
+    if (run && !timer) timer = window.setInterval(tick, 100)
     if (!run && timer) {
       clearInterval(timer)
       timer = 0

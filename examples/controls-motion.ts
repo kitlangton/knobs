@@ -13,6 +13,7 @@ import { createRollingNumber, createRollingText } from "@kitlangton/rolling-numb
 import "@kitlangton/rolling-number/styles.css"
 import { parseColor, springMotion } from "knobs"
 import { Spring } from "knobs/panel"
+import { live } from "./controls-live"
 
 export type Feel =
   | "follow"
@@ -113,14 +114,21 @@ const io = new IntersectionObserver(
 let raf = 0
 let last = 0
 function frame(now: number) {
+  if (last) live.frameMs = now - last
   const dt = last ? Math.min(0.064, (now - last) / 1000) : 1 / 60
   last = now
   raf = 0
+  live.frames++
   let any = false
+  let moving = 0
   for (const s of stages) {
     if (s.active) s.step(dt, now)
-    if (s.active) any = true
+    if (s.active) {
+      any = true
+      moving++
+    }
   }
+  live.moving = moving
   if (any) raf = requestAnimationFrame(frame)
   else last = 0
 }
