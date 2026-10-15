@@ -463,6 +463,16 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       ].filter(visible),
     tracks: [],
     gpu: [gpu],
+    ...(chips
+      ? {
+          options: {
+            count: names.length,
+            choose: (i: number) => c.set(f.presets![names[i]!]!),
+            shown: () => (x.isOpen() && visible(chips.el) ? chips.buttons : []),
+            anchor: mini,
+          },
+        }
+      : {}),
     update(value, _delay, instant = false, mixed = false) {
       const prev = shown
       shown = value as readonly GradientStop[]
@@ -1141,6 +1151,16 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       [x.head, ...(x.isOpen() ? [graph, ...(chips ? [chips.el] : [])] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
+    ...(chips
+      ? {
+          options: {
+            count: presets.length,
+            choose: (i: number) => c.set(presets[i]![1]),
+            shown: () => (x.isOpen() && visible(chips.el) ? chips.buttons : []),
+            anchor: mini,
+          },
+        }
+      : {}),
     update(value, delay, instant = false, mixed = false) {
       shown = value as readonly CurvePoint[]
       if (selected >= shown.length) selected = shown.length - 1

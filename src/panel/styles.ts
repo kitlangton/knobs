@@ -288,7 +288,12 @@ const css = `
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)::before,.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)+*::before{opacity:0}
-.knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
+.knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface-hi);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
+/* The card focus is on (a click on its empty area or heading, Esc from a row): a soft wash over all
+   of it, for R and ⇧R acting on its group. */
+:is(.knobs-card,.knobs-tile)::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .2s var(--k-ease)}
+:is(.knobs-card,.knobs-tile)[data-k-scope]::after{opacity:1}
+.knobs-panel:focus{outline:none}
 .knobs-card>:has(:focus-visible)::after{opacity:1}
 .knobs-panel .knobs-slider{height:var(--k-row);contain:layout style}
 .knobs-panel .knobs-row:where(:not(.knobs-slider,.knobs-x,.knobs-spring)){display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);contain:layout style}
@@ -415,7 +420,7 @@ const css = `
 .knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover,.knobs-x-head[data-panned]{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
-:is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
+:is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface-hi);opacity:0;pointer-events:none;transition:opacity .15s}
 :is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1}
 .knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:var(--k-gap) var(--k-inset) var(--k-gap) 0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);pointer-events:none}
 .knobs-panel :is(.knobs-spring-curve,.knobs-ease)>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
@@ -717,6 +722,13 @@ const css = `
 .knobs-hint-typed{opacity:var(--k-hint-typed-opacity)}
 .knobs-hint-rest{opacity:1}
 
+/* A focused row's options: tiny digits in hint mode's look, once focus settles (optkeys.ts). */
+.knobs-optkeys{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5}
+.knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;align-items:center;height:12px;padding:0 3px;border-radius:var(--k-radius-sm);background:var(--k-accent);color:var(--k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
+  font:700 calc(var(--k-text-cap) * .85)/1 var(--k-mono);letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .12s var(--k-ease)}
+.knobs-optkey-range{transform:translate(-100%,-50%)}
+.knobs-optkey[data-shown]{opacity:.85;transition-duration:.15s}
+
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
 .knobs-panel .knobs-custom-actions button{height:var(--k-button-h,var(--k-action-h));min-height:24px;padding:0 8px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-button-color,var(--k-label));cursor:pointer;
@@ -779,6 +791,8 @@ const css = `
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::after,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-card:not(.knobs-live *),.knobs-tile:not(.knobs-live))::after,
+.knobs-panel[data-gpu-active="true"] .knobs-optkey,
 .knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */

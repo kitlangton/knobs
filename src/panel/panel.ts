@@ -38,6 +38,7 @@ import {
   pointRow,
   springRow,
   type EditorRow,
+  type RowOptions,
   type SubTrack,
 } from "./editors.js"
 import { curveRow, gradientRow } from "./ramps.js"
@@ -56,6 +57,8 @@ import { readoutRow, type ReadoutRow } from "./readout-row.js"
 import { toast } from "../ui/toast.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
+import { createOptionKeys } from "./optkeys.js"
+import { commandScope, digitOption, escapeTo, scopeLabel, type FocusLevel } from "./scope.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
@@ -296,6 +299,13 @@ function buildPanel<S extends Schema>(
   popover.setAttribute("aria-label", "Keyboard shortcuts")
   const popGrid = el("div")
   popGrid.className = "knobs-popover-grid"
+  const SCOPED = {
+    both: "Random / Reset all",
+    random: "Random all",
+    reset: "Reset all",
+    mutate: "Mutate all: small changes",
+  }
+  const scopedDescs: [HTMLElement, string][] = []
   const show = (command: PanelCommand, alt = false) =>
     keys[command].map((k) => keyLabel(k, alt)).join(" / ")
   const pair = (a: PanelCommand, b: PanelCommand, what: string) =>
@@ -306,7 +316,7 @@ function buildPanel<S extends Schema>(
       ? [
           ["Tab / ⇧Tab", "Next / previous group"],
           ["⌥↑ / ⌥↓", "Previous / next section"],
-          ["1–9", "Group preset"],
+          ["1–9", "Row's option, else group preset"],
           ...(page.filter !== false ? [["/", "Filter rows"]] : []),
         ]
       : [
@@ -316,6 +326,7 @@ function buildPanel<S extends Schema>(
             ? [["⌥1–9", "Switch tab"]]
             : []),
           ...(options.search ? [["/", "Search"]] : []),
+          ["1–9", "Pick the row's option"],
         ]) as [string, string][]),
     [prefs.vim ? "←→ / h l" : "←→", `Adjust value (⇧ ×${prefs.bigStep})`],
     ["⌥ drag", "Fine adjust"],
@@ -323,14 +334,15 @@ function buildPanel<S extends Schema>(
     ...(bound("hint") ? [[show("hint"), "Jump to anything by code"]] : []),
     ...(prefs.edit ? [[page ? "Enter" : "0–9 / Enter", "Edit number inline"]] : []),
     ...(bound("reset") ? [[keyLabel(keys.reset[0]!), "Reset row · delete saved preset"]] : []),
+    // What R, ⇧R and ⌥R act on follows focus; these read it when the popover shows.
     ...(bound("random") && bound("resetAll")
-      ? [[`${show("random")} / ${show("resetAll")}`, "Random / Reset all"]]
+      ? [[`${show("random")} / ${show("resetAll")}`, SCOPED.both]]
       : bound("random")
-        ? [[show("random"), "Random"]]
+        ? [[show("random"), SCOPED.random]]
         : bound("resetAll")
-          ? [[show("resetAll"), "Reset all"]]
+          ? [[show("resetAll"), SCOPED.reset]]
           : []),
-    ...(bound("mutate") ? [[show("mutate", true), "Mutate: small changes"]] : []),
+    ...(bound("mutate") ? [[show("mutate", true), SCOPED.mutate]] : []),
     ...(bound("group") && (bound("random") || bound("mutate"))
       ? [[`${show("group")} / ${show("group", true)}`, "Random / Mutate group"]]
       : []),
@@ -343,19 +355,42 @@ function buildPanel<S extends Schema>(
     ...(pair("undo", "redo", "Undo / Redo") as [string, string][]),
     ...(bound("undo") && !bound("redo") ? [[show("undo"), "Undo"]] : []),
     ...(close
-      ? [["Esc", "Close panel"]]
-      : inline && !page && bound("leave")
-        ? [[show("leave"), "Leave the panel"]]
-        : []),
+      ? [["Esc", "Up a level: row, card, panel, close"]]
+      : page || (inline && keys.leave.includes("Escape"))
+        ? [["Esc", "Up a level: row, card, panel, out"]]
+        : inline && bound("leave")
+          ? [
+              ["Esc", "Up a level: row, card, panel"],
+              [show("leave"), "Leave the panel"],
+            ]
+          : []),
   ] as [string, string][]) {
-    popGrid.append(el("kbd", k), el("span", desc))
+    const span = el("span", desc)
+    popGrid.append(el("kbd", k), span)
+    if (Object.values(SCOPED).includes(desc)) scopedDescs.push([span, desc])
   }
   popover.append(popGrid)
+  /** Rewrites the popover's R, ⇧R and ⌥R lines for where focus is (or was, before it opened). */
+  const describeScope = (from: Node | null = doc.activeElement) => {
+    const scope = scopeAt(from)
+    for (const [span, which] of scopedDescs) {
+      const text =
+        which === SCOPED.both
+          ? `${scopeLabel("Random", scope)} / ${scopeLabel("Reset", scope)}`
+          : which === SCOPED.random
+            ? scopeLabel("Random", scope)
+            : which === SCOPED.reset
+              ? scopeLabel("Reset", scope)
+              : `${scopeLabel("Mutate", scope)}: small changes`
+      if (span.textContent !== text) span.textContent = text
+    }
+  }
 
   let positioned: { constrain(): void; dispose(): void } | undefined
   let helpButton: HTMLButtonElement | undefined
   const togglePopover = (open?: boolean) => {
     const next = open ?? (popover.hidden || popover.dataset.leaving === "true")
+    if (next) describeScope()
     reveal(popover, next)
     helpButton?.setAttribute("aria-expanded", String(next))
     positioned?.constrain()
@@ -545,6 +580,9 @@ function buildPanel<S extends Schema>(
     if (known) return known
     const tile = el("div")
     tile.className = "knobs-tile"
+    // A card takes focus (a click on its empty area or heading, Esc from a row), for R and ⇧R.
+    tile.tabIndex = -1
+    tile.setAttribute("role", "group")
     if (group) {
       tile.dataset.group = group
       tile.setAttribute("aria-label", groupTitle(group, section))
@@ -570,10 +608,21 @@ function buildPanel<S extends Schema>(
     const card = el("div")
     card.className = "knobs-card"
     if (group) card.dataset.group = group
+    // A card takes focus (a click on its empty area or heading, Esc from a row), for R and ⇧R.
+    card.tabIndex = -1
+    card.setAttribute("role", "group")
+    if (group) card.setAttribute("aria-label", groupTitle(group))
     const block: Block = { group, card }
     if (group) {
       block.head = groupHead(group)
       block.gpuGroup = gpuGroups.at(-1)
+      // A click on a heading that doesn't fold focuses its card.
+      const head = block.head
+      head.addEventListener("click", (event) => {
+        if (head.hasAttribute("data-foldable") || (event.target as Element).closest("button"))
+          return
+        card.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+      })
     }
     cards.push(card)
     return block
@@ -2981,9 +3030,131 @@ function buildPanel<S extends Schema>(
     }
   })
 
-  /** The group of the focused row or group header. */
+  /** The group of the focused row, group header or card. */
   const focusedGroup = (target: HTMLElement) =>
-    rows[rowAt(target)]?.group ?? target.closest<HTMLElement>(".knobs-group-head")?.dataset.group
+    rows[rowAt(target)]?.group ??
+    target.closest<HTMLElement>(".knobs-group-head,.knobs-tile,.knobs-card")?.dataset.group
+
+  // ——— Focus scope: a row, its card, or the panel (see scope.ts) ———
+  /** The card `node` sits in (a page's tile, a panel's card); a group's heading stands for its card. */
+  const cardOf = (node: Node | null): HTMLElement | null => {
+    if (!(node instanceof Element) || !root.contains(node)) return null
+    if (page) return node.closest<HTMLElement>(".knobs-tile")
+    const head = node.closest<HTMLElement>(".knobs-group-head")
+    if (head) return blocks.find((b) => b.head === head)?.card ?? null
+    return node.closest<HTMLElement>(".knobs-card")
+  }
+  const focusLevel = (node: Node | null): FocusLevel => {
+    if (!node || !root.contains(node)) return "none"
+    if (rowAt(node) >= 0) return "row"
+    return cardOf(node) ? "card" : "panel"
+  }
+  const scopeAt = (node: Node | null) => commandScope(focusLevel(node), selected.size > 0)
+  /** Random (or Mutate, `nudge`) for what focus is on: its row, its card, else everything. */
+  const rollFrom = (target: Node | null, nudge: boolean) => {
+    const scope = scopeAt(target)
+    if (scope === "selection") return reroll(selectionKeys(), nudge)
+    if (scope === "all") return reroll(undefined, nudge)
+    if (scope === "row") {
+      const r = rows[rowAt(target)]!
+      // The row's group die tumbles for it, if it has one: the header's means everything.
+      return reroll(r.keys, nudge, (r.group && groupDice.get(r.group)?.die) || die)
+    }
+    const card = cardOf(target)!
+    const group = card.dataset.group
+    if (group && groupDice.has(group)) return rerollGroup(group, nudge)
+    reroll(cardKeys(card), nudge)
+  }
+  /** ⇧R for what focus is on, as R picks it. */
+  const resetFrom = (target: Node | null) => {
+    const scope = scopeAt(target)
+    if (scope === "all") return controls.reset()
+    if (scope === "selection") return controls.reset(selectionKeys())
+    if (scope === "row") return controls.reset(keysOf([rowAt(target)]))
+    const keys = cardKeys(cardOf(target)!) as (keyof S & string)[]
+    if (keys.length) controls.reset(keys)
+  }
+  const cardKeys = (card: HTMLElement) =>
+    rows.filter((r) => card.contains(r.row)).flatMap((r) => r.keys)
+  /** Esc from a row or card: up a level, to the card and then the panel itself. */
+  const climb = (target: Node | null) => {
+    const level = focusLevel(target)
+    const card = level === "row" ? cardOf(target) : null
+    const next = escapeTo(level, card !== null)
+    const quiet = { preventScroll: true } as FocusOptions
+    if (next === "card") card!.focus(quiet)
+    else if (next === "panel") root.focus(quiet)
+  }
+  const optionKeys = createOptionKeys(doc, root, () => wakeGpu())
+  root.tabIndex = -1
+  // The card focus is on wears a soft wash (data-k-scope), both renderers; a row's own focus
+  // wash is the card children's (see styles).
+  let scoped: HTMLElement | null = null
+  const syncScope = () => {
+    const active = doc.activeElement
+    const card = focusLevel(active) === "card" ? cardOf(active) : null
+    if (card !== scoped) {
+      scoped?.removeAttribute("data-k-scope")
+      card?.setAttribute("data-k-scope", "")
+      scoped = card
+      wakeGpu()
+    }
+    if (!popover.hidden) describeScope()
+    optionKeys.show(optionsAt(active))
+  }
+  let scopeQueued = false
+  const queueScope = () => {
+    if (scopeQueued) return
+    scopeQueued = true
+    queueMicrotask(() => {
+      scopeQueued = false
+      syncScope()
+    })
+  }
+  root.addEventListener("focusin", queueScope)
+  root.addEventListener("focusout", queueScope)
+  root.addEventListener("click", queueScope)
+  root.addEventListener("keyup", queueScope)
+  // The digits ride along when the rows scroll under them.
+  root.addEventListener("scroll", queueScope, { capture: true, passive: true })
+  // A row's options as the digits pick them: a choice's, or an editor's presets.
+  const choiceOptions = new WeakMap<Row, RowOptions>()
+  const optionsOf = (r: Row): RowOptions | undefined => {
+    if (r.editor?.options) return r.editor.options
+    const control = r.choice
+    if (!control || r.field.kind !== "choice") return undefined
+    let o = choiceOptions.get(r)
+    if (!o) {
+      const values = r.field.options
+      o = {
+        count: values.length,
+        choose: (i) => run(() => r.set(values[i])),
+        shown: () => (control.isMenu() ? [] : control.buttons),
+        anchor: control.menu,
+      }
+      choiceOptions.set(r, o)
+    }
+    return o
+  }
+  const optionsAt = (node: Element | null) => {
+    if (hintCtrl.isActive || !node || !root.contains(node)) return undefined
+    const r = rows[rowAt(node)]
+    if (!r || r.row.closest("[data-disabled],[data-readonly]")) return undefined
+    return optionsOf(r)
+  }
+  /** 1–9 on a row with options pick the nth; the row takes the digits even past its last. */
+  const pickOption = (event: KeyboardEvent) => {
+    if (!/^[1-9]$/.test(event.key) || event.altKey || event.shiftKey) return false
+    const target = event.target as HTMLElement
+    const r = rows[rowAt(target)]
+    const o = r && optionsOf(r)
+    if (!o) return false
+    event.preventDefault()
+    event.stopPropagation()
+    const i = digitOption(event.key, o.count)
+    if (i !== undefined && !r.row.closest("[data-disabled],[data-readonly]")) o.choose(i)
+    return true
+  }
   const isTyping = (target: EventTarget | null) =>
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement ||
@@ -3031,7 +3202,9 @@ function buildPanel<S extends Schema>(
     if (event.isComposing) return
     const target = event.target as HTMLElement
     const typing = isTyping(target)
-    // A toolbar's shortcuts come first, ⌘ combinations included.
+    // A focused row's options take the digits; then a toolbar's shortcuts, ⌘ combinations included.
+    if (!typing && !hintCtrl.isActive && !event.metaKey && !event.ctrlKey && pickOption(event))
+      return
     if (!typing && !hintCtrl.isActive && pressTool(event, true)) return
     if (event.metaKey || event.ctrlKey) return
     if (event.altKey) {
@@ -3058,7 +3231,7 @@ function buildPanel<S extends Schema>(
         !all && bound("mutate") && pressedAlt("group", event) ? focusedGroup(target) : undefined
       if (!all && !group) return
       event.preventDefault()
-      if (all) run(() => reroll(selectionKeys(), true))
+      if (all) run(() => rollFrom(target, true))
       else if (group) run(() => rerollGroup(group, true))
       return
     }
@@ -3081,6 +3254,19 @@ function buildPanel<S extends Schema>(
         event.preventDefault()
         event.stopPropagation()
         closeFilter(true)
+        return
+      }
+      // Up a level a press: a row to its card, the card to the panel; from there, out.
+      const level = typing ? "none" : focusLevel(target)
+      if (level === "row" || level === "card") {
+        event.preventDefault()
+        event.stopPropagation()
+        climb(target)
+        return
+      }
+      if (page && level === "panel") {
+        event.preventDefault()
+        ;(doc.activeElement as HTMLElement | null)?.blur()
         return
       }
       if (close) {
@@ -3133,7 +3319,9 @@ function buildPanel<S extends Schema>(
     if (event.key === "Tab" && !inline) {
       const list = focusables()
       const at = list.indexOf(target)
-      if (list.length && (at < 0 || at === (event.shiftKey ? 0 : list.length - 1))) {
+      // From the panel or a card, Tab goes on from there as the browser takes it.
+      const between = target === root || cardOf(target) === target
+      if (list.length && ((at < 0 && !between) || at === (event.shiftKey ? 0 : list.length - 1))) {
         event.preventDefault()
         list[event.shiftKey ? list.length - 1 : 0]!.focus()
       }
@@ -3248,12 +3436,12 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("resetAll", event)) {
       event.preventDefault()
-      run(controls.reset)
+      run(() => resetFrom(target))
       return
     }
     if (pressed("random", event)) {
       event.preventDefault()
-      run(() => reroll(selectionKeys(), false))
+      run(() => rollFrom(target, false))
       return
     }
     if (pressed("group", event) && bound("random")) {
@@ -3311,6 +3499,12 @@ function buildPanel<S extends Schema>(
       event.stopPropagation()
       const list = stops()
       const at = list.findIndex((stop) => stop.contains(target))
+      // From a card, into its first row (or, going up, its last).
+      if (at < 0 && cardOf(target) === target) {
+        const inside = rows.filter((r) => target.contains(r.row) && visible(r.input))
+        const r = down ? inside[0] : inside.at(-1)
+        if (r) return void r.input.focus(page ? { preventScroll: true } : undefined)
+      }
       const step = at + (down ? 1 : -1)
       const next =
         at < 0
@@ -3633,6 +3827,8 @@ function buildPanel<S extends Schema>(
     root.addEventListener("focusin", (event) => {
       const t = event.target as HTMLElement
       if (jumping || header.contains(t) || popover.contains(t) || !body.contains(t)) return
+      // A card taking focus (a click in it, Esc from a row) is already where the eye is.
+      if (t.classList.contains("knobs-tile")) return
       const item =
         t.closest<HTMLElement>(".knobs-card > *") ??
         t.closest<HTMLElement>("[data-knobs-stop]") ??
@@ -3982,6 +4178,7 @@ function buildPanel<S extends Schema>(
       controls.compare(false)
       morph?.dispose()
       untrackHas()
+      optionKeys.dispose()
       root.remove()
     },
   }

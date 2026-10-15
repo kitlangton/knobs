@@ -75,6 +75,18 @@ export interface EditorRow {
   dispose(): void
   readonly tracks: readonly SubTrack[]
   readonly gpu: readonly GpuRowBinding[]
+  /** Named options the digits pick while the row is focused (a ramp's or easing's presets). */
+  readonly options?: RowOptions
+}
+
+/** A row's options as the digits 1–9 pick them (see scope.ts). */
+export interface RowOptions {
+  readonly count: number
+  choose(i: number): void
+  /** The options while they show (segments, chips), for a digit on each; empty while hidden. */
+  shown(): readonly HTMLElement[]
+  /** What stands for them while they're hidden (a menu's button, a head's mini curve). */
+  readonly anchor: Element
 }
 
 export const reducedMotion = (doc: Document) =>
@@ -1377,6 +1389,12 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? [chips, ...handles] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
+    options: {
+      count: names.length,
+      choose: (i) => c.set(EASINGS[names[i]!]),
+      shown: () => (x.isOpen() && visible(chips) ? chipButtons : []),
+      anchor: mini,
+    },
     update(value, _delay, _instant, mixed = false) {
       const first = name.dataset.placed === undefined
       name.dataset.placed = ""

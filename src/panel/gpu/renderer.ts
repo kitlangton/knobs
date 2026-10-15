@@ -1622,7 +1622,7 @@ class GpuOverlayManager {
       w: rRect.width,
       h: rRect.height,
       clip: cardClip,
-      color: withAlpha(t.surface, focus),
+      color: withAlpha(t.surfaceHi, focus),
       color2: t.accent,
       corners: this.rowCorners(el, el.getAttribute("aria-expanded") === "true"),
       glowOrBlur: t.glowStrength * 8,
@@ -2093,6 +2093,21 @@ class GpuOverlayManager {
       weight: this.curTokens.fontWeight,
       align: "right",
       clip,
+    })
+  }
+
+  /** The soft wash on the card focus is on (`data-k-scope`), as the DOM's ::after. */
+  private drawScope(card: HTMLElement, r: DOMRect, radius: number, alpha: number) {
+    const on = this.ease(card, "scope", card.hasAttribute("data-k-scope") ? 1 : 0, 26)
+    if (on < 0.005) return
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      color: withAlpha(this.curTokens.surface, on * alpha),
+      radius,
+      kind: 1,
     })
   }
 
@@ -3960,6 +3975,7 @@ class GpuOverlayManager {
             p0: 0,
             aux2: withAlpha(tokens.rim, fade),
           })
+          this.drawScope(tile, tr, tokens.panelRadius, fade)
         }
       }
 
@@ -4165,6 +4181,7 @@ class GpuOverlayManager {
             radius: tokens.radius,
             kind: 1,
           })
+          if (bar === card) this.drawScope(card, cr, tokens.radius, 1)
         }
       }
       this.curClip = bodyClip
@@ -4745,7 +4762,38 @@ class GpuOverlayManager {
         }
       }
 
-      // 7. Hint badges
+      // 7. Hint badges, and the focused row's option digits (optkeys.ts), in the same look.
+      for (const key of panel.root.querySelectorAll<HTMLElement>(".knobs-optkeys .knobs-optkey")) {
+        const a = this.ease(key, "shown", key.hasAttribute("data-shown") ? 0.85 : 0, 28)
+        if (a < 0.005) continue
+        const kr = key.getBoundingClientRect()
+        if (kr.width <= 0 || kr.height <= 0) continue
+        this.pushPrim({
+          x: kr.left,
+          y: kr.top,
+          w: kr.width,
+          h: kr.height,
+          clip: panelClip,
+          color: withAlpha(tokens.accent, a),
+          color2: withAlpha(tokens.accent, a),
+          radius: tokens.radiusSm,
+          glowOrBlur: tokens.glowStrength * 0.5,
+          kind: 3,
+        })
+        this.drawText(
+          key.textContent ?? "",
+          kr.left + 3,
+          kr.top + kr.height * 0.5,
+          withAlpha(tokens.bg, a),
+          {
+            px: tokens.textCap * 0.85,
+            weight: 700,
+            mono: true,
+            clip: panelClip,
+            track: 0.04,
+          },
+        )
+      }
       if (hinting) {
         for (const hintEl of panel.root.querySelectorAll<HTMLElement>(
           ".knobs-hint-layer .knobs-hint:not([hidden])",
