@@ -458,7 +458,10 @@ function vec<N extends 2 | 3>(axes: N, value: Point | Vec3, options: VecOptions)
     ...(options.link || options.linked ? { link: true } : {}),
     ...(options.linked ? { linked: true } : {}),
   } as VecField<N>
-  return withMeta({ ...field, value: normalizeField(field, value) as VecField<N>["value"] }, options)
+  return withMeta(
+    { ...field, value: normalizeField(field, value) as VecField<N>["value"] },
+    options,
+  )
 }
 /** Inline x and y cells: `vec2({ x: 0, y: 1 }, { min: -10, max: 10, step: 0.1 })`. */
 export function vec2(value: Point, options: VecOptions): VecField<2> {
@@ -618,10 +621,7 @@ export function normalizeField(field: ValueField, input: unknown): Value {
       const v = Array.isArray(input) && input.length === 2 ? input : field.value
       const a = keep(num(v[0], field.value[0]), field.min, field.max, field.step)
       const b = keep(num(v[1], field.value[1]), field.min, field.max, field.step)
-      return Object.freeze([Math.min(a, b), Math.max(a, b)]) as unknown as readonly [
-        number,
-        number,
-      ]
+      return Object.freeze([Math.min(a, b), Math.max(a, b)]) as unknown as readonly [number, number]
     }
     case "angle": {
       if (typeof input !== "number" || !Number.isFinite(input)) return field.value

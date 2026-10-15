@@ -61,8 +61,11 @@ export interface EditorRow {
   readonly input: HTMLElement
   /** Every ↑↓ stop in the row, in order (an open editor's parts follow its head). */
   stops(): HTMLElement[]
-  /** `instant` places the value without motion (a different item arrived). */
-  update(value: Value, delay: number, instant?: boolean): void
+  /**
+   * `instant` places the value without motion (a different item arrived); `mixed` shows it as
+   * indeterminate (a multi-selection whose items differ).
+   */
+  update(value: Value, delay: number, instant?: boolean, mixed?: boolean): void
   /** A flat spring's halves changed range or label (see `RowContext.parts`). */
   retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
   dispose(): void

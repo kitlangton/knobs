@@ -93,5 +93,11 @@ export {
 export { memoryStorage, urlFlag, type StoragePort } from "./core/storage.js"
 export type { TokenPreset } from "./core/theme.js"
 export { formatCode, type CodeFormat } from "./core/code.js"
-export { comboFromEvent, comboLabel, comboParts, matchesCombo, normalizeCombo } from "./core/keys.js"
+export {
+  comboFromEvent,
+  comboLabel,
+  comboParts,
+  matchesCombo,
+  normalizeCombo,
+} from "./core/keys.js"
 export type { Variant, Variants } from "./core/variants.js"

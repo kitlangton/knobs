@@ -49,7 +49,7 @@ const NAMED: Record<string, string> = {
 
 export const isApple = () =>
   typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/.test(
+  /mac|iphone|ipad|ipod/i.test(
     (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
       navigator.platform ??
       "",
