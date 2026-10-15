@@ -427,6 +427,7 @@ const css = `
 .knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
 
 .knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
+.knobs-x-head[data-panned]{cursor:ew-resize}
 .knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
 .knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}
 .knobs-x-label::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}

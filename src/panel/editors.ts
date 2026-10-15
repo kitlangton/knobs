@@ -1023,24 +1023,64 @@ export function panPresets(
     head.removeAttribute("data-panned")
     c.wake()
   }
+  const move = (dx: number, size?: number) => {
+    if (!travel) {
+      travel = { travel: 0, give: 0 }
+      // In hand: the head's wash, however the pointer got there.
+      head.setAttribute("data-panned", "")
+      c.wake()
+    }
+    const at = o.at()
+    const { next, index } = stepList(travel, dx, at, o.count, size)
+    travel = next
+    if (index !== undefined && index !== at) {
+      o.choose(index, chosen)
+      chosen = true
+      tick(head)
+    }
+    if (next.give !== give.give) give.hold(next.give)
+  }
+  // A pointer dragged sideways on the head steps the same way, a step every `DRAG_STEP` px. Only
+  // past a few px is it a drag: a click still opens the row, and a drag's own click is swallowed.
+  let press: { id: number; x: number; y: number; last: number; dragging: boolean } | undefined
+  head.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.pointerType === "touch") return
+    if ((event.target as Element).closest("button,input")) return
+    press = { id: event.pointerId, x: event.clientX, y: event.clientY, last: 0, dragging: false }
+  })
+  head.addEventListener("pointermove", (event) => {
+    if (!press || event.pointerId !== press.id) return
+    const dx = event.clientX - press.x
+    if (!press.dragging) {
+      if (Math.abs(dx) < DRAG_START) {
+        if (Math.abs(event.clientY - press.y) >= DRAG_START) press = undefined
+        return
+      }
+      press.dragging = true
+      press.last = Math.sign(dx) * DRAG_START
+      head.setPointerCapture(event.pointerId)
+    }
+    move(dx - press.last, DRAG_STEP)
+    press.last = dx
+  })
+  const drop = (event: PointerEvent) => {
+    if (!press || event.pointerId !== press.id) return
+    const dragged = press.dragging
+    press = undefined
+    if (!dragged) return
+    letGo()
+    // The click this release makes (in the same task) would open or fold the row: it was a drag.
+    const swallow = (click: Event) => {
+      click.preventDefault()
+      click.stopImmediatePropagation()
+    }
+    head.addEventListener("click", swallow, { capture: true, once: true })
+    setTimeout(() => head.removeEventListener("click", swallow, { capture: true }), 0)
+  }
+  head.addEventListener("pointerup", drop)
+  head.addEventListener("pointercancel", drop)
   onPan(head, {
-    move(dx) {
-      if (!travel) {
-        travel = { travel: 0, give: 0 }
-        // In hand: the head's wash, however the pointer got there.
-        head.setAttribute("data-panned", "")
-        c.wake()
-      }
-      const at = o.at()
-      const { next, index } = stepList(travel, dx, at, o.count)
-      travel = next
-      if (index !== undefined && index !== at) {
-        o.choose(index, chosen)
-        chosen = true
-        tick(head)
-      }
-      if (next.give !== give.give) give.hold(next.give)
-    },
+    move: (dx) => move(dx),
     lift: () => give.release(),
     end: letGo,
     step(direction) {
@@ -1050,6 +1090,10 @@ export function panPresets(
     },
   })
 }
+
+/** How far (px) a pointer goes sideways on a head before it's a drag, and px per preset after. */
+const DRAG_START = 4
+const DRAG_STEP = 24
 
 const EASE_PAD = { x: 12, y: 10 }
 const MINI = { w: 30, y: [-0.3, 1.3] as const }
