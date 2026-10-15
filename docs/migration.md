@@ -343,3 +343,20 @@ A few things to watch:
   alone; return anything else to let knobs roll it. The Lab's Emitter group in `examples/lab.ts`
   works this way.
 - **What stays in Arcade.** The `data-lab-flash` highlight is the Lab's own.
+
+### The workspace: `panels.ts` and `outliner.ts`
+
+The Lab's hand-built panes and outliner can move to `knobs/ui`. `examples/lab-workspace.ts` is a
+working model of the Lab's layout on it: an outliner on the left, the viewport over a dock in the
+middle, and the inspector column on the right.
+
+| Lab today | Replace with |
+| --- | --- |
+| The resizable columns and the dock in `panels.ts`, with their own drag handles, min and max clamps and saved sizes | `split()` from `knobs/ui`, one per direction, nested in each other's `pane(id).body`. Give each split an `id` and layouts are saved and restored before the first paint. Mark side columns and the dock `collapsible`; `rail` names a collapsed column and `title` gives a pane a header (a column pane folds to it). |
+| Code that re-lays out a canvas or panel when a column moves | Listen for `knobs-pane-resize` on the pane element, or use `onLayout`. GPU panels in panes follow on their own (the `knobs-layout` event). |
+| The outliner's rows, expand state, selection and drag reorder in `outliner.ts` | `tree()` over the scene's items (`getId`, `getLabel` and `getChildren` if they aren't `id`, `label` and `children`). `onSelect` drives the inspector; `onMove` returns `{ ids, parent, index }` for the scene graph (`applyMove` for plain items), then `update(items)`. Visibility and lock are `toggles: [{ id: "visible", … }, { id: "locked", … }]`; rename is `onRename`. |
+| The outliner's search box filter | Keep the input and call `outline.filter(query)`: matching rows show with their ancestors, the match marked. |
+| `arcadePreset` on the workspace chrome | `{ preset: labPreset }` on each `split` and `tree`, as on the panels. |
+
+Mount the inspector panels in the right pane's body as before (`mountPanel(controls, main.pane("right").body)`).
+Panes create no stacking contexts, so the panels keep the GPU renderer and their overlays.

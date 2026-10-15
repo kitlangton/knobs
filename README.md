@@ -149,13 +149,15 @@ const node = defineControls("node", {
   that way) changing one axis scales the others with it.
 - **`range([low, high], { min, max, step?, unit?, decimals? })`**: one slider with two thumbs that
   can't cross. The nearer thumb follows the pointer; a press well inside the band moves the whole
-  band. Each thumb is a stop: ←/→ move it, Enter types it.
+  band. Each thumb is a stop: ←/→ move it, Enter types it. A thumb that shows never sits on the
+  label or readout: their text fades for a few pixels either side of it.
 - **`angle(value, { min?, max?, step?, wrap? })`**: degrees on a small dial, 0° up and clockwise.
   0–360 by default, where `wrap` (on for a full turn) carries 359° on to 0°. Drag the hand round
   (`⇧` snaps to 15°) or scrub the readout; ←/→ turn it, Enter types it.
 - **`seed(value, { min?, max? })`**: a whole number with a die. Clicking the die or pressing Space
-  rolls a new one; ←/→ step it and Enter types it. Random and Mutate leave seeds alone unless the
-  field says `random: true`.
+  rolls a new one; ←/→ step it and Enter types it. Its digits roll to a new value; a rolled seed's
+  spin upward for as long as the die tumbles. Random and Mutate leave seeds alone unless the field
+  says `random: true`.
 - **`keybind(value?)`**: a key combination such as `"Meta+Shift+K"` (stored canonically, `""` for
   none), drawn as key caps. Enter or a click starts listening; the next combination is the value,
   Esc cancels and ⌫ clears. Not rolled by Random or Mutate.
@@ -650,11 +652,89 @@ Focus that lands off screen (or under the header) glides into view, retargeting 
 
 Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header, and follows every frame of a glide or fold; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling and layout motion wake the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
 
+## Workspaces (`knobs/ui`)
+
+`knobs/ui` has the pieces a tool's workspace is built from: resizable split panes and docks, and an outliner tree. They are plain DOM and framework-neutral, use the same tokens as panels (`--k-*`, `--k-control-h`, a `preset` such as `labPreset`), and work on their own or next to panels. A panel can mount inside a pane.
+
+```ts
+import { labPreset } from "knobs/themes"
+import { applyMove, split, tree } from "knobs/ui"
+import { mountPanel } from "knobs/panel"
+
+const look = { preset: labPreset, theme: "dark" as const }
+const main = split(workspace, {
+  ...look,
+  id: "workspace", // saves sizes and collapsed panes
+  panes: [
+    { id: "outliner", size: 240, min: 180, max: 460, collapsible: true, rail: "Scene" },
+    { id: "view", min: 360 },
+    { id: "inspector", size: 300, min: 248, collapsible: true, title: "Inspector" },
+  ],
+})
+// Splits nest: a viewport over a dock that folds to its header.
+const center = split(main.pane("view").body, {
+  ...look,
+  id: "center",
+  direction: "column",
+  panes: [{ id: "stage" }, { id: "dock", size: 132, collapsible: true, title: "Dock" }],
+})
+mountPanel(controls, main.pane("inspector").body)
+
+let scene = [{ id: "lights", label: "Lights", children: [{ id: "sun", label: "Sun" }] }]
+const outline = tree(main.pane("outliner").body, {
+  ...look,
+  items: scene,
+  label: "Scene",
+  onSelect: (ids) => pick(ids),
+  onMove: (move) => outline.update((scene = applyMove(scene, move))),
+  onRename: (id, label) => rename(id, label),
+})
+```
+
+**`split(container, options)`** lays panes along a `"row"` (default) or a `"column"`, divided by hairlines with a wider grip (`--k-ui-hit`, 9px). Panes with a `size` keep it in pixels; the rest share what's left. Dragging a divider resizes, and each pane slows softly into its `min` and `max` rather than stopping dead. Drag a collapsible pane 40px past its min and it collapses. Double-click a divider to reset it. A focused divider takes `←`/`→` (or `↑`/`↓`; `⇧` for bigger steps), `Home`/`End`, and `Enter` or `Space` to collapse. Collapsing springs the pane down to a slim rail (`--k-ui-rail`), or in a column to its header. The content keeps its open size and slides out by the divider, with no reflow, and a click on the rail opens it again. A collapse can be turned back halfway. With an `id`, the layout is saved (localStorage unless you pass `storage`; `null` saves nothing) and restored before the first paint. Panes take `title`, `count`, `actions` (icon buttons in the header), `rail` (the rail's label), `scroll` and `element` (content to move into the body). The handle has `pane(id)` (`body`, `header`, `size`, `collapsed`, `collapse()`, `resize()`, `title()`), `layout()`, `collapse(id, collapsed?)`, `resize(id, px)`, `reset(id?)` and `dispose()`.
+
+Every change of layout, drag frames and springs included, calls `onLayout(layout)`, fires `knobs-pane-resize` on each pane element and fires `knobs-layout` on the document. The WebGPU renderer listens for `knobs-layout`, so panels in panes stay drawn in place through a drag or a collapse. A panel that a collapse clips away entirely isn't drawn at all. Panes don't create stacking contexts, so a panel's search and editors still sit above the overlay.
+
+**`tree(container, options)`** is an outliner. Rows are virtualised, so 10,000 of them scroll at full speed with about 35 in the DOM. When a branch opens, its children slide out from under it as one block with the rows below, like a drawer, and closing folds them back. The tree takes items with `id`, `label` and `children` (or `getId`, `getLabel` and `getChildren` for your own shape; an array, even empty, makes a parent that takes drops). Options:
+
+- `icon` and `detail` for a glyph and dimmed text, or `render` for your own row content
+- `toggles` for row accessories such as `visible` and `locked`, which show at rest only in their unusual state
+- `filter` for a query or a test; matching rows show with their ancestors, the match marked
+- `selection`, `expanded` and `rowHeight` (`--k-row` by default)
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, `Home` / `End` | Move; type letters to jump to a label |
+| `←` / `→` | Close or go up / open or go down |
+| `⇧` click or `⇧↑↓`, `⌘` click, `⌘A` | Extend, toggle, select all |
+| `Space` | Select the active row (`⌘Space` toggles it) |
+| `Enter` / `F2` | Rename in place (with `onRename`); otherwise `Enter` calls `onActivate` |
+| `⌥↑` / `⌥↓` | Move the selection past its neighbour |
+
+Dragging rows shows a line where they'll land, or a wash on the row they'll go into, and scrolls near the edges. Drags and `⌥↑↓` report `onMove({ ids, parent, index })`, where `index` is counted after the moved rows are taken out. Apply the move to your items (`applyMove(items, move)` does it for plain `{ id, children }` items, or `applyMove(items, access, move)` for your own shape) and call `update(items)`. Rows that stay glide to their new places. `canDrop(move)` can refuse a drop. The handle also has `select`, `expand`, `filter`, `reveal`, `focus`, `rename`, `rows()` and `refresh()`.
+
+The active row and the selection show as soft washes in the accent, with no outlines. You can tune them with `--k-ui-select`, `--k-ui-select-focus`, `--k-ui-wash`, `--k-ui-wash-hi`, `--k-ui-indent` (14px) and `--k-ui-divider` (the hairline's colour, `--k-line` by default). The model behind both pieces is exported too (`solveSplit`, `dragDivider`, `softClamp`, `parseLayout`, `flatten`, `navigate`, `select`, `typeahead`, `dropTarget`, `validMove`, `stepMove`, `virtualWindow`), for hosts that draw their own.
+
+React and Solid wrappers come from `knobs/ui/react` and `knobs/ui/solid`:
+
+```tsx
+import { Split, Tree } from "knobs/ui/react" // or "knobs/ui/solid"
+
+<Split id="workspace" panes={panes} onReady={(split) => (handle = split)}>
+  <Tree items={items} onSelect={(ids) => setPicked(ids)} onMove={(m) => setItems(applyMove(items, m))} />
+  <Viewport />
+</Split>
+```
+
+`Split` puts each child in its pane, in order; the React one portals them, so context and state carry through. `Tree` updates in place when `items`, `selection` or `filter` change, and always calls the latest callbacks. The Lab demo (`examples/lab.html`, `?rows=10000` for a big scene) is a full workspace: an outliner, a viewport over a dock, and the inspector column.
+
 ## Theming, Density & WebGPU Renderer
 
 Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
 
 When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels share a single page-level WebGPU overlay canvas and `GPUDevice` with 480 Hz spring physics, velocity-driven directional motion blur, native-rasterized glyph atlas text, and per-column rolling digit smear, while keeping an invisible semantic DOM mirror for keyboard navigation and screen readers. The DOM renderer's transitions run on the same springs (sampled into CSS `linear()` easings), so both renderers move alike. The canvas can't sample the page, so each glass panel gets a `backdrop-filter` element just under the canvas; a panel lying over another panel firms up instead. When WebGPU is unavailable, panels fall back to the DOM/CSS renderer automatically.
+
+The overlay is one canvas at the top of the page, so a panel's DOM overlays (search, inline editors) can only stay above it if they aren't trapped in a stacking context. An inline panel inside an ancestor that creates one (a `transform`, `filter`, `opacity` below 1, a `z-index` on a positioned or flex item, `contain`, `isolation`, …) therefore draws with the DOM renderer, which looks the same, and is marked `data-gpu-trapped`. To keep such a panel on the GPU, take the stacking context off its ancestors. `knobs/ui` panes don't create any.
 
 Override CSS variables on `:root` or `.knobs-panel`:
 
