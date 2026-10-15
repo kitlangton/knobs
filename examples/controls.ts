@@ -6,38 +6,28 @@
 import {
   action,
   angle,
-  type Bezier,
-  bezierPoint,
   type ChangeMeta,
   type ControlDescriptor,
   type Controls,
   type ControlsOptions,
   choice,
   color,
-  comboParts,
   createRemoteControls,
-  curve,
   defineControls,
-  easing,
-  flatSpring,
   gradient,
   graph,
-  keybind,
   knob,
   log,
   type MountPanelOptions,
-  matchesCombo,
   meter,
   parseColor,
   point,
   range,
   type Schema,
   type State,
-  sampleCurve,
   sampleGradient,
   seed,
   sparkline,
-  spring,
   springMotion,
   table,
   toggle,
@@ -67,19 +57,16 @@ import {
   FEEL,
   type How,
   oklabCss,
-  oklabRgb,
   reduced,
   rgbaOf,
   rolling,
   Smear,
-  Speed,
   Stage,
-  Swap,
-  stretchAlong,
   stretchFor,
   type Val,
 } from "./controls-motion"
 import { lampScene } from "./controls-scene-lamp"
+import { motionScene } from "./controls-scene-motion"
 import { uiSections } from "./controls-ui"
 
 const params = new URLSearchParams(location.search)
@@ -219,15 +206,6 @@ export function mount(store: AnyControls, slot: HTMLElement, options: MountPanel
   return panel
 }
 
-/** Moves a value: at once on first paint, following the hand, else on `feel`. */
-const go = (
-  v: Val,
-  target: number,
-  how: How,
-  feel: Parameters<Val["go"]>[2] = "default",
-  delay = 0,
-) => v.go(target, how, feel, delay)
-
 const px = (n: number) => `${Math.round(n * 100) / 100}px`
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -238,13 +216,15 @@ export interface SceneKit {
   readonly define: typeof define
   readonly mount: typeof mount
   readonly h: typeof h
+  readonly theme: () => "dark" | "light"
 }
-const kit: SceneKit = { section, define, mount, h }
+const kit: SceneKit = { section, define, mount, h, theme: () => theme }
 
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
 category("Scenes")
 lampScene(kit)
+motionScene(kit)
 
 // ── Basics ───────────────────────────────────────────────────────────────────────────────────
 
@@ -630,93 +610,6 @@ category("Basics")
   })
 }
 
-{
-  const s = section({
-    id: "actions",
-    title: "Action rows",
-    code: "action()",
-    what: "Buttons as rows. Each tile keeps its identity as it travels, and blurs with its speed.",
-    stage: true,
-    tries: [
-      "Press Shuffle three times quickly: tiles turn mid-flight, never snapping, smearing as they cross",
-      "Pulse ripples out from the corner",
-      "<kbd>Enter</kbd> or <kbd>Space</kbd> presses a focused action",
-    ],
-  })
-  let order = Array.from({ length: 9 }, (_, i) => i)
-  let pulse = () => {}
-  let place = (_how: How) => {}
-  const { store } = define("actions", "Actions", {
-    shuffle: action("Shuffle", {
-      run: () => {
-        const next = [...order]
-        do {
-          for (let i = next.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1))
-            ;[next[i], next[j]] = [next[j]!, next[i]!]
-          }
-        } while (next.every((x, i) => x === order[i]))
-        order = next
-        place("other")
-      },
-    }),
-    sort: action("Sort", {
-      run: () => {
-        order = order.map((_, i) => i)
-        place("other")
-      },
-    }),
-    pulse: action("Pulse", { run: () => pulse() }),
-  })
-  mount(store, s.slot, { title: "Tiles", header: { title: true, buttons: [] } })
-  s.stage.style.display = "block"
-  const TILE = 38
-  const GAP = 8
-  const tiles = order.map((i) => {
-    const el = h("div", "abs")
-    el.style.cssText += `width:${TILE}px;height:${TILE}px;border-radius:10px;display:grid;place-items:center;font:600 13px var(--sans);color:var(--text);background:color-mix(in srgb,var(--text) ${6 + i * 2.2}%,transparent)`
-    el.textContent = String(i + 1)
-    s.stage.append(el)
-    return el
-  })
-  const blurs = tiles.map((el) => new DirBlur(el))
-  const stage = new Stage(s.stage, () => {
-    const ox = s.stage.clientWidth / 2 - (TILE * 3 + GAP * 2) / 2
-    const oy = s.stage.clientHeight / 2 - (TILE * 3 + GAP * 2) / 2
-    tiles.forEach((el, i) => {
-      const t = tv[i]!
-      el.style.transform = `translate(${px(ox + t.x.x)},${px(oy + t.y.x)}) scale(${t.s.x.toFixed(4)})${stretchAlong(t.x.v, t.y.v, 0.14)}`
-      const v = Math.hypot(t.x.v, t.y.v)
-      const pulseBlur = blurFor(Math.abs(t.s.v) * 90, 2.2)
-      if (v >= 6) {
-        const b = blurFor(v) / Math.max(0.2, t.s.x)
-        blurs[i]!.set((t.x.v / v) * b, (t.y.v / v) * b)
-      } else {
-        blurs[i]!.set(pulseBlur, pulseBlur)
-      }
-    })
-  })
-  const tv = tiles.map(() => ({
-    x: stage.val(0, 0.05),
-    y: stage.val(0, 0.05),
-    s: stage.val(1, 0.001),
-  }))
-  place = (how) => {
-    order.forEach((tile, slot) => {
-      const t = tv[tile]!
-      t.x.go((slot % 3) * (TILE + GAP), how, "calm", slot * 14)
-      t.y.go(Math.floor(slot / 3) * (TILE + GAP), how, "calm", slot * 14)
-    })
-  }
-  pulse = () => {
-    order.forEach((tile, slot) => {
-      const d = (slot % 3) + Math.floor(slot / 3)
-      setTimeout(() => tv[tile]!.s.to(1, "playful").push(2.4), d * 45)
-    })
-  }
-  place("init")
-}
-
 // ── Colour and motion ────────────────────────────────────────────────────────────────────────
 
 category("Colour & motion")
@@ -840,210 +733,6 @@ category("Colour & motion")
     ty.go(v.at.y, how === "init" ? "init" : "other", how === "hand" ? "trail" : "calm")
     size.go(v.size, how)
     setCaption({ x: v.at.x, y: v.at.y })
-  })
-}
-
-/** y at x along a cubic bezier (x is monotonic within 0–1). */
-function bezierY(b: Bezier, x: number) {
-  let lo = 0
-  let hi = 1
-  for (let i = 0; i < 22; i++) {
-    const mid = (lo + hi) / 2
-    if (bezierPoint(b, mid)[0] < x) lo = mid
-    else hi = mid
-  }
-  return bezierPoint(b, (lo + hi) / 2)[1]
-}
-
-{
-  const s = section({
-    id: "easing",
-    title: "Easing",
-    code: "easing()",
-    what: "A cubic bezier with named curves. The curve bends from one to the next; the ball runs it when a change lands, and on a click.",
-    stage: true,
-    tries: [
-      "<kbd>←</kbd> <kbd>→</kbd> on the row: the curve bends through the named curves, then the ball runs it",
-      "Pick Back: the ball overshoots and smears as it whips back",
-      "Click the stage to run it again; it never jumps back to the start",
-    ],
-  })
-  let replay = () => {}
-  const { store, on } = define(
-    "easing",
-    "Easing",
-    {
-      curve: easing("ease-in-out", { label: "Curve" }),
-      time: knob(0.9, { min: 0.2, max: 2, step: 0.05, unit: "s", label: "Duration" }),
-    },
-    { onGesture: ({ phase }) => phase === "end" && replay() },
-  )
-  mount(store, s.slot, { title: "Ball" })
-  s.stage.dataset.replay = ""
-  const G = 108
-  s.stage.innerHTML = `
-    <div style="display:flex;align-items:center;gap:28px">
-      <svg width="${G + 16}" height="${G + 60}" viewBox="-8 -30 ${G + 16} ${G + 60}" style="overflow:visible">
-        <rect x="0" y="0" width="${G}" height="${G}" rx="6" style="fill:none;stroke:var(--line)"/>
-        <path data-curve stroke-width="2" stroke-linecap="round" style="fill:none;stroke:var(--text)"/>
-        <circle data-gdot r="4.5" style="fill:var(--text)"/>
-      </svg>
-      <div style="position:relative;width:180px;height:44px">
-        <div style="position:absolute;left:0;right:0;top:21px;height:2px;border-radius:1px;background:var(--line)"></div>
-        <div data-ball class="abs" style="width:28px;height:28px;top:8px;border-radius:50%;background:var(--text)"></div>
-      </div>
-    </div>`
-  const path = s.stage.querySelector<SVGPathElement>("[data-curve]")!
-  const gdot = s.stage.querySelector<SVGCircleElement>("[data-gdot]")!
-  const ball = s.stage.querySelector<HTMLElement>("[data-ball]")!
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [{ id: "d", decimals: 2 }, "s"])
-  const pathBlur = new DirBlur(path)
-  const gdotBlur = new DirBlur(gdot)
-  const smear = new Smear(ball)
-  let duration = 0.9
-  let t = 1
-  let from = 0
-  let to = 1
-  const shown = (): Bezier => [b[0]!.x, b[1]!.x, b[2]!.x, b[3]!.x]
-  const stage = new Stage(s.stage, () => {
-    const bz = shown()
-    path.setAttribute(
-      "d",
-      `M0 ${G} C${(bz[0] * G).toFixed(2)} ${((1 - bz[1]) * G).toFixed(2)} ${(bz[2] * G).toFixed(2)} ${((1 - bz[3]) * G).toFixed(2)} ${G} 0`,
-    )
-    // Bending the curve smears its stroke along the control-point motion.
-    pathBlur.speed((b[0]!.v + b[2]!.v) * G * 0.65, -(b[1]!.v + b[3]!.v) * G * 0.65)
-    const y = bezierY(bz, t)
-    const gx = t * G
-    const gy = (1 - y) * G
-    gdot.setAttribute("cx", gx.toFixed(2))
-    gdot.setAttribute("cy", gy.toFixed(2))
-    gspeed.feed(gx, gy)
-    gdotBlur.speed(gspeed.vx.x, gspeed.vy.x)
-    const bx = lerp(from, to, y) * 152
-    speed.feed(bx, 0)
-    ball.style.transform = `translateX(${px(bx)})${smear.transform(speed.vx.x, 0)}`
-  })
-  const b = [0.42, 0, 0.58, 1].map((n) => stage.val(n, 0.0005))
-  const speed = new Speed(stage)
-  const gspeed = new Speed(stage)
-  const play = () => {
-    // Runs from where the last run ended, so it never jumps back to the start.
-    if (t >= 1) {
-      from = to
-      to = 1 - to
-    }
-    t = 0
-    stage.loop((dt) => {
-      t = Math.min(1, t + dt / duration)
-      return t < 1
-    })
-  }
-  replay = play
-  s.stage.addEventListener("click", play)
-  on((v, how, meta) => {
-    duration = v.time
-    v.curve.forEach((n, i) => {
-      b[i]!.go(n, how, "default")
-    })
-    setCaption({ d: v.time })
-    if (how === "other" && meta?.source !== "compare") play()
-  })
-}
-
-{
-  const s = section({
-    id: "spring",
-    title: "Spring",
-    code: "spring() · flatSpring()",
-    what: "SwiftUI's duration and bounce beside the live step response. The top card moves on Spring, one { duration, bounce } value; the lower one on Settle, a flat spring of two plain number keys drawn as one card.",
-    stage: true,
-    tries: [
-      "Set Spring's bounce to 0.5 and let go: the cards replay, stretching and smearing at speed",
-      "Click the stage twice quickly: they turn round mid-flight",
-    ],
-  })
-  let replay = () => {}
-  const settle = flatSpring({ duration: 0.3, bounce: 0 }, { label: "Settle" })
-  const { store, on } = define(
-    "spring",
-    "Spring",
-    {
-      motion: spring({ duration: 0.5, bounce: 0.3 }, { label: "Spring" }),
-      settleDuration: settle.duration,
-      settleBounce: settle.bounce,
-      travel: knob(150, { min: 60, max: 220, step: 1, unit: "px", label: "Travel" }),
-    },
-    { onGesture: ({ phase }) => phase === "end" && replay() },
-  )
-  mount(store, s.slot, { title: "Cards" })
-  s.stage.dataset.replay = ""
-  s.stage.style.display = "block"
-  const box = (css: string) => {
-    const el = h("div", "abs")
-    el.style.cssText += `width:44px;height:56px;margin:-28px 0 0 -22px;border-radius:10px;${css}`
-    s.stage.append(el)
-    return el
-  }
-  const ghost = "box-shadow:inset 0 0 0 1.5px var(--line)"
-  const ends = [box(ghost), box(ghost), box(ghost), box(ghost)]
-  const endBlurs = ends.map((e) => new DirBlur(e))
-  const cards = [
-    box("background:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25)"),
-    box("background:color-mix(in srgb,var(--text) 55%,transparent)"),
-  ]
-  const blurs = cards.map((c) => new DirBlur(c))
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [
-    { id: "d", decimals: 2 },
-    "s · ",
-    { id: "b", decimals: 2 },
-    "  /  ",
-    { id: "d2", decimals: 2 },
-    "s · ",
-    { id: "b2", decimals: 2 },
-  ])
-  const stage = new Stage(s.stage, () => {
-    const cx = s.stage.clientWidth / 2
-    const cy = s.stage.clientHeight / 2
-    const tr = travel.x
-    const endB = blurFor(travel.v * 0.5)
-    ;[cy - 36, cy + 36].forEach((y, row) => {
-      ends[row * 2]!.style.transform = `translate(${px(cx - tr / 2)},${px(y)})`
-      ends[row * 2 + 1]!.style.transform = `translate(${px(cx + tr / 2)},${px(y)})`
-      endBlurs[row * 2]!.set(-endB, 0)
-      endBlurs[row * 2 + 1]!.set(endB, 0)
-      const p = pos[row]!
-      const vx = p.v * tr + (p.x - 0.5) * travel.v
-      const st = stretchFor(vx)
-      cards[row]!.style.transform =
-        `translate(${px(cx + (p.x - 0.5) * tr)},${px(y)}) scale(${st.toFixed(4)},${(1 / Math.sqrt(st)).toFixed(4)})`
-      blurs[row]!.set(blurFor(vx) / st, 0)
-    })
-  })
-  const travel = stage.val(150, 0.05)
-  const pos = [stage.val(0, 0.0004), stage.val(0, 0.0004)]
-  let side = 0
-  replay = () => {
-    const v = store.get()
-    side = 1 - side
-    pos[0]!.to(side, springMotion(v.motion))
-    pos[1]!.to(side, springMotion({ duration: v.settleDuration, bounce: v.settleBounce }))
-  }
-  s.stage.addEventListener("click", () => replay())
-  on((v, how, meta) => {
-    travel.go(v.travel, how, "calm")
-    setCaption({
-      d: v.motion.duration,
-      b: v.motion.bounce,
-      d2: v.settleDuration,
-      b2: v.settleBounce,
-    })
-    // Presets, Random, Reset and undo land at once; drags and keys wait for the gesture's end.
-    if (how === "other" && meta?.source !== "compare") replay()
   })
 }
 
@@ -1409,222 +1098,6 @@ const seeded = (n: number) => {
     })
     weight.go(v.weight, how)
     setCaption({ seed: v.pattern })
-  })
-}
-
-{
-  const s = section({
-    id: "keybind",
-    title: "Key combination",
-    code: "keybind()",
-    what: "Captures a combination as key caps. Press it anywhere on this page and the caps answer.",
-    stage: true,
-    tries: [
-      "Click outside the panel and press the combination: the caps press and a ring blooms out",
-      "Capture a new one (<kbd>Enter</kbd> on the row, then the keys): the old caps soften away as the new ones bloom in",
-      "<kbd>Esc</kbd> cancels a capture, <kbd>⌫</kbd> clears it",
-    ],
-  })
-  const { store, on } = define("keybind", "Key combination", {
-    fire: keybind("Shift+K", { label: "Ping" }),
-  })
-  mount(store, s.slot, { title: "Shortcut" })
-  const ring = h("div", "abs")
-  ring.style.cssText =
-    "position:absolute;left:50%;top:50%;width:160px;height:160px;margin:-80px 0 0 -80px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--text);opacity:0;pointer-events:none"
-  const capsHost = h("div")
-  capsHost.style.cssText = "position:absolute;inset:0"
-  s.stage.append(ring, capsHost)
-  const capsBlur = new DirBlur(capsHost)
-  const ringBlur = new DirBlur(ring)
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [{ id: "word", text: true }, " ", { id: "n" }, "×"])
-  let count = 0
-  let capEls: HTMLElement[] = []
-  const stage = new Stage(s.stage, () => {
-    const p = press.x
-    for (const c of capEls)
-      c.style.transform =
-        p > 0.0005 ? `translateY(${px(p * 3)}) scale(${(1 - p * 0.04).toFixed(4)})` : ""
-    capsBlur.set(0, blurFor(press.v * 70, 2.2))
-    const w = wave.x
-    ring.style.opacity = (clamp01(1 - w) * 0.5 * Math.min(1, w * 6)).toFixed(3)
-    ring.style.transform = `scale(${(0.5 + w * 0.7).toFixed(4)})`
-    const rb = blurFor(wave.v * 95, 2.5)
-    ringBlur.set(rb, rb)
-  })
-  const swap = new Swap(stage, capsHost)
-  const press = stage.val(0, 0.002)
-  const wave = stage.val(1, 0.002)
-  on((v, how) => {
-    const row = h("div")
-    row.style.cssText = "display:flex;gap:8px;align-items:center"
-    const parts = comboParts(v.fire)
-    for (const p of parts.length ? parts : ["—"]) {
-      const k = h("div")
-      k.textContent = p
-      k.style.cssText =
-        "min-width:44px;height:44px;padding:0 12px;display:grid;place-items:center;border-radius:10px;background:var(--surface-hi);box-shadow:inset 0 -2px 0 var(--line),0 1px 0 var(--line);font:500 17px var(--sans);color:var(--text)"
-      row.append(k)
-    }
-    capEls = [...row.children] as HTMLElement[]
-    swap.show(row, how === "init" ? "init" : "other")
-    setCaption({ word: "pressed", n: count })
-  })
-  document.addEventListener("keydown", (e) => {
-    if (e.defaultPrevented || e.repeat) return
-    const t = e.target as HTMLElement | null
-    if (t?.closest("input,textarea,[contenteditable]")) return
-    if (!matchesCombo(store.get().fire, e)) return
-    e.preventDefault()
-    count++
-    setCaption({ n: count })
-    press.to(1, "instant")
-    setTimeout(() => press.to(0, "playful"), 90)
-    // The ring blooms from small and fades as it grows; a new press retargets it from where it is.
-    if (wave.x > 0.6) wave.snap(0)
-    wave.to(1, "slow")
-  })
-}
-
-{
-  const s = section({
-    id: "toolbar",
-    title: "Toolbar",
-    code: "toolbar()",
-    what: "A row of buttons with shortcut chips. Panel shortcuts work while it has focus; a global one works anywhere.",
-    stage: true,
-    tries: [
-      "Focus the panel and press <kbd>Space</kbd>: the orbit spins up on a spring and the dot smears along its path; <kbd>Space</kbd> again coasts it to a stop",
-      "<kbd>V</kbd> while it plays: it slows through zero and turns round, no jump",
-      "<kbd>P</kbd> pulses from anywhere on the page (it's global)",
-    ],
-  })
-  let playing = false
-  let dir = 1
-  let speed = 1.4
-  let stage!: Stage
-  let pulseVal!: Val
-  let spin!: Val
-  let phase = 0
-  let setStatus = (_: Readonly<Record<string, string>>) => {}
-  let looping = false
-  const retarget = () => {
-    spin.to(playing ? dir * speed : 0, playing ? "smooth" : "slow")
-    setStatus({ s: playing ? (dir > 0 ? "playing" : "reversed") : "paused" })
-    if (looping) return
-    // One loop, stepping until it has coasted to a stop.
-    looping = true
-    stage.loop((dt) => {
-      phase += dt * spin.x
-      looping = playing || !spin.spring.resting
-      return looping
-    })
-  }
-  const pulse = () => {
-    pulseVal.to(1, "instant")
-    setTimeout(() => pulseVal.to(0, "calm"), 80)
-  }
-  const { store, on } = define("toolbar", "Toolbar", {
-    tools: toolbar(
-      [
-        {
-          id: "play",
-          label: "Play",
-          icon: "play",
-          shortcut: "Space",
-          run: () => {
-            playing = !playing
-            retarget()
-          },
-        },
-        {
-          id: "pulse",
-          label: "Pulse",
-          icon: "sparkle",
-          shortcut: "P",
-          global: true,
-          run: () => pulse(),
-        },
-        {
-          id: "reverse",
-          label: "Reverse",
-          icon: "retrigger",
-          shortcut: "V",
-          run: () => {
-            dir = -dir
-            retarget()
-          },
-        },
-        { id: "record", label: "Record", icon: "camera", disabled: true },
-      ],
-      { label: "Orbit" },
-    ),
-    speed: knob(1.4, { min: 0.2, max: 4, step: 0.1, unit: "×", label: "Speed" }),
-  })
-  mount(store, s.slot, { title: "Orbit" })
-  s.stage.innerHTML = `<div data-orbit style="position:relative;width:130px;height:130px">
-    <div data-ring style="position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line)"></div>
-    <div style="position:absolute;left:55px;top:55px;width:20px;height:20px;border-radius:50%;background:var(--surface-hi)"></div>
-    <div data-sat class="abs" style="width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--text)"></div>
-  </div>`
-  const orbitEl = s.stage.querySelector<HTMLElement>("[data-orbit]")!
-  const sat = s.stage.querySelector<HTMLElement>("[data-sat]")!
-  const ringEl = s.stage.querySelector<HTMLElement>("[data-ring]")!
-  const ORBIT_TAPS = [
-    { tau: -0.45, w: 0.18 },
-    { tau: -0.22, w: 0.34 },
-    { tau: 0.22, w: 0.34 },
-    { tau: 0.45, w: 0.18 },
-  ] as const
-  // Curved-orbit shutter sub-dots so high-speed orbital blur hugs the circular track.
-  const orbitGhosts = ORBIT_TAPS.map(() => {
-    const g = h("div", "abs")
-    g.style.cssText +=
-      "width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--text);opacity:0;pointer-events:none"
-    orbitEl.insertBefore(g, sat)
-    return g
-  })
-  const status = h("div", "caption")
-  s.stage.append(status)
-  setStatus = rolling(status, [{ id: "s", text: true }])
-  setStatus({ s: "paused" })
-  const smear = new Smear(sat)
-  const ringBlur = new DirBlur(ringEl)
-  const R = 65
-  stage = new Stage(s.stage, () => {
-    const a = phase * Math.PI * 2 * 0.25 - Math.PI / 2
-    // Angular and tangential velocity along the circle of radius R.
-    const omega = spin.x * Math.PI * 2 * 0.25
-    const w = omega * R
-    const k = 1 + pulseVal.x * 0.5
-    const rSpeed = Math.abs(pulseVal.v) * 65
-    sat.style.transform = `translate(${px(65 + Math.cos(a) * R)},${px(65 + Math.sin(a) * R)}) scale(${k.toFixed(4)})${smear.transform(-Math.sin(a) * w, Math.cos(a) * w, k, rSpeed)}`
-    const arcSpan = omega * 0.042
-    const showArc = !reduced() && Math.abs(w) > 35
-    const arcStrength = showArc ? clamp01((Math.abs(w) - 35) / 220) : 0
-    orbitGhosts.forEach((g, idx) => {
-      if (!showArc) {
-        if (g.style.opacity !== "0") g.style.opacity = "0"
-        return
-      }
-      const { tau, w: tw } = ORBIT_TAPS[idx]!
-      const ag = a + tau * arcSpan
-      const st = stretchFor(w * 0.7)
-      const deg = ((ag + Math.PI / 2) * 180) / Math.PI
-      g.style.transform = `translate(${px(65 + Math.cos(ag) * R)},${px(65 + Math.sin(ag) * R)}) scale(${k.toFixed(4)}) rotate(${deg.toFixed(2)}deg) scale(${st.toFixed(4)},${(1 / Math.sqrt(st)).toFixed(4)})`
-      g.style.opacity = (tw * arcStrength).toFixed(3)
-    })
-    ringEl.style.transform = `scale(${(1 + pulseVal.x * 0.06).toFixed(4)})`
-    const rb = blurFor(rSpeed * 0.6, 2)
-    ringBlur.set(rb, rb)
-  })
-  pulseVal = stage.val(0, 0.002)
-  spin = stage.val(0, 0.002)
-  on((v, how) => {
-    speed = v.speed
-    if (playing && how !== "init") spin.go(dir * speed, how, "smooth")
   })
 }
 

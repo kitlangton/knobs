@@ -1,5 +1,5 @@
-// The catalog's knobs/ui sections: a split with collapsing panes, an outliner, a timeline driving
-// a bouncing ball, menus and a context menu, a popover and tooltips, the command palette, confirms
+// The catalog's knobs/ui sections: a split with collapsing panes, an outliner,
+// menus and a context menu, a popover and tooltips, the command palette, confirms
 // and toasts.
 import {
   applyMove,
@@ -9,24 +9,12 @@ import {
   menu,
   popover,
   split,
-  type TimelineMarker,
-  timeline,
   toast,
   tooltip,
   tree,
 } from "knobs/ui"
 import type { SectionSpec } from "./controls"
-import {
-  blurFor,
-  ColorVal,
-  DirBlur,
-  reduced,
-  rolling,
-  Smear,
-  Speed,
-  Stage,
-  stretchFor,
-} from "./controls-motion"
+import { blurFor, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
 
 interface Kit {
   section(spec: SectionSpec): {
@@ -42,8 +30,6 @@ interface Kit {
   ): HTMLElementTagNameMap[K]
   theme(): "dark" | "light"
 }
-
-const px = (n: number) => `${Math.round(n * 100) / 100}px`
 
 export function uiSections({ section, h, theme }: Kit) {
   // ── split ──
@@ -201,94 +187,6 @@ export function uiSections({ section, h, theme }: Kit) {
         if (n) n.label = label
         outline.update(items)
       },
-    })
-  }
-
-  // ── timeline ──
-  {
-    const s = section({
-      id: "timeline",
-      title: "Timeline",
-      code: "timeline()",
-      what: "A zoomable ruler and playhead with markers and a loop. It drives the ball; passing a marker pulses it.",
-      wide: true,
-      tries: [
-        "Focus the ruler and press <kbd>Space</kbd> to play; <kbd>←</kbd> <kbd>→</kbd> step a frame",
-        "Scrub the playhead: it pulls softly toward markers",
-        "<kbd>M</kbd> adds a marker, <kbd>[</kbd> <kbd>]</kbd> jump between them, <kbd>⌘</kbd>-wheel zooms",
-      ],
-    })
-    const wrap = h("div")
-    wrap.style.cssText = "display:flex;flex-direction:column;gap:10px"
-    const stageEl = h("div", "stage")
-    stageEl.style.cssText += ";min-height:132px;display:block"
-    const floor = h("div")
-    floor.style.cssText =
-      "position:absolute;left:24px;right:24px;bottom:22px;height:1px;background:var(--line)"
-    const shadow = h("div", "abs")
-    shadow.style.cssText +=
-      "width:30px;height:6px;margin:-3px 0 0 -15px;border-radius:50%;background:var(--faint)"
-    const ball = h("div", "abs")
-    ball.style.cssText +=
-      "width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:var(--text)"
-    stageEl.append(floor, shadow, ball)
-    const tlBox = h("div", "ui-box")
-    tlBox.style.height = "78px"
-    wrap.append(stageEl, tlBox)
-    s.slot.append(wrap)
-    const D = 4
-    let time = 0.6
-    // Three bounces across the stage, each lower than the last.
-    const BOUNCES = [0, 1.4, 2.6, 3.5, 4]
-    const heightAt = (t: number) => {
-      for (let i = 0; i < BOUNCES.length - 1; i++) {
-        const a = BOUNCES[i]!
-        const b = BOUNCES[i + 1]!
-        if (t <= b) {
-          const u = (t - a) / (b - a)
-          return 4 * u * (1 - u) * (1 - i * 0.3)
-        }
-      }
-      return 0
-    }
-    const shadowBlur = new DirBlur(shadow)
-    const stage = new Stage(stageEl, () => {
-      const w = stageEl.clientWidth
-      const hh = stageEl.clientHeight
-      const x = 36 + (time / D) * (w - 72)
-      const up = heightAt(time) * (hh - 60)
-      const squash = pulse.x
-      const by = hh - 34 - up
-      // The playhead moves it (a scrub is 1:1); its speed, read from where it goes, smears it.
-      speed.feed(x, by)
-      const rSpeed = Math.abs(pulse.v) * 28
-      ball.style.transform = `translate(${px(x)},${px(by)}) scale(${(1 + squash * 0.18).toFixed(4)},${(1 - squash * 0.14).toFixed(4)})${smear.transform(speed.vx.x, speed.vy.x, 1, rSpeed)}`
-      const shSc = Math.max(0.2, 1 - up / (hh * 1.4))
-      const shSt = stretchFor(speed.vx.x, 0.2)
-      shadow.style.transform = `translate(${px(x)},${px(hh - 22)}) scale(${(shSc * shSt).toFixed(4)},${shSc.toFixed(4)})`
-      shadowBlur.set(blurFor(speed.vx.x * 0.85) / (shSc * shSt), 0)
-    })
-    const pulse = stage.val(0, 0.002)
-    const speed = new Speed(stage)
-    const smear = new Smear(ball)
-    const markers: TimelineMarker[] = BOUNCES.slice(1, -1).map((t, i) => ({
-      id: `b${i + 1}`,
-      time: t,
-      label: `Bounce ${i + 1}`,
-    }))
-    timeline(tlBox, {
-      theme: theme(),
-      duration: D,
-      fps: 30,
-      time,
-      markers,
-      ranges: [{ id: "loop", start: 0, end: D, loop: true }],
-      label: "Ball time",
-      onSeek: (t) => {
-        time = t
-        stage.paint()
-      },
-      onCross: () => pulse.snap(1).to(0, "playful"),
     })
   }
 
