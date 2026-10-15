@@ -196,6 +196,32 @@ describe("spring, color, point and easing fields", () => {
     })
   })
 
+  it("brings every hex back exactly: the sRGB cube's corners, edges and faces", () => {
+    const hx = (n: number) => n.toString(16).padStart(2, "0")
+    const levels = [0, 1, 2, 15, 16, 17, 51, 64, 127, 128, 129, 191, 204, 238, 253, 254, 255]
+    const misses: string[] = []
+    // Each channel at every level while the others sit at 0 or 255: all 12 edges, 8 corners and
+    // the six faces' borders; then a coarse sweep of the inside.
+    for (const v of levels)
+      for (const a of [0, 255])
+        for (const b of [0, 255])
+          for (const hex of [
+            `#${hx(v)}${hx(a)}${hx(b)}`,
+            `#${hx(a)}${hx(v)}${hx(b)}`,
+            `#${hx(a)}${hx(b)}${hx(v)}`,
+          ])
+            if (colorHex(color(hex).value) !== hex) misses.push(hex)
+    for (let r = 0; r < 256; r += 51)
+      for (let g = 0; g < 256; g += 17)
+        for (let b = 0; b < 256; b += 15) {
+          const hex = `#${hx(r)}${hx(g)}${hx(b)}`
+          if (colorHex(color(hex).value) !== hex) misses.push(hex)
+        }
+    expect(misses).toEqual([])
+    expect(colorHex(color("#0000ff").value)).toBe("#0000ff")
+    expect(colorHex(color("#00ffff").value)).toBe("#00ffff")
+  })
+
   it("randomizes inside sensible bounds", () => {
     for (let i = 0; i <= 20; i++) {
       const r = randomValues(rich, () => i / 20)
