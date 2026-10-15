@@ -603,3 +603,23 @@ test("the Lab opens in knobs' own look, and its switch re-themes everything live
   await expect.poll(look).toMatchObject({ frame: "flat", preset: "lab" })
   expect(errors).toEqual([])
 })
+
+test("wrappers: React and Solid timelines report seeks and follow their time prop", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  await page.goto("/ui-wrappers.html")
+  for (const name of ["React", "Solid"]) {
+    const tl = page.getByRole("group", { name: `${name} timeline` })
+    const host = page.locator(`#${name.toLowerCase()}`)
+    await tl.focus()
+    await page.keyboard.press("Shift+ArrowRight")
+    await expect(host.locator("output[data-time]")).toHaveText("0.33")
+    await host.locator("button[data-jump]").click()
+    await expect
+      .poll(() => tl.getByRole("slider", { name: "Playhead" }).getAttribute("aria-valuenow"))
+      .toBe("2.000")
+  }
+  expect(errors).toEqual([])
+})

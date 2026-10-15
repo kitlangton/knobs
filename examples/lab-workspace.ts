@@ -5,6 +5,7 @@
 import { applyMove, split, tree, type TreeAccess, type TreeMove } from "knobs/ui"
 import { startLive } from "./lab-live"
 import { uiLook } from "./lab-look"
+import { startTimeline } from "./lab-timeline"
 
 interface SceneItem {
   id: string
@@ -131,6 +132,7 @@ const center = split(main.pane("center").body, {
   direction: "column",
   panes: [
     { id: "view", min: 160, element: viewport },
+    { id: "timeline", size: 78, min: 64, max: 140 },
     {
       id: "dock",
       size: 300,
@@ -299,6 +301,8 @@ const moveTo = (ids: readonly string[], parent: string) => {
   outline.expand(parent, true)
 }
 
+export const sceneTime = startTimeline(center.pane("timeline").body, viewport)
+
 export const liveFeed = startLive(
   document.getElementById("live")!,
   document.getElementById("diag")!,
@@ -327,6 +331,7 @@ export const workspace = {
 
 Object.assign(window, {
   __live: liveFeed,
+  __timeline: sceneTime,
   __workspace: {
     main,
     left,

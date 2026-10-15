@@ -10,6 +10,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
+import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
 
 export type SplitProps = SplitOptions & {
@@ -101,6 +102,65 @@ export function Tree<T>(props: TreeProps<T>) {
     if (first.current) return
     handle.current?.filter(props.filter)
   }, [props.filter])
+  useEffect(() => {
+    first.current = false
+  }, [])
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type TimelineProps = TimelineOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (timeline: TimelineHandle) => void
+}
+
+/**
+ * `timeline()` as a component. `time`, `playing`, `markers`, `ranges`, `duration`, `fps`,
+ * `units` and `speed` follow their props (a `time` it reported itself is left alone); callbacks
+ * always call the latest props.
+ */
+export function Timeline(props: TimelineProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<TimelineHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const t = timeline(ref.current!, {
+      ...latest.current,
+      onSeek: (time, source) => latest.current.onSeek?.(time, source),
+      onPlay: (playing) => latest.current.onPlay?.(playing),
+      onMarkers: (m) => latest.current.onMarkers?.(m),
+      onRanges: (r) => latest.current.onRanges?.(r),
+      onCross: (m) => latest.current.onCross?.(m),
+    })
+    handle.current = t
+    latest.current.onReady?.(t)
+    return () => {
+      t.dispose()
+      handle.current = null
+    }
+  }, [])
+  const first = useRef(true)
+  const follow = <K extends keyof TimelineOptions>(key: K) =>
+    // biome-ignore lint/correctness/useExhaustiveDependencies: one prop each
+    useEffect(() => {
+      const t = handle.current
+      const value = props[key]
+      if (first.current || !t || value === undefined) return
+      if (key === "time" && Math.abs((value as number) - t.time) < 1e-6) return
+      if (key === "playing" && value === t.playing) return
+      if (key === "markers" && value === t.markers) return
+      if (key === "ranges" && value === t.ranges) return
+      t.update({ [key]: value })
+    }, [props[key]])
+  follow("time")
+  follow("playing")
+  follow("markers")
+  follow("ranges")
+  follow("duration")
+  follow("fps")
+  follow("units")
+  follow("speed")
   useEffect(() => {
     first.current = false
   }, [])

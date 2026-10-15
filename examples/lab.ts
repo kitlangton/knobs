@@ -22,8 +22,8 @@ import {
 import { mountPanel } from "knobs/panel"
 import { bindLookSwitch, lookOptions } from "./lab-look"
 import { fxSchema, startFx } from "./lab-fx"
-import { startOverlays } from "./lab-overlays"
-import "./lab-workspace"
+import { speedChanged, startOverlays } from "./lab-overlays"
+import { sceneTime } from "./lab-workspace"
 
 const scenes = [
   "Outbreak · Streetlamp & rain",
@@ -497,7 +497,11 @@ const inspector = defineControls(
       sky: "Sky & fog",
       light: "Light",
     },
-    onAction: (id) => presses.push(id),
+    onAction: (id) => {
+      presses.push(id)
+      if (id === "play") sceneTime.timeline.toggle()
+      if (id === "retrigger") sceneTime.explode()
+    },
   },
 )
 const hostRolls: string[] = []
@@ -533,6 +537,7 @@ const mountInspector = () =>
 let inspectorPanel = mountInspector()
 startFx(inspector, document.getElementById("viewport")!)
 bindLookSwitch()
+speedChanged((speed) => sceneTime.timeline.update({ speed }))
 const overlays = startOverlays({
   station,
   details,

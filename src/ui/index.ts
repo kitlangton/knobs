@@ -57,6 +57,31 @@ export {
   type SplitDirection,
   type SplitLayout,
 } from "./split-model.js"
+export {
+  timeline,
+  type SeekSource,
+  type Timeline,
+  type TimelineMarker,
+  type TimelineOptions,
+  type TimelineRange,
+} from "./timeline.js"
+export {
+  adjacentMarker,
+  advance,
+  clampView,
+  followView,
+  frameTime,
+  magnet,
+  rulerTicks,
+  scrubTime,
+  timeLabel,
+  toFrame,
+  zoomView,
+  type Tick,
+  type Ticks,
+  type TimeUnits,
+  type TimeView,
+} from "./timeline-model.js"
 export { tree, type Tree, type TreeOptions, type TreeRowContext, type TreeToggle } from "./tree.js"
 export {
   applyMove,

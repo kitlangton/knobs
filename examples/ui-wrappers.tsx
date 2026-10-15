@@ -7,8 +7,8 @@ import { createSignal } from "solid-js"
 import html from "solid-js/html"
 import { render } from "solid-js/web"
 import { applyMove, type Split as SplitHandle, type TreeMove } from "knobs/ui"
-import { Split as ReactSplit, Tree as ReactTree } from "knobs/ui/react"
-import { Split as SolidSplit, Tree as SolidTree } from "knobs/ui/solid"
+import { Split as ReactSplit, Timeline as ReactTimeline, Tree as ReactTree } from "knobs/ui/react"
+import { Split as SolidSplit, Timeline as SolidTimeline, Tree as SolidTree } from "knobs/ui/solid"
 
 interface Item {
   id: string
@@ -31,6 +31,7 @@ function ReactApp() {
   const [items, setItems] = useState(seed)
   const [picked, setPicked] = useState("none")
   const [count, setCount] = useState(0)
+  const [time, setTime] = useState(0)
   return (
     <ReactSplit
       id="wrap-react"
@@ -70,6 +71,13 @@ function ReactApp() {
         >
           Add cone
         </button>
+        <output data-time>{time.toFixed(2)}</output>
+        <button type="button" data-jump onClick={() => setTime(2)}>
+          Jump
+        </button>
+        <div style={{ height: 72 }}>
+          <ReactTimeline duration={4} time={time} label="React timeline" onSeek={(t) => setTime(t)} />
+        </div>
       </div>
     </ReactSplit>
   )
@@ -84,6 +92,7 @@ createRoot(document.getElementById("react")!).render(
 render(() => {
   const [items, setItems] = createSignal(seed())
   const [picked, setPicked] = createSignal("none")
+  const [time, setTime] = createSignal(0)
   let count = 0
   const add = () => {
     const n = count++
@@ -113,6 +122,16 @@ render(() => {
     <div class="view">
       <output data-picked>${picked}</output>
       <button type="button" onClick=${add}>Add cone</button>
+      <output data-time>${() => time().toFixed(2)}</output>
+      <button type="button" data-jump onClick=${() => setTime(2)}>Jump</button>
+      <div style="height:72px">
+        <${SolidTimeline}
+          duration=${4}
+          time=${time}
+          label="Solid timeline"
+          onSeek=${(t: number) => setTime(t)}
+        />
+      </div>
     </div>
   <//>`
 }, document.getElementById("solid")!)
