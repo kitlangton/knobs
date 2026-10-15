@@ -44,6 +44,7 @@ import {
   type PersistMode,
   type PanelModule,
   type RendererMode,
+  type SectionFolded,
   type SyncOptions,
   type ThemeMode,
 } from "./store.js"
@@ -160,6 +161,12 @@ export interface RemoteControlsOptions {
   readonly defaultLabel?: string
   /** How a page card shows its group presets (see `ControlsOptions.groupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
+  /** One muted line under a group's card title or a section's heading on a page, by id. */
+  readonly groupDescriptions?: Readonly<Record<string, string>>
+  readonly sectionDescriptions?: Readonly<Record<string, string>>
+  /** How groups and a page's sections start, folded or open (see `ControlsOptions.groupFolded`). */
+  readonly groupFolded?: Readonly<Record<string, boolean>>
+  readonly sectionFolded?: SectionFolded
   readonly actions?: readonly ControlAction<State>[]
   readonly storage?: StoragePort | null
   /** What `storage` keeps (see `ControlsOptions.persist`). */
@@ -523,6 +530,10 @@ export function createRemoteControls(
     presetLabels: options.presetLabels,
     defaultLabel: options.defaultLabel,
     groupPresetDisplay: options.groupPresetDisplay,
+    groupDescriptions: options.groupDescriptions,
+    sectionDescriptions: options.sectionDescriptions,
+    groupFolded: options.groupFolded,
+    sectionFolded: options.sectionFolded,
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return

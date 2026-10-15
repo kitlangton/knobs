@@ -71,6 +71,7 @@ export {
   type SearchOptions,
   type SyncOptions,
   type RendererMode,
+  type SectionFolded,
   type ThemeMode,
 } from "./core/store.js"
 export {
