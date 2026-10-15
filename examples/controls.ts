@@ -11,7 +11,6 @@ import {
   type ChangeMeta,
   choice,
   color,
-  colorHex,
   comboParts,
   type ControlDescriptor,
   type Controls,
@@ -22,12 +21,12 @@ import {
   easing,
   flatSpring,
   gradient,
-  gradientCss,
   graph,
   keybind,
   knob,
   log,
   matchesCombo,
+  parseColor,
   meter,
   type MountPanelOptions,
   point,
@@ -60,7 +59,25 @@ import {
   toast,
   tooltips,
 } from "knobs/ui"
-import { type Feel, Stage, type Val } from "./controls-motion"
+import { Goo } from "./controls-goo"
+import {
+  blurFor,
+  ColorVal,
+  DirBlur,
+  FEEL,
+  type How,
+  oklabCss,
+  oklabRgb,
+  reduced,
+  rgbaOf,
+  rolling,
+  Smear,
+  Speed,
+  Stage,
+  stretchFor,
+  Swap,
+  type Val,
+} from "./controls-motion"
 import { uiSections } from "./controls-ui"
 
 const params = new URLSearchParams(location.search)
@@ -69,7 +86,6 @@ let theme: "dark" | "light" = document.documentElement.dataset.theme === "light"
 
 // biome-ignore lint/suspicious/noExplicitAny: any store
 type AnyControls = Controls<any>
-type How = "init" | "hand" | "other"
 
 // ── Page scaffolding ─────────────────────────────────────────────────────────────────────────
 
@@ -193,10 +209,13 @@ export function mount(store: AnyControls, slot: HTMLElement, options: MountPanel
 }
 
 /** Moves a value: at once on first paint, following the hand, else on `feel`. */
-const go = (v: Val, target: number, how: How, feel: Feel = "default", delay = 0) => {
-  if (how === "init") v.snap(target)
-  else v.to(target, how === "hand" ? "follow" : feel, delay)
-}
+const go = (
+  v: Val,
+  target: number,
+  how: How,
+  feel: Parameters<Val["go"]>[2] = "default",
+  delay = 0,
+) => v.go(target, how, feel, delay)
 
 const px = (n: number) => `${Math.round(n * 100) / 100}px`
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
@@ -211,12 +230,13 @@ category("Basics")
     id: "slider",
     title: "Sliders",
     code: "knob()",
-    what: "Numbers with units, steps and a default notch. Ten steps or fewer become stops that resist, then snap.",
+    what: "Numbers with units, steps and a default notch. Ten steps or fewer become stops that resist, then snap. The dots are metaballs: one smooth field, so a new dot buds out of its neighbour and a leaving one is swallowed by it.",
     stage: true,
     tries: [
-      "Drag a fill; <kbd>⌥</kbd>-drag for 1/10 speed, or pan sideways with two fingers",
-      "Type a number on a focused row, <kbd>Enter</kbd> to commit",
-      "Count is stepped: feel it catch on each stop",
+      "Step Count down: the end dot pours into its neighbour as a teardrop in a fifth of a second, which gives a small gulp, while the rest respace at once",
+      "Step Count up: a new dot stretches out of its neighbour, necks and pinches off",
+      "Scrub Count fast both ways: buds and merges turn back mid-way, never snapping",
+      "Throw Size, Spread or Arc: every moving dot stretches and smears along its path, crisp again at rest",
     ],
   })
   const { store, on } = define("slider", "Sliders", {
@@ -227,49 +247,188 @@ category("Basics")
   })
   mount(store, s.slot, { title: "Dots" })
   const MAX = 7
-  const dots = Array.from({ length: MAX }, () => {
-    const el = h("div", "abs")
-    el.style.cssText +=
-      "width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:var(--text)"
-    s.stage.append(el)
-    return el
-  })
+  /** The merge: a 200 ms ease-in into the neighbour (it accelerates, then is gone). */
+  const MERGE_MS = 200
+  /** The bud and the row's respacing (duration / bounce). */
+  const BUD = springMotion({ duration: 0.34, bounce: 0.12 })
   s.stage.style.display = "block"
+  const canvas = h("canvas")
+  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;color:var(--text)"
+  s.stage.append(canvas)
+  const goo = new Goo(canvas)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [{ id: "n" }, " × ", { id: "size" }, "px"])
+  let inkFrom = rgbaOf(getComputedStyle(canvas).color)
+  let inkTo = inkFrom
+  let k = 8
+  const shown: boolean[] = Array.from({ length: MAX }, () => false)
+  /** A dot pouring into its neighbour: where it started and when. */
+  const merging: ({ x: number; y: number; r: number; at: number } | null)[] = Array.from(
+    { length: MAX },
+    () => null,
+  )
+  const inkAt = () => {
+    const t = clamp01(ink.x)
+    return inkFrom.map((c, i) => c + (inkTo[i]! - c) * t)
+  }
+  // Dots move slowly next to the other previews, so they read speed more keenly: a respace at
+  // 100 px/s smears about 1.5 px. Both are exactly nothing at rest.
+  const dotBlur = (speed: number) => (reduced() || speed < 2 ? 0 : Math.min(5, speed / 70))
+  const dotStretch = (speed: number) => (reduced() ? 1 : 1 + Math.min(0.32, speed / 700))
   const stage = new Stage(s.stage, () => {
-    const w = s.stage.clientWidth / 2
-    const hh = s.stage.clientHeight / 2
-    for (let i = 0; i < MAX; i++) {
-      const d = vals[i]!
-      const o = clamp01(d.o.x)
-      dots[i]!.style.transform =
-        `translate(${px(w + d.x.x)},${px(hh + d.y.x)}) scale(${(d.s.x / 44).toFixed(4)})`
-      dots[i]!.style.opacity = (o * 0.92).toFixed(3)
-      dots[i]!.style.filter = o < 0.98 ? `blur(${((1 - o) * 4).toFixed(2)}px)` : ""
-    }
+    const dpr = Math.min(2, devicePixelRatio || 1)
+    goo.fit(dpr)
+    const cx = canvas.clientWidth / 2
+    const cy = canvas.clientHeight / 2
+    // A hidden dot rides inside its neighbour, so it buds from wherever that one is.
+    if (!reduced())
+      for (let i = 1; i < MAX; i++)
+        if (!shown[i] && !merging[i]) {
+          dots[i]!.x.spring.target = dots[i - 1]!.x.x
+          dots[i]!.y.spring.target = dots[i - 1]!.y.x
+        }
+    goo.draw(
+      dots.map((d, i) => {
+        const vx = d.x.v
+        const vy = d.y.v
+        const speed = Math.hypot(vx, vy)
+        const m = merging[i]
+        const e = m ? clamp01((performance.now() - m.at) / MERGE_MS) ** 2 : 0
+        return {
+          x: cx + d.x.x,
+          y: cy + d.y.x,
+          r: Math.max(0, d.r.x) * (1 + d.pulse.x),
+          a: clamp01(d.a.x),
+          vx,
+          vy,
+          // Pouring in, it draws out into a teardrop along its path, with a shorter neck.
+          stretch: Math.max(dotStretch(speed), 1 + 0.55 * e),
+          blur: dotBlur(speed),
+          goo: m ? 0.55 : 1,
+        }
+      }),
+      { dpr, k, goo: !reduced(), color: inkAt() },
+    )
   })
-  const vals = dots.map(() => ({
-    x: stage.val(0, 0.05),
-    y: stage.val(0, 0.05),
-    s: stage.val(22, 0.02),
-    o: stage.val(1, 0.002, true),
+  const ink = stage.val(1, 0.001)
+  const dots = Array.from({ length: MAX }, () => ({
+    x: stage.val(0, 0.01),
+    y: stage.val(0, 0.01),
+    r: stage.val(0, 0.01),
+    a: stage.val(1, 0.002, true),
+    pulse: stage.val(0, 0.0005),
   }))
+  let pouring = false
+  /** Steps the merges, after the springs and before drawing: it owns those dots meanwhile. */
+  const pour = () => {
+    if (pouring) return
+    pouring = true
+    stage.loop(() => {
+      const now = performance.now()
+      let any = false
+      merging.forEach((m, i) => {
+        if (!m) return
+        const d = dots[i]!
+        const nb = dots[i - 1]!
+        const t = clamp01((now - m.at) / MERGE_MS)
+        const e = t * t
+        const de = (2 * t) / (MERGE_MS / 1000)
+        const dx = nb.x.x - m.x
+        const dy = nb.y.x - m.y
+        // Position, radius and their velocities, so a reversal picks up exactly where it is.
+        d.x.spring.x = d.x.spring.target = m.x + dx * e
+        d.y.spring.x = d.y.spring.target = m.y + dy * e
+        d.x.spring.v = dx * de
+        d.y.spring.v = dy * de
+        const left = 1 - e
+        d.r.spring.x = d.r.spring.target = m.r * left ** 0.6
+        d.r.spring.v = left > 0.001 ? -0.6 * m.r * left ** -0.4 * de : 0
+        if (t < 1) {
+          any = true
+          return
+        }
+        merging[i] = null
+        d.x.spring.snap(nb.x.x)
+        d.y.spring.snap(nb.y.x)
+        d.r.spring.snap(0)
+        // The neighbour gulps: about 3% on a quick spring, then settles.
+        if (shown[i - 1]) nb.pulse.to(0, "snappy").push(0.03 * FEEL.snappy.omega * Math.E)
+      })
+      pouring = any
+      return any
+    })
+  }
+  new ResizeObserver(() => stage.paint()).observe(s.stage)
+  new MutationObserver(() => {
+    inkFrom = inkAt() as typeof inkFrom
+    inkTo = rgbaOf(getComputedStyle(canvas).color)
+    ink.snap(0).to(1, "calm")
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+  let count = 0
   on((v, how) => {
+    const r0 = v.size / 2
+    k = r0 * 0.8
     const gap = v.size * (1 + (v.spread / 100) * 1.4) + 4
-    for (let i = 0; i < MAX; i++) {
-      const shown = i < v.count
-      const slot = Math.min(i, v.count - 1)
-      const c = slot - (v.count - 1) / 2
+    // A count change respaces the row at once on a spring, even from the hand: that's the point.
+    const countChanged = how !== "init" && v.count !== count
+    const slot = (i: number) => {
+      const c = i - (v.count - 1) / 2
       const n = v.count > 1 ? c / ((v.count - 1) / 2) : 0
-      const d = vals[i]!
-      // A dot leaving folds into its neighbour, smaller and soft; one arriving grows out of it.
-      go(d.x, c * gap, how, "calm")
-      go(d.y, -v.arc * (1 - n * n), how, "calm")
-      go(d.s, shown ? v.size : v.size * 0.9, how, shown ? "calm" : "snappy")
-      go(d.o, shown ? 1 : 0, how, shown ? "default" : "snappy")
+      return [c * gap, -v.arc * (1 - n * n)] as const
     }
-    caption.textContent = `${v.count} × ${v.size}px`
+    const last = slot(v.count - 1)
+    for (let i = 0; i < MAX; i++) {
+      const d = dots[i]!
+      const on = i < v.count
+      if (on) {
+        const [tx, ty] = slot(i)
+        if (!shown[i] && how !== "init") {
+          if (reduced()) {
+            d.x.snap(tx)
+            d.y.snap(ty)
+            d.r.snap(r0)
+            d.a.to(1)
+          } else {
+            // Bud: from inside the neighbour (if it had fully merged), out on the bud spring.
+            // Mid-merge it turns back from where it is, with the velocity it had.
+            merging[i] = null
+            if (d.r.x < 0.5) {
+              d.x.snap(dots[i - 1]!.x.x)
+              d.y.snap(dots[i - 1]!.y.x)
+              d.r.snap(r0 * 0.3)
+            }
+            d.a.snap(1)
+            d.x.to(tx, BUD)
+            d.y.to(ty, BUD)
+            d.r.to(r0, BUD)
+          }
+        } else if (countChanged) {
+          d.x.to(tx, "default")
+          d.y.to(ty, "default")
+          d.r.go(r0, how, "default")
+        } else {
+          d.x.go(tx, how, "calm")
+          d.y.go(ty, how, "calm")
+          d.r.go(r0, how, "calm")
+          d.a.go(1, how === "init" ? "init" : "other")
+        }
+      } else if (how === "init" || reduced()) {
+        if (how === "init" || !shown[i]) {
+          d.x.snap(last[0])
+          d.y.snap(last[1])
+        }
+        d.r.go(reduced() ? r0 : 0, how === "init" ? "init" : "other")
+        d.a.go(reduced() ? 0 : 1, how === "init" ? "init" : "other")
+      } else if (shown[i] && !merging[i]) {
+        // Merge: it pours into its neighbour, wherever that one is heading.
+        merging[i] = { x: d.x.x, y: d.y.x, r: Math.max(0, d.r.x), at: performance.now() }
+        pour()
+      }
+      shown[i] = on
+    }
+    count = v.count
+    setCaption({ n: v.count, size: v.size })
   })
 }
 
@@ -319,7 +478,10 @@ category("Basics")
     L["core-cool"]!.style.opacity = (on * (1 - w)).toFixed(3)
     L["pool-warm"]!.style.opacity = (on * w * p).toFixed(3)
     L["pool-cool"]!.style.opacity = (on * (1 - w) * p).toFixed(3)
-    const sc = 0.96 + 0.04 * on
+    // Glow and pool bloom open as the light comes on, and gather in as it goes.
+    const sc = 0.86 + 0.14 * on
+    L["pool-warm"]!.style.transform = L["pool-cool"]!.style.transform =
+      `scale(${(0.9 + 0.1 * on * p).toFixed(4)})`
     L["glow-warm"]!.style.transform = L["glow-cool"]!.style.transform = `scale(${sc.toFixed(4)})`
   })
   const on1 = stage.val(1, 0.002, true)
@@ -339,12 +501,12 @@ category("Basics")
     id: "choice",
     title: "Choices",
     code: "choice()",
-    what: "Segments while the labels fit, a menu otherwise, and a searchable menu past eight options.",
+    what: "Segments while the labels fit, a menu otherwise, and a searchable menu past eight options. The tile is one shape that morphs.",
     stage: true,
     tries: [
-      "<kbd>←</kbd> <kbd>→</kbd> step through any choice; pan sideways over segments to drag the pill",
-      "Open Colour and type to filter its fourteen options",
-      'Fill is a menu by <code>display: "menu"</code>',
+      "Step Shape with <kbd>←</kbd> <kbd>→</kbd>: circle, square and diamond are one shape bending and turning",
+      "Open Colour and type to filter its fourteen options; the tile crosses over in OKLab",
+      'Fill is a menu by <code>display: "menu"</code>; patterns bloom in as the old one softens out',
     ],
   })
   const COLOURS: Record<string, string> = {
@@ -380,50 +542,61 @@ category("Basics")
     grid: "linear-gradient(rgba(255,255,255,.24) 1px,transparent 1px) 0 0/14px 14px,linear-gradient(90deg,rgba(255,255,255,.24) 1px,transparent 1px) 0 0/14px 14px",
   }
   const SHAPES = {
-    circle: { radius: "50%", rot: 0, scale: 1 },
-    square: { radius: "24%", rot: 0, scale: 0.94 },
-    diamond: { radius: "16%", rot: 45, scale: 0.76 },
+    circle: { radius: 50, rot: 0, scale: 1 },
+    square: { radius: 24, rot: 0, scale: 0.94 },
+    diamond: { radius: 16, rot: 45, scale: 0.76 },
   } as const
-  const wrap = h("div")
-  wrap.style.cssText = "position:relative;width:112px;height:112px"
-  s.stage.append(wrap)
-  const shapes = (Object.keys(SHAPES) as (keyof typeof SHAPES)[]).map((k) => {
-    const el = h("div")
-    el.style.cssText = `position:absolute;inset:0;border-radius:${SHAPES[k].radius};overflow:hidden;transition:background-color .3s cubic-bezier(.2,.8,.2,1);box-shadow:inset 0 1px 0 rgba(255,255,255,.18)`
-    const tex = FILLS.map((f) => {
-      const t = h("div")
-      t.style.cssText = `position:absolute;inset:-20%;background:${TEX[f]}`
-      el.append(t)
-      return t
-    })
-    wrap.append(el)
-    return { key: k, el, tex }
+  const tile = h("div")
+  tile.style.cssText =
+    "position:relative;width:112px;height:112px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);will-change:transform"
+  const tex = FILLS.map((f) => {
+    const t = h("div")
+    t.style.cssText = `position:absolute;inset:-20%;background:${TEX[f]}`
+    tile.append(t)
+    return t
   })
+  s.stage.append(tile)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [
+    { id: "colour", text: true },
+    " · ",
+    { id: "fill", text: true },
+    " · ",
+    { id: "shape", text: true },
+  ])
   const stage = new Stage(s.stage, () => {
-    for (let i = 0; i < shapes.length; i++) {
-      const sh = shapes[i]!
-      const o = clamp01(shapeVals[i]!.x)
-      const base = SHAPES[sh.key]
-      sh.el.style.opacity = o.toFixed(3)
-      sh.el.style.transform = `rotate(${base.rot}deg) scale(${(base.scale * (0.94 + 0.06 * o)).toFixed(4)})`
-      for (let j = 0; j < FILLS.length; j++)
-        sh.tex[j]!.style.opacity = clamp01(fillVals[j]!.x).toFixed(3)
-    }
+    tile.style.borderRadius = `${radius.x.toFixed(2)}%`
+    tile.style.transform = `rotate(${rot.x.toFixed(2)}deg) scale(${scale.x.toFixed(4)})`
+    // Turning, its corners travel: a slight blur with their speed.
+    const b = blurFor(((rot.v * Math.PI) / 180) * 60, 2)
+    tile.style.filter = b ? `blur(${b.toFixed(2)}px)` : ""
+    tile.style.backgroundColor = colour.css()
+    tex.forEach((t, j) => {
+      const o = clamp01(fills[j]!.x)
+      t.style.opacity = o.toFixed(3)
+      const soft = !reduced() && o > 0.001 && o < 0.999
+      t.style.transform = soft ? `scale(${(1 + (1 - o) * 0.08).toFixed(4)})` : ""
+      t.style.filter = soft ? `blur(${((1 - o) * 3).toFixed(2)}px)` : ""
+    })
   })
-  const shapeVals = shapes.map(() => stage.val(0, 0.002, true))
-  const fillVals = FILLS.map(() => stage.val(0, 0.002, true))
+  const radius = stage.val(50, 0.01)
+  const rot = stage.val(0, 0.01)
+  const scale = stage.val(1, 0.0005)
+  const colour = new ColorVal(stage, COLOURS.Azure!)
+  const fills = FILLS.map(() => stage.val(0, 0.002, true))
   on((v, how) => {
-    const h2 = how === "init" ? "init" : "other"
-    shapes.forEach((sh, i) => {
-      go(shapeVals[i]!, sh.key === v.shape ? 1 : 0, h2, sh.key === v.shape ? "default" : "snappy")
-    })
+    const shape = SHAPES[v.shape]
+    // A choice is a discrete step even from the hand: it travels.
+    const h2: How = how === "init" ? "init" : "other"
+    radius.go(shape.radius, h2, "default")
+    rot.go(shape.rot, h2, "default")
+    scale.go(shape.scale, h2, "default")
+    colour.go(COLOURS[v.colour] ?? "#888", h2, "default")
     FILLS.forEach((f, j) => {
-      go(fillVals[j]!, f === v.fill ? 1 : 0, h2, "default")
+      fills[j]!.go(f === v.fill ? 1 : 0, h2, f === v.fill ? "default" : "snappy")
     })
-    for (const sh of shapes) sh.el.style.backgroundColor = COLOURS[v.colour] ?? "#888"
-    caption.textContent = `${v.colour} · ${v.fill} · ${v.shape}`
+    setCaption({ colour: v.colour, fill: v.fill, shape: v.shape })
   })
 }
 
@@ -432,10 +605,11 @@ category("Basics")
     id: "actions",
     title: "Action rows",
     code: "action()",
-    what: "Buttons as rows. Each tile keeps its identity as it travels.",
+    what: "Buttons as rows. Each tile keeps its identity as it travels, and blurs with its speed.",
     stage: true,
     tries: [
-      "Shuffle twice quickly: tiles turn mid-flight without snapping",
+      "Press Shuffle three times quickly: tiles turn mid-flight, never snapping, smearing as they cross",
+      "Pulse ripples out from the corner",
       "<kbd>Enter</kbd> or <kbd>Space</kbd> presses a focused action",
     ],
   })
@@ -475,12 +649,14 @@ category("Basics")
     s.stage.append(el)
     return el
   })
+  const blurs = tiles.map((el) => new DirBlur(el))
   const stage = new Stage(s.stage, () => {
     const ox = s.stage.clientWidth / 2 - (TILE * 3 + GAP * 2) / 2
     const oy = s.stage.clientHeight / 2 - (TILE * 3 + GAP * 2) / 2
     tiles.forEach((el, i) => {
       const t = tv[i]!
       el.style.transform = `translate(${px(ox + t.x.x)},${px(oy + t.y.x)}) scale(${t.s.x.toFixed(4)})`
+      blurs[i]!.speed(t.x.v, t.y.v)
     })
   })
   const tv = tiles.map(() => ({
@@ -491,8 +667,8 @@ category("Basics")
   place = (how) => {
     order.forEach((tile, slot) => {
       const t = tv[tile]!
-      go(t.x, (slot % 3) * (TILE + GAP), how, "calm", slot * 14)
-      go(t.y, Math.floor(slot / 3) * (TILE + GAP), how, "calm", slot * 14)
+      t.x.go((slot % 3) * (TILE + GAP), how, "calm", slot * 14)
+      t.y.go(Math.floor(slot / 3) * (TILE + GAP), how, "calm", slot * 14)
     })
   }
   pulse = () => {
@@ -513,11 +689,12 @@ category("Colour & motion")
     id: "color",
     title: "Colour",
     code: "color()",
-    what: "OKLCH, kept inside sRGB, stored as a string that drops straight into CSS. The strips paint their real gradients.",
+    what: "OKLCH, kept inside sRGB, stored as a string that drops straight into CSS. The sphere crosses over in OKLab; its glow follows a beat behind.",
     stage: true,
     tries: [
-      "<kbd>Enter</kbd> opens the editor; <kbd>↓</kbd> walks into hue, chroma and lightness",
-      "<kbd>←</kbd> <kbd>→</kbd> on a closed row turn the hue",
+      "Drag the hue strip end to end: the sphere follows your hand, the glow trails it",
+      "Press <kbd>r</kbd> in the panel: both cross over perceptually, never through grey",
+      "<kbd>Enter</kbd> opens the editor; <kbd>←</kbd> <kbd>→</kbd> on a closed row turn the hue",
     ],
   })
   const { store, on } = define("color", "Colour", {
@@ -527,17 +704,35 @@ category("Colour & motion")
   mount(store, s.slot, { title: "Sphere" })
   s.stage.innerHTML = `
     <div style="position:relative;width:150px;height:150px">
-      <div data-glow style="position:absolute;inset:-30px;border-radius:50%;opacity:.55;transition:background-color .3s cubic-bezier(.2,.8,.2,1);-webkit-mask:radial-gradient(closest-side,#000,transparent);mask:radial-gradient(closest-side,#000,transparent)"></div>
-      <div data-ball style="position:absolute;inset:25px;border-radius:50%;transition:background-color .3s cubic-bezier(.2,.8,.2,1);box-shadow:inset -10px -14px 28px rgba(0,0,0,.35),inset 8px 10px 18px rgba(255,255,255,.28)"></div>
+      <div data-glow style="position:absolute;inset:-30px;border-radius:50%;opacity:.55;-webkit-mask:radial-gradient(closest-side,#000,transparent);mask:radial-gradient(closest-side,#000,transparent)"></div>
+      <div data-ball style="position:absolute;inset:25px;border-radius:50%;box-shadow:inset -10px -14px 28px rgba(0,0,0,.35),inset 8px 10px 18px rgba(255,255,255,.28)"></div>
     </div>`
   const ball = s.stage.querySelector<HTMLElement>("[data-ball]")!
-  const glow = s.stage.querySelector<HTMLElement>("[data-glow]")!
+  const glowEl = s.stage.querySelector<HTMLElement>("[data-glow]")!
   const caption = h("div", "caption")
   s.stage.append(caption)
-  on((v) => {
-    ball.style.backgroundColor = v.tint
-    glow.style.backgroundColor = v.glow
-    caption.textContent = `${colorHex(v.tint)} · ${colorHex(v.glow)}`
+  const setCaption = rolling(caption, [
+    "L ",
+    { id: "l", decimals: 2 },
+    "  C ",
+    { id: "c", decimals: 2 },
+    "  H ",
+    { id: "h" },
+    "°",
+  ])
+  const stage = new Stage(s.stage, () => {
+    ball.style.backgroundColor = tint.css()
+    glowEl.style.backgroundColor = glow.css()
+  })
+  const tint = new ColorVal(stage, "#ff7a45")
+  const glow = new ColorVal(stage, "#ffb35c")
+  on((v, how) => {
+    tint.go(v.tint, how, "default")
+    // The glow lags: a softer trail behind the hand, a little later otherwise.
+    if (how === "init") glow.go(v.glow, "init")
+    else glow.go(v.glow, "other", how === "hand" ? "trail" : "smooth", how === "hand" ? 0 : 70)
+    const c = parseColor(v.tint)
+    if (c) setCaption({ l: c.l, c: c.c, h: Math.round(c.h) })
   })
 }
 
@@ -546,11 +741,12 @@ category("Colour & motion")
     id: "point",
     title: "Point",
     code: "point()",
-    what: "A 2D pad. The ring marks the default; y grows downward, as in CSS.",
+    what: "A 2D pad. The ring marks the default; y grows downward, as in CSS. The dot stretches along its path and the ring trails it.",
     stage: true,
     tries: [
-      "Open the pad and drag the puck; <kbd>⌥</kbd> drags at 1/10 speed",
-      "Arrows move it from the keyboard, <kbd>⇧</kbd> by ten",
+      "Open the pad and fling the puck: the dot smears along its path and the ring catches up",
+      "Press <kbd>⇧R</kbd> in the panel: both travel home on a spring",
+      "<kbd>⌥</kbd> drags at 1/10 speed; arrows move it, <kbd>⇧</kbd> by ten",
     ],
   })
   const { store, on } = define("point", "Point", {
@@ -571,9 +767,18 @@ category("Colour & motion")
   s.stage.append(box)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [
+    "x ",
+    { id: "x", decimals: 2 },
+    " · y ",
+    { id: "y", decimals: 2 },
+  ])
+  const dotSmear = new Smear(dot)
+  const trailSmear = new Smear(trail)
   const stage = new Stage(s.stage, () => {
-    dot.style.transform = `translate(${px(x.x * B)},${px(y.x * B)}) scale(${(size.x / 28).toFixed(4)})`
-    trail.style.transform = `translate(${px(tx.x * B)},${px(ty.x * B)})`
+    const k = size.x / 28
+    dot.style.transform = `translate(${px(x.x * B)},${px(y.x * B)}) scale(${k.toFixed(4)})${dotSmear.transform(x.v * B, y.v * B, k)}`
+    trail.style.transform = `translate(${px(tx.x * B)},${px(ty.x * B)})${trailSmear.transform(tx.v * B, ty.v * B)}`
   })
   const x = stage.val(0, 0.0005)
   const y = stage.val(0, 0.0005)
@@ -581,18 +786,13 @@ category("Colour & motion")
   const ty = stage.val(0, 0.0005)
   const size = stage.val(14, 0.02)
   on((v, how) => {
-    go(x, v.at.x, how)
-    go(y, v.at.y, how)
+    x.go(v.at.x, how)
+    y.go(v.at.y, how)
     // The ring trails on the panel's softer spring, so the dot leads and it follows.
-    if (how === "init") {
-      tx.snap(v.at.x)
-      ty.snap(v.at.y)
-    } else {
-      tx.to(v.at.x, { omega: 18, zeta: 1 })
-      ty.to(v.at.y, { omega: 18, zeta: 1 })
-    }
-    go(size, v.size, how)
-    caption.textContent = `x ${v.at.x.toFixed(2)} · y ${v.at.y.toFixed(2)}`
+    tx.go(v.at.x, how === "init" ? "init" : "other", how === "hand" ? "trail" : "calm")
+    ty.go(v.at.y, how === "init" ? "init" : "other", how === "hand" ? "trail" : "calm")
+    size.go(v.size, how)
+    setCaption({ x: v.at.x, y: v.at.y })
   })
 }
 
@@ -613,17 +813,24 @@ function bezierY(b: Bezier, x: number) {
     id: "easing",
     title: "Easing",
     code: "easing()",
-    what: "A cubic bezier with named curves. The ball runs it after every change; click the stage to run it again.",
+    what: "A cubic bezier with named curves. The curve bends from one to the next; the ball runs it when a change lands, and on a click.",
     stage: true,
     tries: [
-      "<kbd>←</kbd> <kbd>→</kbd> cycle the named curves",
-      "Open it and drag a handle past the top: Back overshoots",
+      "<kbd>←</kbd> <kbd>→</kbd> on the row: the curve bends through the named curves, then the ball runs it",
+      "Pick Back: the ball overshoots and smears as it whips back",
+      "Click the stage to run it again; it never jumps back to the start",
     ],
   })
-  const { store, on } = define("easing", "Easing", {
-    curve: easing("ease-in-out", { label: "Curve" }),
-    time: knob(0.9, { min: 0.2, max: 2, step: 0.05, unit: "s", label: "Duration" }),
-  })
+  let replay = () => {}
+  const { store, on } = define(
+    "easing",
+    "Easing",
+    {
+      curve: easing("ease-in-out", { label: "Curve" }),
+      time: knob(0.9, { min: 0.2, max: 2, step: 0.05, unit: "s", label: "Duration" }),
+    },
+    { onGesture: ({ phase }) => phase === "end" && replay() },
+  )
   mount(store, s.slot, { title: "Ball" })
   s.stage.dataset.replay = ""
   const G = 108
@@ -642,18 +849,30 @@ function bezierY(b: Bezier, x: number) {
   const path = s.stage.querySelector<SVGPathElement>("[data-curve]")!
   const gdot = s.stage.querySelector<SVGCircleElement>("[data-gdot]")!
   const ball = s.stage.querySelector<HTMLElement>("[data-ball]")!
-  let b: Bezier = [0.42, 0, 0.58, 1]
+  const caption = h("div", "caption")
+  s.stage.append(caption)
+  const setCaption = rolling(caption, [{ id: "d", decimals: 2 }, "s"])
+  const smear = new Smear(ball)
   let duration = 0.9
   let t = 1
   let from = 0
   let to = 1
-  const paint = () => {
-    const y = bezierY(b, t)
+  const shown = (): Bezier => [b[0]!.x, b[1]!.x, b[2]!.x, b[3]!.x]
+  const stage = new Stage(s.stage, () => {
+    const bz = shown()
+    path.setAttribute(
+      "d",
+      `M0 ${G} C${(bz[0] * G).toFixed(2)} ${((1 - bz[1]) * G).toFixed(2)} ${(bz[2] * G).toFixed(2)} ${((1 - bz[3]) * G).toFixed(2)} ${G} 0`,
+    )
+    const y = bezierY(bz, t)
     gdot.setAttribute("cx", (t * G).toFixed(2))
     gdot.setAttribute("cy", ((1 - y) * G).toFixed(2))
-    ball.style.transform = `translateX(${px(lerp(from, to, y) * 152)})`
-  }
-  const stage = new Stage(s.stage, paint)
+    const bx = lerp(from, to, y) * 152
+    speed.feed(bx, 0)
+    ball.style.transform = `translateX(${px(bx)})${smear.transform(speed.vx.x, 0)}`
+  })
+  const b = [0.42, 0, 0.58, 1].map((n) => stage.val(n, 0.0005))
+  const speed = new Speed(stage)
   const play = () => {
     // Runs from where the last run ended, so it never jumps back to the start.
     if (t >= 1) {
@@ -666,16 +885,15 @@ function bezierY(b: Bezier, x: number) {
       return t < 1
     })
   }
+  replay = play
   s.stage.addEventListener("click", play)
-  on((v, how) => {
-    b = v.curve
+  on((v, how, meta) => {
     duration = v.time
-    path.setAttribute(
-      "d",
-      `M0 ${G} C${b[0] * G} ${(1 - b[1]) * G} ${b[2] * G} ${(1 - b[3]) * G} ${G} 0`,
-    )
-    if (how === "init") stage.paint()
-    else play()
+    v.curve.forEach((n, i) => {
+      b[i]!.go(n, how, "default")
+    })
+    setCaption({ d: v.time })
+    if (how === "other" && meta?.source !== "compare") play()
   })
 }
 
@@ -687,8 +905,8 @@ function bezierY(b: Bezier, x: number) {
     what: "SwiftUI's duration and bounce beside the live step response. The top card moves on Spring, one { duration, bounce } value; the lower one on Settle, a flat spring of two plain number keys drawn as one card.",
     stage: true,
     tries: [
-      "Set bounce to 0.5 and let go of the slider: the cards replay",
-      "Click the stage to send them back",
+      "Set Spring's bounce to 0.5 and let go: the cards replay, stretching and smearing at speed",
+      "Click the stage twice quickly: they turn round mid-flight",
     ],
   })
   let replay = () => {}
@@ -719,18 +937,34 @@ function bezierY(b: Bezier, x: number) {
     box("background:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25)"),
     box("background:color-mix(in srgb,var(--text) 55%,transparent)"),
   ]
+  const blurs = cards.map((c) => new DirBlur(c))
   const caption = h("div", "caption")
   s.stage.append(caption)
-  let travel = 150
+  const setCaption = rolling(caption, [
+    { id: "d", decimals: 2 },
+    "s · ",
+    { id: "b", decimals: 2 },
+    "  /  ",
+    { id: "d2", decimals: 2 },
+    "s · ",
+    { id: "b2", decimals: 2 },
+  ])
   const stage = new Stage(s.stage, () => {
     const cx = s.stage.clientWidth / 2
     const cy = s.stage.clientHeight / 2
+    const tr = travel.x
     ;[cy - 36, cy + 36].forEach((y, row) => {
-      ends[row * 2]!.style.transform = `translate(${px(cx - travel / 2)},${px(y)})`
-      ends[row * 2 + 1]!.style.transform = `translate(${px(cx + travel / 2)},${px(y)})`
-      cards[row]!.style.transform = `translate(${px(cx + (pos[row]!.x - 0.5) * travel)},${px(y)})`
+      ends[row * 2]!.style.transform = `translate(${px(cx - tr / 2)},${px(y)})`
+      ends[row * 2 + 1]!.style.transform = `translate(${px(cx + tr / 2)},${px(y)})`
+      const p = pos[row]!
+      const vx = p.v * tr
+      const st = stretchFor(vx)
+      cards[row]!.style.transform =
+        `translate(${px(cx + (p.x - 0.5) * tr)},${px(y)}) scale(${st.toFixed(4)},${(1 / Math.sqrt(st)).toFixed(4)})`
+      blurs[row]!.set(blurFor(vx) / st, 0)
     })
   })
+  const travel = stage.val(150, 0.05)
   const pos = [stage.val(0, 0.0004), stage.val(0, 0.0004)]
   let side = 0
   replay = () => {
@@ -741,9 +975,13 @@ function bezierY(b: Bezier, x: number) {
   }
   s.stage.addEventListener("click", () => replay())
   on((v, how, meta) => {
-    travel = v.travel
-    caption.textContent = `${v.motion.duration.toFixed(2)}s · ${v.motion.bounce.toFixed(2)}  /  ${v.settleDuration.toFixed(2)}s · ${v.settleBounce.toFixed(2)}`
-    stage.paint()
+    travel.go(v.travel, how, "calm")
+    setCaption({
+      d: v.motion.duration,
+      b: v.motion.bounce,
+      d2: v.settleDuration,
+      b2: v.settleBounce,
+    })
     // Presets, Random, Reset and undo land at once; drags and keys wait for the gesture's end.
     if (how === "other" && meta?.source !== "compare") replay()
   })
@@ -761,7 +999,8 @@ category("Inspector")
     what: "Inline number cells, each a stop to scrub or type. Scale is linked: change one axis and the others follow.",
     stage: true,
     tries: [
-      "Drag a cell sideways to scrub; <kbd>Enter</kbd> or a digit types",
+      "Scrub Position x fast: the cube smears sideways and is crisp the moment it stops",
+      "Press <kbd>r</kbd> in the panel: it travels, turns and rescales at once",
       "Unlink scale with its chain button and stretch one axis",
     ],
   })
@@ -777,27 +1016,50 @@ category("Inspector")
   const S = 54
   const face = (t: string, shade: number) =>
     `<div style="position:absolute;inset:0;transform:${t};background:color-mix(in srgb,var(--text) ${shade}%,var(--page));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 18%,transparent);border-radius:4px"></div>`
-  s.stage.style.perspective = "700px"
-  s.stage.innerHTML = `<div data-cube style="position:relative;width:${S}px;height:${S}px;transform-style:preserve-3d">
+  // The blur sits on a flat wrapper that holds the perspective, so the cube keeps its depth.
+  s.stage.innerHTML = `<div data-view style="position:absolute;inset:0;display:grid;place-items:center;perspective:700px">
+    <div data-cube style="position:relative;width:${S}px;height:${S}px;transform-style:preserve-3d">
     ${face(`translateZ(${S / 2}px)`, 62)}${face(`rotateY(180deg) translateZ(${S / 2}px)`, 40)}
     ${face(`rotateY(90deg) translateZ(${S / 2}px)`, 44)}${face(`rotateY(-90deg) translateZ(${S / 2}px)`, 50)}
     ${face(`rotateX(90deg) translateZ(${S / 2}px)`, 80)}${face(`rotateX(-90deg) translateZ(${S / 2}px)`, 30)}
-  </div>`
+  </div></div>`
+  const view = s.stage.querySelector<HTMLElement>("[data-view]")!
   const cube = s.stage.querySelector<HTMLElement>("[data-cube]")!
+  const blur = new DirBlur(view)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [
+    { id: "x", decimals: 2 },
+    ", ",
+    { id: "y", decimals: 2 },
+    " · ×",
+    { id: "sx", decimals: 2 },
+    " ",
+    { id: "sy", decimals: 2 },
+    " ",
+    { id: "sz", decimals: 2 },
+  ])
   const stage = new Stage(s.stage, () => {
     cube.style.transform = `translate(${px(x.x * 90)},${px(y.x * 52)}) rotateX(-24deg) rotateY(${spin.x.toFixed(2)}deg) scale3d(${sx.x.toFixed(4)},${sy.x.toFixed(4)},${sz.x.toFixed(4)})`
+    // Its corners travel with the spin too.
+    const turn = ((Math.abs(spin.v) * Math.PI) / 180) * 30
+    blur.set(blurFor(Math.abs(x.v * 90) + turn), blurFor(y.v * 52))
   })
   const [x, y, sx, sy, sz, spin] = [0, 0, 1, 1, 1, -32].map((n) => stage.val(n, 0.0005))
   on((v, how) => {
-    go(x!, v.position.x, how)
-    go(y!, v.position.y, how)
-    go(sx!, v.scale.x, how)
-    go(sy!, v.scale.y, how)
-    go(sz!, v.scale.z, how)
-    go(spin!, v.spin, how)
-    caption.textContent = `${v.position.x.toFixed(2)}, ${v.position.y.toFixed(2)} · ×${v.scale.x.toFixed(2)} ${v.scale.y.toFixed(2)} ${v.scale.z.toFixed(2)}`
+    x!.go(v.position.x, how)
+    y!.go(v.position.y, how)
+    sx!.go(v.scale.x, how)
+    sy!.go(v.scale.y, how)
+    sz!.go(v.scale.z, how)
+    spin!.go(v.spin, how)
+    setCaption({
+      x: v.position.x,
+      y: v.position.y,
+      sx: v.scale.x,
+      sy: v.scale.y,
+      sz: v.scale.z,
+    })
   })
 }
 
@@ -809,7 +1071,8 @@ category("Inspector")
     what: "One slider, two thumbs that can't cross. Press inside the band to move it whole.",
     stage: true,
     tries: [
-      "Press well inside the band and drag: both ends travel",
+      "Press well inside the band and throw it: the highlight's edges travel on springs and smear",
+      "<kbd>⇧R</kbd> resets: the band glides home and the bars brighten and dim as it passes",
       "Focus a thumb, then <kbd>←</kbd> <kbd>→</kbd>; <kbd>Tab</kbd> reaches the other",
     ],
   })
@@ -824,6 +1087,7 @@ category("Inspector")
   const band = h("div", "abs")
   band.style.cssText += `width:${W}px;height:96px;border-radius:8px;background:var(--surface-hi);transform-origin:0 0`
   wrap.append(band)
+  const bandBlur = new DirBlur(band)
   const bars = Array.from({ length: N }, (_, i) => {
     const el = h("div")
     const hgt = 14 + Math.abs(Math.sin(i * 0.9) * 34 + Math.sin(i * 0.31) * 26)
@@ -834,10 +1098,15 @@ category("Inspector")
   s.stage.append(wrap)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [{ id: "lo" }, "–", { id: "hi" }, "%"])
   const stage = new Stage(s.stage, () => {
     const l = lo.x / 100
     const r = hi.x / 100
-    band.style.transform = `translateX(${px(l * W)}) scaleX(${Math.max(0.001, r - l).toFixed(4)})`
+    const sc = Math.max(0.001, r - l)
+    band.style.transform = `translateX(${px(l * W)}) scaleX(${sc.toFixed(4)})`
+    // The band's own x is scaled, so divide to keep the smear the same on screen.
+    const edge = (Math.max(Math.abs(lo.v), Math.abs(hi.v)) * W) / 100
+    bandBlur.set(blurFor(edge) / sc, 0)
     bars.forEach((el, i) => {
       const at = (i + 0.5) / N
       const inside = clamp01(Math.min(at - l, r - at) * N + 0.5)
@@ -847,9 +1116,9 @@ category("Inspector")
   const lo = stage.val(30, 0.02)
   const hi = stage.val(68, 0.02)
   on((v, how) => {
-    go(lo, v.band[0], how)
-    go(hi, v.band[1], how)
-    caption.textContent = `${v.band[0]}–${v.band[1]}%`
+    lo.go(v.band[0], how)
+    hi.go(v.band[1], how)
+    setCaption({ lo: v.band[0], hi: v.band[1] })
   })
 }
 
@@ -861,8 +1130,9 @@ category("Inspector")
     what: "Degrees on a small dial, 0° up and clockwise; a full turn wraps 359° on to 0°.",
     stage: true,
     tries: [
+      "Press <kbd>r</kbd> a few times: the arrow swings the short way round, smearing along its turn",
+      "Hold <kbd>→</kbd> past 359°: it carries on through 0° without unwinding",
       "Drag the hand round; <kbd>⇧</kbd> snaps to 15°",
-      "Hold <kbd>→</kbd> past 359°: the arrow carries on the short way",
     ],
   })
   const { store, on } = define("angle", "Angle", {
@@ -875,22 +1145,26 @@ category("Inspector")
     return `<div style="position:absolute;left:${D / 2 - 1}px;top:4px;width:2px;height:${major ? 9 : 5}px;border-radius:1px;background:${major ? "var(--label)" : "var(--faint)"};transform-origin:1px ${D / 2 - 4}px;transform:rotate(${i * 15}deg)"></div>`
   }).join("")
   s.stage.innerHTML = `<div style="position:relative;width:${D}px;height:${D}px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--line)">${ticks}
-    <svg data-arrow width="${D}" height="${D}" viewBox="0 0 ${D} ${D}" style="position:absolute;inset:0">
+    <svg data-arrow width="${D}" height="${D}" viewBox="0 0 ${D} ${D}" style="position:absolute;inset:0;overflow:visible">
       <path d="M${D / 2} 22 L${D / 2 + 9} ${D / 2 + 4} L${D / 2} ${D / 2 - 4} L${D / 2 - 9} ${D / 2 + 4} Z" style="fill:var(--text)"/>
       <circle cx="${D / 2}" cy="${D / 2}" r="3" style="fill:var(--text)"/>
     </svg></div>`
   const arrow = s.stage.querySelector<SVGElement>("[data-arrow]")!
+  // The arrow turns with its element, so its own x is always along the tip's path.
+  const blur = new DirBlur(arrow)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [{ id: "deg" }, "°"])
   const stage = new Stage(s.stage, () => {
     arrow.style.transform = `rotate(${a.x.toFixed(3)}deg)`
+    blur.set(blurFor(((a.v * Math.PI) / 180) * 30), 0)
   })
   const a = stage.val(45, 0.01)
   on((v, how) => {
-    // The shortest way round from wherever the arrow is heading.
+    // The shortest way round from wherever the arrow is heading, keeping its velocity.
     const delta = ((((v.heading - a.target) % 360) + 540) % 360) - 180
-    go(a, a.target + delta, how)
-    caption.textContent = `${Math.round(v.heading)}°`
+    a.go(a.target + delta, how)
+    setCaption({ deg: Math.round(v.heading) })
   })
 }
 
@@ -914,8 +1188,9 @@ const seeded = (n: number) => {
     what: "A whole number with a die. Random and Mutate leave seeds alone; the die rolls a new one.",
     stage: true,
     tries: [
-      "Click the die, or focus the row and press <kbd>Space</kbd>",
-      "<kbd>←</kbd> <kbd>→</kbd> step to neighbouring seeds",
+      "Click the die: tiles turn the short way in a sweep, softly blurred mid-turn",
+      "Hold <kbd>→</kbd> on the row: each new seed retargets the turns already under way",
+      "Drag Line: the strokes thicken on a spring",
     ],
   })
   const { store, on } = define("seed", "Seed", {
@@ -938,12 +1213,27 @@ const seeded = (n: number) => {
   s.stage.append(grid)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, ["seed ", { id: "seed" }])
+  const blurred = tiles.map(() => "")
+  let lastWeight = ""
   const stage = new Stage(s.stage, () => {
     tiles.forEach((el, i) => {
       el.style.transform = `rotate(${rot[i]!.x.toFixed(2)}deg)`
+      const b = blurFor(((rot[i]!.v * Math.PI) / 180) * 13, 1.6)
+      const f = b ? `blur(${b.toFixed(2)}px)` : ""
+      if (f !== blurred[i]) {
+        blurred[i] = f
+        el.style.filter = f
+      }
     })
+    const w = weight.x.toFixed(2)
+    if (w !== lastWeight) {
+      lastWeight = w
+      for (const p of paths) p.setAttribute("stroke-width", w)
+    }
   })
   const rot = tiles.map(() => stage.val(0, 0.05))
+  const weight = stage.val(2, 0.005)
   on((v, how) => {
     const rnd = seeded(v.pattern)
     tiles.forEach((_, i) => {
@@ -952,10 +1242,10 @@ const seeded = (n: number) => {
       // Turn the short way to the new orientation (half turns look the same).
       const delta = ((((want - cur) % 180) + 270) % 180) - 90
       const d = (i % C) + Math.floor(i / C)
-      go(rot[i]!, cur + delta, how === "init" ? "init" : "other", "calm", d * 22)
+      rot[i]!.go(cur + delta, how === "init" ? "init" : "other", "calm", d * 22)
     })
-    for (const p of paths) p.setAttribute("stroke-width", String(v.weight))
-    caption.textContent = `seed ${v.pattern}`
+    weight.go(v.weight, how)
+    setCaption({ seed: v.pattern })
   })
 }
 
@@ -967,53 +1257,52 @@ const seeded = (n: number) => {
     what: "Captures a combination as key caps. Press it anywhere on this page and the caps answer.",
     stage: true,
     tries: [
-      "Focus the row and press <kbd>Enter</kbd>, then the new combination; <kbd>Esc</kbd> cancels, <kbd>⌫</kbd> clears",
-      "Click outside the panel and press it",
+      "Click outside the panel and press the combination: the caps press and a ring blooms out",
+      "Capture a new one (<kbd>Enter</kbd> on the row, then the keys): the old caps soften away as the new ones bloom in",
+      "<kbd>Esc</kbd> cancels a capture, <kbd>⌫</kbd> clears it",
     ],
   })
   const { store, on } = define("keybind", "Key combination", {
     fire: keybind("Shift+K", { label: "Ping" }),
   })
   mount(store, s.slot, { title: "Shortcut" })
-  const caps = h("div")
-  caps.style.cssText = "display:flex;gap:8px;align-items:center"
   const ring = h("div", "abs")
   ring.style.cssText =
     "position:absolute;left:50%;top:50%;width:160px;height:160px;margin:-80px 0 0 -80px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--text);opacity:0;pointer-events:none"
-  s.stage.append(ring, caps)
+  const capsHost = h("div")
+  capsHost.style.cssText = "position:absolute;inset:0"
+  s.stage.append(ring, capsHost)
   const caption = h("div", "caption")
   s.stage.append(caption)
+  const setCaption = rolling(caption, [{ id: "word", text: true }, " ", { id: "n" }, "×"])
   let count = 0
   let capEls: HTMLElement[] = []
   const stage = new Stage(s.stage, () => {
     const p = press.x
-    for (const c of capEls) {
-      c.style.transform = `translateY(${px(p * 3)}) scale(${(1 - p * 0.04).toFixed(4)})`
-    }
-    caps.style.opacity = clamp01(enter.x).toFixed(3)
-    ring.style.opacity = (clamp01(1 - wave.x) * 0.5 * Math.min(1, wave.x * 6)).toFixed(3)
-    ring.style.transform = `scale(${(0.5 + wave.x * 0.7).toFixed(4)})`
+    for (const c of capEls)
+      c.style.transform =
+        p > 0.0005 ? `translateY(${px(p * 3)}) scale(${(1 - p * 0.04).toFixed(4)})` : ""
+    const w = wave.x
+    ring.style.opacity = (clamp01(1 - w) * 0.5 * Math.min(1, w * 6)).toFixed(3)
+    ring.style.transform = `scale(${(0.5 + w * 0.7).toFixed(4)})`
   })
+  const swap = new Swap(stage, capsHost)
   const press = stage.val(0, 0.002)
-  const enter = stage.val(1, 0.002, true)
   const wave = stage.val(1, 0.002)
   on((v, how) => {
-    caps.replaceChildren(
-      ...(comboParts(v.fire).length ? comboParts(v.fire) : ["—"]).map((p) => {
-        const k = h("div")
-        k.textContent = p
-        k.style.cssText =
-          "min-width:44px;height:44px;padding:0 12px;display:grid;place-items:center;border-radius:10px;background:var(--surface-hi);box-shadow:inset 0 -2px 0 var(--line),0 1px 0 var(--line);font:500 17px var(--sans);color:var(--text)"
-        return k
-      }),
-    )
-    capEls = [...caps.children] as HTMLElement[]
-    if (how !== "init") {
-      enter.snap(0.4)
-      enter.to(1, "default")
+    const row = h("div")
+    row.style.cssText = "display:flex;gap:8px;align-items:center"
+    const parts = comboParts(v.fire)
+    for (const p of parts.length ? parts : ["—"]) {
+      const k = h("div")
+      k.textContent = p
+      k.style.cssText =
+        "min-width:44px;height:44px;padding:0 12px;display:grid;place-items:center;border-radius:10px;background:var(--surface-hi);box-shadow:inset 0 -2px 0 var(--line),0 1px 0 var(--line);font:500 17px var(--sans);color:var(--text)"
+      row.append(k)
     }
-    stage.paint()
-    caption.textContent = count ? `pressed ${count}×` : "not pressed yet"
+    capEls = [...row.children] as HTMLElement[]
+    swap.show(row, how === "init" ? "init" : "other")
+    setCaption({ word: "pressed", n: count })
   })
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.repeat) return
@@ -1022,9 +1311,12 @@ const seeded = (n: number) => {
     if (!matchesCombo(store.get().fire, e)) return
     e.preventDefault()
     count++
-    caption.textContent = `pressed ${count}×`
-    press.snap(1).to(0, "playful")
-    wave.snap(0).to(1, { omega: (2 * Math.PI) / 0.85, zeta: 1 })
+    setCaption({ n: count })
+    press.to(1, "instant")
+    setTimeout(() => press.to(0, "playful"), 90)
+    // The ring blooms from small and fades as it grows; a new press retargets it from where it is.
+    if (wave.x > 0.6) wave.snap(0)
+    wave.to(1, "slow")
   })
 }
 
@@ -1036,46 +1328,66 @@ const seeded = (n: number) => {
     what: "A row of buttons with shortcut chips. Panel shortcuts work while it has focus; a global one works anywhere.",
     stage: true,
     tries: [
-      "Focus the panel and press <kbd>Space</kbd> to play or pause",
+      "Focus the panel and press <kbd>Space</kbd>: the orbit spins up on a spring and the dot smears along its path; <kbd>Space</kbd> again coasts it to a stop",
+      "<kbd>V</kbd> while it plays: it slows through zero and turns round, no jump",
       "<kbd>P</kbd> pulses from anywhere on the page (it's global)",
-      "Reverse's <kbd>V</kbd> works while the panel has focus",
     ],
   })
   let playing = false
   let dir = 1
+  let speed = 1.4
   let stage!: Stage
   let pulseVal!: Val
+  let spin!: Val
   let phase = 0
-  let stopLoop: (() => void) | null = null
-  const togglePlay = () => {
-    playing = !playing
-    if (playing)
-      stopLoop = stage.loop((dt) => {
-        phase += dt * dir * speed
-        return playing
-      })
-    else stopLoop?.()
-    status.textContent = playing ? "playing" : "paused"
+  let setStatus = (_: Readonly<Record<string, string>>) => {}
+  let looping = false
+  const retarget = () => {
+    spin.to(playing ? dir * speed : 0, playing ? "smooth" : "slow")
+    setStatus({ s: playing ? (dir > 0 ? "playing" : "reversed") : "paused" })
+    if (looping) return
+    // One loop, stepping until it has coasted to a stop.
+    looping = true
+    stage.loop((dt) => {
+      phase += dt * spin.x
+      looping = playing || !spin.spring.resting
+      return looping
+    })
   }
-  let speed = 1.4
+  const pulse = () => {
+    pulseVal.to(1, "instant")
+    setTimeout(() => pulseVal.to(0, "calm"), 80)
+  }
   const { store, on } = define("toolbar", "Toolbar", {
     tools: toolbar(
       [
-        { id: "play", label: "Play", icon: "play", shortcut: "Space", run: () => togglePlay() },
+        {
+          id: "play",
+          label: "Play",
+          icon: "play",
+          shortcut: "Space",
+          run: () => {
+            playing = !playing
+            retarget()
+          },
+        },
         {
           id: "pulse",
           label: "Pulse",
           icon: "sparkle",
           shortcut: "P",
           global: true,
-          run: () => pulseVal.snap(1).to(0, "calm"),
+          run: () => pulse(),
         },
         {
           id: "reverse",
           label: "Reverse",
           icon: "retrigger",
           shortcut: "V",
-          run: () => (dir = -dir),
+          run: () => {
+            dir = -dir
+            retarget()
+          },
         },
         { id: "record", label: "Record", icon: "camera", disabled: true },
       ],
@@ -1092,17 +1404,24 @@ const seeded = (n: number) => {
   const sat = s.stage.querySelector<HTMLElement>("[data-sat]")!
   const ringEl = s.stage.querySelector<HTMLElement>("[data-ring]")!
   const status = h("div", "caption")
-  status.textContent = "paused"
   s.stage.append(status)
+  setStatus = rolling(status, [{ id: "s", text: true }])
+  setStatus({ s: "paused" })
+  const smear = new Smear(sat)
+  const R = 65
   stage = new Stage(s.stage, () => {
     const a = phase * Math.PI * 2 * 0.25 - Math.PI / 2
-    sat.style.transform = `translate(${px(65 + Math.cos(a) * 65)},${px(65 + Math.sin(a) * 65)}) scale(${(1 + pulseVal.x * 0.5).toFixed(4)})`
+    // Velocity along the tangent, from the spin.
+    const w = spin.x * Math.PI * 2 * 0.25 * R
+    const k = 1 + pulseVal.x * 0.5
+    sat.style.transform = `translate(${px(65 + Math.cos(a) * R)},${px(65 + Math.sin(a) * R)}) scale(${k.toFixed(4)})${smear.transform(-Math.sin(a) * w, Math.cos(a) * w, k)}`
     ringEl.style.transform = `scale(${(1 + pulseVal.x * 0.06).toFixed(4)})`
   })
   pulseVal = stage.val(0, 0.002)
-  on((v) => {
+  spin = stage.val(0, 0.002)
+  on((v, how) => {
     speed = v.speed
-    stage.paint()
+    if (playing && how !== "init") spin.go(dir * speed, how, "smooth")
   })
 }
 
@@ -1147,7 +1466,8 @@ const SKIES = {
     what: "A colour ramp of draggable stops, blended in OKLab. The bar is the whole day; the hour samples it.",
     stage: true,
     tries: [
-      "Pick a preset chip: the bar shifts colour on the panel's spring",
+      "Pick a preset chip: the sky sweeps from one to the other, every colour travelling in OKLab",
+      "Throw Hour from 6 to 20: the sun rides its arc and the sky warms, then dims",
       "Open it, click the strip to add a stop, pull a pin off to remove it",
     ],
   })
@@ -1166,31 +1486,53 @@ const SKIES = {
     </svg>
     <div style="position:absolute;left:0;right:0;bottom:0;height:38px;background:rgba(0,0,0,.45)"></div>
     <div data-bar style="position:absolute;left:12px;right:12px;bottom:12px;height:14px;border-radius:7px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)"></div>
-    <div data-mark class="abs" style="width:2px;height:20px;bottom:9px;top:auto;border-radius:1px;background:#fff"></div>`
+    <div data-mark class="abs" style="width:2px;height:20px;bottom:9px;top:auto;border-radius:1px;background:#fff"></div>
+    <div data-clock class="caption right" style="color:rgba(255,255,255,.7)"></div>`
   const scene = s.stage.querySelector<HTMLElement>("[data-scene]")!
   const bar = s.stage.querySelector<HTMLElement>("[data-bar]")!
   const mark = s.stage.querySelector<HTMLElement>("[data-mark]")!
   const sun = s.stage.querySelector<HTMLElement>("[data-sun]")!
-  let stops = SKIES.Clear as readonly { at: number; color: string }[]
+  const setClock = rolling(s.stage.querySelector<HTMLElement>("[data-clock]")!, [
+    { id: "h", pad: 2 },
+    ":",
+    { id: "m", pad: 2 },
+  ])
+  const sunSmear = new Smear(sun)
+  const N = 32
   const stage = new Stage(s.stage, () => {
-    const t = hour.x / 24
-    scene.style.background = sampleGradient(stops, t)
+    const t = clamp01(hour.x / 24)
+    const labs = samples.map((c) => c.lab)
+    bar.style.background = `linear-gradient(to right,${labs.map((l, i) => `${oklabCss(l)} ${((i / (N - 1)) * 100).toFixed(2)}%`).join(",")})`
+    const f = t * (N - 1)
+    const i0 = Math.min(N - 2, Math.floor(f))
+    const u = f - i0
+    scene.style.background = oklabCss(labs[i0]!.map((c, j) => lerp(c, labs[i0 + 1]![j]!, u)))
     const w = s.stage.clientWidth
     mark.style.transform = `translateX(${px(12 + t * (w - 24) - 1)})`
     // The sun rides an arc from 6h to 18h, under the hills outside it.
     const day = (hour.x - 6) / 12
-    const a = Math.PI * clamp01(day)
     const hh = s.stage.clientHeight
-    const up = day < 0 || day > 1 ? -0.25 : Math.sin(a)
-    sun.style.transform = `translate(${px(lerp(30, w - 30, clamp01(day)))},${px(hh - 70 - up * (hh - 110))})`
+    const up = day < 0 || day > 1 ? -0.25 : Math.sin(Math.PI * clamp01(day))
+    const sx = lerp(30, w - 30, clamp01(day))
+    const sy = hh - 70 - up * (hh - 110)
+    const vxDay = day >= 0 && day <= 1 ? ((w - 60) * hour.v) / 12 : 0
+    const vyDay =
+      day >= 0 && day <= 1 ? (-(hh - 110) * Math.cos(Math.PI * day) * Math.PI * hour.v) / 12 : 0
+    sun.style.transform = `translate(${px(sx)},${px(sy)})${sunSmear.transform(vxDay, vyDay)}`
     sun.style.opacity = clamp01(up * 4 + 0.6).toFixed(3)
   })
-  const hour = stage.val(18.5, 0.005)
+  const hour = stage.val(18.5, 0.002)
+  const samples = Array.from(
+    { length: N },
+    (_, i) => new ColorVal(stage, sampleGradient(SKIES.Clear, i / (N - 1))),
+  )
   on((v, how) => {
-    stops = v.sky
-    bar.style.background = gradientCss(v.sky, { direction: "to right" })
-    go(hour, v.hour, how, "calm")
-    stage.paint()
+    // Every sample travels to its new colour, in a quick left-to-right sweep for a preset.
+    samples.forEach((c, i) => {
+      c.go(sampleGradient(v.sky, i / (N - 1)), how, "calm", i * 5)
+    })
+    hour.go(v.hour, how, "calm")
+    setClock({ h: Math.floor(v.hour) % 24, m: Math.round((v.hour % 1) * 60) })
   })
 }
 
@@ -1199,10 +1541,11 @@ const SKIES = {
     id: "curve",
     title: "Curve",
     code: "curve()",
-    what: "A 1D curve of draggable points. Here it's how a lamp's light falls off with distance.",
+    what: "A 1D curve of draggable points. Here it's how a lamp's light falls off with distance; the pool of light bends from one shape to the next.",
     stage: true,
     tries: [
-      "Try the shape chips: Bell makes a ring of light",
+      "Tap the shape chips in turn: the light reshapes smoothly, Bell opening into a ring",
+      "Throw Radius: the pool breathes out and in on a spring",
       "Open it, double-click empty space to add a point, drag one out to remove it",
     ],
   })
@@ -1216,8 +1559,8 @@ const SKIES = {
   const canvas = h("canvas")
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%"
   s.stage.append(canvas)
-  const draw = () => {
-    const v = store.get()
+  const N = 33
+  const stage = new Stage(s.stage, () => {
     const dpr = Math.min(2, devicePixelRatio || 1)
     const w = s.stage.clientWidth
     const hh = s.stage.clientHeight
@@ -1228,25 +1571,26 @@ const SKIES = {
     ctx.clearRect(0, 0, w, hh)
     const cx = w / 2
     const cy = hh * 0.55
-    const hex = colorHex(v.warmth)
-    const rgb = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, v.radius)
-    for (let i = 0; i <= 32; i++) {
-      const x = i / 32
-      const a = clamp01(sampleCurve(v.falloff, x, { interp: store.schema.falloff.interp }))
-      g.addColorStop(x, `rgba(${rgb.join(",")},${(a * 0.85).toFixed(3)})`)
-    }
+    const r = Math.max(1, radius.x)
+    const [cr, cg, cb] = oklabRgb(light.lab)
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+    for (let i = 0; i < N; i++)
+      g.addColorStop(
+        i / (N - 1),
+        `rgba(${cr},${cg},${cb},${(clamp01(ys[i]!.x) * 0.85).toFixed(3)})`,
+      )
     ctx.save()
     ctx.translate(0, cy)
     ctx.scale(1, 0.42)
     ctx.translate(0, -cy)
     ctx.fillStyle = g
     ctx.beginPath()
-    ctx.arc(cx, cy, v.radius, 0, Math.PI * 2)
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
-    ctx.fillStyle = hex
-    ctx.shadowColor = hex
+    const bulb = `rgb(${cr},${cg},${cb})`
+    ctx.fillStyle = bulb
+    ctx.shadowColor = bulb
     ctx.shadowBlur = 16
     ctx.beginPath()
     ctx.arc(cx, cy - 46, 7, 0, Math.PI * 2)
@@ -1257,9 +1601,22 @@ const SKIES = {
     ctx.moveTo(cx, 0)
     ctx.lineTo(cx, cy - 53)
     ctx.stroke()
-  }
-  new ResizeObserver(draw).observe(s.stage)
-  on(() => draw())
+  })
+  const ys = Array.from({ length: N }, () => stage.val(0, 0.001))
+  const radius = stage.val(110, 0.05)
+  const light = new ColorVal(stage, "#ffcf8a")
+  new ResizeObserver(() => stage.paint()).observe(s.stage)
+  on((v, how) => {
+    ys.forEach((y, i) => {
+      y.go(
+        sampleCurve(v.falloff, i / (N - 1), { interp: store.schema.falloff.interp }),
+        how,
+        "calm",
+      )
+    })
+    radius.go(v.radius, how, "calm")
+    light.go(v.warmth, how, "default")
+  })
 }
 
 // ── Readouts ─────────────────────────────────────────────────────────────────────────────────
@@ -1530,10 +1887,10 @@ category("Panel structure")
     id: "presets",
     title: "Presets",
     code: "presets · groupPresets",
-    what: "A strip of presets above the rows and named presets in a card's header. Switching ripples the rows top to bottom.",
+    what: "A strip of presets above the rows and named presets in a card's header. Switching ripples the rows top to bottom, and the cards follow one after another.",
     stage: true,
     tries: [
-      "<kbd>[</kbd> <kbd>]</kbd> cycle presets from anywhere in the panel",
+      "Press <kbd>]</kbd> repeatedly: the hand re-deals card by card, each smearing with its speed, and turns mid-flight",
       "<kbd>+</kbd> or <kbd>⇧S</kbd> saves the current values as a chip",
       "Fan's own presets sit in its header",
     ],
@@ -1588,24 +1945,35 @@ category("Panel structure")
     s.stage.append(el)
     return el
   })
+  const blurs = cards.map((el) => new DirBlur(el))
   const stage = new Stage(s.stage, () => {
     const cx = s.stage.clientWidth / 2
     const cy = s.stage.clientHeight / 2 + 8
     cards.forEach((el, i) => {
-      const c = i - 1.5
-      const n = c / 1.5
-      el.style.transform = `translate(${px(cx + c * sp.x)},${px(cy - lift.x * (1 - n * n))}) rotate(${(c * tilt.x).toFixed(2)}deg) scale(${sc.x.toFixed(4)})`
+      const c = cv[i]!
+      el.style.transform = `translate(${px(cx + c.x.x)},${px(cy + c.y.x)}) rotate(${c.rot.x.toFixed(2)}deg) scale(${c.s.x.toFixed(4)})`
+      // Turning about a point below it, its face travels too.
+      const turn = ((c.rot.v * Math.PI) / 180) * 80
+      blurs[i]!.speed(Math.abs(c.x.v) + Math.abs(turn), c.y.v)
     })
   })
-  const sp = stage.val(30, 0.02)
-  const lift = stage.val(10, 0.02)
-  const tilt = stage.val(8, 0.01)
-  const sc = stage.val(1, 0.0005)
+  const cv = cards.map(() => ({
+    x: stage.val(0, 0.02),
+    y: stage.val(0, 0.02),
+    rot: stage.val(0, 0.01),
+    s: stage.val(1, 0.0005),
+  }))
   on((v, how) => {
-    go(sp, v.spacing, how)
-    go(lift, v.lift, how)
-    go(tilt, v.tilt, how)
-    go(sc, v.scale, how)
+    cv.forEach((c, i) => {
+      const k = i - 1.5
+      const n = k / 1.5
+      // A cascade, left to right, for anything but the hand.
+      const delay = i * 28
+      c.x.go(k * v.spacing, how, "calm", delay)
+      c.y.go(-v.lift * (1 - n * n), how, "calm", delay)
+      c.rot.go(k * v.tilt, how, "calm", delay)
+      c.s.go(v.scale, how, "calm", delay)
+    })
   })
 }
 
@@ -1750,9 +2118,9 @@ category("Remote")
     what: "A store built from runtime descriptors, for values that live elsewhere: a phone over a socket. This one talks to a pretend device with 120 ms of latency.",
     stage: true,
     tries: [
-      "Drag Height: each change goes out as a message; the device answers with its own spring",
+      "Drag Height: each change goes out as a message that slides into the log; the drawer answers on the spring you sent",
+      "Turn Open off and on with a bouncy Spring: the drawer smears as it drops and rises",
       "Nudge from the device: the value lands in the panel without echoing back",
-      "Copy as Swift writes the Tunables",
     ],
   })
   const descriptors: ControlDescriptor[] = [
@@ -1782,20 +2150,7 @@ category("Remote")
     descriptors.map((d) => [d.key, (d as { default: unknown }).default]),
   ) as State
   const device: Record<string, unknown> = { ...defaults }
-  const lines: string[] = []
-  const logEl = h("div")
-  logEl.style.cssText =
-    "position:absolute;right:12px;top:12px;width:46%;font:11px/1.6 var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-align:left"
-  const say = (line: string) => {
-    lines.unshift(line)
-    lines.length = Math.min(lines.length, 8)
-    logEl.innerHTML = lines
-      .map(
-        (l, i) =>
-          `<div style="opacity:${(1 - i * 0.11).toFixed(2)};overflow:hidden;text-overflow:ellipsis">${l}</div>`,
-      )
-      .join("")
-  }
+  let say = (_line: string) => {}
   let render = (_animate: boolean) => {}
   const short = (v: unknown) =>
     typeof v === "object" && v ? JSON.stringify(v).replace(/"/g, "") : JSON.stringify(v)
@@ -1832,28 +2187,73 @@ category("Remote")
   phone.style.cssText =
     "position:absolute;left:28px;top:16px;width:116px;height:200px;border-radius:22px;background:var(--page);box-shadow:inset 0 0 0 1.5px var(--faint);overflow:hidden"
   const drawer = h("div", "abs")
-  drawer.style.cssText +=
-    "left:6px;width:104px;height:160px;border-radius:16px 16px 18px 18px;transition:background-color .3s cubic-bezier(.2,.8,.2,1)"
+  drawer.style.cssText += "left:6px;width:104px;height:160px;border-radius:16px 16px 18px 18px"
   const handle = h("div")
   handle.style.cssText =
     "width:26px;height:4px;margin:7px auto 0;border-radius:2px;background:rgba(255,255,255,.55)"
   drawer.append(handle)
   phone.append(drawer)
+  const logEl = h("div")
+  logEl.style.cssText =
+    "position:absolute;right:12px;top:12px;width:46%;height:150px;font:11px/18px var(--mono);color:var(--dim);overflow:hidden"
   const nudge = h("button", "chip quiet", "Nudge from device")
   nudge.style.cssText = "position:absolute;right:12px;bottom:12px"
   s.stage.append(phone, logEl, nudge)
+  const LINE = 18
+  const lines: { el: HTMLElement; pos: Val; o: Val; gone: boolean }[] = []
+  const drawerBlur = new DirBlur(drawer)
   const stage = new Stage(s.stage, () => {
     drawer.style.transform = `translateY(${px(200 - y.x)})`
+    drawerBlur.set(0, blurFor(y.v))
+    drawer.style.backgroundColor = tint.css()
+    for (const l of [...lines]) {
+      const o = clamp01(l.o.x)
+      if (l.gone && o <= 0.001 && l.o.spring.resting) {
+        l.el.remove()
+        stage.drop(l.pos)
+        stage.drop(l.o)
+        lines.splice(lines.indexOf(l), 1)
+        continue
+      }
+      const fade = clamp01(1 - l.pos.x * 0.11)
+      l.el.style.opacity = (o * fade).toFixed(3)
+      const soft = !reduced() && o < 0.999
+      l.el.style.transform = `translateY(${px(l.pos.x * LINE)})${soft ? ` scale(${(0.96 + 0.04 * o).toFixed(4)})` : ""}`
+      l.el.style.filter = soft ? `blur(${((1 - o) * 3).toFixed(2)}px)` : ""
+    }
   })
   const y = stage.val(96, 0.05)
+  const tint = new ColorVal(stage, "#3a8dff")
+  // A new message blooms in at the top; the others slide down a line; the ninth softens away.
+  say = (text: string) => {
+    const el = h("div")
+    el.style.cssText =
+      "position:absolute;left:0;right:0;top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform-origin:0 50%"
+    el.textContent = text
+    logEl.append(el)
+    const line = { el, pos: stage.val(0, 0.002), o: stage.val(0, 0.002, true), gone: false }
+    line.o.to(1, "default")
+    lines.unshift(line)
+    lines.forEach((l, i) => {
+      if (l === line) return
+      l.pos.to(i, "calm")
+      if (i >= 8 && !l.gone) {
+        l.gone = true
+        l.o.to(0, "snappy")
+      }
+    })
+  }
   render = (animate) => {
     const open = device["drawer.open"] === true
     const target = open ? Number(device["drawer.height"]) : -8
-    drawer.style.backgroundColor = String(device["drawer.tint"])
     // The device moves on its own spring: the one the panel sends.
-    if (animate)
+    if (animate) {
       y.to(target, springMotion(device["drawer.spring"] as { duration: number; bounce: number }))
-    else y.snap(target)
+      tint.go(String(device["drawer.tint"]), "other")
+    } else {
+      y.snap(target)
+      tint.go(String(device["drawer.tint"]), "init")
+    }
   }
   render(false)
   nudge.addEventListener("click", () => {

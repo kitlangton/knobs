@@ -15,7 +15,7 @@ import {
   tooltip,
   tree,
 } from "knobs/ui"
-import { Stage } from "./controls-motion"
+import { ColorVal, rolling, Smear, Speed, Stage } from "./controls-motion"
 import type { SectionSpec } from "./controls"
 
 interface Kit {
@@ -247,10 +247,15 @@ export function uiSections({ section, h, theme }: Kit) {
       const x = 36 + (time / D) * (w - 72)
       const up = heightAt(time) * (hh - 60)
       const squash = pulse.x
-      ball.style.transform = `translate(${px(x)},${px(hh - 34 - up)}) scale(${(1 + squash * 0.18).toFixed(4)},${(1 - squash * 0.14).toFixed(4)})`
+      const by = hh - 34 - up
+      // The playhead moves it (a scrub is 1:1); its speed, read from where it goes, smears it.
+      speed.feed(x, by)
+      ball.style.transform = `translate(${px(x)},${px(by)}) scale(${(1 + squash * 0.18).toFixed(4)},${(1 - squash * 0.14).toFixed(4)})${smear.transform(speed.vx.x, speed.vy.x)}`
       shadow.style.transform = `translate(${px(x)},${px(hh - 22)}) scale(${(1 - up / (hh * 1.4)).toFixed(4)})`
     })
     const pulse = stage.val(0, 0.002)
+    const speed = new Speed(stage)
+    const smear = new Smear(ball)
     const markers: TimelineMarker[] = BOUNCES.slice(1, -1).map((t, i) => ({
       id: `b${i + 1}`,
       time: t,
@@ -289,9 +294,14 @@ export function uiSections({ section, h, theme }: Kit) {
     card.tabIndex = 0
     card.style.cssText += ";outline:none;cursor:context-menu"
     const shape = h("div")
-    shape.style.cssText =
-      "width:72px;height:72px;border-radius:18px;transition:background-color .3s cubic-bezier(.2,.8,.2,1),box-shadow .2s"
+    shape.style.cssText = "position:relative;width:72px;height:72px;border-radius:18px"
+    // The outline is its own ring that blooms out from the shape and gathers back into it.
+    const ring = h("div")
+    ring.style.cssText =
+      "position:absolute;inset:-6px;border-radius:24px;box-shadow:inset 0 0 0 1.5px currentColor;opacity:0;pointer-events:none"
+    shape.append(ring)
     const label = h("div", "caption")
+    const setLabel = rolling(label, [{ id: "text", text: true }])
     card.append(shape, label)
     s.slot.append(card)
     const state = { size: "M", outline: false, color: "#3a8dff", name: "Azure" }
@@ -304,14 +314,23 @@ export function uiSections({ section, h, theme }: Kit) {
     ]
     const stage = new Stage(card, () => {
       shape.style.transform = `scale(${size.x.toFixed(4)})`
+      const c = tint.css()
+      shape.style.backgroundColor = c
+      ring.style.color = c
+      const o = Math.min(1, Math.max(0, outline.x))
+      ring.style.opacity = o.toFixed(3)
+      ring.style.transform = `scale(${(0.9 + 0.1 * o).toFixed(4)})`
     })
     const size = stage.val(1, 0.0005)
+    const outline = stage.val(0, 0.002, true)
+    const tint = new ColorVal(stage, state.color)
+    let first = true
     const paint = () => {
-      shape.style.backgroundColor = state.color
-      shape.style.boxShadow = state.outline
-        ? `0 0 0 3px var(--page),0 0 0 4.5px ${state.color}`
-        : "none"
-      label.textContent = `${state.name} · ${state.size}${state.outline ? " · outline" : ""}`
+      const how = first ? "init" : "other"
+      first = false
+      tint.go(state.color, how)
+      outline.go(state.outline ? 1 : 0, how, state.outline ? "default" : "snappy")
+      setLabel({ text: `${state.name} · ${state.size}${state.outline ? " · outline" : ""}` })
     }
     paint()
     const items = (): MenuEntry[] => [
