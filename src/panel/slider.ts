@@ -86,6 +86,27 @@ export const decimals = (step: number) => {
 }
 
 /**
+ * `steps` grid steps from `value` (negative goes down), on the slider's grid counted from `min`.
+ * From a value between grid points (a declared default like 0.4 on a 0.02 grid from 0.15) the
+ * first step lands on the next grid point that way, not past it.
+ */
+export function stepValue(
+  field: { min: number; max: number; step: number },
+  value: number,
+  steps: number,
+) {
+  const at = (value - field.min) / field.step
+  const on = Math.abs(at - Math.round(at)) < 1e-6
+  const target = on
+    ? Math.round(at) + steps
+    : steps > 0
+      ? Math.ceil(at) + steps - 1
+      : Math.floor(at) + steps + 1
+  const v = field.min + target * field.step
+  return Number(Math.min(field.max, Math.max(field.min, v)).toPrecision(14))
+}
+
+/**
  * A DialKit-style slider: the whole row is the track, the fill is a full-height block,
  * the handle is a hairline that only shows on hover, and the label + value sit on the
  * track itself. Dragging follows the pointer exactly (⌥ for 1/10 speed) and the default's notch
@@ -667,7 +688,7 @@ export function createSlider(
       panGesture = false
     },
     step(direction) {
-      const next = quantize(current + direction * field.step)
+      const next = stepValue(field, current, direction)
       if (next !== current) set(next)
     },
   })

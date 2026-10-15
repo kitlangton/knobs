@@ -52,7 +52,7 @@ import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
-import { createSlider, type Slider } from "./slider.js"
+import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
 import { injectPreset, injectStyles } from "./styles.js"
@@ -1866,7 +1866,7 @@ function buildPanel<S extends Schema>(
       event.preventDefault()
       event.stopPropagation()
       const t = tracks.get(target)!
-      t.set(t.get() + (right ? 1 : -1) * t.field.step * (event.shiftKey ? prefs.bigStep : 1))
+      t.set(stepValue(t.field, t.get(), (right ? 1 : -1) * (event.shiftKey ? prefs.bigStep : 1)))
     } else if (
       (left || right) &&
       index >= 0 &&
