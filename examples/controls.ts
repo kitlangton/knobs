@@ -46,7 +46,9 @@ import {
   toast,
   tooltips,
 } from "knobs/ui"
-import { Goo } from "./controls-goo"
+import dotsWgsl from "./controls-dots.wgsl?raw"
+import { Goo, GooGpu } from "./controls-goo"
+import { gpuView } from "./controls-gpu"
 import {
   blurFor,
   ColorVal,
@@ -227,10 +229,11 @@ motionScene(kit)
 
 {
   const s = section({
-    id: "slider",
-    title: "Sliders",
-    code: "knob()",
-    what: "Numbers with units, steps and a default notch. Ten steps or fewer become stops that resist, then snap. The dots are metaballs: one smooth field, so a new dot buds out of its neighbour and a leaving one is swallowed by it.",
+    id: "dots",
+    title: "Dots",
+    scene: true,
+    shows: ["knob()"],
+    what: "Four sliders, with units, steps and a default notch; ten steps or fewer become stops that resist, then snap. The dots are metaballs, one lit field, so a new dot buds out of its neighbour and a leaving one is swallowed by it.",
     stage: true,
     tries: [
       "Step Count down: the end dot pours into its neighbour as a teardrop in a fifth of a second, which gives a small gulp, while the rest respace at once",
@@ -239,7 +242,7 @@ motionScene(kit)
       "Throw Size, Spread or Arc: every moving dot stretches and smears along its path, crisp again at rest",
     ],
   })
-  const { store, on } = define("slider", "Sliders", {
+  const { store, on } = define("dots", "Dots", {
     size: knob(22, { min: 8, max: 44, step: 1, unit: "px", label: "Size" }),
     count: knob(5, { min: 1, max: 7, step: 1, label: "Count" }),
     spread: knob(40, { min: 0, max: 100, step: 1, unit: "%", label: "Spread" }),
@@ -252,10 +255,26 @@ motionScene(kit)
   /** The bud and the row's respacing (duration / bounce). */
   const BUD = springMotion({ duration: 0.25, bounce: 0.08 })
   s.stage.style.display = "block"
-  const canvas = h("canvas")
-  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;color:var(--text)"
-  s.stage.append(canvas)
-  const goo = new Goo(canvas)
+  // WebGPU lights the dots; WebGL draws them flat without it.
+  const view = gpuView(s.stage, { wgsl: dotsWgsl, label: "dots", tone: "neutral", bloom: 0.03 })
+  const canvas = view ? view.canvas : h("canvas")
+  if (!view) {
+    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%"
+    s.stage.append(canvas)
+  }
+  canvas.style.color = "var(--text)"
+  const goo = view ? new GooGpu(view) : new Goo(canvas)
+  // The stage's own colour, read from the theme (not the page's background, which is mid-transition).
+  const probe = h("div")
+  probe.style.cssText = "display:none;background:var(--page);color:var(--surface)"
+  s.stage.append(probe)
+  const stageColor = () => {
+    const page = rgbaOf(getComputedStyle(probe).backgroundColor)
+    const surf = rgbaOf(getComputedStyle(probe).color)
+    return [0, 1, 2].map((j) => page[j]! + (surf[j]! - page[j]!) * surf[3]!)
+  }
+  let bgFrom = stageColor()
+  let bgTo = bgFrom
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [{ id: "n" }, " × ", { id: "size" }, "px"])
@@ -332,7 +351,14 @@ motionScene(kit)
           goo: neck,
         }
       }),
-      { dpr, k, goo: !reduced(), color: inkAt() },
+      {
+        dpr,
+        k,
+        goo: !reduced(),
+        color: inkAt(),
+        bg: bgFrom.map((c, j) => c + (bgTo[j]! - c) * clamp01(ink.x)),
+        radius: k / 0.78,
+      },
     )
   })
   const ink = stage.val(1, 0.001)
@@ -391,6 +417,9 @@ motionScene(kit)
   }
   new ResizeObserver(() => stage.paint()).observe(s.stage)
   new MutationObserver(() => {
+    const t = clamp01(ink.x)
+    bgFrom = bgFrom.map((c, j) => c + (bgTo[j]! - c) * t)
+    bgTo = stageColor()
     inkFrom = inkAt() as typeof inkFrom
     inkTo = rgbaOf(getComputedStyle(canvas).color)
     ink.snap(0).to(1, "calm")

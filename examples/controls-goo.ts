@@ -9,6 +9,8 @@
 // pre-threshold field keeps merges and resting neighbours razor-crisp without swelling or wobble.
 // Sample count adapts from 1 at rest up to 14 at high speed.
 
+import type { GpuView } from "./controls-gpu"
+
 export const MAX_DOTS = 8
 export const MAX_SAMPLES = 14
 
@@ -184,5 +186,58 @@ export class Goo {
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
+  }
+}
+
+const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+
+/**
+ * The same dots on WebGPU (controls-dots.wgsl): the same field and shutter, lit as pillows with a
+ * highlight, a rim and a soft shadow. `bg` is the stage colour it sits on (sRGB, 0–1).
+ */
+export class GooGpu {
+  readonly canvas: HTMLCanvasElement
+  constructor(private readonly view: GpuView) {
+    this.canvas = view.canvas
+  }
+  fit(_dpr: number) {
+    return false
+  }
+  draw(
+    dots: readonly GooDot[],
+    o: {
+      dpr: number
+      k: number
+      goo: boolean
+      color: readonly number[]
+      bg: readonly number[]
+      radius: number
+    },
+  ) {
+    const data = this.view.data
+    data.fill(0, 4)
+    let maxShift = 0
+    dots.slice(0, MAX_DOTS).forEach((d, i) => {
+      const speed = Math.hypot(d.vx, d.vy)
+      const rBlur = d.rBlur ?? 0
+      data.set([d.x, d.y, d.r, d.a], 4 + i * 4)
+      data.set(
+        [speed > 0.001 ? d.vx / speed : 1, speed > 0.001 ? d.vy / speed : 0, d.stretch, d.blur],
+        4 + (8 + i) * 4,
+      )
+      data.set([d.goo ?? 1, rBlur], 4 + 16 * 4 + i * 2)
+      if (d.r >= 0.05) maxShift = Math.max(maxShift, d.blur + Math.abs(rBlur))
+    })
+    const samples =
+      maxShift < 0.15 ? 1 : Math.min(MAX_SAMPLES, Math.max(4, Math.ceil(maxShift * 1.1)))
+    const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth) || o.dpr
+    data.set([o.goo ? o.k : 0, o.goo ? 1 : 0, samples, dpr], 4 + 20 * 4)
+    // The ink as CSS would draw it: its alpha over the stage, then linear.
+    const a = o.color[3] ?? 1
+    const ink = [0, 1, 2].map((j) => toLinear(o.bg[j]! + (o.color[j]! - o.bg[j]!) * a))
+    const lum = 0.2126 * o.bg[0]! + 0.7152 * o.bg[1]! + 0.0722 * o.bg[2]!
+    data.set([ink[0]!, ink[1]!, ink[2]!, lum > 0.5 ? 1 : 0], 4 + 21 * 4)
+    data.set([toLinear(o.bg[0]!), toLinear(o.bg[1]!), toLinear(o.bg[2]!), o.radius], 4 + 22 * 4)
+    this.view.render()
   }
 }
