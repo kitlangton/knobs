@@ -92,6 +92,25 @@ export function stepBand(
   return { next: { travel, give }, steps }
 }
 
+/** Px of pan per item when a pan steps through a list (a menu's choices, a ramp's presets). */
+export const LIST_STEP = 28
+
+/**
+ * Where a pan through `count` items lands from `at` (-1: none of them, so the first step picks an
+ * end), and the state it leaves; `index` is undefined while it stays put.
+ */
+export function stepList(from: Steps, d: number, at: number, count: number, size = LIST_STEP) {
+  const none = at < 0
+  const { next, steps } = stepBand(from, d, size, none ? [count, count] : [at, count - 1 - at])
+  const index =
+    steps === 0
+      ? undefined
+      : none
+        ? Math.max(0, Math.min(count - 1, steps > 0 ? steps - 1 : count + steps))
+        : at + steps
+  return { next, index }
+}
+
 /** Whether a move went from no give to some: the moment to tick. */
 export const stretched = (before: number, after: number) => before === 0 && after !== 0
 
@@ -140,7 +159,7 @@ export const giveOf = (el: Element) => gives.get(el) ?? 0
  * pan puts it; let go, it springs home on one loop that both renderers read: the DOM as a
  * `translate`, the GPU through `giveOf`.
  */
-export function textGive(el: HTMLElement, wake: () => void) {
+export function textGive(el: HTMLElement | SVGElement, wake: () => void) {
   const spring = new Spring(0, HOME.omega, HOME.zeta, 0.02)
   let frame = 0
   let last = 0

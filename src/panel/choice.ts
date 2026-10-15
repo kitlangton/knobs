@@ -3,7 +3,7 @@ import { iconSvg } from "./icons.js"
 import { openMenu, type Menu } from "./menu.js"
 import { placeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
-import { stepBand, textGive, type Steps } from "./give.js"
+import { stepList, textGive, type Steps } from "./give.js"
 import { onPan, panOptions } from "./swipe.js"
 
 export interface ChoiceItem {
@@ -21,8 +21,6 @@ export const SEARCH_CHOICES = 8
 const MIN_PAD = 6
 /** How much of a menu's value (em, beside its chrome) shows before the row's label gives way. */
 const VALUE_FLOOR_EM = 4
-/** Finger travel (px) per option when panning over the menu button. */
-const MENU_PAN_STEP = 28
 
 export interface ChoiceControl {
   /** The segmented control and the menu button; one is hidden at a time. */
@@ -166,7 +164,7 @@ export function createChoice(
     wake: () => o.wake?.(),
     row,
   })
-  // The menu steps a choice every MENU_PAN_STEP px; past either end its value gives a little.
+  // The menu steps a choice every LIST_STEP px; past either end its value gives a little.
   let travel: Steps | undefined
   let panned = false
   const give = textGive(menuValue, () => o.wake?.())
@@ -185,14 +183,11 @@ export function createChoice(
         row.classList.add("knobs-active")
         o.wake?.()
       }
-      const at = Math.max(
-        0,
-        items.findIndex((i) => i.value === o.value()),
-      )
-      const { next, steps } = stepBand(travel, dx, MENU_PAN_STEP, [at, items.length - 1 - at])
+      const at = items.findIndex((i) => i.value === o.value())
+      const { next, index } = stepList(travel, dx, at, items.length)
       travel = next
-      const item = items[at + steps]
-      if (steps && item && item.value !== o.value()) {
+      const item = index === undefined ? undefined : items[index]
+      if (item && item.value !== o.value()) {
         o.choose(item.value, panned)
         panned = true
         tick(menu)

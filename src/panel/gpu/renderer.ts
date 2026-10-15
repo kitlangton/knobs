@@ -41,6 +41,22 @@ const LAYOUT_TOKENS = new Set(
   ["width", "pad", "inset", "row", "gap", "font-size", "label-weight"].map((t) => `--kt-${t}`),
 )
 
+/** `r` moved `dx` px sideways (a give, see give.ts). */
+const nudge = (r: DOMRect, dx: number): DOMRect =>
+  dx === 0
+    ? r
+    : ({
+        left: r.left + dx,
+        right: r.right + dx,
+        x: r.x + dx,
+        top: r.top,
+        bottom: r.bottom,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+        toJSON() {},
+      } as DOMRect)
+
 const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 /** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
@@ -2075,7 +2091,8 @@ class GpuOverlayManager {
     const open = x.isOpen()
     const hRect = this.rectOf(x.head)
     const centerY = hRect.top + hRect.height / 2
-    const hot = this.isHovered(x.head)
+    // A pan stepping its presets holds the head in its wash, however the pointer got there.
+    const hot = this.isHovered(x.head) || x.head.hasAttribute("data-panned")
     const hover = this.ease(x.head, "hover", hot ? 1 : 0)
     if (hover > 0.005)
       this.pushPrim({
@@ -2530,7 +2547,7 @@ class GpuOverlayManager {
     const delay = row.wave.at - clock
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
-    const mRect = this.rectOf(row.mini)
+    const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
     // Both strips draw the same samples, blended on the morph spring as the DOM's transitions do.
     const samples = this.morph(row.mini, row.samples(), delay, snap, mRect)
     const rim = withAlpha(t.line, rowAlpha)
@@ -2627,7 +2644,7 @@ class GpuOverlayManager {
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
-    const mRect = this.rectOf(row.mini)
+    const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
     this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return

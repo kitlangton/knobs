@@ -411,7 +411,7 @@ const css = `
 .knobs-spring{display:flex}
 .knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
 .knobs-sub{position:relative;transition:background var(--k-hover-t)}
-.knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover{background:var(--k-row-hover)}
+.knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover,.knobs-x-head[data-panned]{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
 :is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}

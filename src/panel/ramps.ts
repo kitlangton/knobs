@@ -32,8 +32,11 @@ import {
   type RowContext,
 } from "./editors.js"
 import type { GpuCurveRow, GpuGradientRow, GpuRampHandle } from "./gpu/renderer.js"
+import { band, stepList, stretched, textGive, type Band, type Steps } from "./give.js"
+import { tick } from "./haptics.js"
 import { clamp } from "./motion.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { onPan } from "./swipe.js"
 
 /** The custom properties a gradient strip's samples ride on (registered, so they transition). */
 export const GRADIENT_VARS = Array.from({ length: GRADIENT_SAMPLES }, (_, i) => `--kgrad-${i}`)
@@ -121,6 +124,61 @@ function cycleKeys(
     })
 }
 
+/**
+ * A sideways pan on a row's head steps through its presets like a menu, a tick each, as one undo
+ * step; past either end `nudged` (the head's mini strip or curve) gives a little.
+ */
+function panPresets(
+  c: RowContext<unknown>,
+  head: HTMLElement,
+  nudged: HTMLElement | SVGElement,
+  o: {
+    readonly count: number
+    /** The preset showing, or -1. */
+    at(): number
+    choose(i: number, coalesce: boolean): void
+  },
+) {
+  if (!o.count) return
+  let travel: Steps | undefined
+  let chosen = false
+  const give = textGive(nudged, () => c.wake())
+  const letGo = () => {
+    give.release()
+    if (!travel) return
+    travel = undefined
+    chosen = false
+    head.removeAttribute("data-panned")
+    c.wake()
+  }
+  onPan(head, {
+    move(dx) {
+      if (!travel) {
+        travel = { travel: 0, give: 0 }
+        // In hand: the head's wash, however the pointer got there.
+        head.setAttribute("data-panned", "")
+        c.wake()
+      }
+      const at = o.at()
+      const { next, index } = stepList(travel, dx, at, o.count)
+      travel = next
+      if (index !== undefined && index !== at) {
+        o.choose(index, chosen)
+        chosen = true
+        tick(head)
+      }
+      if (next.give !== give.give) give.hold(next.give)
+    },
+    lift: () => give.release(),
+    end: letGo,
+    step(direction) {
+      const at = o.at()
+      const next = at < 0 ? (direction > 0 ? 0 : o.count - 1) : at + direction
+      if (next >= 0 && next < o.count && next !== at) o.choose(next, false)
+    },
+  })
+}
+
 const stopRgb = (s: GradientStop) =>
   oklchToRgb(parseColor(s.color) ?? { l: 0, c: 0, h: 0 }) as [number, number, number]
 
@@ -168,7 +226,10 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   const xOf = (t: number) => inset() + (size.w - inset() * 2) * t
   const tOf = (clientX: number, r: DOMRect) =>
     clamp((clientX - r.left - r.height / 2) / Math.max(1, r.width - r.height), 0, 1)
-  const held = () => dragging || editor.dragging()
+  /** A stop held by a pan: its band along the strip (px), past an end giving a little. */
+  let panAt: Band | undefined
+  const held = () => dragging || panAt !== undefined || editor.dragging()
+  const stopX = (i: number) => xOf(shown[i]!.at) + (panAt && i === selected ? panAt.give : 0)
 
   const layout = (instant: boolean) => {
     sync(handles, shown.length, strip, () => el("i", "knobs-grad-stop"), instant || !initialized)
@@ -176,7 +237,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
     place([...handles, ...ticks], instant, () => {
       for (const [i, s] of shown.entries()) {
         const h = handles[i]!
-        if (size.w) h.style.left = `${xOf(s.at)}px`
+        if (size.w) h.style.left = `${stopX(i)}px`
         h.style.backgroundColor = rgbCss(rgbs[i]!)
         h.toggleAttribute("data-selected", i === selected)
         h.toggleAttribute("data-leaving", leaving && i === selected)
@@ -301,6 +362,67 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   }
   strip.onpointerup = release
   strip.onpointercancel = release
+  // A sideways pan over the strip moves the stop under the pointer (or the selected one) 1:1,
+  // as one undo step; past an end it gives a little and springs back when it's let go.
+  let pointerX: number | undefined
+  strip.addEventListener("pointermove", (event) => (pointerX = event.clientX))
+  strip.addEventListener("pointerleave", () => (pointerX = undefined))
+  strip.addEventListener("wheel", (event) => (pointerX = event.clientX), { passive: true })
+  /** The stop under the pointer, else the selected one. */
+  const panTarget = () => {
+    if (pointerX === undefined || !size.w) return selected
+    const px = pointerX - strip.getBoundingClientRect().left
+    let hit = selected
+    let best = size.h / 2
+    for (const [i, s] of shown.entries()) {
+      const d = Math.abs(xOf(s.at) - px)
+      if (d < best || (d === best && i === selected)) {
+        best = d
+        hit = i
+      }
+    }
+    return hit
+  }
+  onPan(strip, {
+    accept: () => !dragging && shown.length > 0,
+    move(dx) {
+      const room = (size.w || strip.clientWidth) - inset() * 2
+      if (room <= 0) return
+      if (!panAt) {
+        const i = panTarget()
+        if (i !== selected) select(i)
+        panAt = { at: shown[selected]!.at * room, give: 0 }
+        g.start()
+        strip.classList.add("knobs-active")
+        c.wake()
+      }
+      const before = panAt.give
+      panAt = band(panAt, dx, 0, room)
+      if (stretched(before, panAt.give)) tick(strip)
+      moveTo(panAt.at / room)
+      if (before !== panAt.give) {
+        layout(true)
+        c.wake()
+      }
+    },
+    end() {
+      if (!panAt) return
+      const gave = panAt.give !== 0
+      panAt = undefined
+      strip.classList.remove("knobs-active")
+      if (gave) layout(false)
+      c.wake()
+    },
+    step(direction) {
+      g.start()
+      moveTo(shown[selected]!.at + direction * 0.01)
+    },
+  })
+  panPresets(c, x.head, mini, {
+    count: names.length,
+    at: () => names.findIndex((n) => sameRamp(f.presets![n]!, shown)),
+    choose: (i, coalesce) => c.set(f.presets![names[i]!]!, { coalesce }),
+  })
   strip.addEventListener("keydown", (event) => {
     // Hint mode takes every key (Backspace and Enter too) until it ends.
     if (!plainKey(event) || hinting(x.row)) return
@@ -366,7 +488,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       size.w
         ? shown.map((s, i) => ({
             el: handles[i]!,
-            x: xOf(s.at),
+            x: stopX(i),
             y: size.h / 2,
             rgb: rgbs[i],
             selected: i === selected,
@@ -472,6 +594,8 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
   let leaving = false
   let initialized = false
   let hoverX: number | null = null
+  /** A point held by a pan: its bands across and up the graph (px), past a limit giving a little. */
+  let panAt: [Band, Band] | undefined
   const g = gesture(c)
   const size = measure(graph, () => layout(true))
   const miniSize = measure(mini, () => layout(true))
@@ -518,11 +642,16 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     }
     return out
   }
+  /** A point's spot (px), with any give a pan holds it by. */
+  const pointAt = (i: number, p: CurvePoint): [number, number] => {
+    const [px, py] = map(p.x, p.y)
+    return panAt && i === selected ? [px + panAt[0].give, py + panAt[1].give] : [px, py]
+  }
   const yDigits = span <= 1 ? 3 : span <= 10 ? 2 : span <= 100 ? 1 : 0
   const fmt = (px: number, py: number) => `${px.toFixed(2)} → ${py.toFixed(yDigits)}`
   /** Where the crosshair sits: the dragged point, or the curve under the pointer. */
   const crosshair = (): [number, number] | null => {
-    if (dragging && shown[selected]) return [shown[selected]!.x, shown[selected]!.y]
+    if ((dragging || panAt) && shown[selected]) return [shown[selected]!.x, shown[selected]!.y]
     if (hoverX === null) return null
     return [hoverX, sampleCurve(shown, hoverX, f)]
   }
@@ -555,7 +684,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       for (const [i, p] of shown.entries()) {
         const h = handles[i]!
         if (size.w) {
-          const [px, py] = map(p.x, p.y)
+          const [px, py] = pointAt(i, p)
           h.style.translate = `${px}px ${py}px`
         }
         h.toggleAttribute("data-selected", i === selected)
@@ -713,6 +842,78 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     }
   }
   graph.onpointercancel = release
+  // A pan that starts sideways moves the point under the pointer (or, focused, the selected one)
+  // with the fingers in both axes, as one undo step: the ends only up and down, the rest between
+  // their neighbours. At a limit it gives a little and springs back when it's let go.
+  let pointer: [number, number] | undefined
+  graph.addEventListener("pointermove", (event) => {
+    const r = graph.getBoundingClientRect()
+    pointer = local(event, r)
+  })
+  graph.addEventListener("pointerleave", () => (pointer = undefined))
+  graph.addEventListener(
+    "wheel",
+    (event) => (pointer = local(event, graph.getBoundingClientRect())),
+    { passive: true },
+  )
+  const panTarget = () => {
+    const hit = pointer ? hitPoint(pointer[0], pointer[1]) : -1
+    return hit >= 0 ? hit : c.doc.activeElement === graph ? selected : -1
+  }
+  onPan(
+    graph,
+    {
+      accept: () => !dragging && panTarget() >= 0,
+      move(dx, dy) {
+        const w = size.w - GRAPH_PAD * 2
+        const h = size.h - GRAPH_PAD * 2
+        if (w <= 0 || h <= 0) return
+        if (!panAt) {
+          const i = panTarget()
+          if (i < 0) return
+          select(i)
+          const p = shown[i]!
+          panAt = [
+            { at: p.x * w, give: 0 },
+            { at: (1 - (p.y - lo) / span) * h, give: 0 },
+          ]
+          g.start()
+          graph.classList.add("knobs-active")
+          c.wake()
+        }
+        const i = selected
+        const [minX, maxX] = ends(i)
+          ? [shown[i]!.x, shown[i]!.x]
+          : [shown[i - 1]!.x + 0.001, shown[i + 1]!.x - 0.001]
+        const before = panAt[0].give || panAt[1].give
+        panAt = [band(panAt[0], dx, minX * w, maxX * w), band(panAt[1], dy, 0, h)]
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(graph)
+        moveTo(panAt[0].at / w, lo + (1 - panAt[1].at / h) * span)
+        layout(true)
+        c.wake()
+      },
+      end() {
+        if (!panAt) return
+        panAt = undefined
+        graph.classList.remove("knobs-active")
+        layout(false)
+        c.wake()
+      },
+      step(direction) {
+        const i = panTarget()
+        if (i < 0) return
+        select(i)
+        g.start()
+        moveTo(shown[i]!.x + direction * 0.01, shown[i]!.y)
+      },
+    },
+    { axes: "xy" },
+  )
+  panPresets(c, x.head, mini, {
+    count: presets.length,
+    at: () => presets.findIndex(([, p]) => sameRamp(p, shown)),
+    choose: (i, coalesce) => c.set(presets[i]![1], { coalesce }),
+  })
   // A double-click on empty space adds a point there (⇧ on the grid).
   graph.ondblclick = (event) => {
     const r = graph.getBoundingClientRect()
@@ -783,7 +984,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     handles: (): GpuRampHandle[] =>
       size.w
         ? shown.map((p, i) => {
-            const [px, py] = map(p.x, p.y)
+            const [px, py] = pointAt(i, p)
             return {
               el: handles[i]!,
               x: px,
@@ -800,7 +1001,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       return { x: px, y: py, read: hoverRead }
     },
     chips: chips?.buttons ?? [],
-    snap: () => dragging,
+    snap: () => dragging || panAt !== undefined,
     wave: c.wave,
     isModified: c.isModified,
   }
@@ -819,7 +1020,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       const match = presets.findIndex(([, p]) => sameRamp(p, shown))
       read.textContent = mixed ? "—" : (presets[match]?.[0] ?? "")
       chips?.check(mixed ? -1 : match)
-      layout(!initialized || instant || dragging)
+      layout(!initialized || instant || dragging || panAt !== undefined)
       initialized = true
       describe()
     },
