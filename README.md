@@ -10,6 +10,17 @@ Beyond sliders, choices and switches there are four richer fields: a SwiftUI-sty
 
 Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, a faint notch at the default that pulls drags onto it, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, flips a switch from anywhere on its row, scrubs a seed and steps a ramp's presets, and the momentum after you lift is ignored, so it stops where your fingers did. At an end, a pan gives a little like a rubber band instead of stopping dead. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
+## Install
+
+```sh
+bun add knobs@npm:@kitlangton/knobs
+```
+
+The package is published as `@kitlangton/knobs`; installing it under the alias `knobs` keeps
+every import in this README (`knobs`, `knobs/react`, `knobs/panel`, `knobs/ui`…) as written.
+React and Solid are optional peers, needed only for `knobs/react`, `knobs/ui/react`,
+`knobs/solid` and `knobs/ui/solid`.
+
 ## 30 seconds
 
 ```sh

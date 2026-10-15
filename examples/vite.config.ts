@@ -81,5 +81,20 @@ export default defineConfig(({ command, mode }) => ({
           },
         ],
       }
-    : {}),
+    : {
+        // The production build imports the built package (dist), as an installed copy would.
+        resolve: {
+          dedupe: ["solid-js"],
+          alias: [
+            { find: /^knobs$/, replacement: resolve(rootDir, "dist/index.js") },
+            { find: /^knobs\/react$/, replacement: resolve(rootDir, "dist/react.js") },
+            { find: /^knobs\/solid$/, replacement: resolve(rootDir, "dist/solid.js") },
+            { find: /^knobs\/panel$/, replacement: resolve(rootDir, "dist/panel.js") },
+            { find: /^knobs\/themes$/, replacement: resolve(rootDir, "dist/themes.js") },
+            { find: /^knobs\/ui$/, replacement: resolve(rootDir, "dist/ui.js") },
+            { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "dist/ui-react.js") },
+            { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "dist/ui-solid.js") },
+          ],
+        },
+      }),
 }))
