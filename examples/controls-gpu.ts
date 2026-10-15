@@ -187,6 +187,8 @@ export interface ViewSpec {
   readonly exposure?: number
   readonly vignette?: number
   readonly saturation?: number
+  /** The most device pixels per CSS pixel it draws at (2): lower for heavy scenes. */
+  readonly maxDpr?: number
 }
 
 interface Targets {
@@ -250,7 +252,7 @@ export class GpuView {
     return (performance.now() - this.t0) / 1000
   }
   private fit() {
-    const dpr = Math.min(2, devicePixelRatio || 1)
+    const dpr = Math.min(this.spec.maxDpr ?? 2, devicePixelRatio || 1)
     const w = Math.round(this.canvas.clientWidth * dpr)
     const h = Math.round(this.canvas.clientHeight * dpr)
     if (w < 2 || h < 2) return null
