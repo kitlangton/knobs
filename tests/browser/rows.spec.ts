@@ -26,6 +26,24 @@ test("a segmented choice keeps its label's words, or becomes a menu", async ({ p
       for (const b of await row.locator(".knobs-seg button").all())
         expect(await b.evaluate((el) => el.scrollWidth <= el.clientWidth + 0.5)).toBe(true)
   }
+  // Narrowed step by step, the label never loses a letter: the row turns into a menu first.
+  const clipped = await page.evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const out: string[] = []
+    for (const id of ["knobs-dom", "lab-dom"]) {
+      const slot = document.getElementById(id)!
+      const row = slot.querySelector<HTMLElement>('[data-field="keyLabels"]')!
+      const label = row.querySelector<HTMLElement>(":scope > span:first-child")!
+      for (let w = 340; w >= 220; w -= 4) {
+        slot.style.width = `${w}px`
+        await frame()
+        if (label.scrollWidth > label.clientWidth + 0.5) out.push(`${id}@${w}`)
+      }
+      slot.style.width = ""
+    }
+    return out
+  })
+  expect(clipped).toEqual([])
   // The Lab's 11.5px type fits both; knobs' 12px rows drop down a menu instead.
   await expect(panel(page, "lab-dom").locator('[data-field="keyLabels"]')).toHaveAttribute(
     "data-display",

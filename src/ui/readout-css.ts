@@ -29,7 +29,7 @@ export const readoutCss = `
 .knobs-rd .knobs-rd-head>span:first-child{flex:0 0 auto;max-width:100%}
 .knobs-rd .knobs-rd-legend{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0;overflow:hidden}
 .knobs-rd .knobs-rd-tools{display:flex;align-items:center;gap:10px;margin-left:auto;min-width:0}
-.knobs-rd .knobs-rd-tools>.knobs-rd-find{flex:0 1 auto;min-width:56px}
+.knobs-rd .knobs-rd-tools>.knobs-rd-find{flex:1 1 56px;min-width:56px;max-width:84px}
 .knobs-rd .knobs-rd-head[data-short] .knobs-rd-legend .knobs-rd-unit{display:none}
 .knobs-rd .knobs-rd-head[data-wrap]{flex-wrap:wrap;padding-bottom:4px}
 .knobs-rd .knobs-rd-head[data-wrap]>span:first-child{display:flex;align-items:center;min-height:var(--ku-row)}
