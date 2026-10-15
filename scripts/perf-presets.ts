@@ -87,7 +87,12 @@ type Ev = {
 export interface SwitchMetrics {
   taskMs: number
   longestTaskMs: number
+  /** The input events' handlers (pointer, click and key). */
   handlerMs: number
+  /** The tasks those ran in, with whatever else ran in them (the switch itself). */
+  inputTaskMs: number
+  /** The longest task after them: the glide's worst frame. */
+  frameMaxMs: number
   scriptMs: number
   styleMs: number
   styleCount: number
@@ -130,6 +135,7 @@ export function analyse(events: Ev[], windowMs = WINDOW_MS) {
     "v8.callFunction",
   ])
   const TASK = new Set(["RunTask", "ThreadControllerImpl::RunTask"])
+  const INPUT = new Set(["pointerdown", "pointerup", "click", "keydown", "keyup"])
   const results: { name: string; metrics: SwitchMetrics }[] = []
   for (const mark of marks.sort((a, b) => a.ts - b.ts)) {
     const from = mark.ts
@@ -145,16 +151,21 @@ export function analyse(events: Ev[], windowMs = WINDOW_MS) {
     const layouts = top("Layout")
     const forced = (list: Ev[]) =>
       list.filter((e) => parents.get(e)!.some((p) => SCRIPT.has(p.name))).length
-    const input = inWin.find(
-      (e) => e.name === "EventDispatch" && ["pointerdown", "keydown"].includes(e.args?.data?.type),
+    const inputs = top("EventDispatch").filter((e) => INPUT.has(e.args?.data?.type))
+    const inputTasks = tasks.filter((t) =>
+      inputs.some((e) => e.ts >= t.ts && e.ts <= t.ts + (t.dur ?? 0)),
     )
-    const click = inWin.find((e) => e.name === "EventDispatch" && e.args?.data?.type === "click")
     results.push({
       name: mark.name.slice(5),
       metrics: {
         taskMs: sum(tasks),
         longestTaskMs: Math.max(0, ...tasks.map((t) => (t.dur ?? 0) / 1000)),
-        handlerMs: ((input?.dur ?? 0) + (click?.dur ?? 0)) / 1000,
+        handlerMs: sum(inputs),
+        inputTaskMs: sum(inputTasks),
+        frameMaxMs: Math.max(
+          0,
+          ...tasks.filter((t) => !inputTasks.includes(t)).map((t) => (t.dur ?? 0) / 1000),
+        ),
         scriptMs: sum(top(SCRIPT)),
         styleMs: sum(styles),
         styleCount: styles.length,
@@ -197,6 +208,7 @@ async function startServer() {
 
 const server = await startServer()
 const report: Record<string, Record<string, SwitchMetrics & { n: number }>> = {}
+const samples: Record<string, Record<string, SwitchMetrics[]>> = {}
 try {
   const browser = await chromium.launch({ args: ["--enable-gpu", "--enable-unsafe-webgpu"] })
   for (const renderer of renderers) {
@@ -244,6 +256,7 @@ try {
     const byName = new Map<string, SwitchMetrics[]>()
     for (const w of windows) byName.set(w.name, [...(byName.get(w.name) ?? []), w.metrics])
     report[renderer] = {}
+    samples[renderer] = Object.fromEntries(byName)
     for (const [name, list] of byName) {
       const keys = Object.keys(list[0]!) as (keyof SwitchMetrics)[]
       report[renderer][name] = {
@@ -269,6 +282,8 @@ for (const [renderer, rows] of Object.entries(report)) {
     "taskMs",
     "longestTaskMs",
     "handlerMs",
+    "inputTaskMs",
+    "frameMaxMs",
     "styleMs",
     "layoutMs",
     "layerizeMs",
@@ -278,7 +293,11 @@ for (const [renderer, rows] of Object.entries(report)) {
     "styleElements",
     "frames",
   ]
-  console.log(["switch".padEnd(22), ...cols.map((c) => c.replace(/Ms$/, "").padStart(9))].join(" "))
+  console.log(
+    ["switch".padEnd(22), ...cols.map((c) => c.replace(/Ms$/, "").slice(0, 9).padStart(9))].join(
+      " ",
+    ),
+  )
   for (const [name, m] of Object.entries(rows))
     console.log([name.padEnd(22), ...cols.map((c) => fmt(m[c]).padStart(9))].join(" "))
 }
@@ -286,6 +305,6 @@ if (out) {
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(
     out,
-    `${JSON.stringify({ at: new Date().toISOString(), rounds, report }, null, 2)}\n`,
+    `${JSON.stringify({ at: new Date().toISOString(), rounds, report, samples }, null, 2)}\n`,
   )
 }
