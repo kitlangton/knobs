@@ -11,6 +11,7 @@ import {
   type Value,
   type Values,
 } from "../core/schema.js"
+import { REFRESHES } from "../core/internal.js"
 import type { SpringValue } from "../core/spring.js"
 import type {
   ControlAction,
@@ -113,6 +114,8 @@ let layer = 2147480001
 const lastTab = new Map<string, string>()
 /** A highlight's reveal waits this long (ms) after the user last scrolled, typed or touched. */
 const REVEAL_QUIET_MS = 2000
+/** Arrow keys pressed again within this long (ms) of the last one coming up are one gesture. */
+const NUDGE_BURST_MS = 300
 
 /** "synth-voice" → "Synth voice", "knobsTokens" → "Knobs tokens"; titles with spaces are kept. */
 export function readableTitle(id: string): string {
@@ -2219,6 +2222,7 @@ function buildPanel<S extends Schema>(
     })
   }
   const isMixed = (r: Row) => r.keys.some((k) => controls.isMixed(k as keyof S & string))
+  let lastRefresh = (controls as unknown as { [REFRESHES]?: number })[REFRESHES] ?? 0
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2313,6 +2317,12 @@ function buildPanel<S extends Schema>(
         row.input.setAttribute("aria-checked", mixed ? "mixed" : String(Boolean(value)))
     }
     for (const row of rows) applyState(row)
+    // controls.refresh(): the accessories are asked again too.
+    const refreshes = (controls as unknown as { [REFRESHES]?: number })[REFRESHES] ?? 0
+    if (refreshes !== lastRefresh) {
+      lastRefresh = refreshes
+      for (const r of rows) fillAccessory(r)
+    }
     if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) {
       let anyMod = false
       for (const [groupName, gReset] of groupResetButtons) {
@@ -3620,16 +3630,57 @@ function buildPanel<S extends Schema>(
       controls.hold(k)
     }
   }
+  let pressing = false
   const letGo = () => {
-    if (!inHand.size || root.querySelector(":is(.knobs-number,.knobs-cell-edit):not([hidden])"))
+    if (
+      !inHand.size ||
+      pressing ||
+      root.querySelector(":is(.knobs-number,.knobs-cell-edit):not([hidden])")
+    )
       return
     const held = [...inHand]
     inHand.clear()
     for (const k of held) controls.hold(k, false)
   }
-  root.addEventListener("pointerdown", (event) => grab(event.target), true)
+  root.addEventListener(
+    "pointerdown",
+    (event) => {
+      pressing = true
+      grab(event.target)
+    },
+    true,
+  )
   for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
     root.addEventListener(type, () => setTimeout(letGo))
+  // Wherever the press ends (a drag let go outside the panel too).
+  const pressEnded = () => {
+    if (!pressing) return
+    pressing = false
+    setTimeout(letGo)
+  }
+  for (const type of ["pointerup", "pointercancel"]) doc.addEventListener(type, pressEnded, true)
+  // A burst of arrow keys on a row (held down, or pressed again and again) is one gesture too:
+  // its key is in hand from the first press until the keys have been up for a moment.
+  const NUDGE_KEYS = new Set(["ArrowLeft", "ArrowRight", "PageUp", "PageDown"])
+  let nudgeEnd: ReturnType<typeof setTimeout> | undefined
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      if (!NUDGE_KEYS.has(event.key) || event.metaKey || event.ctrlKey) return
+      clearTimeout(nudgeEnd)
+      grab(event.target)
+    },
+    true,
+  )
+  root.addEventListener("keyup", (event) => {
+    if (!NUDGE_KEYS.has(event.key)) return
+    clearTimeout(nudgeEnd)
+    nudgeEnd = setTimeout(letGo, NUDGE_BURST_MS)
+  })
+  root.addEventListener("focusout", () => {
+    clearTimeout(nudgeEnd)
+    setTimeout(letGo)
+  })
   const isEditField = (node: EventTarget | null) =>
     node instanceof HTMLElement &&
     (node.classList.contains("knobs-number") || node.classList.contains("knobs-cell-edit"))
@@ -3826,7 +3877,10 @@ function buildPanel<S extends Schema>(
       return true
     },
     dispose() {
+      for (const type of ["pointerup", "pointercancel"])
+        doc.removeEventListener(type, pressEnded, true)
       clearTimeout(statusTimer)
+      clearTimeout(nudgeEnd)
       for (const t of peekTimers.values()) clearTimeout(t)
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
       for (const c of groupChips.values()) c.dispose()

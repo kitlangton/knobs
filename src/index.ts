@@ -84,6 +84,7 @@ export { bezierCss, bezierPoint, EASINGS, type Bezier, type EasingName } from ".
 export {
   defineControls,
   type ChangeMeta,
+  type GestureEvent,
   type ChangeSource,
   type ControlAction,
   type Controls,

@@ -76,7 +76,12 @@ function ReactApp() {
           Jump
         </button>
         <div style={{ height: 72 }}>
-          <ReactTimeline duration={4} time={time} label="React timeline" onSeek={(t) => setTime(t)} />
+          <ReactTimeline
+            duration={4}
+            time={time}
+            label="React timeline"
+            onSeek={(t) => setTime(t)}
+          />
         </div>
       </div>
     </ReactSplit>

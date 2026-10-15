@@ -46,6 +46,7 @@ import type { StoragePort } from "./storage.js"
 import {
   defineControls,
   type ChangeMeta,
+  type GestureEvent,
   type ControlAction,
   type GroupPreset,
   type Controls,
@@ -247,6 +248,8 @@ export interface RemoteControlsOptions {
     changes: Array<{ key: string; value: Value | null }>,
     meta: ChangeMeta,
   ) => void
+  /** A key went into the hand or out of it: a drag, an inline edit, a burst of arrow keys. */
+  readonly onGesture?: (event: GestureEvent) => void
   /** A key, a group, or (`{}`) everything was reset. */
   readonly onReset?: (target: { key?: string; group?: string }) => void
   /** An action row was pressed. */
@@ -651,6 +654,7 @@ export function createRemoteControls(
       send(changes, meta)
     },
     onReset,
+    onGesture: options.onGesture,
     ...{ [RESET_KEYS]: resetKeys },
     onAction: (key) => options.onAction?.(key),
   })

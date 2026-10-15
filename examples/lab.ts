@@ -4,6 +4,7 @@
 // groups and carries the host's pins in each row. Used by tests/browser/lab.spec.ts.
 import {
   angle,
+  choice,
   createRemoteControls,
   defineControls,
   keybind,
@@ -16,6 +17,7 @@ import {
   vec3,
   type ChangeMeta,
   type ControlDescriptor,
+  type GestureEvent,
   type State,
   type Value,
 } from "knobs"
@@ -108,6 +110,8 @@ const descriptors: ControlDescriptor[] = [
     max: 1,
     step: 0.01,
     group: "precip",
+    // Gated on the lights in Details, another store: write() calls station.refresh().
+    disabled: () => !settings.flashlight && !settings.streetlamp,
   },
   { key: "snow", label: "Snow mode", kind: "toggle", default: false, group: "precip" },
   { key: "rollPrecip", label: "Randomize Precipitation", kind: "action", group: "precip" },
@@ -300,22 +304,38 @@ const history = {
     return () => historyListeners.delete(cb)
   },
 }
-let gesture: ReturnType<typeof setTimeout> | undefined
-/** One undo entry per burst of writes (a drag, a roll). */
+let burst: ReturnType<typeof setTimeout> | undefined
+/** Keys in hand (onGesture): their writes, however many, make one undo entry. */
+const inHand = new Set<string>()
+let handEntry = false
+const gestureLog: GestureEvent[] = []
+const gestures = (e: GestureEvent) => {
+  gestureLog.push(e)
+  if (e.phase === "start") {
+    if (!inHand.size) handEntry = false
+    inHand.add(e.key)
+  } else inHand.delete(e.key)
+}
+/** One undo entry per gesture (a drag, an edit, a run of arrow keys), and per burst of others (a roll). */
 const write = (key: string, value: Value | null, meta: ChangeMeta) => {
   if (value === null) return
   if (meta.source === "randomize" || meta.source === "mutate") rolled()
   // Compare only previews knobs' last entry and puts it back: it's no step of the host's own.
-  if (meta.source !== "compare" && !gesture) {
+  const open = inHand.size ? !handEntry : !burst
+  if (meta.source !== "compare" && open) {
     past.push({ ...settings })
     future.length = 0
     notifyHistory()
+    if (inHand.size) handEntry = true
   }
-  clearTimeout(gesture)
-  gesture = setTimeout(() => (gesture = undefined), 300)
+  if (!inHand.size) {
+    clearTimeout(burst)
+    burst = setTimeout(() => (burst = undefined), 300)
+  }
   settings[key] = value
-  // The rows gated on this value follow it.
+  // The rows gated on this value follow it, in this store and (refresh) in the other.
   details.sync({ [key]: value } as State)
+  if (key === "flashlight" || key === "streetlamp") station.refresh()
 }
 
 /** Random and Mutate draw from a recorded tuning seed, so a roll can be reproduced. */
@@ -373,6 +393,7 @@ const common = {
   history,
   tunable: (key: string) => !key.toLowerCase().includes("seed"),
   onSet: (key: string, value: Value | null, meta: ChangeMeta) => write(key, value, meta),
+  onGesture: gestures,
 }
 const station = createRemoteControls("lab-station", descriptors, {
   ...common,
@@ -389,6 +410,7 @@ const details = createRemoteControls("lab-details", detailDescriptors, {
 const refresh = () => {
   station.sync(settings as State, { replace: true })
   details.sync(settings as State, { replace: true })
+  station.refresh()
 }
 
 const gpu = new URLSearchParams(location.search).has("gpu")
@@ -485,6 +507,10 @@ const inspector = defineControls(
     reload: keybind("Shift+R", { label: "Reload", group: "input" }),
     inspect: keybind("Meta+Alt+I", { label: "Inspect", group: "input" }),
     invertY: toggle(false, { label: "Invert look Y", group: "input" }),
+    keyLabels: choice("QWERTY", ["QWERTY", "My keyboard layout"], {
+      label: "Key labels",
+      group: "input",
+    }),
     ...fxSchema,
   },
   {
@@ -558,6 +584,7 @@ Object.assign(window, {
       inspectorPanel = mountInspector()
     },
     presses,
+    gestureLog,
     hostRolls,
     station,
     details,

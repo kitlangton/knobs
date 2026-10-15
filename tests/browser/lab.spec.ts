@@ -176,6 +176,42 @@ test("disabled rows dim and take no edits; read-only rows show at full strength 
   await expect(cone).not.toHaveAttribute("data-disabled", "")
 })
 
+test("onGesture: a drag and a run of arrow keys are one host undo entry each", async ({ page }) => {
+  await open(page)
+  const entries = () => lab(page, (l) => l.past.length)
+  const log = () => lab(page, (l) => l.gestureLog.map((e: any) => `${e.key}:${e.phase}`))
+  const slider = row(station(page), "intensity")
+  const box = (await slider.boundingBox())!
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+  await expect.poll(log).toEqual(["intensity:start", "intensity:end"])
+  expect((await settings(page)).intensity).not.toBe(1)
+  expect(await entries()).toBe(1)
+  // Four presses in a row: one gesture, one entry; it ends once the keys have been up a moment.
+  await row(station(page), "fall").locator(".knobs-track").focus()
+  for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowRight")
+  await expect.poll(async () => (await settings(page)).fall).toBe(17)
+  await expect.poll(log).toEqual(["intensity:start", "intensity:end", "fall:start", "fall:end"])
+  expect(await entries()).toBe(2)
+  await station(page).getByRole("button", { name: "Undo" }).click()
+  await expect.poll(async () => (await settings(page)).fall).toBe(15)
+})
+
+test("refresh(): a row gated on another store's setting follows it", async ({ page }) => {
+  await open(page)
+  const lit = row(station(page), "litOnly")
+  await expect(lit).not.toHaveAttribute("data-disabled", "")
+  await details(page).getByRole("switch", { name: "Overhead streetlamp" }).click()
+  await expect(lit).toHaveAttribute("data-disabled", "")
+  await details(page).getByRole("switch", { name: "Flashlight beam" }).click()
+  await expect(lit).not.toHaveAttribute("data-disabled", "")
+  // The host's undo brings the lamp's state back, and the row with it.
+  await station(page).getByRole("button", { name: "Undo" }).click()
+  await expect(lit).toHaveAttribute("data-disabled", "")
+})
+
 test("mixed values read — until edited, and the first edit reaches the host", async ({ page }) => {
   await open(page)
   const panel = details(page)

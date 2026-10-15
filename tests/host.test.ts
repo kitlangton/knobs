@@ -238,3 +238,56 @@ describe("persist", () => {
     expect(again.variants.list()).toEqual([])
   })
 })
+
+describe("gestures and refresh", () => {
+  it("onGesture reports a key going into the hand and out, once each, local and remote", () => {
+    const events: { key: string; phase: string }[] = []
+    const c = defineControls("hand", schema, {
+      enabled: true,
+      storage: null,
+      onGesture: (e) => events.push(e),
+    })
+    c.hold("size")
+    c.hold("size") // already in hand: no second start
+    c.set({ size: 5 })
+    c.hold("size", false)
+    c.hold("size", false) // not in hand: nothing
+    expect(events).toEqual([
+      { key: "size", phase: "start" },
+      { key: "size", phase: "end" },
+    ])
+    const remoteEvents: string[] = []
+    const r = createRemoteControls(
+      "hand-remote",
+      [{ key: "a", kind: "number", default: 1, min: 0, max: 10, step: 1 }],
+      { onGesture: (e) => remoteEvents.push(`${e.key}:${e.phase}`) },
+    )
+    r.hold("a")
+    r.hold("a", false)
+    expect(remoteEvents).toEqual(["a:start", "a:end"])
+  })
+
+  it("refresh() re-reads function flags that depend on state elsewhere, and notifies", () => {
+    const outside = { lit: true }
+    const r = createRemoteControls("refreshed", [
+      {
+        key: "glow",
+        kind: "number",
+        default: 1,
+        min: 0,
+        max: 2,
+        step: 0.1,
+        disabled: () => !outside.lit,
+      },
+    ])
+    const heard = vi.fn()
+    r.subscribe(heard)
+    expect(r.isDisabled("glow")).toBe(false)
+    outside.lit = false
+    r.refresh()
+    expect(heard).toHaveBeenCalledTimes(1)
+    expect(r.isDisabled("glow")).toBe(true)
+    r.randomize()
+    expect(r.get().glow).toBe(1)
+  })
+})
