@@ -14,6 +14,8 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 // editor morphs, like the GPU's morph spring).
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
+/** A panel whose rows the pointer is on (keys taking over turn this off: keyboardQuietsHover). */
+const POINTER_ROW = ".knobs-panel:has(.knobs-card>:hover)"
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
 // public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
@@ -255,6 +257,10 @@ const css = `
 .knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)::before,.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)+*::before{opacity:0}
 .knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
 .knobs-card>:has(:focus-visible)::after{opacity:1}
+/* One wash at a time: while the pointer has a row (and keys haven't taken over since), a focus
+   wash elsewhere steps aside, and the hairlines beside that row come back. */
+${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{opacity:0}
+${POINTER_ROW} .knobs-card>:not(:hover,.knobs-active,:hover+*,.knobs-active+*)::before{opacity:1}
 .knobs-panel .knobs-slider{height:var(--k-row);contain:layout style}
 .knobs-panel .knobs-row{display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);contain:layout style}
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -305,6 +311,13 @@ const css = `
 .knobs-slider:is(:hover,.knobs-active) .knobs-handle::before,.knobs-track:focus-visible .knobs-handle::before{transform:scaleX(1)}
 .knobs-slider:is(:hover,:has(:focus-visible)) .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 15%,transparent)}
 .knobs-active .knobs-marks>i:not(.knobs-notch){background:color-mix(in srgb,var(--k-accent) 22%,transparent)}
+/* A focused slider the pointer has left for another row rests meanwhile (one row lit at a time). */
+${POINTER_ROW} .knobs-slider:not(:hover,.knobs-active) .knobs-marks>i:not(.knobs-notch){background:transparent}
+${POINTER_ROW} .knobs-slider:not(:hover,.knobs-active) .knobs-notch{opacity:0}
+${POINTER_ROW} .knobs-slider:not(:hover,.knobs-active) .knobs-handle{opacity:var(--k-handle-rest)}
+${POINTER_ROW} .knobs-slider:not(:hover,.knobs-active) .knobs-handle::before{transform:scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)))}
+${POINTER_ROW} .knobs-slider:not(:hover,.knobs-active) .knobs-value{color:var(--k-label)}
+${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-value{color:color-mix(in srgb,var(--k-modified) calc(var(--k-readout-mark) * 100%),var(--k-label))}
 .knobs-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-unit{color:var(--k-unit-color);margin-left:var(--k-unit-gap)}
 /* --k-readout-mark (0 or 1): a modified value takes the modified colour behind a small dot. */

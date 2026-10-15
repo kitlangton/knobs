@@ -417,6 +417,8 @@ class GpuOverlayManager {
   private curFocusVisible = false
   private curPanelHovered = false
   private curSubHovered = false
+  /** Whether the pointer has one of the panel's rows (and keys haven't taken over since). */
+  private curPointerRow = false
   private readonly hotRows = new Set<Element>()
   private curPanelRect: DOMRect | null = null
   private curPanelScrollTop = 0
@@ -1195,7 +1197,12 @@ class GpuOverlayManager {
   /** The hairline above every row but a card's first, and the focus wash. */
   private drawRowOverlay(row: HTMLElement, rRect: DOMRect, cardClip: Clip) {
     this.drawSeparator(row, rRect, cardClip)
-    this.drawFocus(row, this.hasFocusVisible(row), rRect, cardClip)
+    this.drawFocus(row, this.focusWashed(row), rRect, cardClip)
+  }
+
+  /** Whether `el` shows its focus wash: one wash at a time, the pointer's row's while it has one. */
+  private focusWashed(el: HTMLElement) {
+    return this.hasFocusVisible(el) && !(this.curPointerRow && !el.matches(":hover"))
   }
 
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip) {
@@ -1566,7 +1573,12 @@ class GpuOverlayManager {
         cy + chevron[i]! * sin + chevron[i + 1]! * cos,
       )
     this.pushLine(pts, withAlpha(this.hot(x.caret, hot, t.dim, t.label), rowAlpha), 1.4)
-    this.drawFocus(x.head, this.isFocused(x.head), hRect, cardClip)
+    this.drawFocus(
+      x.head,
+      this.isFocused(x.head) && !(this.curPointerRow && !x.head.matches(":hover")),
+      hRect,
+      cardClip,
+    )
     if (x.body.hidden) return { hRect, bodyClip: undefined }
     const bRect = this.rectOf(x.body)
     if (bRect.height < 0.5) return { hRect, bodyClip: undefined }
@@ -2367,6 +2379,7 @@ class GpuOverlayManager {
       if (bodyRevealing || pageMoving) this.curBypassRectCache = true
       const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
       this.curSubHovered = bodyHovered
+      this.curPointerRow = bodyHovered && panel.body.querySelector(".knobs-card>:hover") !== null
       const panelAlpha = this.curAlpha
       for (const g of panel.groups) {
         this.curAlpha = panelAlpha * this.presence(g.element)
@@ -2522,7 +2535,7 @@ class GpuOverlayManager {
         const isX = row.kind === "color" || row.kind === "point" || row.kind === "easing"
         const hot = isX
           ? (hovered && row.x.head.matches(":hover")) || this.isFocused(row.x.head)
-          : hovered || row.row.classList.contains("knobs-active") || this.hasFocusVisible(row.row)
+          : hovered || row.row.classList.contains("knobs-active") || this.focusWashed(row.row)
         if (hot) {
           this.hotRows.add(row.row)
           const parent = row.row.parentElement
@@ -2584,7 +2597,8 @@ class GpuOverlayManager {
                 clock - d.enterAt < d.enterMs,
             )
           if (rolling) anyMoving = true
-          const focused = this.isFocused(sl.track)
+          // Focused, unless the pointer has another row meanwhile (one row lit at a time).
+          const focused = this.isFocused(sl.track) && !(this.curPointerRow && !hovered)
           const dragging = sl.isDragging()
           // The handle follows the same states as its CSS (hover, keyboard focus, drag).
           sl.handleSpring.set(
