@@ -373,7 +373,7 @@ const css = `
 
 /* Long choices: a compact button that drops down a menu */
 .knobs-panel .knobs-select{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:62%;height:var(--kc-control-h);padding:0 6px 0 10px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-label);font-size:var(--k-text-control);font-weight:var(--k-label-weight);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
-.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]),.knobs-panel .knobs-active>.knobs-select{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .knobs-panel .knobs-row-full .knobs-select{flex:1;max-width:none;justify-content:space-between}
 .knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 2px);height:calc(var(--k-icon-sm) - 2px);color:var(--k-dim)}
@@ -411,7 +411,7 @@ const css = `
 .knobs-spring{display:flex}
 .knobs-spring-tracks{position:relative;flex:1;min-width:0;overflow:hidden}
 .knobs-sub{position:relative;transition:background var(--k-hover-t)}
-.knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover{background:var(--k-row-hover)}
+.knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover,.knobs-x-head[data-panned]{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
 :is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
@@ -592,10 +592,10 @@ const css = `
 .knobs-cells[data-wide]{width:calc(var(--k-row) * 7.5);max-width:72%}
 .knobs-cell{position:relative;display:flex;align-items:center;justify-content:space-between;gap:3px;min-width:0;height:var(--kc-control-h);padding:0 5px;border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:ew-resize;user-select:none;touch-action:none;outline:none;transition:background var(--k-hover-t)}
 .knobs-cell:hover,.knobs-cell:focus-visible{background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
-.knobs-active .knobs-cell:focus{background:var(--k-surface-hi)}
+.knobs-active .knobs-cell:focus,.knobs-cell[data-panned]{background:var(--k-surface-hi)}
 .knobs-cell-axis{flex:none;font-style:normal;font-size:var(--k-text-cap);font-weight:var(--k-title-weight);color:var(--k-dim)}
 .knobs-cell-read,.knobs-range-read,.knobs-angle-read,.knobs-seed-read{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-family:var(--k-value-font);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-cell:focus-visible .knobs-cell-read,.knobs-active .knobs-cell:focus .knobs-cell-read{color:var(--k-text)}
+.knobs-cell:focus-visible .knobs-cell-read,.knobs-active .knobs-cell:focus .knobs-cell-read,.knobs-cell[data-panned] .knobs-cell-read{color:var(--k-text)}
 .knobs-panel .knobs-link{flex:none;width:20px;height:20px;margin:0 -4px 0 auto;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background .15s,color .15s}
 .knobs-panel .knobs-link:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-link[aria-pressed="true"]{color:var(--k-text)}
@@ -650,7 +650,7 @@ const css = `
 
 .knobs-panel .knobs-insp[data-kind="seed"]{gap:2px}
 .knobs-seed{display:inline-flex;align-items:center;height:var(--kc-control-h);margin-left:auto;padding:0 4px;border-radius:var(--k-radius-sm);cursor:text;outline:none}
-.knobs-seed:focus-visible .knobs-seed-read{color:var(--k-text)}
+.knobs-seed:focus-visible .knobs-seed-read,.knobs-active>.knobs-seed .knobs-seed-read{color:var(--k-text)}
 .knobs-seed-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-seed-read{display:inline-flex;align-items:center}
 .knobs-seed-read[data-mixed]::before{content:"—"}

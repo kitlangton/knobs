@@ -13,6 +13,7 @@ import {
   Spring,
   VelocityTracker,
 } from "./motion.js"
+import { band, textGive, type Band } from "./give.js"
 import { onPan } from "./swipe.js"
 
 export interface DigitPlace {
@@ -667,9 +668,13 @@ export function createSlider(
   // Vertical scrolling is left alone so the page and panel still scroll.
   let panRaw = 0
   let panValue = 0
+  /** The pan along the track (px), and its give past an end: the readout's. */
+  let panBand: Band = { at: 0, give: 0 }
+  const give = textGive(value, () => onMotionWake?.())
   /** Between a pan's first move and its end (`panning` lets go a little sooner, at the lift). */
   let panGesture = false
   const panLift = () => {
+    give.release()
     if (!panning) return
     panning = false
     letGo()
@@ -691,16 +696,20 @@ export function createSlider(
       if (!panGesture || current !== panValue) {
         panGesture = true
         panRaw = panValue = current
+        panBand = { at: ((current - field.min) / span) * width, give: 0 }
         committed = false
       }
-      panRaw = clamp(panRaw + (dx / width) * span, field.min, field.max)
+      panBand = band(panBand, dx, 0, width)
+      panRaw = clamp(field.min + (panBand.at / width) * span, field.min, field.max)
       pull(panRaw)
       panValue = current
+      if (panBand.give !== give.give) give.hold(panBand.give)
     },
     lift: panLift,
     end() {
       panLift()
       panGesture = false
+      panBand = { at: 0, give: 0 }
     },
     step(direction) {
       const next = stepValue(field, current, direction)
