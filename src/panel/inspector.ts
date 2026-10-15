@@ -402,7 +402,10 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     t.setAttribute("aria-label", `${c.display} ${end === "lo" ? "low" : "high"}`)
     return t
   }) as [HTMLElement, HTMLElement]
-  track.append(fill, ...thumbs, label, read)
+  // The label and readout fade around a thumb that shows, so a thumb never sits on their text.
+  const words = el("span", "knobs-range-text")
+  words.append(label, read)
+  track.append(fill, ...thumbs, words)
   row.append(track)
   let shown = c.get() as readonly [number, number]
   let mixed = false
@@ -427,11 +430,12 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   }
   const place = (instant: boolean) => {
     const [a, b] = [ratio(shown[0]), ratio(shown[1])]
-    const nodes = [fill, ...thumbs]
+    const nodes = [fill, track]
     if (instant) for (const n of nodes) n.style.transition = "none"
     fill.style.transform = `translateX(${(a * 100).toFixed(4)}%) scaleX(${Math.max(0, b - a).toFixed(5)})`
-    thumbs[0].style.left = `${(a * 100).toFixed(4)}%`
-    thumbs[1].style.left = `${(b * 100).toFixed(4)}%`
+    // The thumbs and the text's fades follow the ends through these.
+    track.style.setProperty("--kr-lo", a.toFixed(6))
+    track.style.setProperty("--kr-hi", b.toFixed(6))
     if (instant) {
       void fill.offsetWidth
       for (const n of nodes) n.style.transition = ""

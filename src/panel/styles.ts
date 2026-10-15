@@ -67,6 +67,9 @@ const defaultsCss = `
 @property --k-fill-mix{syntax:"<percentage>";inherits:false;initial-value:20%}
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
 @property --kc-value-size{syntax:"<length>";inherits:true;initial-value:11.5px}
+@property --kr-lo{syntax:"<number>";inherits:true;initial-value:0}
+@property --kr-hi{syntax:"<number>";inherits:true;initial-value:0}
+@property --kr-show{syntax:"<number>";inherits:true;initial-value:0}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -525,11 +528,18 @@ const css = `
 .knobs-panel[data-gpu-active="true"] .knobs-cell-edit{z-index:2147480003}
 
 .knobs-panel .knobs-row.knobs-range{display:block;height:var(--k-row);padding:0}
-.knobs-range-track{position:absolute;inset:0;overflow:hidden;cursor:ew-resize;user-select:none;touch-action:none}
+.knobs-range-track{position:absolute;inset:0;overflow:hidden;cursor:ew-resize;user-select:none;touch-action:none;transition:--kr-lo ${FILL_T} ${DELAY},--kr-hi ${FILL_T} ${DELAY}}
 .knobs-range-fill{position:absolute;inset:0;transform-origin:0 0;transform:scaleX(0);background:var(--k-fill-rest);pointer-events:none;transition:transform ${FILL_T} ${DELAY},background .15s}
 .knobs-range:hover .knobs-range-fill{background:color-mix(in srgb,var(--k-accent) var(--k-fill-hover-mix),var(--k-fill-base))}
 .knobs-range.knobs-active .knobs-range-fill{background:var(--k-fill-active)}
-.knobs-range-thumb{position:absolute;top:0;bottom:0;left:0;width:0;outline:none;transition:left ${FILL_T} ${DELAY}}
+.knobs-range-thumb{position:absolute;top:0;bottom:0;left:calc(var(--kr-lo) * 100%);width:0;outline:none}
+.knobs-range-thumb[data-end="hi"]{left:calc(var(--kr-hi) * 100%)}
+/* Where a thumb shows, the label and readout fade around it (2.5px either side of its hairline). */
+.knobs-range-text{position:absolute;inset:0;pointer-events:none;transition:--kr-show .15s;
+  --kg-lo:calc(var(--kr-lo) * 100% + 1.5px);--kg-hi:calc(var(--kr-hi) * 100% - 1.5px);--kg-in:rgb(0 0 0/calc(1 - var(--kr-show)));
+  --kg-mask:linear-gradient(to right,#000 calc(var(--kg-lo) - 6.5px),var(--kg-in) calc(var(--kg-lo) - 2.5px),var(--kg-in) calc(var(--kg-lo) + 2.5px),#000 calc(var(--kg-lo) + 6.5px)),linear-gradient(to right,#000 calc(var(--kg-hi) - 6.5px),var(--kg-in) calc(var(--kg-hi) - 2.5px),var(--kg-in) calc(var(--kg-hi) + 2.5px),#000 calc(var(--kg-hi) + 6.5px));
+  -webkit-mask:var(--kg-mask);mask:var(--kg-mask);-webkit-mask-composite:source-in;mask-composite:intersect}
+.knobs-range:not(.knobs-mixed):is(:hover,.knobs-active,:has(:focus-visible)) .knobs-range-text{--kr-show:1}
 .knobs-range-thumb::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:-50% 0;border-radius:var(--k-round);background:var(--k-handle);opacity:0;scale:.25 1;transition:opacity .15s,scale .22s var(--k-ease)}
 .knobs-range-thumb[data-end="lo"]::before{translate:0 0}
 .knobs-range-thumb[data-end="hi"]::before{translate:-100% 0}

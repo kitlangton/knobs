@@ -544,6 +544,12 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
         let edge = min(in.screenPx.y - p.clip.y, p.clip.w - in.screenPx.y);
         out = out * smoothstep(0.0, p.extra.x, edge);
       }
+      // Gaps around a range's thumbs: aux.xy at, aux.z half-width, aux.w ramp; extra.yz strength.
+      if (p.aux.z > 0.0) {
+        let x = in.screenPx.x;
+        out = out * (1.0 - p.extra.y * (1.0 - smoothstep(p.aux.z, p.aux.z + p.aux.w, abs(x - p.aux.x))));
+        out = out * (1.0 - p.extra.z * (1.0 - smoothstep(p.aux.z, p.aux.z + p.aux.w, abs(x - p.aux.y))));
+      }
     }
     case 8: { out = shadeLine(p, in.screenPx); }
     case 9: { out = shadeStrip(p, local, size); }

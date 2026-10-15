@@ -1029,6 +1029,9 @@ class GpuOverlayManager {
     }
   }
 
+  /** While set, text fades 2.5px either side of these x's (a range's thumbs), by these strengths. */
+  private textGaps: readonly [number, number, number, number] | undefined
+
   private drawText(text: string, x: number, centerY: number, color: Rgba, opts: TextOpts = {}) {
     if (!text) return 0
     if (color[3] * this.curAlpha > 0.01) this.frameTexts.push(text)
@@ -1064,6 +1067,13 @@ class GpuOverlayManager {
       kind: 5,
       blurY: opts.blurY ?? 0,
       p0: opts.feather ?? 0,
+      ...(this.textGaps
+        ? {
+            p1: this.textGaps[2],
+            p2: this.textGaps[3],
+            aux: [this.textGaps[0], this.textGaps[1], 2.5, 4] as const,
+          }
+        : {}),
     })
     return entry.textW
   }
@@ -2323,10 +2333,12 @@ class GpuOverlayManager {
         kind: 1,
       })
     // Each end's handle: a hairline inside the band, shown on hover, full while in hand or focused.
+    const gaps = [0, 0]
     row.thumbs.forEach((th, i) => {
       const held = this.isFocused(th) || (dragging && this.curActiveEl === th)
       const op = this.ease(th, "op", held ? 0.95 : hovered ? 0.5 : 0, 30)
       const sx = this.ease(th, "sx", held ? 1 : 0.25, 22)
+      gaps[i] = Math.min(1, (op * shown) / 0.5)
       if (op * shown < 0.005) return
       const h = t.row - 12
       const edge = i === 0 ? x0 : x1
@@ -2342,6 +2354,9 @@ class GpuOverlayManager {
         kind: 1,
       })
     })
+    // A thumb that shows never sits on the label or readout: their text fades around it.
+    this.textGaps =
+      gaps[0]! + gaps[1]! > 0.005 ? [x0 + 1.5, x1 - 1.5, gaps[0]!, gaps[1]!] : undefined
     this.drawRowLabel(row.labelEl, row.display, false, centerY, rowAlpha)
     if (!row.editing()) {
       const live = dragging || this.hasFocusVisible(row.row)
@@ -2350,6 +2365,7 @@ class GpuOverlayManager {
       const ink = cssMix(t.modified, base, this.ease(row.read, "mark", mark, 26) * t.readoutMark)
       this.valueText(row.read, centerY, withAlpha(ink, rowAlpha))
     }
+    this.textGaps = undefined
     this.drawRowOverlay(row.row, rRect, cardClip)
     return false
   }

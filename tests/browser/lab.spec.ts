@@ -755,3 +755,35 @@ test("the inspector draws on the GPU overlay as it does in the DOM", async ({ pa
   expect(hit).toBe(true)
   expect(errors).toEqual([])
 })
+
+test("range: a thumb that shows never sits on the label or readout; their text fades around it", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const visible = row(inspector(page), "visible")
+  const text = visible.locator(".knobs-range-text")
+  const state = () =>
+    text.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const thumb = el.parentElement!.querySelector<HTMLElement>(".knobs-range-thumb")!
+      const fill = el.parentElement!.querySelector<HTMLElement>(".knobs-range-fill")!
+      return {
+        show: Number(cs.getPropertyValue("--kr-show")),
+        mask: cs.maskImage,
+        thumb: thumb.getBoundingClientRect().left,
+        fill: fill.getBoundingClientRect().left,
+      }
+    })
+  // At rest the thumbs are hidden and the text is whole.
+  await page.mouse.move(2, 2)
+  await expect.poll(async () => (await state()).show).toBe(0)
+  await visible.hover({ position: { x: 200, y: 8 } })
+  await expect.poll(async () => (await state()).show).toBe(1)
+  const s = await state()
+  expect(s.mask).toContain("linear-gradient")
+  // The low thumb rides the fill's edge (4 of 0–100 m: over the label's first letter).
+  expect(Math.abs(s.thumb - s.fill)).toBeLessThan(1)
+  const label = (await visible.locator(".knobs-label").boundingBox())!
+  expect(s.thumb).toBeGreaterThan(label.x)
+  expect(s.thumb).toBeLessThan(label.x + label.width)
+})
