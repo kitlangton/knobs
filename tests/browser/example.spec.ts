@@ -1511,7 +1511,9 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
   const faded = closing.findIndex((box) => box.opacity < 0.3)
   expect(faded).toBeGreaterThanOrEqual(0)
   expect(closing[faded]!.blur).toBeGreaterThan(4)
-  for (const box of closing.slice(0, faded + 1)) expect(box.w).toBeGreaterThan(final.width - 6)
+  // (While it's still visible: frames land at any phase of the close, so the first faded one may
+  // already be a few ms into the glass's move.)
+  for (const box of closing.slice(0, faded)) expect(box.w).toBeGreaterThan(final.width - 6)
   expect(closing.at(-1)!.w).toBeLessThan(chipBox.width + 2)
   expect(closing.at(-1)!.label).toBeGreaterThan(0.95)
   // …and condenses back out of it, whole and sharp just as the glass lands.
