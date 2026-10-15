@@ -4,7 +4,7 @@ Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
 Give a component a few knobs. Hover it to reveal a tiny cog and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
+Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, quiet until the pointer or keyboard is in the panel. Undo and redo fold in once there's history and away when there's none; Copy turns into a check for a moment once it has copied. The header has no `?` button: `?` opens the shortcuts, as the title's tooltip says (`header: { buttons: [..., "help"] }` brings the button back). It sits above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
@@ -155,7 +155,7 @@ Panels and switchers are keyboard-first:
 | `⇧C` | Copy the current values (or the selected fields) as code |
 | `⇧S` | Save the current values as a new preset chip |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
-| `?` | Toggle keyboard shortcuts popover |
+| `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
 | `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |
 
 In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
@@ -285,7 +285,8 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
   focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
   command that's off loses its header button too, and the `?` popover and row menu list only what's
-  on. `vim: false` drops j/k/h/l, `edit: false` leaves digits and Enter to the page, `bigStep` sets
+  on. `header: { buttons }` picks which header buttons show (`"random" | "reset" | "copy" | "undo" |
+  "redo" | "help" | "close"`; all but `"help"` by default), their keys working either way. `vim: false` drops j/k/h/l, `edit: false` leaves digits and Enter to the page, `bigStep` sets
   ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
 - **Marks.** `marks: false` (on the store or the mount) hides modified dots, readout marks, group
   resets and Reset, for values that belong to someone else. A command that's off takes its marks
@@ -356,7 +357,7 @@ Stable class hooks: `.knobs-panel` (with `data-preset`, `data-theme`, `data-dens
 
 ## Full page
 
-When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
+When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
 
 Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
 

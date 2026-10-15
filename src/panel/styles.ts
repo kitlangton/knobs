@@ -69,6 +69,9 @@ const defaultsCss = `
 @property --k-fill{syntax:"<percentage>";inherits:false;initial-value:0%}
 @property --k-fill-mix{syntax:"<percentage>";inherits:false;initial-value:20%}
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
+@property --k-copy{syntax:"<number>";inherits:true;initial-value:1}
+@property --k-check{syntax:"<number>";inherits:true;initial-value:0}
+@property --k-check-a{syntax:"<number>";inherits:true;initial-value:0}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -210,9 +213,32 @@ const css = `
 .knobs-die-icon{position:relative;display:block;width:var(--k-icon-size);height:var(--k-icon-size);flex:none}
 .knobs-die-icon>canvas{position:absolute;margin:0}
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
-.knobs-panel header button{width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-label);background:transparent;border-radius:999px;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
+/* The tools sit quiet (--k-dim) until the panel has the pointer or keyboard focus, then read as
+   labels, and as text under the pointer. */
+.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-dim);background:transparent;border-radius:999px;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
+.knobs-panel:is(:hover,:has(:focus-visible)) header button{color:var(--k-label)}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel header button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
+/* The close X's ink sits a fifth of its box in from each side, a digit's barely: nudged right, its
+   ink ends where the values' digits do. */
+.knobs-panel header .knobs-close>.knobs-icon{translate:calc(var(--k-icon-size) * .1) 0}
+/* Undo and redo fold in (room first, then the icons) once there's history, and away without it. */
+.knobs-head-history{display:flex;flex:none;overflow:hidden;width:calc(var(--k-icon-btn) * 2);margin-left:calc(var(--k-unit) * 1.5);transition:width .26s var(--k-ease),margin .26s var(--k-ease)}
+.knobs-head-history:has(>[hidden]){width:var(--k-icon-btn)}
+.knobs-head-history[data-shown="false"]{width:0;margin-left:0;transition:width .24s var(--k-ease) .06s,margin .24s var(--k-ease) .06s}
+.knobs-panel .knobs-head-history>button{transition:background .15s,color .15s,opacity .18s var(--k-ease) .08s,scale .3s cubic-bezier(.34,1.45,.64,1) .08s}
+.knobs-panel .knobs-head-history[data-shown="false"]>button{opacity:0;scale:.6;transition:background .15s,color .15s,opacity .12s ease-in,scale .14s ease-in}
+/* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
+   back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
+   drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
+.knobs-panel header .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
+  transition:background .15s,color .15s,opacity .15s,--k-copy .32s cubic-bezier(.34,1.45,.64,1) .08s,--k-check 0s .18s,--k-check-a .16s ease-in}
+.knobs-panel header .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--k-text);
+  transition:background .15s,color .15s,opacity .15s,--k-copy .14s ease-in,--k-check .28s cubic-bezier(.3,.7,.2,1) .06s,--k-check-a .05s linear .06s}
+.knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
+.knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
+.knobs-check path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
+.knobs-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
 /* Shortcuts Popover */
 .knobs-popover{margin:0 0 var(--k-section-gap);padding:var(--k-section-gap) var(--k-inset);background:var(--k-surface-hi);border:1px solid var(--k-line);border-radius:var(--k-radius);font-size:var(--k-text-meta)}

@@ -18,6 +18,10 @@ export const ICONS = {
 
 export type IconName = keyof typeof ICONS
 
+/** The copy button's check: a 16-wide round stroke (Phosphor's weight) that draws itself in. */
+export const CHECK_POINTS = [44, 132, 100, 188, 212, 76] as const
+export const CHECK_PATH = `M${CHECK_POINTS.slice(0, 2)}L${CHECK_POINTS.slice(2, 4)}L${CHECK_POINTS.slice(4)}`
+
 export function iconSvg(doc: Document, name: IconName): SVGSVGElement {
   const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
   svg.setAttribute("viewBox", "0 0 256 256")

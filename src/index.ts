@@ -40,6 +40,8 @@ export {
   type ControlsOptions,
   type DensityMode,
   type GroupPreset,
+  type HeaderButton,
+  type HeaderOptions,
   type MountPanelOptions,
   type PanelCommand,
   type PanelHandle,

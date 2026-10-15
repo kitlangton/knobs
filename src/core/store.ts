@@ -106,6 +106,14 @@ export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
   /** `false` stops ↑/↓ at the first and last rows instead of wrapping around. */
   readonly wrap?: boolean
 }
+export type HeaderButton = "random" | "reset" | "copy" | "undo" | "redo" | "help" | "close"
+export interface HeaderOptions {
+  /**
+   * Which buttons show (of those that are on). All but `help` by default: its `?` key opens the
+   * shortcuts either way, and the title's tooltip says so. Add `"help"` to bring the button back.
+   */
+  readonly buttons?: readonly HeaderButton[]
+}
 export interface MountPanelOptions {
   readonly title?: string | false
   /**
@@ -123,8 +131,11 @@ export interface MountPanelOptions {
   readonly marks?: boolean
   /** Token values to style the panel with, e.g. `problemsPreset` (see `TokenPreset`). */
   readonly preset?: TokenPreset
-  /** `false` drops the header (title and buttons) for a host that draws its own. */
-  readonly header?: boolean
+  /**
+   * `false` drops the header (title and buttons) for a host that draws its own; `{ buttons }`
+   * picks which of its buttons show (see `HeaderOptions`).
+   */
+  readonly header?: boolean | HeaderOptions
   /**
    * Light haptic ticks on phones (a stepped slider crossing a stop, the default's magnet, a
    * choice changing mid-pan, a switch flipping); on by default, `false` turns them off.

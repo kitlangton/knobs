@@ -1,7 +1,7 @@
 import { maxChroma, oklchToRgb } from "../../core/color.js"
 import type { RendererMode } from "../../core/store.js"
 import { DIE_LOOK, dieBox, type HeaderDie } from "../die.js"
-import { ICONS, type IconName } from "../icons.js"
+import { CHECK_POINTS, ICONS, type IconName } from "../icons.js"
 import {
   clamp,
   Edges,
@@ -1265,6 +1265,54 @@ class GpuOverlayManager {
     })
   }
 
+  /**
+   * Copy, and the check it turns into once copied, from the DOM's transitions while they run
+   * (--k-copy, --k-check, --k-check-a on the button). Returns whether they're running.
+   */
+  private drawCopy(button: HTMLElement, box: DOMRect, color: Rgba, clip: Clip) {
+    const px = this.curTokens.iconSize
+    const copied = "copied" in button.dataset
+    const moving = button.getAnimations().length > 0
+    let glyph = copied ? 0 : 1
+    let checkAlpha = copied ? 1 : 0
+    let drawn = copied ? 1 : 0
+    if (moving) {
+      const cs = getComputedStyle(button)
+      const num = (name: string, at: number) => {
+        const n = parseFloat(cs.getPropertyValue(name))
+        return Number.isFinite(n) ? n : at
+      }
+      glyph = num("--k-copy", glyph)
+      checkAlpha = num("--k-check-a", checkAlpha)
+      drawn = num("--k-check", drawn)
+    }
+    if (glyph > 0.005)
+      this.drawIcon("copy", px, box, withAlpha(color, Math.min(1, glyph)), clip, 0.5 + 0.5 * glyph)
+    if (checkAlpha > 0.005 && drawn > 0.005) {
+      // The stroke's first `drawn` of its length, in the icon's box (256 units across).
+      const k = px / 256
+      const ox = box.left + (box.width - px) * 0.5
+      const oy = box.top + (box.height - px) * 0.5
+      const p = CHECK_POINTS
+      const seg = (i: number) => Math.hypot(p[i + 2]! - p[i]!, p[i + 3]! - p[i + 1]!)
+      let left = Math.min(1, drawn) * (seg(0) + seg(2))
+      const pts: number[] = [p[0], p[1]]
+      for (const i of [0, 2]) {
+        const t = Math.min(1, left / seg(i))
+        pts.push(p[i]! + (p[i + 2]! - p[i]!) * t, p[i + 1]! + (p[i + 3]! - p[i + 1]!) * t)
+        left -= seg(i)
+        if (left <= 0) break
+      }
+      this.pushLine(
+        pts.map((v, i) => (i % 2 ? oy : ox) + v * k),
+        withAlpha(color, checkAlpha),
+        16 * k,
+        clip,
+      )
+    }
+    return moving
+  }
+
   /** The die is always traced, at rest too, exactly as the DOM canvas does: nothing swaps. */
   private drawDie(die: HeaderDie, box: DOMRect, color: Rgba, clip?: Clip) {
     // Same box as the DOM canvas: room for the corners while it tumbles and lifts.
@@ -2173,25 +2221,64 @@ class GpuOverlayManager {
           withAlpha(tokens.text, this.ease(panel.titleEl, "compare", comparing ? 0.4 : 1, 26)),
           { px, weight: 600, clip: panelClip, track: pageB ? -0.015 : -0.01 },
         )
+        // The tools sit quiet until the panel has the pointer or keyboard focus (see the CSS).
+        const lit =
+          panel.root.matches(":hover") ||
+          (this.curFocusVisible &&
+            this.curActiveEl !== null &&
+            panel.root.contains(this.curActiveEl))
+        const restInk = cssMix(
+          tokens.label,
+          tokens.dim,
+          this.ease(panel.header, "lit", lit ? 1 : 0, this.hoverOmega(lit)),
+        )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue
-          const bRect = this.rectOf(hb.button)
+          // Read fresh: undo and redo fold in and out, moving the buttons beside them.
+          const bRect = hb.button.getBoundingClientRect()
           const hovered = !hb.button.disabled && this.isHovered(hb.button)
           if (hovered) this.curSubHovered = false
           const focused = this.isFocused(hb.button)
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
-          const alpha = this.ease(
+          let alpha = this.ease(
             hb.button,
             "dim",
             hb.button.disabled ? tokens.disabledOpacity : 1,
             30,
           )
-          const on = hovered || focused || expanded
-          this.drawRoundWash(bRect, alpha, this.wash(hb.button, on), panelClip)
-          const iconColor = withAlpha(this.hot(hb.button, on), alpha)
+          let scale = 1
+          let clip = panelClip
+          const fold = hb.button.parentElement!
+          if (fold.classList.contains("knobs-head-history")) {
+            const shown = fold.dataset.shown === "true"
+            if (fold.getAnimations({ subtree: true }).length) {
+              anyMoving = true
+              const cs = getComputedStyle(hb.button)
+              alpha *= (Number(cs.opacity) || 0) / (hb.button.disabled ? tokens.disabledOpacity : 1)
+              scale = parseFloat(cs.scale) || 1
+              const f = fold.getBoundingClientRect()
+              clip = intersectClip(panelClip, [f.left, f.top, f.right, f.bottom])
+            } else if (!shown) continue
+          }
+          const copied = "copied" in hb.button.dataset
+          const on = hovered || focused || expanded || copied
+          this.drawRoundWash(
+            bRect,
+            alpha,
+            this.wash(hb.button, hovered || focused || expanded),
+            clip,
+          )
+          const iconColor = withAlpha(this.hot(hb.button, on, restInk), alpha)
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
-          if (die) this.drawDie(die, bRect, iconColor, panelClip)
-          else this.drawIcon(hb.icon, tokens.iconSize, bRect, iconColor, panelClip)
+          if (die) this.drawDie(die, bRect, iconColor, clip)
+          else if (hb.icon === "copy") {
+            if (this.drawCopy(hb.button, bRect, iconColor, clip)) anyMoving = true
+          } else {
+            // The X nudged right, its ink ending with the values' digits (see .knobs-close).
+            const nudge = hb.icon === "close" ? tokens.iconSize * 0.1 : 0
+            const box = new DOMRect(bRect.left + nudge, bRect.top, bRect.width, bRect.height)
+            this.drawIcon(hb.icon, tokens.iconSize, box, iconColor, clip, scale)
+          }
         }
       }
 

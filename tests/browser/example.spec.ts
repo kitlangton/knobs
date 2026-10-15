@@ -88,9 +88,16 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   await expect(panel.locator(".knobs-label").first()).toHaveText("seed")
   await expect(panel.locator("header strong")).toHaveText("Splat")
 
-  // Verify ? shortcuts popover in header replaces permanent footer
-  const helpBtn = panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })
-  await helpBtn.click()
+  // The shortcuts open on ?, which the title's tooltip mentions (the header has no ? button)
+  await expect(panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(panel.locator("header strong")).toHaveAttribute(
+    "title",
+    "Splat\nPress ? for keyboard shortcuts",
+  )
+  await panel.locator(".knobs-track").first().focus()
+  await page.keyboard.press("?")
   await expect(panel.locator(".knobs-popover")).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(panel.locator(".knobs-popover")).toBeHidden()
@@ -464,10 +471,16 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const seed = panel.getByRole("slider", { name: "seed", exact: true })
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
-  // Random, Reset and Copy are Phosphor icons in the header with undo/redo, help and close
-  await expect(panel.locator("header :is(.knobs-icon, .knobs-die-icon)")).toHaveCount(7)
+  // Random, Reset and Copy are Phosphor icons in the header with undo/redo and close; undo and
+  // redo fold in once there's history
+  await expect(
+    panel.locator("header :is(.knobs-icon, .knobs-die-icon):not(.knobs-check)"),
+  ).toHaveCount(6)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
   await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
+  const history = panel.locator(".knobs-head-history")
+  await expect(history).toHaveAttribute("data-shown", "false")
+  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBe(0)
 
   // ↑/↓ walk presets → rows, wrapping (no custom actions here)
   const grain = panel.getByRole("switch", { name: "grain" })
@@ -492,6 +505,10 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   // ⇧R resets everything; ⇧S saves a preset; ⌫ on the strip deletes it; export lives in "?"
   await seed.focus()
   await page.keyboard.press("ArrowRight")
+  await expect(history).toHaveAttribute("data-shown", "true")
+  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBeGreaterThan(40)
+  await expect(panel.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
+  await expect(panel.getByRole("button", { name: "Redo", exact: true })).toBeDisabled()
   await page.keyboard.press("Shift+R")
   await expect(strip).toHaveAttribute("data-active-preset", "p:default")
   await page.keyboard.press("ArrowRight")
@@ -1657,7 +1674,12 @@ test("design-system geometry contracts: left/right column alignment, concentric 
           ...Array.from(panel.querySelectorAll(".knobs-strip-read"), R),
           R(panel.querySelector(".knobs-pad")!),
           R(panel.querySelector(".knobs-ease")!),
-          R(panel.querySelector(".knobs-head-actions button:last-child .knobs-icon")!),
+          // The last header button (undo and redo are folded away, with no history yet); a close
+          // X is nudged a tenth of its size right, so its ink ends with the digits'.
+          panel.querySelector(".knobs-close")
+            ? R(panel.querySelector(".knobs-close > .knobs-icon")!) +
+              parseFloat(getComputedStyle(panel).getPropertyValue("--k-icon-size")) * 0.1
+            : R(panel.querySelector(".knobs-head-actions > button:last-of-type > .knobs-icon")!),
           ...Array.from(
             panel.querySelectorAll(".knobs-group-head > span:last-child > button:last-child > *"),
             R,
