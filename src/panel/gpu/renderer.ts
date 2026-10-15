@@ -3364,14 +3364,22 @@ class GpuOverlayManager {
       })
       const ink = withAlpha(this.hot(b, on, t.buttonColor ?? t.label), alpha)
       const zoom = { scale: k, origin: [cx, cy] as const }
-      if (item.iconEl && item.icon)
-        this.drawIcon(item.icon, t.iconSm, this.rectOf(item.iconEl as SVGElement), ink, cardClip, k)
+      if (item.iconEl && item.icon) {
+        // The icon shrinks toward the button's centre with its label and chip, as the DOM's scale.
+        const ir = this.rectOf(item.iconEl as SVGElement)
+        const at = new DOMRect(
+          cx + (ir.left - cx) * k,
+          cy + (ir.top - cy) * k,
+          ir.width * k,
+          ir.height * k,
+        )
+        this.drawIcon(item.icon, t.iconSm, at, ink, cardClip, k)
+      }
       const lr = this.rectOf(item.label)
-      this.drawText(item.label.textContent ?? "", lr.left, cy, ink, {
-        px: t.buttonFontSize ?? t.textControl,
-        weight: t.labelWeight,
-        ...zoom,
-      })
+      const px = t.buttonFontSize ?? t.textControl
+      // A narrow column ellipsizes the label, as the DOM's does.
+      const words = this.fit(item.label.textContent ?? "", lr.width + 1, px, t.labelWeight)
+      this.drawText(words, lr.left, cy, ink, { px, weight: t.labelWeight, ...zoom })
       if (item.chip) {
         const kr = this.rectOf(item.chip)
         this.drawText(item.chip.textContent ?? "", kr.left, cy, withAlpha(t.dim, alpha), {
