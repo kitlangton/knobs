@@ -1,6 +1,7 @@
 import { Spring, springMotion } from "../core/spring.js"
 import { storageKey, browserStorage, type StoragePort } from "../core/storage.js"
 import { applyLook, frameLoop, ICONS, notifyLayout, reducedMotion, type UiLook } from "./look.js"
+import { tooltip } from "./tooltip.js"
 import {
   collapsibleSide,
   drag,
@@ -21,6 +22,8 @@ export interface PaneAction {
   /** SVG markup, text, or a node of your own. */
   readonly icon?: string | Node
   readonly pressed?: boolean
+  /** Shown in its tooltip as key chips (the split doesn't bind it). */
+  readonly shortcut?: string
   run(event: MouseEvent): void
 }
 
@@ -168,8 +171,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
         const b = doc.createElement("button")
         b.type = "button"
         b.className = "knobs-pane-btn"
-        b.title = action.label
         b.setAttribute("aria-label", action.label)
+        tooltip(b, action.label, action.shortcut ? { shortcut: action.shortcut } : {})
         if (action.id) b.dataset.action = action.id
         if (action.pressed !== undefined) b.setAttribute("aria-pressed", String(action.pressed))
         b.append(iconNode(doc, action.icon, action.label))
@@ -183,6 +186,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
         const b = doc.createElement("button")
         b.type = "button"
         b.className = "knobs-pane-btn knobs-pane-collapse"
+        b.setAttribute("aria-label", `Collapse ${spec.title}`)
+        tooltip(b, () => (collapsed[spec.id] ? "Open" : row ? "Collapse" : "Fold"))
         b.innerHTML = row ? ICONS.caret : ICONS.chevronDown
         if (row)
           b.firstElementChild?.setAttribute(
@@ -219,7 +224,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
       rail.tabIndex = -1
       const label = spec.rail ?? spec.title ?? spec.id
       rail.setAttribute("aria-label", `Open ${label}`)
-      rail.title = `Open ${label}`
+      tooltip(rail, `Open ${label}`, { placement: row ? "right" : "top" })
       const text = doc.createElement("span")
       text.textContent = spec.rail ?? spec.title ?? ""
       rail.innerHTML = row
