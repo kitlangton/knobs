@@ -1,7 +1,7 @@
 // The Lab's overlays from knobs/ui: ⌘K opens a command palette over the stores' actions, presets
 // and fields and the workspace's own commands; the top bar's buttons and the panes' actions carry
 // tooltips; deleting from the outliner asks first.
-import type { Controls } from "knobs"
+import { type Controls, letterOf } from "knobs"
 import {
   type Command,
   commandPalette,
@@ -351,7 +351,7 @@ export function startOverlays(stores: {
   })
 
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.code === "KeyP" && !e.metaKey && !e.ctrlKey) {
+    if (e.altKey && letterOf(e) === "P" && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
       togglePause()
     }

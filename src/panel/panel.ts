@@ -12,6 +12,7 @@ import {
   type Values,
 } from "../core/schema.js"
 import { REFRESHES } from "../core/internal.js"
+import { letterOf } from "../core/keys.js"
 import type { SpringValue } from "../core/spring.js"
 import type {
   ControlAction,
@@ -260,9 +261,9 @@ function buildPanel<S extends Schema>(
   /** Whether a command is on (it has a key, or its button stays). */
   const bound = (command: PanelCommand) => keys[command].length > 0
   const pressed = (command: PanelCommand, event: KeyboardEvent) => keys[command].includes(event.key)
-  /** ⌥ commands match by physical key: ⌥ changes the character on macOS. */
+  /** ⌥ commands match by the layout's letter: ⌥ changes the typed character on macOS. */
   const pressedAlt = (command: PanelCommand, event: KeyboardEvent) =>
-    keys[command].some((k) => k.length === 1 && event.code === `Key${k.toUpperCase()}`)
+    keys[command].some((k) => k.length === 1 && letterOf(event) === k.toUpperCase())
 
   const header = el("header")
   const headerOptions = typeof options.header === "object" ? options.header : undefined

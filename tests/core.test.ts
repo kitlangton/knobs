@@ -1703,6 +1703,10 @@ describe("inspector fields: vectors, ranges, angles, seeds, key combinations and
     // ⌥ changes the character on macOS; the code says which key it was.
     expect(comboFromEvent(key({ key: "å", code: "KeyA", altKey: true }))).toBe("Alt+A")
     expect(comboFromEvent(key({ key: " ", code: "Space" }))).toBe("Space")
+    // Dvorak: the K key sits where QWERTY has V; a plain letter is what was typed.
+    expect(comboFromEvent(key({ key: "K", code: "KeyV", shiftKey: true }))).toBe("Shift+K")
+    expect(comboFromEvent(key({ key: "s", code: "Semicolon" }))).toBe("S")
+    expect(matchesCombo("Shift+K", key({ key: "K", code: "KeyV", shiftKey: true }))).toBe(true)
     expect(comboFromEvent(key({ key: "Shift", shiftKey: true }))).toBe("")
     expect(matchesCombo("shift+backspace", key({ key: "Backspace", shiftKey: true }))).toBe(true)
     expect(matchesCombo("F", key({ key: "f", code: "KeyF", metaKey: true }))).toBe(false)
