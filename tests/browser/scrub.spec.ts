@@ -11,6 +11,19 @@ test("the drag flag clears when a drag that started in a panel is released outsi
   await page.goto("/meta.html")
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   await expect(synth).toBeVisible()
+  // Past the panel's entrance, so the boxes measured here are where the pointer lands.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity,
+            ).length,
+      ),
+    )
+    .toBe(0)
   const panelBox = (await synth.boundingBox())!
 
   // Parts of the panel that don't capture the pointer: the title, and a choice's segments.

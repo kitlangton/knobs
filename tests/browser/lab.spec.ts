@@ -369,6 +369,23 @@ const inspector = (page: Page) => page.locator('[data-controls="lab-inspector"]'
 const values = (page: Page) => lab(page, (l) => ({ ...l.inspector.get() }))
 const shown = (scope: Locator, key: string) =>
   row(scope, key).evaluate((el) => !el.closest("[hidden],[data-leaving]"))
+/** Waits out running transitions and reveals (a tab's rows unfolding), however busy the machine. */
+const still = (page: Page) =>
+  expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            document
+              .getAnimations()
+              .filter(
+                (a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity,
+              ).length,
+        ),
+      { timeout: 10_000 },
+    )
+    .toBe(0)
+
 async function openInspector(page: Page, query = "") {
   const errors = await open(page, query)
   await inspector(page).scrollIntoViewIfNeeded()
@@ -481,6 +498,7 @@ test("vector cells: arrows step, each cell is a stop, Enter edits, a drag scrubs
   expect((await values(page)).position.y).toBe(3)
   await expect(cells.nth(1)).toBeFocused()
   // A sideways drag scrubs; it doesn't open the editor.
+  await still(page)
   const z = (await cells.nth(2).boundingBox())!
   await page.mouse.move(z.x + z.width / 2, z.y + z.height / 2)
   await page.mouse.down()
@@ -525,6 +543,7 @@ test("range: two thumbs that can't cross, each a stop with its own keys and edit
   expect((await values(page)).lifetime).toEqual([0, 2])
   // A press near an end takes that end.
   await row(panel, "lifetime").scrollIntoViewIfNeeded()
+  await still(page)
   const track = (await row(panel, "lifetime").boundingBox())!
   await page.mouse.click(track.x + track.width * 0.75, track.y + track.height / 2)
   expect((await values(page)).lifetime).toEqual([0, 3])
@@ -547,6 +566,7 @@ test("angle: arrows step, ⇧ snaps to 15°, a full turn wraps, a bounded one st
   await page.keyboard.press("ArrowLeft")
   expect((await values(page)).yaw).toBe(359)
   // The dial: pressing at its right edge points the hand at 90°.
+  await still(page)
   const dial = (await row(panel, "yaw").locator(".knobs-dial").boundingBox())!
   await page.mouse.click(dial.x + dial.width - 1, dial.y + dial.height / 2)
   expect((await values(page)).yaw).toBeGreaterThan(80)
