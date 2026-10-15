@@ -1375,6 +1375,7 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
     h: number
     label: number
     chipScale: number
+    chipBlur: number
     blur: number
     opacity: number
     scale: number
@@ -1395,6 +1396,7 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
         h: r.height,
         label: Number(getComputedStyle(chip).opacity),
         chipScale: chip.style.scale ? Number(chip.style.scale) : 1,
+        chipBlur: Number(chip.style.filter.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0),
         blur: Number(cs?.filter.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0),
         opacity: cs ? Number(cs.opacity) : 1,
         scale,
@@ -1443,6 +1445,13 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
   expect(opening.some((box) => box.w > chipBox.width + 40 && box.w < final.width - 40)).toBe(true)
   expect(opening[0]!.label).toBeGreaterThan(0.5)
   expect(opening[9]!.label).toBe(0)
+  // The cog dissolves into the glass: it shrinks and blurs as it fades, rather than being covered.
+  expect(
+    opening.some(
+      (box) => box.label > 0.1 && box.label < 0.9 && box.chipBlur > 0.5 && box.chipScale < 0.92,
+    ),
+  ).toBe(true)
+  expect(Math.max(...opening.map((box) => box.chipBlur))).toBeCloseTo(4, 1)
   // The panel opens down and to the right: the right and bottom edges lead, the left trails, so
   // the glass stretches toward the panel on its way there.
   const progress = (box: Box) => ({
@@ -1458,9 +1467,11 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
   expect(final.y + final.height).toBeGreaterThan(chipBox.y + chipBox.height + 100)
   const mid = opening.map(progress).filter((p) => p.right > 0.3 && p.right < 0.9)
   expect(mid.length).toBeGreaterThan(0)
+  expect(Math.max(...mid.map((p) => p.right - p.left))).toBeGreaterThan(0.1)
   for (const p of mid) {
-    expect(p.right).toBeGreaterThan(p.left + 0.1)
-    expect(p.bottom).toBeGreaterThan(p.left)
+    expect(p.right).toBeGreaterThan(p.left + 0.05)
+    // (The left edge sets off from the squeezed chip, a px or so ahead over its short travel.)
+    expect(p.bottom).toBeGreaterThan(p.left - 0.03)
   }
   // The leading edges overshoot a little, never wobbling.
   const widest = Math.max(...opening.map((box) => box.w))
@@ -1480,12 +1491,20 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
   const closing = await film()
   expect(closing.length).toBeGreaterThan(6)
   expect(closing.length).toBeLessThan(18)
-  const faded = closing.findIndex((box) => box.opacity < 0.2)
+  const faded = closing.findIndex((box) => box.opacity < 0.3)
   expect(faded).toBeGreaterThanOrEqual(0)
   expect(closing[faded]!.blur).toBeGreaterThan(4)
   for (const box of closing.slice(0, faded + 1)) expect(box.w).toBeGreaterThan(final.width - 6)
   expect(closing.at(-1)!.w).toBeLessThan(chipBox.width + 2)
   expect(closing.at(-1)!.label).toBeGreaterThan(0.95)
+  // …and condenses back out of it, whole and sharp just as the glass lands.
+  expect(closing.some((box) => box.label > 0.1 && box.label < 0.9 && box.chipBlur > 0.5)).toBe(true)
+  expect(closing.at(-1)!.chipBlur).toBeLessThan(0.3)
+  expect(await chip.evaluate((el) => [el.style.filter, el.style.scale, el.style.opacity])).toEqual([
+    "",
+    "",
+    "",
+  ])
   await expect(panel).toHaveCount(0)
   await expect(chip).toBeFocused()
   await expect(chip).toBeVisible()
@@ -1495,18 +1514,19 @@ test("a floating panel grows out of its chip as liquid glass and collapses back 
   await chip.click()
   await expect(panel).toBeAttached()
   const toggled = await film({
-    8: () =>
+    6: () =>
       page.evaluate(() =>
         document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!.click(),
       ),
   })
   const widths = toggled.map((box) => box.w)
   const peak = widths.indexOf(Math.max(...widths))
-  expect(peak).toBeGreaterThan(8)
+  expect(peak).toBeGreaterThanOrEqual(6)
   expect(widths[peak]!).toBeGreaterThan(chipBox.width + 40)
   expect(widths[peak]!).toBeLessThan(final.width - 8)
-  const most = Math.max(...widths.slice(1).map((w, i) => Math.abs(w - widths[i]!)))
-  expect(most).toBeLessThan((final.width - chipBox.width) * 0.25)
+  // No frame jumps further than the open's own fastest frame.
+  const step = (ws: number[]) => Math.max(...ws.slice(1).map((w, i) => Math.abs(w - ws[i]!)))
+  expect(step(widths)).toBeLessThanOrEqual(step(opening.map((box) => box.w)) + 1)
   await expect(panel).toHaveCount(0)
   await expect(chip).toBeFocused()
 

@@ -3,7 +3,8 @@ import { springMotion } from "../core/spring.js"
 
 // Liquid glass: a floating panel grows out of its chip as one shape and collapses back into it.
 //
-// Press: the chip gives under the finger (scale 0.94, 60 ms, easing in) before it lets go.
+// Press: the chip gives under the finger (scale 0.94 over 50 ms) before it lets go; its icon
+// then dissolves into the glass (scale 0.8, blur 4 px, fading) and condenses back on return.
 // Travel: each of the shape's four edges rides its own spring, 0 at the chip and 1 at the panel.
 // The edges facing the way the shape travels lead on a stiff spring, as stiff as their axis carries
 // the travel, and the rest trail on a softer one, so the glass stretches toward where it's going
@@ -14,32 +15,37 @@ import { springMotion } from "../core/spring.js"
 // Every spring keeps its velocity when the panel is toggled mid-flight. The GPU overlay samples
 // the same frame through its mask.
 const OPEN = {
-  lead: springMotion({ duration: 0.18, bounce: 0.24 }),
-  trail: springMotion({ duration: 0.26, bounce: 0.12 }),
+  lead: springMotion({ duration: 0.16, bounce: 0.2 }),
+  trail: springMotion({ duration: 0.2, bounce: 0.1 }),
 }
 const CLOSE = {
-  lead: springMotion({ duration: 0.13, bounce: 0.1 }),
-  trail: springMotion({ duration: 0.17, bounce: 0.1 }),
+  lead: springMotion({ duration: 0.1, bounce: 0.08 }),
+  trail: springMotion({ duration: 0.13, bounce: 0.1 }),
 }
-const CONTENT_IN = springMotion({ duration: 0.16, bounce: 0 })
-const CONTENT_OUT = springMotion({ duration: 0.09, bounce: 0 })
+const CONTENT_IN = springMotion({ duration: 0.14, bounce: 0 })
+const CONTENT_OUT = springMotion({ duration: 0.07, bounce: 0 })
 /** The squeeze lets go on this as the glass heads home. */
-const RELAX = springMotion({ duration: 0.16, bounce: 0 })
-/** How long the press takes to squeeze the chip, and how far (the chip's CSS matches). */
-export const ANTICIPATION_MS = 60
+const RELAX = springMotion({ duration: 0.12, bounce: 0 })
+/**
+ * How long the press takes to squeeze the chip, and how far (the chip's CSS matches). It eases in
+ * and out, so the glass sets off from rest without a kink.
+ */
+export const ANTICIPATION_MS = 50
 export const SQUEEZE = 0.94
 /** Content starts coming in this long after the glass sets off. */
-const CONTENT_DELAY = 30
+const CONTENT_DELAY = 20
 /** Closing, the glass waits this long (at full content) while the content leaves. */
-const GLASS_DELAY = 50
+const GLASS_DELAY = 35
 const BLUR = 8
 const CONTENT_SCALE = 0.97
-/** The chip's icon is gone by this far into the morph. */
-const LABEL_END = 0.25
+/** The chip's icon dissolves into the glass (shrinking, blurring, fading) over this much of it. */
+const ICON_END = 0.6
+const ICON_SCALE = 0.8
+const ICON_BLUR = 4
 /** Height (px, at most half the panel) of the band content fades in over, top first. */
 const FADE_BAND = 120
 /** Peak alpha of the specular ring the glass wears while it deforms. */
-const SPECULAR = 0.16
+const SPECULAR = 0.1
 
 export interface MorphFrame {
   /** The shape, in viewport px. */
@@ -193,7 +199,7 @@ export function morphFromChip(
     // The press: the chip squeezes, easing in, until the glass lets go.
     if (pressAt !== undefined) {
       const u = clamp((now - pressAt) / ANTICIPATION_MS, 0, 1)
-      squeeze.snap(1 - (1 - SQUEEZE) * u * u)
+      squeeze.snap(1 - (1 - SQUEEZE) * u * u * (3 - 2 * u))
       if (!glassAt) pressAt = undefined
     }
   }
@@ -283,7 +289,7 @@ export function morphFromChip(
     shape = doc.createElement("div")
     shape.className = "knobs-morph"
     shape.setAttribute("aria-hidden", "true")
-    for (const t of ["bg", "line", "rim", "glass", "glass-tone"])
+    for (const t of ["bg", "line", "rim", "edge", "glass", "glass-tone"])
       shape.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))
     shape.style.setProperty("--k-shadow", cs.getPropertyValue("--k-shadow"))
     root.before(shape)
@@ -315,6 +321,7 @@ export function morphFromChip(
       delete chip.dataset.morph
       chip.style.removeProperty("opacity")
       chip.style.removeProperty("scale")
+      chip.style.removeProperty("filter")
       chip.getBoundingClientRect()
       chip.style.removeProperty("transition")
       // It stays above the overlay canvas until the canvas has drawn a frame without the shape.
@@ -366,8 +373,13 @@ export function morphFromChip(
     set(root, "scale", s < 1 ? s.toFixed(4) : "")
     set(root, "transform-origin", s < 1 ? `${px(ox)} ${px(oy)}` : "")
     applied = s < 1 ? { scale: s, ox, oy } : { scale: 1, ox: 0, oy: 0 }
-    set(chip, "opacity", (1 - clamp(f.progress / LABEL_END, 0, 1)).toFixed(3))
-    set(chip, "scale", squeeze.x < 1 ? squeeze.x.toFixed(4) : "")
+    // The icon dissolves into the glass as it leaves, and condenses back out of it on return,
+    // arriving whole just as the glass settles.
+    const q = clamp(f.progress / ICON_END, 0, 1)
+    const iconScale = squeeze.x * (1 - (1 - ICON_SCALE) * q)
+    set(chip, "opacity", (1 - q * q * (3 - 2 * q)).toFixed(3))
+    set(chip, "filter", q > 0.001 ? `blur(${(ICON_BLUR * q).toFixed(2)}px)` : "")
+    set(chip, "scale", iconScale < 1 ? iconScale.toFixed(4) : "")
     // The icon sits on the shape, above the overlay canvas too.
     set(chip, "z-index", String(Math.max(z + 1, 2147480003)))
   }
