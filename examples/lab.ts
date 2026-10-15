@@ -21,6 +21,7 @@ import {
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { labPreset } from "knobs/themes"
+import { startOverlays } from "./lab-overlays"
 import "./lab-workspace"
 
 const scenes = [
@@ -525,8 +526,15 @@ const mountInspector = () =>
     },
   })
 let inspectorPanel = mountInspector()
+const overlays = startOverlays({
+  station,
+  details,
+  inspector,
+  inspectorPanel: () => inspectorPanel,
+})
 
 Object.assign(window, {
+  __overlays: overlays,
   __lab: {
     inspector,
     get inspectorPanel() {

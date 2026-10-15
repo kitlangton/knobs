@@ -175,6 +175,48 @@ Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle
 
 Spring, point and easing values compare by their numbers everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
 
+### Readouts: live values, sparklines, graphs, meters, tables and logs
+
+Readout rows show what a running tool is doing, beside the controls that change it. They hold no value: nothing goes into the store's values, undo, presets or storage. Push to them with `controls.watch(key, value)`, as often as every frame.
+
+```ts
+import { defineControls, graph, log, meter, sparkline, table, watch } from "knobs"
+
+const live = defineControls("live", {
+  frame: graph({
+    label: "Frame time",
+    series: [{ id: "cpu", label: "CPU", area: true }, { id: "gpu", label: "GPU" }],
+    unit: "ms",
+    min: 0,
+    thresholds: [{ value: 16.7, label: "60 fps" }],
+  }),
+  fps: watch({ label: "FPS", decimals: 0 }),
+  drops: sparkline({ label: "Drops", min: 0 }),
+  memory: meter({ label: "GPU memory", max: 512, unit: "MB", warn: 384, critical: 470 }),
+  passes: table({ label: "Passes", columns: ["Pass", "ms", "Draws"] }),
+  events: log({ label: "Events", lines: 8 }),
+})
+
+// Each frame:
+live.watch("frame", { cpu: 5.2, gpu: 9.1 })
+live.watch("fps", 60)
+live.watch("drops", 1428)
+live.watch("memory", 383) // null: indeterminate
+live.watch("passes", [["Shadow", 0.42, 12], ["Rain", 1.1, 16]])
+live.watch("events", { level: "warn", text: "Gutter drip over budget" })
+```
+
+- **`watch`**: a number or text, with `unit`, `decimals` or `format(n)`.
+- **`sparkline`**: a number per sample, or an array that replaces the history (`history`, 60 by default). Hovered or focused, it reads the history's min–max.
+- **`graph`**: a taller row with several series (`{ [id]: number }` per sample; a series left out breaks its line), `area` fills, `thresholds` with labels, and a crosshair that follows the pointer or `←`/`→` (`⇧` by ten). The legend reads the sample under it.
+- **`meter`**: a slim bar out of `max`, or `segments` cells. From `warn` it takes `--k-warn`, from `critical` `--k-critical`, and it doesn't flicker between them when the value hovers at a threshold. `null` sweeps it as indeterminate (`aria-busy`).
+- **`table`**: rows of cells, or a key-value record. Numbers sit right in tabular figures.
+- **`log`**: a string, `{ text, level?, time? }` or an array of them. Level chips (All, Warn, Error, with counts), a filter that marks its match (`f` or `Enter` from the log), follow-tail that lets go when you scroll up and offers a "3 new ↓" pill, and Copy (`⌘C`) of the lines shown. Only the lines in view are in the DOM.
+
+`controls.watched(key)` returns the latest value; `null` clears a readout. A readout can also poll: `get: () => value` is read each frame while its row is on screen (pushing is the usual way, and lets the page sleep).
+
+Readouts cost nothing at rest. They draw on one shared clock, only while on screen and only when something arrived, so a paused feed lets the page, and the GPU overlay, sleep. Graphics are canvases redrawn from a list of drawing ops (the GPU overlay draws the same ops). Text changes at most `hz` times a second (4 by default), in boxes that only grow, so nothing reflows as numbers change. Scales snap to round steps (1, 2 or 5 × 10ⁿ) and ease there on a spring, in log space, so a spike rescales smoothly. The store keeps each readout's history, so a panel mounted later starts with it. On their own, outside a panel: `readout(sparkline({ unit: "ms" }), { preset })` from `knobs/ui` returns `{ element, push(value), value, dispose() }`.
+
 ## Keyboard
 
 Panels and switchers are keyboard-first:
@@ -528,6 +570,7 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
 | `--k-frame` | `card` | `flat`: no card inside the host's own card (see below) |
 | `--k-disabled-opacity` | `.32` | How far a disabled row dims |
+| `--k-warn`, `--k-critical` | `#ff9f0a`, `#ff453a` (light: `#c56a00`, `#e0352b`) | Readouts' warning and critical colours (meters past `warn` / `critical`, log levels), and a destructive confirm |
 | `--k-control-h` | row − 2 × unit | Height of the controls inside a row: segments, menus, switches, number cells, key caps, toolbar buttons |
 | `--k-value-size` | font size − `.5px` | Size of every readout (sliders, cells, ranges, dials, seeds, editor summaries) |
 | `--k-button-bg`, `--k-button-line`, `--k-button-hover-bg`, `--k-button-hover-line` | each button's own | Fill and outline of custom actions, Export/Import and toolbar buttons, at rest and hovered |
@@ -739,7 +782,7 @@ const center = split(main.pane("view").body, {
   ...look,
   id: "center",
   direction: "column",
-  panes: [{ id: "stage" }, { id: "dock", size: 132, collapsible: true, title: "Dock" }],
+  panes: [{ id: "stage" }, { id: "dock", size: 300, collapsible: true, title: "Dock" }],
 })
 mountPanel(controls, main.pane("inspector").body)
 
@@ -789,7 +832,40 @@ import { Split, Tree } from "knobs/ui/react" // or "knobs/ui/solid"
 </Split>
 ```
 
-`Split` puts each child in its pane, in order; the React one portals them, so context and state carry through. `Tree` updates in place when `items`, `selection` or `filter` change, and always calls the latest callbacks. The Lab demo (`examples/lab.html`, `?rows=10000` for a big scene) is a full workspace: an outliner, a viewport over a dock, and the inspector column.
+`Split` puts each child in its pane, in order; the React one portals them, so context and state carry through. `Tree` updates in place when `items`, `selection` or `filter` change, and always calls the latest callbacks. The Lab demo (`examples/lab.html`, `?rows=10000` for a big scene) is a full workspace: an outliner, a viewport over a dock with a Live tab of readouts fed by a fake viewport (`?paused` stops the feed, `?sparks=20` adds sparklines), the inspector column, a `⌘K` palette, tooltips, and a confirm before deleting from the outliner.
+
+### Overlays: popovers, tooltips, the command palette, confirms and toasts
+
+`knobs/ui` also has the floating layers a workspace needs. They sit in one fixed layer above the page and the GPU overlay, come in on a spring (scale and blur from where they open, interruptible both ways; opacity only under reduced motion), and use the same tokens. `overlayLook({ preset, theme })` sets the look they all take; each also takes its own `look`.
+
+```ts
+import { commandPalette, commandsFrom, confirm, overlayLook, popover, toast, tooltip, tooltips } from "knobs/ui"
+
+overlayLook({ preset: labPreset, theme: "dark" })
+
+const menu = popover(button, list, { placement: "bottom-end", role: "menu", label: "Games" })
+tooltip(pause, { text: "Pause the live feed", shortcut: "Alt+P" })
+tooltips(document) // and any element with data-tip="…" (data-tip-shortcut, data-tip-placement)
+
+commandPalette({
+  commands: () => [
+    { label: "Pause live feed", section: "Live", shortcut: "Alt+P", run: () => feed.pause() },
+    ...commandsFrom(controls, { title: "Weather", reveal: (key) => focusRow(key) }),
+  ],
+})
+
+if (await confirm({ title: "Delete “Barrier”?", confirm: "Delete", destructive: true })) remove()
+toast("Deleted Barrier", { action: { label: "Undo", run: undo } })
+```
+
+- **`popover(anchor, content, options?)`** places `content` beside an element, a rect or a point. `placement` is `top`, `bottom`, `left` or `right`, each with `-start` or `-end`; it flips when its side is short and the other has more room, then shifts to stay 8px inside the view, and follows its anchor through scrolls and resizes. It grows from the anchor's edge. It takes focus (`focus: "first" | "layer" | "none"`) and gives it back when it closes; Esc, a click outside or focus leaving closes it (`closeOnOutside: false` keeps it), and `trap: true` keeps Tab inside. The handle has `element`, `open`, `reposition()` and `close()` (a promise that resolves once it's gone).
+- **`tooltip(el, content, options?)`** shows after a 500ms pause over the element, or on keyboard focus (not a click's). While one is up, or just after, moving to a neighbour shows its tip at once, with no entrance. A press hides it until the pointer leaves; Esc hides it. `shortcut` shows as key chips (`⌘K` on Apple platforms, `Ctrl+K` elsewhere) and sets `aria-keyshortcuts`; the target gets `aria-describedby` while it shows. Content can be a function, read each time it shows. Split panes use these for their buttons and rails.
+- **`commandPalette({ commands, onRun?, hotkey?, recents?, placeholder? })`** opens on `⌘K` (`hotkey`, `"Mod+K"` by default; `false` for none). With no query it shows recent commands (remembered in localStorage under `recents`; `false` for none), then each `section`. Typing ranks commands by a fuzzy match: letters in order, best at the start, at word starts and in runs. The matched letters light up in the accent while the rest of the label dims, and letters strewn thinly across words don't count. A command answers to its `keywords` and section too. `↑`/`↓` move a highlight that glides (`PgUp`/`PgDn`, `⌘↑`/`⌘↓`), disabled commands are passed over, `Enter` runs, `Esc` or a click outside closes. A `run` that returns a string (or a promise of one) shows it as a toast; a throw shows as an error toast. The handle has `open(query?)`, `close()`, `toggle()`, `isOpen` and `dispose()`.
+- **`commandsFrom(controls, { title?, fields?, reveal? })`** lists a store as commands: its actions and toolbar buttons (with their shortcuts), presets and group presets (the current one marked), toggles ("Turn on …"), one command per choice option, "Reset …" for modified fields, and, with `reveal(key)`, every other field (its current value as the hint) to go to.
+- **`confirm({ title, body?, confirm?, cancel?, destructive? })`** returns `Promise<boolean>`. It's modal over a scrim, keeps Tab inside, and Esc or a click outside cancels. `destructive` puts the button in `--k-critical` and focus on Cancel; otherwise focus starts on the confirming button.
+- **`toast(message, { tone?, linger?, action?, within? })`** shows a pill at the bottom centre for 3.2s (6s for `tone: "error"`). A new message replaces the one showing, and hovering keeps it. Pages show their status (Copied, errors) this way.
+
+The pure parts are exported for hosts that draw their own: `place({ anchor, size, view, placement })`, `fuzzy(query, text)` (score and matched indices), `rank(items, query)` and `marks(text, indices)`.
 
 ## Theming, Density & WebGPU Renderer
 
@@ -886,6 +962,7 @@ The package has two core exports selected through the standard `development` con
 | `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |
 | `seed(value, { min?, max? })` / `keybind(combo?)` | A whole number with a die; a captured key combination. Both stay out of Random and Mutate by default. |
 | `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. |
+| `watch` / `sparkline` / `graph` / `meter` / `table` / `log` (`{ label?, unit?, decimals?, format?, hz?, get?, … }`) | Readout rows that hold no value; push with `controls.watch(key, value)`. See [Readouts](#readouts-live-values-sparklines-graphs-meters-tables-and-logs). |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
@@ -911,6 +988,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.setMixed(keys, on?)` / `controls.isMixed(key)`
 - `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
 - `controls.action(key, item?)` — press an action row, or a toolbar's item
+- `controls.watch(key, value)` / `controls.watched(key)` — push to a readout row (`null` clears it); the latest value
 - `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
 - `controls.isModified(key?)` / `controls.modified()`
 - `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
@@ -926,6 +1004,21 @@ The package has two core exports selected through the standard `development` con
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel
 - `controls.mount(container, options?)` — inline panel
+
+### Workspace pieces (`knobs/ui`)
+
+| Function | Behavior |
+| --- | --- |
+| `split(container, { panes, direction?, id?, storage?, onLayout?, preset?, theme? })` | Resizable panes and docks that collapse to rails or headers; layouts saved by `id`. |
+| `tree(container, { items, onSelect?, onMove?, onRename?, toggles?, filter?, … })` | A virtualised outliner with keyboard moves, drag reorder and rename. |
+| `readout(field, { preset?, theme?, label? })` | A readout on its own: `{ element, push(value), value, dispose() }`. |
+| `popover(anchor, content, { placement?, offset?, role?, label?, focus?, trap?, closeOnOutside?, onClose? })` | A floating layer that flips and shifts; `{ element, open, reposition(), close() }`. |
+| `tooltip(el, text \| { text, shortcut?, placement?, delay? })` / `tooltips(doc)` | Delayed tooltips with instant hand-off and shortcut chips; `data-tip` attributes. |
+| `commandPalette({ commands, onRun?, hotkey?, recents?, placeholder? })` / `commandsFrom(controls, options?)` | `⌘K` fuzzy command search; a store's actions, presets and fields as commands. |
+| `confirm({ title, body?, confirm?, cancel?, destructive? })` | `Promise<boolean>`, modal, focus kept inside. |
+| `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
+| `overlayLook({ preset?, theme? })` | The look every overlay takes. |
+| `place` / `fuzzy` / `rank` / `marks` | The overlays' pure model. |
 
 ## Develop
 

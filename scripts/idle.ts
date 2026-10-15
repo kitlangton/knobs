@@ -199,6 +199,14 @@ try {
   await report("page reflow")
   await page.setViewportSize({ width: 1280, height: 900 })
   await report("page reflow back")
+
+  // The Lab's Live dock: readouts draw while the feed runs, and all sleep once it pauses.
+  await page.goto(`http://127.0.0.1:${port}/lab.html?gpu`)
+  await page.locator('[data-controls="lab-live"][data-gpu-active="true"]').waitFor()
+  await page.evaluate(() => (window as any).__live.pause(true))
+  await report("lab live paused")
+  await page.evaluate(() => (window as any).__live.diag.watch("events", "A new event"))
+  await report("lab log push")
   await browser.close()
 } finally {
   server.kill()

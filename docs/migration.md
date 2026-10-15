@@ -360,3 +360,19 @@ middle, and the inspector column on the right.
 
 Mount the inspector panels in the right pane's body as before (`mountPanel(controls, main.pane("right").body)`).
 Panes create no stacking contexts, so the panels keep the GPU renderer and their overlays.
+
+### Live readouts and overlays
+
+`examples/lab-live.ts` and `examples/lab-overlays.ts` model the Lab's live dock and its command
+surfaces on knobs.
+
+| Lab today | Replace with |
+| --- | --- |
+| Hand-drawn perf HUDs and stat strips (canvas sparklines, frame-time graphs, text counters updated each frame) | Readout rows in a store of their own: `graph` for CPU/GPU frame time with a `16.7` threshold, `sparkline` and `watch` for counts, `meter` for budgets (`warn`, `critical`), `table` for per-pass timings, `log` for events. Push with `controls.watch(key, value)` from the frame loop; rows redraw at most once a frame, only on screen, and sleep when the feed stops. They draw on the GPU overlay too. |
+| `title` attributes on toolbar and pane buttons | `tooltip(el, { text, shortcut })` or `data-tip` with `tooltips(document)`; split panes' buttons have them already. |
+| A search box that filters stations or commands by substring | `commandPalette({ commands })` on `⌘K`, with `commandsFrom(controls, { reveal })` for each panel's store and the workbench's own commands beside them. |
+| `window.confirm` before deleting from the outliner | `await confirm({ title, body, confirm: "Delete", destructive: true })`. |
+| Ad-hoc status text after Copy or Export | `toast(message)`; pages already use it for their status. |
+
+Set the look once with `overlayLook({ preset: labPreset, theme: "dark" })`.
+

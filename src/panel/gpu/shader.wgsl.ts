@@ -417,6 +417,30 @@ fn shadeLine(p: Prim, screen: vec2f) -> vec4f {
   return vec4f(p.color.rgb * a, a);
 }
 
+// kind 12: The area under a polyline (pts[extra.x .. extra.x + extra.y], x increasing) down to
+// extra.z (a y), its alpha fading from the line's highest point to extra.w × at the base, as a
+// readout's canvas gradient does.
+fn shadeArea(p: Prim, screen: vec2f, rect: vec4f) -> vec4f {
+  let start = u32(p.extra.x);
+  let count = u32(p.extra.y);
+  let x = screen.x;
+  var top = 1e5;
+  for (var i = 1u; i < count; i++) {
+    let a = pts[start + i - 1u];
+    let b = pts[start + i];
+    if (x >= a.x && x <= b.x) {
+      top = mix(a.y, b.y, clamp((x - a.x) / max(b.x - a.x, 1e-4), 0.0, 1.0));
+      break;
+    }
+  }
+  if (top > 1e4) { return vec4f(0.0); }
+  let base = p.extra.z;
+  let cov = clamp((screen.y - top) * view.dpr + 0.5, 0.0, 1.0) * clamp((base - screen.y) * view.dpr + 0.5, 0.0, 1.0);
+  let t = clamp((screen.y - rect.y) / max(base - rect.y, 1e-3), 0.0, 1.0);
+  let a = cov * p.color.a * mix(1.0, p.extra.w, t);
+  return vec4f(p.color.rgb * a, a);
+}
+
 // OKLCH → gamma sRGB, with chroma trimmed until the colour fits (as core/color.ts does).
 fn oklchLinear(l: f32, c: f32, h: f32) -> vec3f {
   let a = c * cos(radians(h));
@@ -555,6 +579,7 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     case 9: { out = shadeStrip(p, local, size); }
     case 10: { out = shadeShape(p, local, size); }
     case 11: { out = shadeDie(p, in.rect, in.pos.xy); }
+    case 12: { out = shadeArea(p, in.screenPx, in.rect); }
     default: { out = shadeDot(p, local, size); }
   }
   return out * (clipCov * maskCov);

@@ -1,5 +1,7 @@
 import { springEasing } from "../core/spring.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
+import { overlayCss } from "./overlay-css.js"
+import { readoutCss } from "./readout-css.js"
 
 export type UiTheme = "dark" | "light" | "auto"
 
@@ -35,6 +37,8 @@ const TOKENS: Record<string, string> = {
   radius: "8px",
   "hover-in": "150",
   "hover-out": "150",
+  warn: "#ff9f0a",
+  critical: "#ff453a",
 }
 const LIGHT: Record<string, string> = {
   bg: "#f5f5f7",
@@ -46,6 +50,8 @@ const LIGHT: Record<string, string> = {
   label: "rgba(60,60,67,.68)",
   dim: "rgba(60,60,67,.5)",
   accent: "#1c1c1e",
+  warn: "#c56a00",
+  critical: "#e0352b",
 }
 const lightBlock = `${Object.entries(LIGHT)
   .map(([k, v]) => `--k-${k}:${v}`)
@@ -56,6 +62,9 @@ const css = `
   .map(([k, v]) => `--ku-${k}:var(--k-${k},${v})`)
   .join(";")};
   --ku-control-h:var(--k-control-h,calc(var(--ku-row) - 8px));
+  --ku-value-font:var(--k-value-font,var(--ku-font));
+  --ku-value-size:var(--kc-value-size,calc(var(--ku-font-size) - .5px));
+  --ku-text-meta:var(--k-text-meta,calc(var(--ku-font-size) - 1px));
   --ku-hit:var(--k-ui-hit,9px);
   --ku-rail:var(--k-ui-rail,var(--ku-row));
   --ku-indent:var(--k-ui-indent,14px);
@@ -176,7 +185,7 @@ export function injectUiStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-ui]")) return
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
-  style.textContent = css
+  style.textContent = css + readoutCss + overlayCss
   doc.head.append(style)
 }
 

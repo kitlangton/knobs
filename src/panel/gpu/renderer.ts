@@ -30,6 +30,8 @@ import {
   type Rgba,
 } from "./color.js"
 import { FLOATS_PER_PRIM, panelWgsl } from "./shader.wgsl.js"
+import type { PlotOp } from "../../ui/readout-model.js"
+import type { ReadoutFont, ReadoutView } from "../../ui/readouts.js"
 
 /** Tokens whose glide moves layout, so cached rects can't be trusted while they run. */
 const LAYOUT_TOKENS = new Set(
@@ -272,6 +274,17 @@ export interface GpuToolbarRow {
   readonly wave: RowWave
   isModified(): boolean
 }
+/** A readout (watch, sparkline, graph, meter, table, log): the view hands over what it draws. */
+export interface GpuReadoutRow {
+  readonly kind: "readout"
+  readonly key: string
+  display: string
+  readonly row: HTMLElement
+  readonly labelEl: HTMLElement
+  readonly view: ReadoutView
+  readonly wave: RowWave
+  isModified(): boolean
+}
 /** A sub-heading inside a group's card (a field's `subsection`). */
 export interface GpuSubheadRow {
   readonly kind: "subhead"
@@ -284,6 +297,7 @@ export interface GpuSubheadRow {
   isModified(): boolean
 }
 export type GpuRowBinding =
+  | GpuReadoutRow
   | GpuVecRow
   | GpuRangeRow
   | GpuAngleRow
@@ -1083,12 +1097,14 @@ class GpuOverlayManager {
     }
   }
 
+  /** While set, drawn text isn't recorded in `lastTexts` (its whole string already was). */
+  private quietText = false
   /** While set, text fades 2.5px either side of these x's (a range's thumbs), by these strengths. */
   private textGaps: readonly [number, number, number, number] | undefined
 
   private drawText(text: string, x: number, centerY: number, color: Rgba, opts: TextOpts = {}) {
     if (!text) return 0
-    if (color[3] * this.curAlpha > 0.01) this.frameTexts.push(text)
+    if (color[3] * this.curAlpha > 0.01 && !this.quietText) this.frameTexts.push(text)
     const t = this.curTokens
     const px = opts.px ?? t.fontSize
     const weight = opts.weight ?? t.labelWeight
@@ -2659,6 +2675,211 @@ class GpuOverlayManager {
     this.drawRowOverlay(row.row, rRect, cardClip)
   }
 
+  /** A readout's clip: the card's, narrowed to `el` when given. */
+  private clipTo(clip: Clip, r?: DOMRect): Clip {
+    return r ? intersectClip(clip, [r.left, r.top, r.right, r.bottom]) : clip
+  }
+
+  /** Paints a readout's ops (local px from `r`'s corner), clipped to it, as its canvas does. */
+  private drawPlotOps(ops: readonly PlotOp[], r: DOMRect, clip: Clip, alpha: number) {
+    const x0 = r.left
+    const y0 = r.top
+    const at = (pts: readonly number[], from: number, to: number) => {
+      const out: number[] = []
+      for (let i = from; i < to; i += 2) out.push(pts[i]! + x0, pts[i + 1]! + y0)
+      return out
+    }
+    // Long histories go out in short runs, so each primitive only searches a few segments.
+    const CHUNK = 48
+    for (const op of ops) {
+      if (op.t === "rect") {
+        this.pushPrim({
+          x: x0 + op.x,
+          y: y0 + op.y,
+          w: op.w,
+          h: op.h,
+          clip,
+          color: withAlpha(op.color, alpha),
+          radius: op.r ?? 0,
+          kind: 1,
+        })
+      } else if (op.t === "dot") {
+        this.shape({
+          x: x0 + op.x - op.r,
+          y: y0 + op.y - op.r,
+          w: op.r * 2,
+          h: op.r * 2,
+          radius: op.r,
+          fill: withAlpha(op.color, alpha),
+          clip,
+        })
+      } else if (op.t === "line") {
+        for (let i = 0; i < op.pts.length - 2; i += CHUNK - 2)
+          this.pushLine(
+            at(op.pts, i, Math.min(op.pts.length, i + CHUNK)),
+            withAlpha(op.color, alpha),
+            op.width,
+            clip,
+          )
+      } else {
+        let top = Infinity
+        for (let i = 1; i < op.pts.length; i += 2) top = Math.min(top, op.pts[i]!)
+        for (let i = 0; i < op.pts.length - 2; i += CHUNK - 2) {
+          const pts = at(op.pts, i, Math.min(op.pts.length, i + CHUNK))
+          const n = pts.length >> 1
+          if (n < 2 || this.pointCount + n > MAX_POINTS) break
+          this.points.set(pts, this.pointCount * 2)
+          this.pushPrim({
+            x: pts[0]!,
+            y: y0 + top,
+            w: pts[pts.length - 2]! - pts[0]!,
+            h: op.base - top,
+            clip,
+            color: withAlpha(op.color, alpha),
+            kind: 12,
+            p0: this.pointCount,
+            p1: n,
+            p2: y0 + op.base,
+            p3: op.fade,
+          })
+          this.pointCount += n
+        }
+      }
+    }
+  }
+
+  private readoutFont(font: ReadoutFont) {
+    const t = this.curTokens
+    return font === "value"
+      ? { px: t.valueSize, weight: t.fontWeight, family: t.valueFamily }
+      : font === "mono"
+        ? { px: t.textMeta, weight: 400, family: t.monoFamily }
+        : { px: t.textMeta, weight: t.fontWeight, family: t.fontFamily }
+  }
+
+  /** Text with tabular figures, as the DOM's `tnum` lays it out: each digit in the widest one's cell. */
+  private tabularWidth(text: string, px: number, weight: number, family: string) {
+    const cell = this.getDigitCellWidth(px, family, weight)
+    let w = 0
+    for (const ch of text)
+      w += ch >= "0" && ch <= "9" ? cell : this.atlas.measure(ch, px, weight, family)
+    return w
+  }
+
+  private drawReadout(
+    row: GpuReadoutRow,
+    rRect: DOMRect,
+    cardClip: Clip,
+    rowAlpha: number,
+    hovered: boolean,
+  ) {
+    const t = this.curTokens
+    const view = row.view
+    this.drawRowHover(row.row, rRect, hovered)
+    const lr = this.rectOf(row.labelEl)
+    if (lr.width > 0)
+      this.drawRowLabel(row.labelEl, row.display, false, lr.top + lr.height / 2, rowAlpha, lr)
+    // Readout text reflows its neighbours without a layout event, so rects are read fresh.
+    for (const layer of view.layers()) {
+      const r = layer.el.getBoundingClientRect()
+      if (r.width <= 0 || !layer.ops.length) continue
+      this.drawPlotOps(layer.ops, r, this.clipTo(cardClip, r), rowAlpha)
+    }
+    for (const b of view.buttons()) {
+      if (b.alpha <= 0.005) continue
+      const el = b.el
+      const br = el.getBoundingClientRect()
+      if (br.width <= 0) continue
+      const a = rowAlpha * b.alpha
+      const on = this.isHovered(el) || this.isFocused(el)
+      const pressed = el.getAttribute("aria-checked") === "true"
+      const radius = Math.min(br.height / 2, Math.min(t.radius, b.look === "pill" ? 1e4 : 5))
+      const wash = this.wash(el, on)
+      if (b.look === "pill")
+        this.shape({
+          x: br.left,
+          y: br.top,
+          w: br.width,
+          h: br.height,
+          radius,
+          fill: withAlpha(t.accent, a),
+          clip: cardClip,
+        })
+      else if (pressed || wash > 0.005)
+        this.pushPrim({
+          x: br.left,
+          y: br.top,
+          w: br.width,
+          h: br.height,
+          clip: cardClip,
+          color: withAlpha(
+            pressed ? t.surfaceHi : withAlpha(t.surface, 1.4),
+            a * (pressed ? 1 : wash),
+          ),
+          radius,
+          kind: 1,
+        })
+      const f = this.readoutFont("meta")
+      this.drawText(
+        el.textContent ?? "",
+        br.left + br.width / 2,
+        br.top + br.height / 2,
+        withAlpha(b.look === "pill" ? t.bg : pressed || on ? t.text : t.label, a),
+        { ...f, align: "center", clip: cardClip },
+      )
+    }
+    for (const item of view.texts()) {
+      const r = item.el.getBoundingClientRect()
+      if (r.width <= 0 && item.align === "left") continue
+      const clip = item.clip ? this.clipTo(cardClip, item.clip.getBoundingClientRect()) : cardClip
+      if (r.bottom < clip[1] || r.top > clip[3]) continue
+      const f = this.readoutFont(item.font)
+      const y = r.top + r.height / 2
+      const tabular = item.font === "value"
+      const widthOf = (text: string) =>
+        tabular
+          ? this.tabularWidth(text, f.px, f.weight, f.family)
+          : this.atlas.measure(text, f.px, f.weight, f.family)
+      let parts = item.parts
+      // Text the DOM ellipsizes is ellipsized here too.
+      if (parts.length === 1 && item.align === "left" && r.width > 0) {
+        const text = parts[0]!.text
+        if (this.domClipped(item.el, text, r.width))
+          parts = [
+            {
+              text: this.fit(text, r.width + 0.5, f.px, f.weight, f.family, 0, true),
+              color: parts[0]!.color,
+            },
+          ]
+      }
+      let x =
+        item.align === "right" ? r.right - parts.reduce((w, p) => w + widthOf(p.text), 0) : r.left
+      for (const part of parts) {
+        if (!part.text) continue
+        const color = withAlpha(part.color, rowAlpha)
+        const natural = this.atlas.measure(part.text, f.px, f.weight, f.family)
+        if (tabular && Math.abs(natural - widthOf(part.text)) > 0.25) {
+          // Proportional figures: each digit centred in its tabular cell, as the DOM's tnum.
+          if (color[3] * this.curAlpha > 0.01) this.frameTexts.push(part.text)
+          this.quietText = true
+          for (const ch of part.text) {
+            const digit = ch >= "0" && ch <= "9"
+            const w = digit
+              ? this.getDigitCellWidth(f.px, f.family, f.weight)
+              : this.atlas.measure(ch, f.px, f.weight, f.family)
+            if (ch !== " ") this.drawText(ch, x + w / 2, y, color, { ...f, align: "center", clip })
+            x += w
+          }
+          this.quietText = false
+        } else {
+          this.drawText(part.text, x, y, color, { ...f, clip })
+          x += natural
+        }
+      }
+    }
+    this.drawSeparator(row.row, rRect, cardClip)
+  }
+
   private drawToolbar(
     row: GpuToolbarRow,
     rRect: DOMRect,
@@ -3899,6 +4120,8 @@ class GpuOverlayManager {
           this.drawKeybind(row, rRect, cardClip, rowAlpha, hovered)
         } else if (row.kind === "toolbar") {
           this.drawToolbar(row, rRect, cardClip, rowAlpha, hinting)
+        } else if (row.kind === "readout") {
+          this.drawReadout(row, rRect, cardClip, rowAlpha, hovered)
         } else if (row.kind === "toggle") {
           const tRect = this.rectOf(row.toggleEl)
           // The thumb is a span between two edges: the leading edge springs ahead and the trailing
