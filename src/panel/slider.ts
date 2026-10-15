@@ -70,6 +70,11 @@ export interface Slider {
    * value without springing or rolling (a different item arrived).
    */
   update(value: number, delay?: number, instant?: boolean): void
+  /**
+   * Reads its design tokens now. A batch (a preset) primes every row it will move before writing
+   * any, so no row's read lands after another's writes and forces a style pass.
+   */
+  prime(): void
   /** Takes a new range, step, label or unit in place, keeping the DOM (see `RemoteControls.update`). */
   retune(field: KnobField): void
   /** The field it currently draws. */
@@ -769,6 +774,7 @@ export function createSlider(
     isDragging: inHand,
     isEditing: () => !number.hidden,
     update,
+    prime: () => void readTokens(),
     edit,
     dispose() {
       ro.disconnect()

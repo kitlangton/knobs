@@ -36,6 +36,7 @@ import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
+import { batchMeasures } from "./measure.js"
 import { Edges } from "./motion.js"
 import { morphFromChip, type PanelMorph } from "./morph.js"
 import { openMenu, type Menu } from "./menu.js"
@@ -1499,31 +1500,53 @@ function buildPanel<S extends Schema>(
     }
     const values = controls.get() as Record<string, unknown>
     const before = shown as Record<string, unknown>
-    const locked = controls.locked as Record<string, unknown>
     // A row with nothing shown yet (it just arrived) places its value without motion.
     const fresh = (r: Row) => r.row.dataset.shown === undefined
     const changed = (r: Row) => fresh(r) || r.keys.some((k) => !same(values[k], before[k]))
     let changedCount = 0
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
+    const moving = initialized ? rows.filter(changed) : rows
+    // Reads before writes: every row about to move reads its tokens before any row writes, and
+    // the pills measure once all of it is written (see measure.ts).
+    for (const row of moving) {
+      row.slider?.prime()
+      row.editor?.prime?.()
+    }
+    batchMeasures(() => showValues(values, moving, stagger, landing))
+    shown = values as Values<S>
+    initialized = true
+
+    wakeGpu()
+  }
+  function showValues(
+    values: Record<string, unknown>,
+    moving: readonly Row[],
+    stagger: number,
+    landing: boolean,
+  ) {
+    const locked = controls.locked as Record<string, unknown>
+    const fresh = (r: Row) => r.row.dataset.shown === undefined
     const now = performance.now()
     let turn = 0
-    for (const row of rows) {
-      if (initialized && !changed(row)) continue
+    for (const row of moving) {
       const instant = !initialized || landing || fresh(row)
       row.row.dataset.shown = ""
       const value = row.value(values)
       let delay = 0
       if (!instant) {
-        const moving = row.wave.at <= now && now < row.wave.until
-        delay = moving ? 0 : turn * stagger
+        const inMotion = row.wave.at <= now && now < row.wave.until
+        delay = inMotion ? 0 : turn * stagger
         turn++
         row.wave.at = now + delay
         row.wave.until = row.wave.at + 280
-        row.row.style.setProperty("--k-delay", `${delay}ms`)
+        // Only when it differs: a custom property set on the row restyles everything in it.
+        const wait = `${delay}ms`
+        if (row.row.style.getPropertyValue("--k-delay") !== wait)
+          row.row.style.setProperty("--k-delay", wait)
       } else {
         row.wave.at = row.wave.until = 0
-        row.row.style.removeProperty("--k-delay")
+        if (row.row.style.getPropertyValue("--k-delay")) row.row.style.removeProperty("--k-delay")
       }
       const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)
@@ -1534,7 +1557,7 @@ function buildPanel<S extends Schema>(
       else if (row.field.kind === "toggle")
         row.input.setAttribute("aria-checked", String(Boolean(value)))
     }
-    if (!initialized || changedCount > 0 || landing || turn > 0 || rows.some(fresh)) {
+    if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) {
       let anyMod = false
       for (const [groupName, gReset] of groupResetButtons) {
         const groupMod = rows.some(
@@ -1572,10 +1595,6 @@ function buildPanel<S extends Schema>(
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     presetStrip.update()
-    shown = values as Values<S>
-    initialized = true
-
-    wakeGpu()
   }
 
   const visible = (node: HTMLElement) =>
