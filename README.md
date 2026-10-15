@@ -309,7 +309,7 @@ Panels and switchers are keyboard-first:
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed |
 | Pan sideways (two fingers) | Moves a slider, colour strip, pad or easing handle 1:1 with the fingers; over the preset strip or a choice, drags the pill through the options. One undo entry per gesture; momentum is ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
-| `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
+| `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply). With other panels or `knobs/ui` pieces on the page, it labels all of them (see [Hint mode across the page](#hint-mode-across-the-page)) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
 | `r` / `⇧R` | Randomize all fields / reset all fields to defaults (locked fields keep their values on Random, not on Reset) |
@@ -324,6 +324,46 @@ Panels and switchers are keyboard-first:
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover |
 | `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |
+
+### Hint mode across the page
+
+With more than one thing on the page to label (two panels, a panel beside a `knobs/ui` tree,
+timeline or split, or the host's own `data-hint` buttons), `s` reaches all of them: pressed in a
+panel or anywhere outside a text field, every visible control in every panel (rows, tabs, toolbar
+buttons, header buttons), each tree row on screen, a timeline's Play, markers and playhead, the
+splits' header actions, collapse buttons and rails, and the host's elements gets a code. Typing one
+focuses its control (a row) or presses it (a button, a marker, a tree row); `Backspace` takes a
+letter back, `Enter` takes the first match, `Esc`, a click or a scroll cancels. Only what shows is
+labelled: rows on other tabs, in folded groups or scrolled out of their pane aren't.
+
+Codes are one or two letters, grouped: each panel or piece takes a letter of its own (panels first,
+then the pieces, then the host's; down each column, left to right; home row first) and its controls
+a second letter, home row first, so `a` then `s` is the first panel's second control. A group of
+one is just its letter; spare letters split a big group so its second letters stay on the home row.
+With only one panel on the page, nothing changes: `s` works while focus is in it, with codes from
+its labels.
+
+```ts
+import { hints } from "knobs/panel" // or "knobs/ui"
+
+// The host's own targets: elements, or { el, label?, labelEl?, activate? }.
+const off = hints.register(toolbar, () => toolbar.querySelectorAll("button"))
+```
+
+```html
+<!-- Or no code: a data-hint (its value labels it; empty uses the aria-label or text). -->
+<nav data-hint-group>
+  <button data-hint>Edit</button>
+  <button data-hint="Play">▶ Play</button>
+</nav>
+```
+
+A `data-hint` element is pressed (a click) unless it's a field or focusable without being a button,
+which takes focus. `data-hint-group` keeps a container's elements under one letter. Panels opt out
+with `keys: { hint: false }`, or keep `s` to themselves with `hints: "panel"` on the mount (the
+default is `"page"`); `tree`, `timeline` and `split` take `hints: false`. A tree leaves `s` to hint
+mode while the page has it (type-ahead keeps every other letter). `hints.start()` and `hints.stop()`
+drive it from a host's own key.
 
 In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
 
@@ -1146,6 +1186,7 @@ The package has two core exports selected through the standard `development` con
 | `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
 | `timeline(container, { duration, time?, fps?, units?, markers?, ranges?, snap?, onSeek?, … })` | A zoomable ruler and playhead with markers, loop ranges and playback. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
+| `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
 | `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
 | `place` / `fuzzy` / `rank` / `marks` | The overlays' pure model. |
 
