@@ -220,21 +220,38 @@ export interface ViewSpec {
 interface Targets {
   w: number
   h: number
+  dpr: number
   hdr: GPUTexture
+  hdrView: GPUTextureView
   levels: GPUTexture[]
+  levelViews: GPUTextureView[]
   binds: GPUBindGroup[]
   scene: GPUBindGroup
 }
+
+const byCanvas = new WeakMap<Element, GpuView>()
+const canvasRo = new ResizeObserver((entries) => {
+  for (const e of entries) {
+    const view = byCanvas.get(e.target)
+    if (!view) continue
+    view.cssW = Math.round(e.contentRect.width)
+    view.cssH = Math.round(e.contentRect.height)
+  }
+})
 
 /** One preview canvas and its passes. Fill `data` (from index 4), then `render()`. */
 export class GpuView {
   readonly canvas = document.createElement("canvas")
   readonly data = new Float32Array(SCENE_FLOATS)
   exposure: number
+  cssW = 0
+  cssH = 0
   private ctx!: GPUCanvasContext
   private pipeline!: GPURenderPipeline
   private sceneBuf!: GPUBuffer
   private postBufs: GPUBuffer[] = []
+  private readonly postData = new Float32Array(12)
+  private lastExposure = Number.NaN
   private targets: Targets | null = null
   private readonly t0 = performance.now()
   private failures = 0
@@ -248,6 +265,10 @@ export class GpuView {
     this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block"
     this.canvas.setAttribute("aria-hidden", "true")
     host.prepend(this.canvas)
+    this.cssW = this.canvas.clientWidth
+    this.cssH = this.canvas.clientHeight
+    byCanvas.set(this.canvas, this)
+    canvasRo.observe(this.canvas)
     this.build(s)
     views.add(this)
   }
@@ -302,10 +323,25 @@ export class GpuView {
   get time() {
     return (performance.now() - this.t0) / 1000
   }
+  private writePost(i: number, tex: GPUTexture, first: number, radius: number) {
+    const u = this.postData
+    u[0] = 1 / tex.width
+    u[1] = 1 / tex.height
+    u[4] = first
+    u[5] = radius
+    u[6] = this.spec.bloom ?? 0.06
+    u[7] = this.exposure
+    u[8] = this.spec.tone === "neutral" ? 1 : 0
+    u[9] = this.spec.vignette ?? 0
+    u[10] = this.spec.saturation ?? 1
+    this.s.device.queue.writeBuffer(this.postBufs[i]!, 0, u)
+  }
   private fit() {
+    const cssW = this.cssW || (this.cssW = this.canvas.clientWidth)
+    const cssH = this.cssH || (this.cssH = this.canvas.clientHeight)
     const dpr = Math.min(this.spec.maxDpr ?? 2, devicePixelRatio || 1)
-    const w = Math.round(this.canvas.clientWidth * dpr)
-    const h = Math.round(this.canvas.clientHeight * dpr)
+    const w = Math.round(cssW * dpr)
+    const h = Math.round(cssH * dpr)
     if (w < 2 || h < 2) return null
     if (this.targets && this.targets.w === w && this.targets.h === h) return this.targets
     const { device, layout, sampler, noise } = this.s
@@ -322,31 +358,54 @@ export class GpuView {
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       })
     const hdr = tex(w, h)
+    const hdrView = hdr.createView()
     const levels: GPUTexture[] = []
-    for (let i = 0; i < LEVELS; i++) levels.push(tex(w >> (i + 1), h >> (i + 1)))
-    const bind = (src: GPUTexture, buf: GPUBuffer, bloom: GPUTexture) =>
+    const levelViews: GPUTextureView[] = []
+    for (let i = 0; i < LEVELS; i++) {
+      const t = tex(w >> (i + 1), h >> (i + 1))
+      levels.push(t)
+      levelViews.push(t.createView())
+    }
+    const bind = (src: GPUTextureView, buf: GPUBuffer, bloom: GPUTextureView) =>
       device.createBindGroup({
         layout,
         entries: [
-          { binding: 0, resource: src.createView() },
+          { binding: 0, resource: src },
           { binding: 1, resource: sampler },
           { binding: 2, resource: { buffer: buf } },
-          { binding: 3, resource: bloom.createView() },
+          { binding: 3, resource: bloom },
           { binding: 4, resource: noise },
         ],
       })
     const binds: GPUBindGroup[] = []
     // Down: hdr → L0 → … → L4. Up: L4 → L3 … L1 → L0 (added on). Composite: hdr with L0.
-    for (let i = 0; i < LEVELS; i++)
-      binds.push(bind(i ? levels[i - 1]! : hdr, this.postBufs[i]!, hdr))
-    for (let i = LEVELS - 1; i > 0; i--)
-      binds.push(bind(levels[i]!, this.postBufs[LEVELS + (LEVELS - 1 - i)]!, hdr))
-    binds.push(bind(hdr, this.postBufs[LEVELS * 2 - 1]!, levels[0]!))
+    for (let i = 0; i < LEVELS; i++) {
+      binds.push(bind(i ? levelViews[i - 1]! : hdrView, this.postBufs[i]!, hdrView))
+      this.writePost(i, i ? levels[i - 1]! : hdr, i ? 0 : 1, 1)
+    }
+    for (let i = LEVELS - 1; i > 0; i--) {
+      const idx = LEVELS + (LEVELS - 1 - i)
+      binds.push(bind(levelViews[i]!, this.postBufs[idx]!, hdrView))
+      this.writePost(idx, levels[i]!, 0, 1)
+    }
+    binds.push(bind(hdrView, this.postBufs[LEVELS * 2 - 1]!, levelViews[0]!))
+    this.writePost(LEVELS * 2 - 1, hdr, 0, 1)
+    this.lastExposure = this.exposure
     const scene = device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [{ binding: 0, resource: { buffer: this.sceneBuf } }],
     })
-    this.targets = { w, h, hdr, levels, binds, scene }
+    this.targets = {
+      w,
+      h,
+      dpr: w / Math.max(1, cssW),
+      hdr,
+      hdrView,
+      levels,
+      levelViews,
+      binds,
+      scene,
+    }
     return this.targets
   }
   render() {
@@ -369,45 +428,26 @@ export class GpuView {
     const q = device.queue
     this.data[0] = t.w
     this.data[1] = t.h
-    this.data[2] = t.w / Math.max(1, this.canvas.clientWidth)
+    this.data[2] = t.dpr
     this.data[3] = this.time
     q.writeBuffer(this.sceneBuf, 0, this.data)
-    const post = (i: number, texel: [number, number], first: number, radius: number) =>
-      q.writeBuffer(
-        this.postBufs[i]!,
-        0,
-        new Float32Array([
-          texel[0],
-          texel[1],
-          0,
-          0,
-          first,
-          radius,
-          this.spec.bloom ?? 0.06,
-          this.exposure,
-          this.spec.tone === "neutral" ? 1 : 0,
-          this.spec.vignette ?? 0,
-          this.spec.saturation ?? 1,
-          0,
-        ]),
-      )
-    const size = (tex: GPUTexture): [number, number] => [1 / tex.width, 1 / tex.height]
-    for (let i = 0; i < LEVELS; i++) post(i, size(i ? t.levels[i - 1]! : t.hdr), i ? 0 : 1, 1)
-    for (let i = LEVELS - 1; i > 0; i--) post(LEVELS + (LEVELS - 1 - i), size(t.levels[i]!), 0, 1)
-    post(LEVELS * 2 - 1, size(t.hdr), 0, 1)
+    if (this.exposure !== this.lastExposure) {
+      this.writePost(LEVELS * 2 - 1, t.hdr, 0, 1)
+      this.lastExposure = this.exposure
+    }
 
     const enc = device.createCommandEncoder()
     const pass = (view: GPUTextureView, load: GPULoadOp) =>
       enc.beginRenderPass({
         colorAttachments: [{ view, loadOp: load, storeOp: "store", clearValue: [0, 0, 0, 1] }],
       })
-    let p = pass(t.hdr.createView(), "clear")
+    let p = pass(t.hdrView, "clear")
     p.setPipeline(this.pipeline)
     p.setBindGroup(0, t.scene)
     p.draw(3)
     p.end()
     for (let i = 0; i < LEVELS; i++) {
-      p = pass(t.levels[i]!.createView(), "clear")
+      p = pass(t.levelViews[i]!, "clear")
       p.setPipeline(this.s.down)
       p.setBindGroup(0, t.binds[i]!)
       p.draw(3)
@@ -415,7 +455,7 @@ export class GpuView {
     }
     for (let k = 0; k < LEVELS - 1; k++) {
       const i = LEVELS - 1 - k
-      p = pass(t.levels[i - 1]!.createView(), "load")
+      p = pass(t.levelViews[i - 1]!, "load")
       p.setPipeline(this.s.up)
       p.setBindGroup(0, t.binds[LEVELS + k]!)
       p.draw(3)
