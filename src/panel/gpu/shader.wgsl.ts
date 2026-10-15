@@ -287,22 +287,20 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     let stepU = 1.0 / (tickCount - 1.0);
     let nearestIdx = round(u / stepU);
     let tickX = nearestIdx * stepU * span;
-    if (p.aux.z <= 0.005 || abs(tickX - nx) >= 3.0) {
-      let dx = abs(local.x - tickX);
-      let dy = abs(local.y - size.y * 0.5);
-      let tDist = max(dx - 0.5, dy - 3.5);
-      let tCov = covSd(tDist) * clear;
-      if (tCov > 0.0) {
-        let ta = tCov * tickAlpha * 0.22;
-        acc = over(acc, vec4f(p.aux2.rgb * ta, ta));
-      }
+    let dx = abs(local.x - tickX);
+    let dy = abs(local.y - size.y * 0.5);
+    let tDist = max(dx - 0.5, dy - 3.5);
+    let tCov = covSd(tDist) * clear;
+    if (tCov > 0.0) {
+      let ta = tCov * tickAlpha * 0.22;
+      acc = over(acc, vec4f(p.aux2.rgb * ta, ta));
     }
   }
 
-  // Default notch: a slightly taller, brighter centerline tick among the scale ticks.
+  // Default notch: a short tick rising from the bottom edge, off the scale's centerline.
   if (p.aux.z > 0.005 && clear > 0.0) {
-    let nh = select(9.0, 11.0, p.aux.z > 0.8);
-    let nCov = covSd(roundedBox(local - vec2f(nx - 0.75, (size.y - nh) * 0.5), vec2f(1.5, nh), 0.75)) * clear;
+    let nh = select(4.0, 6.0, p.aux.z > 0.8);
+    let nCov = covSd(roundedBox(local - vec2f(nx - 0.75, size.y - nh), vec2f(1.5, nh + 1.0), 0.75)) * clear;
     let na = nCov * p.aux2.a * p.aux.z;
     acc = over(acc, vec4f(p.aux2.rgb * na, na));
   }

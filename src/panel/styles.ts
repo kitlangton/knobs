@@ -298,10 +298,11 @@ ${POINTER_ROW} .knobs-card>:not(:hover,.knobs-active,:hover+*,.knobs-active+*)::
 .knobs-smear .knobs-handle::before{scale:calc(1 + var(--k-smear) / 3) 1;opacity:calc(3 / (3 + var(--k-smear)))}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,opacity .15s}
 .knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,opacity .15s}
-.knobs-marks>.knobs-notch{width:1.5px;height:9px;background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
+/* The default: a short notch rising from the bottom edge, only while the row is in hand. */
+.knobs-marks>.knobs-notch{top:auto;bottom:0;width:1.5px;height:4px;border-radius:999px 999px 0 0;transform:translateX(-50%);background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
 .knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
-.knobs-magnet .knobs-notch{opacity:.95;height:11px}
+.knobs-magnet .knobs-notch{opacity:.95;height:6px}
 /* The handle is a full-width layer moved by the fill (translate's % is its own width, the track's). */
 .knobs-handle{position:absolute;inset:0;pointer-events:none;transform:translateX(var(--k-fill));opacity:var(--k-handle-rest);transition:opacity .15s}
 .knobs-handle::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:calc(-50% - var(--k-handle-inset)) 0;border-radius:999px;background:var(--k-handle);

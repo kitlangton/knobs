@@ -176,7 +176,7 @@ const motion = defineControls("motion", {
 })
 ```
 
-When fields specify `group`, each group's rows share one rounded card under a section header. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
+When fields specify `group`, each group's rows share one rounded card under a section header. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's default is a short notch rising from its bottom edge while the row is hovered, focused or dragged, brighter once the value moves off it; changed choices and switches show a small dot.
 
 ### Remote / Socket-Driven Controls (`createRemoteControls`)
 

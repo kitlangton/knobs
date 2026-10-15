@@ -148,7 +148,6 @@ export function createSlider(
     const ticks: HTMLElement[] = []
     for (let i = 0; i < count; i++) {
       const r = i / (count - 1)
-      if (Math.abs(r - notchRatio) < 0.025) continue
       const mark = el("i")
       mark.style.left = `${r * 100}%`
       ticks.push(mark)
