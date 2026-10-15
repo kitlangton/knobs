@@ -1,8 +1,8 @@
-// Every control in knobs, one section each, down one scrolling page: the field kinds, the
-// readouts, the panel's structure, remote descriptors, knobs/ui and the looks. Most panels drive a
-// small preview beside them (examples/controls-motion.ts moves them on knobs' springs); some stand
-// alone. ?gpu draws the panels with the WebGPU renderer, ?theme=light starts light. ⌘K lists the
-// page's sections and controls.
+// Every control in knobs, down one scrolling page. First a few scenes, each one panel of several
+// kinds of control driving something together (the lamp, the object and the dots and sky are
+// drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
+// and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
+// DOM, ?theme=light starts light. ⌘K lists the page's sections and controls.
 import {
   action,
   angle,
@@ -440,12 +440,16 @@ motionScene(kit)
       return [c * gap, -v.arc * (1 - n * n)] as const
     }
     const last = slot(v.count - 1)
+    // Mark the new state first: drawing (which every snap does off screen) pulls hidden dots
+    // into their neighbours, so a dot about to show must already count as shown.
+    const was = [...shown]
+    for (let i = 0; i < MAX; i++) shown[i] = i < v.count
     for (let i = 0; i < MAX; i++) {
       const d = dots[i]!
       const on = i < v.count
       if (on) {
         const [tx, ty] = slot(i)
-        if (!shown[i] && how !== "init") {
+        if (!was[i] && how !== "init") {
           if (reduced()) {
             d.x.snap(tx)
             d.y.snap(ty)
@@ -476,18 +480,17 @@ motionScene(kit)
           d.a.go(1, how === "init" ? "init" : "other")
         }
       } else if (how === "init" || reduced()) {
-        if (how === "init" || !shown[i]) {
+        if (how === "init" || !was[i]) {
           d.x.snap(last[0])
           d.y.snap(last[1])
         }
         d.r.go(reduced() ? r0 : 0, how === "init" ? "init" : "other")
         d.a.go(reduced() ? 0 : 1, how === "init" ? "init" : "other")
-      } else if (shown[i] && !merging[i]) {
+      } else if (was[i] && !merging[i]) {
         // Merge: it pours into its neighbour, wherever that one is heading.
         merging[i] = { x: d.x.x, y: d.y.x, r: Math.max(0, d.r.x), at: performance.now() }
         pour()
       }
-      shown[i] = on
     }
     if (how !== "init" && v.count !== count) live.log(`Dots ${count} → ${v.count}`, "debug")
     count = v.count
@@ -541,7 +544,7 @@ const SKIES = {
   })
   const { store, on } = define("sky", "Sky", {
     sky: gradient(SKIES.Clear, { label: "Sky by hour", presets: SKIES }),
-    hour: knob(18.25, { min: 0, max: 24, step: 0.25, unit: "h", label: "Hour" }),
+    hour: knob(17.5, { min: 0, max: 24, step: 0.25, unit: "h", label: "Hour" }),
     clouds: knob(0.45, { min: 0, max: 1, step: 0.01, label: "Clouds" }),
     stars: toggle(true, { label: "Stars" }),
   })
@@ -563,8 +566,8 @@ const SKIES = {
     label: "sky",
     tone: "agx",
     bloom: 0.09,
-    exposure: 1.35,
-    saturation: 1.18,
+    exposure: 1.2,
+    saturation: 1.12,
   })
   if (view) for (const el of s.stage.querySelectorAll<HTMLElement>("[data-dom]")) el.remove()
   const scene = s.stage.querySelector<HTMLElement>("[data-scene]")
@@ -600,8 +603,14 @@ const SKIES = {
       const sc = kelvinRgb(2000 + 4000 * clamp01(elev) ** 0.6)
       const k = 3.2 * clamp01(elev * 3 + 0.4)
       const sky = linearRgb(oklabRgb(now))
+      // Overhead, the ramp two hours further from noon: deeper by day, night coming at dusk.
+      const zh = clamp01((hour.x + (hour.x < 12 ? -2 : 2)) / 24) * (N - 1)
+      const z0 = Math.min(N - 2, Math.floor(zh))
+      const zenith = linearRgb(
+        oklabRgb(labs[z0]!.map((c, j) => lerp(c, labs[z0 + 1]![j]!, zh - z0))),
+      )
       view.data.set([sky[0], sky[1], sky[2], day, sc[0] * k, sc[1] * k, sc[2] * k, elev], 4)
-      view.data.set([starsOn.x, clouds.x, 0, 7], 12)
+      view.data.set([starsOn.x, clouds.x, 0, 7, zenith[0], zenith[1], zenith[2], 0], 12)
       view.render()
       return
     }
@@ -616,7 +625,7 @@ const SKIES = {
     sun!.style.transform = `translate(${px(sx)},${px(sy)})${sunSmear!.transform(vxDay, vyDay)}`
     sun!.style.opacity = clamp01(up * 4 + 0.6).toFixed(3)
   })
-  const hour = stage.val(18.25, 0.002)
+  const hour = stage.val(17.5, 0.002)
   const clouds = stage.val(0.45, 0.001)
   const starsOn = stage.val(1, 0.002, true)
   const samples = Array.from(
@@ -744,19 +753,24 @@ const SKIES = {
 
 // ── Panel structure ──────────────────────────────────────────────────────────────────────────
 
-category("Panel structure")
+category("Panel")
+
+let structureSide!: HTMLElement
+let rowsSide!: HTMLElement
 
 {
   const s = section({
-    id: "tabs",
-    title: "Tabs & sub-headings",
-    code: "tab · subsection",
-    what: "Fields name a tab and a sub-heading. Rows cross as tabs change; sub-headings fold inside their card.",
+    id: "structure",
+    title: "Tabs, sub-headings & folds",
+    code: "tab · subsection · folded",
+    what: "Fields name a tab, a group and a sub-heading. Rows cross as tabs change; sub-headings fold inside their card; a group with a folded field folds to its header, and each card has a reset and a die of its own.",
     tries: [
-      "<kbd>⌥1</kbd> <kbd>⌥2</kbd> <kbd>⌥3</kbd> pick a tab",
-      "Click Forces to fold it; <kbd>←</kbd> folds and <kbd>→</kbd> opens on a focused heading",
+      "<kbd>⌥1</kbd> <kbd>⌥2</kbd> <kbd>⌥3</kbd> pick a tab; click Forces to fold it",
+      "On the right, click Shadow's header to open it",
+      "<kbd>g</kbd> randomizes the focused row's group; <kbd>⌥G</kbd> mutates it",
     ],
   })
+  structureSide = s.side
   const { store } = define("tabs", "Tabs", {
     position: vec3(
       { x: 0, y: 1.2, z: -4 },
@@ -827,16 +841,8 @@ category("Panel structure")
 }
 
 {
-  const s = section({
-    id: "folds",
-    title: "Folding groups",
-    code: "folded: true",
-    what: "A group with a folded field folds to its header. Each card has a reset and a die of its own.",
-    tries: [
-      "Click Shadow's header to open it",
-      "<kbd>g</kbd> randomizes the focused row's group; <kbd>⌥G</kbd> mutates it",
-    ],
-  })
+  const s = { slot: h("div", "slot") }
+  structureSide.prepend(s.slot)
   const { store } = define("folds", "Folding groups", {
     radius: knob(14, { min: 0, max: 32, step: 1, unit: "px", label: "Radius", group: "Shape" }),
     padding: knob(16, { min: 0, max: 40, step: 1, unit: "px", label: "Padding", group: "Shape" }),
@@ -1004,16 +1010,17 @@ category("Panel structure")
 
 {
   const s = section({
-    id: "gates",
-    title: "Disabled, read-only and mixed",
-    code: "disabled · readOnly · setMixed",
-    what: "A disabled row dims; a read-only one keeps full strength. Mixed rows read “—” until edited, as for a multi-selection.",
+    id: "rows",
+    title: "Row states & accessories",
+    code: "disabled · readOnly · setMixed · rowAccessory",
+    what: "A disabled row dims; a read-only one keeps full strength. Mixed rows read “—” until edited, as for a multi-selection. And on the right, your own node just after a row's label: a pin, a marker, yours to style and listen on.",
     tries: [
-      "Turn on Lock size: Size and Corner become read-only",
-      "Shadow colour is disabled while Shadow is off",
+      "Turn on Lock size: Size and Corner become read-only; Shadow colour is disabled while Shadow is off",
       "Edit Opacity once and it stops being mixed; the action mixes it again",
+      "On the right, hover a row to see its pin; the amber dot marks values that only apply at spawn",
     ],
   })
+  rowsSide = s.side
   const { store } = define("gates", "Gates", {
     lock: toggle(false, { label: "Lock size", group: "Size" }),
     size: knob(48, {
@@ -1062,16 +1069,8 @@ category("Panel structure")
 }
 
 {
-  const s = section({
-    id: "accessories",
-    title: "Row accessories",
-    code: "rowAccessory(key)",
-    what: "Your own node just after a row's label: a pin, a marker. It stays yours to style and listen on.",
-    tries: [
-      "Hover a row to see its pin; click to pin it",
-      "The amber dot marks values that only apply at spawn",
-    ],
-  })
+  const s = { slot: h("div", "slot") }
+  rowsSide.prepend(s.slot)
   const pinned = new Set(["gravity"])
   const SPAWN = new Set(["count", "spread"])
   const { store } = define("accessories", "Row accessories", {
@@ -1095,7 +1094,7 @@ category("Panel structure")
       ? `Pinned: ${[...pinned].map((k) => store.schema[k as keyof typeof store.schema]?.label ?? k).join(", ")}`
       : "Nothing pinned"
   }
-  s.side.prepend(pinned$)
+  s.slot.after(pinned$)
   showPins()
   mount(store, s.slot, {
     title: "Emitter",
@@ -1129,10 +1128,6 @@ category("Panel structure")
   .knobs-row:hover .catalog-pin,.knobs-row:focus-within .catalog-pin{opacity:1}`
   document.head.append(style)
 }
-
-// ── Remote ───────────────────────────────────────────────────────────────────────────────────
-
-category("Remote")
 
 {
   const s = section({
@@ -1513,4 +1508,4 @@ const palette = commandPalette({
 })
 document.getElementById("palette")!.addEventListener("click", () => palette.open())
 
-Object.assign(window, { __catalog: { stores, panels, palette, toast } })
+Object.assign(window, { __catalog: { stores, panels, palette, toast, live } })

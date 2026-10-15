@@ -179,8 +179,8 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
   const stage = new Stage(s.stage, () => {
     const w = s.stage.clientWidth
     const hh = s.stage.clientHeight
-    const showGraph = w >= 560
-    const G = 168
+    const showGraph = w >= 460
+    const G = Math.min(168, Math.round(w * 0.3))
     const gx = 34
     const gy = hh / 2 - G / 2
     const bz: Bezier = [b[0]!.x, b[1]!.x, b[2]!.x, b[3]!.x]
@@ -215,7 +215,7 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
         marks[i]!.setAttribute("cy", Y(f(run)).toFixed(2))
       })
     }
-    const x0 = showGraph ? gx + G + 64 : 48
+    const x0 = showGraph ? gx + G + 56 : 48
     const x1 = w - 48
     rows.forEach((r, i) => {
       const y = hh / 2 + (i - 1) * 70

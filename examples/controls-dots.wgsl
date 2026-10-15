@@ -8,7 +8,7 @@
 // u.v[0..7]   dots: x, y, r, opacity (CSS px)
 // u.v[8..15]  direction xy, stretch, shutter travel (px)
 // u.v[16..19] per dot: neck share, radial travel (two dots per vec4)
-// u.v[20]     smooth-min k, goo (0 apart / 1 joined), shutter samples, dpr
+// u.v[20]     smooth-min k, goo (0 apart / 1 joined), shutter samples
 // u.v[21]     ink (linear, already over the stage), tone
 // u.v[22]     stage colour (linear), nominal radius
 
@@ -81,7 +81,7 @@ fn height(p: vec2f) -> f32 {
 }
 
 fn scene(px: vec2f) -> vec3f {
-  let dpr = u.v[20].w;
+  let dpr = u.frame.z;
   let p = px / dpr;
   let aa = 0.75 / dpr;
   let samples = u.v[20].z;

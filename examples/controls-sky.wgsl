@@ -4,9 +4,10 @@
 // enough; two ranges of hills, the far one hazed into the horizon. Nothing in it depends on time,
 // so a still sky costs nothing. Linear HDR; the post tone-maps with AgX.
 //
-// u.v[0]  sky colour at the hour (linear), daylight (0 at 6h, 1 at 18h)
+// u.v[0]  sky colour at the hour (linear): the horizon; daylight (0 at 6h, 1 at 18h)
 // u.v[1]  sun colour × intensity (linear), elevation (−1…1)
 // u.v[2]  stars, cloud cover, tone, seed
+// u.v[3]  the ramp two hours further from noon (linear): the zenith
 
 const HORIZON = -0.2;
 
@@ -57,13 +58,13 @@ fn scene(px: vec2f) -> vec3f {
   let up = sat((uv.y - HORIZON) / 0.75);
 
   // The dome: deeper overhead, lighter and warmer low, warmest towards the sun when it's low.
-  let zenith = sky * 0.5 + vec3f(0.0, 0.004, 0.014);
+  let zenith = u.v[3].rgb * 0.7 + vec3f(0.0, 0.002, 0.008);
   let side = exp(-abs(uv.x - sunPos.x) * 1.6) * low * sat(elev + 0.25);
-  let horizon = sky * 1.22 + vec3f(0.02) * sat(elev + 0.2) + sunCol * 0.05 * side;
+  let horizon = sky * 1.1 + vec3f(0.015) * sat(elev + 0.2) + sunCol * 0.06 * side;
   var col = mix(horizon, zenith, pow(up, 0.55));
 
   // Stars, where the sky is dark enough to show them.
-  let lum = dot(sky, vec3f(0.2126, 0.7152, 0.0722));
+  let lum = dot(zenith, vec3f(0.2126, 0.7152, 0.0722));
   let starVis = stars * sat(1.0 - lum * 18.0) * smoothstep(HORIZON, HORIZON + 0.25, uv.y);
   if (starVis > 0.001) {
     let g = uv * 90.0;
@@ -97,8 +98,8 @@ fn scene(px: vec2f) -> vec3f {
   // Two ranges of hills: the far one hazed into the horizon, the near one nearly black.
   let farY = ridge(uv.x, true);
   let nearY = ridge(uv.x, false);
-  let farCol = mix(horizon * 0.62, sky * 0.12, 0.35) + sunCol * 0.015 * side;
-  let nearCol = sky * 0.05 + vec3f(0.003);
+  let farCol = mix(horizon * 0.42, zenith * 0.2, 0.4) + sunCol * 0.012 * side;
+  let nearCol = zenith * 0.06 + vec3f(0.002);
   col = mix(col, farCol, 1.0 - smoothstep(farY - pix, farY + pix, uv.y));
   col = mix(col, nearCol, 1.0 - smoothstep(nearY - pix, nearY + pix, uv.y));
   // A haze that hangs low in the valley.
