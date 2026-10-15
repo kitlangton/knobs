@@ -1637,7 +1637,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto("/tune.html")
+  await page.goto("/tune.html?classic")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const tune = page.getByRole("region", { name: "iPhone Tune controls" })
@@ -1718,7 +1718,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await expect(header).not.toHaveAttribute("data-scrolled", "")
 
   // The GPU overlay draws the page too.
-  await page.goto("/tune.html?gpu")
+  await page.goto("/tune.html?classic&gpu")
   await expect(tune.locator(".knobs-tile").first()).toBeVisible()
   await page.waitForTimeout(500)
 
@@ -1726,7 +1726,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   // both renderers, with no overlap or horizontal overflow.
   for (const mode of ["dom", "gpu"] as const) {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(`/tune.html${mode === "gpu" ? "?gpu" : ""}`)
+    await page.goto(`/tune.html?classic${mode === "gpu" ? "&gpu" : ""}`)
     await expect(tune.locator(".knobs-tile").first()).toBeVisible()
     const head = await header.evaluate((h) => {
       const title = h.querySelector("strong")!.getBoundingClientRect()
@@ -1756,7 +1756,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto("/tune.html")
+  await page.goto("/tune.html?classic")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const tune = page.getByRole("region", { name: "iPhone Tune controls" })
@@ -1888,7 +1888,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   // glide's springs can't jump more than a few frames' worth however slow the runner), and the
   // overlay keeps drawing until they land, then sleeps.
   await page.setViewportSize({ width: 1100, height: 900 })
-  await page.goto("/tune.html?gpu")
+  await page.goto("/tune.html?classic&gpu")
   await expect(tune.locator(".knobs-column")).toHaveCount(3)
   const track = page.evaluate(
     () =>
