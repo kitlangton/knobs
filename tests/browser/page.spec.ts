@@ -548,3 +548,55 @@ test("the tune demo: the phone's screen drives the highlight; pairing folds the 
   await expect(head("Session List")).toHaveClass(/knobs-highlighted/)
   await expect(head("Transcript")).toHaveClass(/knobs-dimmed/)
 })
+
+test("remote.update dropping a whole group folds its card away, and re-adding brings it back", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html?dom")
+  await page.waitForFunction(() => (window as any).__knobs)
+  await page.evaluate(() => {
+    const { knobs: k, mountPage } = (window as any).__knobs
+    ;(window as any).__tune.page.dispose()
+    const d = (key: string, group: string, section = "Drawer") => ({
+      key,
+      label: key,
+      kind: "number",
+      default: 10,
+      min: 0,
+      max: 100,
+      step: 1,
+      group,
+      section,
+    })
+    const all = [
+      d("rowHeight", "drawer.spacing"),
+      d("rowGap", "drawer.spacing"),
+      d("fade", "transcript.arrivals", "Transcript"),
+    ]
+    const remote = k.createRemoteControls("filter-probe", all, { enabled: true, storage: null })
+    mountPage(remote, document.body)
+    ;(window as any).__probe = {
+      remote,
+      all,
+      onlyTranscript: all.filter((x) => x.section === "Transcript"),
+    }
+  })
+  const drawer = page.locator('.knobs-tile[data-group="drawer.spacing"]')
+  await expect(drawer).toBeVisible()
+  // Only on-screen controls: the drawer's descriptors go.
+  await page.evaluate(() => {
+    const p = (window as any).__probe
+    p.remote.update(p.onlyTranscript, {})
+  })
+  await expect(drawer).toBeHidden()
+  await expect(drawer.locator(".knobs-slider")).toHaveCount(0)
+  await expect(page.locator('.knobs-tile[data-group="transcript.arrivals"]')).toBeVisible()
+  // They come back.
+  await page.evaluate(() => {
+    const p = (window as any).__probe
+    p.remote.update(p.all, {})
+  })
+  await expect(drawer).toBeVisible()
+  await expect(drawer.locator(".knobs-slider")).toHaveCount(2)
+})

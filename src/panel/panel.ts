@@ -1133,6 +1133,15 @@ function buildPanel<S extends Schema>(
         if (animate) motion.push({ node: r.row, show: false, after: done })
         else done()
       }
+      // A card whose rows all left folds away with them; one that gets rows again opens.
+      const occupied = new Set(next.map((r) => tileFor(r.group, r.section)))
+      for (const inner of tiles.values()) {
+        const tile = inner.parentElement!
+        const empty = !occupied.has(inner)
+        if (empty === (tile.hidden || tile.dataset.presence === "out")) continue
+        if (animate) motion.push({ node: tile, show: !empty })
+        else tile.hidden = empty
+      }
       layout?.pack(true)
     } else {
       // Runs of rows sharing a group make blocks; a run reuses its group's block if there is one.
@@ -1701,7 +1710,10 @@ function buildPanel<S extends Schema>(
         }
         for (const inner of tiles.values()) {
           const tile = inner.parentElement!
-          const empty = ![...inner.children].some((c) => !(c as HTMLElement).hidden)
+          // Rows folding away (a reshape dropped them) don't count.
+          const empty = ![...inner.children].some(
+            (c) => !(c as HTMLElement).hidden && (c as HTMLElement).dataset.presence !== "out",
+          )
           if (tile.hidden !== empty) tile.hidden = empty
         }
         for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
