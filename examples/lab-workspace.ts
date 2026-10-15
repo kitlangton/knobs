@@ -69,6 +69,11 @@ const access: TreeAccess<SceneItem> = {
 const hidden = new Set<string>()
 const locked = new Set<string>()
 const moves: TreeMove[] = []
+// The viewport's scene follows the outliner: what's there, hidden, locked or selected.
+const watchers = new Set<() => void>()
+const changed = () => {
+  for (const f of watchers) f()
+}
 const count = (items: readonly SceneItem[]): number =>
   items.reduce((n, i) => n + (i.children ? count(i.children) : 1), 0)
 
@@ -170,6 +175,15 @@ const names = (ids: readonly string[]) => {
   walk(scene)
   return ids.map((id) => index.get(id) ?? id)
 }
+const selected = (ids: readonly string[]) => {
+  if (picked) picked.textContent = ids.length ? names(ids).join(", ") : "Nothing selected"
+  changed()
+}
+/** Selects as a click on a row does (the viewport's picking): the status line and watchers follow. */
+const select = (ids: readonly string[]) => {
+  outline.select(ids)
+  selected(ids)
+}
 const outline = tree(rows, {
   ...look,
   items: scene,
@@ -178,13 +192,12 @@ const outline = tree(rows, {
   icon: (n) => n.icon,
   detail: (n) =>
     n.children && n.children.length > 1 && n.icon ? `×${n.children.length}` : undefined,
-  onSelect: (ids) => {
-    if (picked) picked.textContent = ids.length ? names(ids).join(", ") : "Nothing selected"
-  },
+  onSelect: (ids) => selected(ids),
   onMove: (move) => {
     moves.push(move)
     scene = applyMove(scene, access, move)
     outline.update(scene)
+    changed()
   },
   onRename: (id, label) => {
     const rename = (items: SceneItem[]): SceneItem[] =>
@@ -193,19 +206,26 @@ const outline = tree(rows, {
       )
     scene = rename(scene)
     outline.update(scene)
+    changed()
   },
   toggles: [
     {
       id: "visible",
       label: "Show or hide",
       get: (n) => !hidden.has(n.id),
-      set: (ids, on) => ids.forEach((id) => (on ? hidden.delete(id) : hidden.add(id))),
+      set: (ids, on) => {
+        ids.forEach((id) => (on ? hidden.delete(id) : hidden.add(id)))
+        changed()
+      },
     },
     {
       id: "locked",
       label: "Lock or unlock",
       get: (n) => !locked.has(n.id),
-      set: (ids, on) => ids.forEach((id) => (on ? locked.delete(id) : locked.add(id))),
+      set: (ids, on) => {
+        ids.forEach((id) => (on ? locked.delete(id) : locked.add(id)))
+        changed()
+      },
     },
   ],
 })
@@ -248,6 +268,7 @@ const remove = (ids: readonly string[]) => {
   outline.select([])
   if (picked) picked.textContent = "Nothing selected"
   left.pane("outliner").title("Outliner", count(scene))
+  changed()
 }
 
 /** Copies of the items, each just after its original, with " copy" on its label. */
@@ -271,12 +292,14 @@ const duplicate = (ids: readonly string[]) => {
   outline.update(scene)
   outline.select(copies, copies[copies.length - 1])
   left.pane("outliner").title("Outliner", count(scene))
+  changed()
   return copies
 }
 /** Hides (or shows) the items, as their eye toggle does. */
 const setHidden = (ids: readonly string[], on: boolean) => {
   for (const id of ids) on ? hidden.add(id) : hidden.delete(id)
   outline.refresh()
+  changed()
 }
 /** The top-level groups, to move items into. */
 const groupsOf = () => scene.filter((i) => i.children).map((i) => ({ id: i.id, label: i.label }))
@@ -299,9 +322,10 @@ const moveTo = (ids: readonly string[], parent: string) => {
   scene = applyMove(scene, access, move)
   outline.update(scene)
   outline.expand(parent, true)
+  changed()
 }
 
-export const sceneTime = startTimeline(center.pane("timeline").body, viewport)
+export const sceneTime = startTimeline(center.pane("timeline").body)
 
 export const liveFeed = startLive(
   document.getElementById("live")!,
@@ -312,6 +336,7 @@ export const workspace = {
   left,
   center,
   outline,
+  select,
   find,
   names,
   collapseAll,
@@ -320,6 +345,15 @@ export const workspace = {
   duplicate,
   setHidden,
   hidden,
+  locked,
+  get scene() {
+    return scene
+  },
+  /** Something in the outliner changed: an item, its visibility or lock, or the selection. */
+  onChange(f: () => void) {
+    watchers.add(f)
+    return () => watchers.delete(f)
+  },
   groupsOf,
   parentOf,
   moveTo,

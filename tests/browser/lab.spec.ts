@@ -447,7 +447,7 @@ test("tabs: a sliding underline, ⌥1–9 and [ ] switch, untabbed rows stay, th
   expect(errors).toEqual([])
 })
 
-test("FX: gradients and curves paint the viewport; presets, Random and the hour change it", async ({
+test("FX: gradients and curves feed the scene's ramps; presets, Random and the hour change them", async ({
   page,
 }) => {
   const errors = await openInspector(page)
@@ -458,27 +458,29 @@ test("FX: gradients and curves paint the viewport; presets, Random and the hour 
     expect(await shown(panel, key)).toBe(true)
   expect(await shown(panel, "position")).toBe(false)
   await expect(row(panel, "falloff").locator(".knobs-x-read")).toHaveText("inverse²")
+  // The scene samples each field from a ramp texture's rows (lab-scene.ts): smoke, sky, fog and
+  // the two curves, 128 texels of rgba each.
   const viewport = page.locator("#viewport")
-  const sky = () => viewport.locator(".fx-sky").evaluate((el) => el.style.background)
-  const glow = () => viewport.locator(".fx-glow").evaluate((el) => el.style.background)
-  await expect(viewport.locator(".fx-smoke i")).toHaveCount(6)
-  // The hour samples the sky and fog gradients.
+  const ramps = () => page.evaluate(() => (window as any).__scene.ramps() as number[])
+  const rowOf = (r: number[], i: number) => r.slice(i * 512, (i + 1) * 512).join()
+  const sky = () => page.evaluate(() => (window as any).__scene.sky().join())
+  // The hour samples the sky gradient.
   const dusk = await sky()
   await lab(page, (l) => l.inspector.set({ hour: 3 }))
   await expect(viewport).toHaveAttribute("data-hour", "3.00")
-  expect(await sky()).not.toBe(dusk)
-  // A sky preset, from its chips.
-  const night = await sky()
+  await expect.poll(sky).not.toBe(dusk)
+  // A sky preset, from its chips, changes the sky row.
+  const before = rowOf(await ramps(), 1)
   await panel.getByRole("button", { name: "Sky by hour", exact: true }).click()
   await still(page)
   await panel.getByRole("radio", { name: "Storm" }).click()
-  expect(await sky()).not.toBe(night)
-  // The light's falloff shapes its glow.
-  const lamp = await glow()
+  await expect.poll(async () => rowOf(await ramps(), 1)).not.toBe(before)
+  // The light's falloff curve is a row too.
+  const lamp = rowOf(await ramps(), 3)
   await panel.getByRole("button", { name: "Light falloff", exact: true }).click()
   await still(page)
   await panel.getByRole("radio", { name: "linear" }).click()
-  expect(await glow()).not.toBe(lamp)
+  await expect.poll(async () => rowOf(await ramps(), 3)).not.toBe(lamp)
   // Random keeps every ramp in order.
   for (let i = 0; i < 4; i++) {
     await panel.getByRole("button", { name: "Randomize Sky & fog" }).click()

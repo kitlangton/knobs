@@ -78,6 +78,7 @@
     "@types/bun": "^1.2.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@webgpu/types": "^0.1.74",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "solid-js": "^1.9.0",
