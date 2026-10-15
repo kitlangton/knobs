@@ -8,7 +8,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error"
 export interface LogEntry {
   readonly text: string
   readonly level?: LogLevel
-  /** When it happened (ms since the epoch, or `performance.now()`); when pushed by default. */
+  /** When it happened (ms since the epoch); when it was pushed by default. */
   readonly time?: number
 }
 /** A table's rows (cells by column), or a key-value record. */
@@ -65,7 +65,7 @@ export class EntryLog {
   total = 0
   constructor(readonly max: number) {}
   push(entry: LogEntry) {
-    const time = entry.time ?? (typeof performance !== "undefined" ? performance.now() : Date.now())
+    const time = entry.time ?? Date.now()
     this.entries.push({ ...entry, level: entry.level ?? "info", time, seq: this.total++ })
     if (this.entries.length > this.max) this.entries.splice(0, this.entries.length - this.max)
   }

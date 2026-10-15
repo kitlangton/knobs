@@ -236,6 +236,11 @@ describe("readout model", () => {
     expect(levelOf(300, 384, 480)).toBe(0)
     expect(levelOf(400, 384, 480)).toBe(1)
     expect(levelOf(500, 384, 480)).toBe(2)
+    // Hysteresis: a level holds until the value falls a band below its threshold.
+    expect(levelOf(380, 384, 480, 1, 10)).toBe(1)
+    expect(levelOf(370, 384, 480, 1, 10)).toBe(0)
+    expect(levelOf(380, 384, 480, 0, 10)).toBe(0)
+    expect(levelOf(475, 384, 480, 2, 10)).toBe(2)
     const m = meterScene({ fraction: 0.5, level: 0, min: 0, max: 1, w: 100, h: 8, palette })
     expect(m).toHaveLength(2)
     expect((m[1] as { w: number }).w).toBe(50)

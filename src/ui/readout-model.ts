@@ -305,17 +305,16 @@ export function graphScene(o: {
 }
 
 /** The colour a meter's value takes: the accent, the warning colour from `warn`, critical past `critical`. */
-export function levelOf(v: number, warn?: number, critical?: number) {
-  if (critical !== undefined && v >= critical) return 2
-  if (warn !== undefined && v >= warn) return 1
+export function levelOf(v: number, warn?: number, critical?: number, prev = 0, band = 0) {
+  // A level is left only once the value falls `band` below its threshold, so noise doesn't flicker it.
+  const past = (at: number | undefined, level: number) =>
+    at !== undefined && v >= at - (prev >= level ? band : 0)
+  if (past(critical, 2)) return 2
+  if (past(warn, 1)) return 1
   return 0
 }
 export function levelColor(p: Palette, level: number): Rgba {
-  return level >= 1.5
-    ? mixRgba(p.warn, p.critical, level - 1)
-    : level >= 1
-      ? p.warn
-      : mixRgba(p.accent, p.warn, level)
+  return level > 1 ? mixRgba(p.warn, p.critical, level - 1) : mixRgba(p.accent, p.warn, level)
 }
 
 /** A meter: a slim track with its fill (eased), or cells; indeterminate, a band that sweeps across. */
