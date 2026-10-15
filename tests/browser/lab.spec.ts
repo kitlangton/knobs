@@ -112,7 +112,7 @@ test("the host owns undo: the buttons and keys call it, and follow its canUndo",
   const track = row(station(page), "fall").locator(".knobs-track")
   await track.focus()
   await page.keyboard.press("ArrowRight")
-  expect((await settings(page)).fall).toBe(15.5)
+  await expect.poll(async () => (await settings(page)).fall).toBe(15.5)
   await expect(undo).toBeEnabled()
   // Compare (hold \) previews knobs' own last entry.
   await page.keyboard.down("\\")
@@ -122,12 +122,12 @@ test("the host owns undo: the buttons and keys call it, and follow its canUndo",
   )
   await page.keyboard.up("\\")
   await undo.click()
-  expect((await settings(page)).fall).toBe(15)
+  await expect.poll(async () => (await settings(page)).fall).toBe(15)
   await expect(undo).toBeDisabled()
   await expect(station(page).getByRole("button", { name: "Redo" })).toBeEnabled()
   await track.focus()
   await page.keyboard.press("Shift+U")
-  expect((await settings(page)).fall).toBe(15.5)
+  await expect.poll(async () => (await settings(page)).fall).toBe(15.5)
 })
 
 test("disabled rows dim and take no edits; read-only rows show at full strength and don't either", async ({
