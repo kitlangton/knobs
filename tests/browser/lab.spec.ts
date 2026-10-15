@@ -822,3 +822,34 @@ test("seed: its digits roll when the die rolls it", async ({ page }) => {
       .evaluate((el) => getComputedStyle(el, "::before").content),
   ).toBe('"—"')
 })
+
+test("GPU: a panel inside a container with its own stacking context draws in the DOM, so its search and editors stay on top", async ({
+  page,
+}) => {
+  await open(page, "?gpu")
+  const mode = await page.locator('[data-controls="lab-station"]').getAttribute("data-gpu-active")
+  test.skip(mode !== "true", "no WebGPU here")
+  await page.evaluate(() => {
+    const host = document.createElement("div")
+    host.id = "boxed"
+    host.style.cssText = "position:absolute;left:300px;top:60px;width:320px;transform:translateZ(0)"
+    document.body.append(host)
+    ;(window as any).__lab.inspector.mount(host, {
+      title: "Boxed",
+      theme: "dark",
+      variants: false,
+      session: false,
+      renderer: "gpu",
+      search: true,
+    })
+  })
+  const boxed = page.locator("#boxed .knobs-panel")
+  await expect(boxed).toHaveAttribute("data-renderer", "dom")
+  await expect(boxed).toHaveAttribute("data-gpu-trapped", "")
+  await expect(boxed.getByRole("searchbox")).toBeVisible()
+  // Panels outside such containers stay on the GPU.
+  await expect(page.locator('[data-controls="lab-station"]')).toHaveAttribute(
+    "data-renderer",
+    "gpu",
+  )
+})

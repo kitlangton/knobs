@@ -23,6 +23,7 @@ import type {
 import {
   getGpuOverlayManager,
   resolveRendererMode,
+  stackingAncestor,
   type GpuGroupBinding,
   type GpuPanelBinding,
   type GpuRowBinding,
@@ -3107,8 +3108,19 @@ function buildPanel<S extends Schema>(
   }
   let unregisterGpu: (() => void) | undefined
   const requestedMode = options.renderer ?? controls.renderer ?? "auto"
+  // Inside an ancestor that makes a stacking context, an inline panel's DOM overlays (search,
+  // inline editors) would stack under the page-level canvas: such a panel draws with the DOM
+  // renderer, which looks the same.
+  let trapped: HTMLElement | null | undefined
   const syncRendererMode = () => {
-    const mode = resolveRendererMode(requestedMode, doc)
+    let mode = resolveRendererMode(requestedMode, doc)
+    if (mode === "gpu" && inline) {
+      trapped ??= stackingAncestor(root)
+      if (trapped) {
+        mode = "dom"
+        root.dataset.gpuTrapped = ""
+      }
+    }
     if (mode === "gpu") {
       if (!unregisterGpu) {
         const manager = getGpuOverlayManager(doc)

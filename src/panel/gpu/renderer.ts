@@ -407,6 +407,44 @@ export function resolveRendererMode(mode: RendererMode, doc: Document): "gpu" | 
   return mode === "gpu" ? "gpu" : "dom"
 }
 
+/**
+ * The nearest ancestor that makes a stacking context of its own (a transform, filter, z-index,
+ * fixed or sticky position, opacity, isolation, containment…). Inside one, a panel's DOM overlays
+ * (search, inline editors) stack within it, under the page-level canvas, whatever their z-index.
+ */
+export function stackingAncestor(el: HTMLElement): HTMLElement | null {
+  const win = el.ownerDocument.defaultView
+  if (!win) return null
+  for (let n = el.parentElement; n && n !== el.ownerDocument.body; n = n.parentElement) {
+    if (n === el.ownerDocument.documentElement) break
+    const s = win.getComputedStyle(n)
+    const parent = n.parentElement ? win.getComputedStyle(n.parentElement).display : ""
+    const z = s.zIndex !== "auto"
+    if (
+      s.position === "fixed" ||
+      s.position === "sticky" ||
+      (z && (s.position !== "static" || /flex|grid/.test(parent))) ||
+      Number(s.opacity) < 1 ||
+      s.transform !== "none" ||
+      s.translate !== "none" ||
+      s.scale !== "none" ||
+      s.rotate !== "none" ||
+      s.filter !== "none" ||
+      (s.backdropFilter && s.backdropFilter !== "none") ||
+      s.perspective !== "none" ||
+      s.clipPath !== "none" ||
+      (s.maskImage && s.maskImage !== "none") ||
+      s.mixBlendMode !== "normal" ||
+      s.isolation === "isolate" ||
+      /layout|paint|strict|content/.test(s.contain) ||
+      (s.containerType && s.containerType !== "normal") ||
+      /transform|opacity|filter|perspective|translate|scale|rotate|z-index/.test(s.willChange)
+    )
+      return n
+  }
+  return null
+}
+
 const clipAncestorsCache = new WeakMap<HTMLElement, { version: number; ancestors: HTMLElement[] }>()
 
 function getEffectiveClipRect(
