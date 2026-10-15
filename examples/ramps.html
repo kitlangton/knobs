@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ramps · gradients and curves</title>
+    <style>
+      html, body { margin: 0; background: #101012; color: #ddd; font: 13px system-ui; }
+      .lane { display: flex; gap: 32px; padding: 24px; align-items: flex-start; }
+      .col { width: 320px; }
+      .col h2 { margin: 0 0 8px; font: 600 11px system-ui; letter-spacing: .06em; text-transform: uppercase; color: #8b9098; }
+      #lab { background: #191a1e; border: 1px solid #23252a; }
+      .col .knobs-panel { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="lane">
+      <div class="col"><h2>labPreset</h2><div id="lab"></div></div>
+      <div class="col"><h2>Default</h2><div id="default"></div></div>
+    </div>
+    <script type="module" src="./ramps.ts"></script>
+  </body>
+</html>

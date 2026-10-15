@@ -51,6 +51,8 @@
       .viewport { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 45% 35%, #6b5532 0%, #2b2618 38%, #12141a 75%); }
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .viewport .orb { position: absolute; left: 58%; top: 26%; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3c27a, #a8692c 60%, #5c3818); box-shadow: 0 0 60px #c58a3a66; }
+      .viewport .fx, .viewport .fx > div { position: absolute; inset: 0; pointer-events: none; }
+      .viewport .fx-smoke > i { position: absolute; border-radius: 50%; translate: -50% -50%; filter: blur(6px); }
       .viewport .rain { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 22px, #ffffff10 22px 23px); }
       .dock { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.25fr) minmax(260px, 1.25fr); gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
       .dock-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

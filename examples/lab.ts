@@ -21,6 +21,7 @@ import {
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { labPreset } from "knobs/themes"
+import { fxSchema, startFx } from "./lab-fx"
 import { startOverlays } from "./lab-overlays"
 import "./lab-workspace"
 
@@ -487,10 +488,18 @@ const inspector = defineControls(
     reload: keybind("Shift+R", { label: "Reload", group: "input" }),
     inspect: keybind("Meta+Alt+I", { label: "Inspect", group: "input" }),
     invertY: toggle(false, { label: "Invert look Y", group: "input" }),
+    ...fxSchema,
   },
   {
     storage: null,
-    groupLabels: { xform: "Transform", emitter: "Emitter", input: "Bindings" },
+    groupLabels: {
+      xform: "Transform",
+      emitter: "Emitter",
+      input: "Bindings",
+      smoke: "Smoke",
+      sky: "Sky & fog",
+      light: "Light",
+    },
     onAction: (id) => presses.push(id),
   },
 )
@@ -510,6 +519,7 @@ const mountInspector = () =>
       { id: "transform", label: "Transform" },
       { id: "emitter", label: "Emitter" },
       { id: "input", label: "Input" },
+      { id: "fx", label: "FX" },
     ],
     search: true,
     subsectionFolded: { Forces: true },
@@ -526,6 +536,7 @@ const mountInspector = () =>
     },
   })
 let inspectorPanel = mountInspector()
+startFx(inspector, document.getElementById("viewport")!)
 const overlays = startOverlays({
   station,
   details,
