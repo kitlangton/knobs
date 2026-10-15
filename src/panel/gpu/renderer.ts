@@ -2427,7 +2427,7 @@ class GpuOverlayManager {
     )
     const delay = row.wave.at - clock
     const snap = row.snap()
-    const mRect = this.rectOf(row.mini)
+    const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
     this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
@@ -4163,8 +4163,11 @@ class GpuOverlayManager {
         const rowCenterY = rRect.top + rRect.height * 0.5
         // Disabled and read-only rows take no edits, so nothing in them answers the pointer.
         const blocked = row.row.closest<HTMLElement>("[data-disabled],[data-readonly]")
-        const hovered = !blocked && this.isHovered(row.row)
-        this.curSubHovered = hovered
+        // A row in hand (a drag, a pan, a capture) is washed like the DOM's .knobs-active, even
+        // when the pointer arrived by scrolling and the page hasn't marked it hovered yet.
+        const hovered =
+          !blocked && (this.isHovered(row.row) || row.row.classList.contains("knobs-active"))
+        this.curSubHovered = this.curSubHovered && hovered
         const isX =
           row.kind === "color" ||
           row.kind === "point" ||

@@ -26,7 +26,7 @@ import { arrowOf, bigOf } from "./prefs.js"
 import { clamp } from "./motion.js"
 import { reveal } from "./reveal.js"
 import { createSlider, decimals, type Slider } from "./slider.js"
-import { band, stretched, type Band } from "./give.js"
+import { band, stepList, stretched, textGive, type Band, type Steps } from "./give.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 
@@ -971,6 +971,61 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   }
 }
 
+/**
+ * A sideways pan on a row's head steps through its presets like a menu, a tick each, as one undo
+ * step; past either end `nudged` (the head's mini strip or curve) gives a little.
+ */
+export function panPresets(
+  c: RowContext<unknown>,
+  head: HTMLElement,
+  nudged: HTMLElement | SVGElement,
+  o: {
+    readonly count: number
+    /** The preset showing, or -1. */
+    at(): number
+    choose(i: number, coalesce: boolean): void
+  },
+) {
+  if (!o.count) return
+  let travel: Steps | undefined
+  let chosen = false
+  const give = textGive(nudged, () => c.wake())
+  const letGo = () => {
+    give.release()
+    if (!travel) return
+    travel = undefined
+    chosen = false
+    head.removeAttribute("data-panned")
+    c.wake()
+  }
+  onPan(head, {
+    move(dx) {
+      if (!travel) {
+        travel = { travel: 0, give: 0 }
+        // In hand: the head's wash, however the pointer got there.
+        head.setAttribute("data-panned", "")
+        c.wake()
+      }
+      const at = o.at()
+      const { next, index } = stepList(travel, dx, at, o.count)
+      travel = next
+      if (index !== undefined && index !== at) {
+        o.choose(index, chosen)
+        chosen = true
+        tick(head)
+      }
+      if (next.give !== give.give) give.hold(next.give)
+    },
+    lift: () => give.release(),
+    end: letGo,
+    step(direction) {
+      const at = o.at()
+      const next = at < 0 ? (direction > 0 ? 0 : o.count - 1) : at + direction
+      if (next >= 0 && next < o.count && next !== at) o.choose(next, false)
+    },
+  })
+}
+
 const EASE_PAD = { x: 12, y: 10 }
 const MINI = { w: 30, y: [-0.3, 1.3] as const }
 
@@ -1214,6 +1269,11 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     const next = i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length
     c.set(EASINGS[names[next]!])
   }
+  panPresets(c, x.head, mini, {
+    count: names.length,
+    at: () => names.findIndex((n) => n === easingName(shown)),
+    choose: (i, coalesce) => c.set(EASINGS[names[i]!], { coalesce }),
+  })
   for (const target of [chips, x.head])
     target.addEventListener("keydown", (event) => {
       const dir = arrow(event)
