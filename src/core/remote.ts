@@ -1,5 +1,6 @@
 import { colorHex, oklchToRgb, parseColor } from "./color.js"
 import type { Bezier } from "./easing.js"
+import type { CurveInterp, CurvePoint, GradientSpace, GradientStop } from "./ramp.js"
 import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
 import {
   action,
@@ -13,6 +14,8 @@ import {
   vec3,
   type Vec3,
   color,
+  curve,
+  gradient,
   easing,
   flatSpring,
   knob,
@@ -148,10 +151,12 @@ export interface ValueDescriptor extends DescriptorMeta {
     | "angle"
     | "seed"
     | "keybind"
+    | "gradient"
+    | "curve"
   /**
    * Springs take `{ duration, bounce }`, colours a CSS string, points and vec2 `{ x, y }`, vec3
    * `{ x, y, z }`, easings `[x1, y1, x2, y2]`, ranges `[low, high]`, keybinds a combination
-   * string (`"Meta+K"`).
+   * string (`"Meta+K"`), gradients `[{ at, color }]` and curves `[{ x, y }]`.
    */
   readonly default: Value
   readonly min?: number
@@ -171,6 +176,16 @@ export interface ValueDescriptor extends DescriptorMeta {
   readonly linked?: boolean
   /** Angles: carry past the ends a whole turn (on for a full turn by default). */
   readonly wrap?: boolean
+  /** Gradients: blend in `oklab` (default) or `srgb`. */
+  readonly space?: GradientSpace
+  /** Curves: the y range, `[0, 1]` by default (`min` and `max` work too). */
+  readonly range?: readonly [number, number]
+  /** Curves: `smooth` (monotone cubic, default), `linear` or `step`. */
+  readonly interp?: CurveInterp
+  /** Curves: `false` hides the built-in shape chips. */
+  readonly shapes?: boolean
+  /** Gradients and curves: named ramps or shapes offered as chips. */
+  readonly presets?: Readonly<Record<string, readonly GradientStop[] | readonly CurvePoint[]>>
 }
 
 export interface RemoteControlsOptions {
@@ -369,6 +384,35 @@ export function descriptorToField(d: ControlDescriptor): Field {
       ...meta,
     })
   if (d.kind === "keybind") return keybind(typeof d.default === "string" ? d.default : "", meta)
+  if (d.kind === "gradient") {
+    const fallback = [
+      { at: 0, color: "#000000" },
+      { at: 1, color: "#ffffff" },
+    ]
+    const stops = Array.isArray(d.default) ? (d.default as GradientStop[]) : fallback
+    const opts = {
+      ...(d.space ? { space: d.space } : {}),
+      ...(d.presets ? { presets: d.presets as Record<string, GradientStop[]> } : {}),
+      ...meta,
+    }
+    try {
+      return gradient(stops, opts)
+    } catch {
+      return gradient(fallback, opts)
+    }
+  }
+  if (d.kind === "curve") {
+    const range = d.range ?? [d.min ?? 0, d.max ?? 1]
+    const opts = {
+      range,
+      ...(d.interp ? { interp: d.interp } : {}),
+      ...(d.shapes !== undefined ? { shapes: d.shapes } : {}),
+      ...(d.presets ? { presets: d.presets as Record<string, CurvePoint[]> } : {}),
+      ...meta,
+    }
+    const points = Array.isArray(d.default) ? (d.default as CurvePoint[]) : []
+    return points.length >= 2 ? curve(points, opts) : curve("linear", opts)
+  }
   return toggle(Boolean(d.default), meta)
 }
 
@@ -435,6 +479,15 @@ const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
     return `${decimal(a)}...${decimal(b)}`
   }
   if (d.kind === "keybind") return JSON.stringify(v)
+  if (d.kind === "gradient") {
+    const stops = (Array.isArray(v) ? (v as readonly GradientStop[]) : []).map((s) => {
+      const [r, g, b] = oklchToRgb(parseColor(s.color) ?? { l: 0, c: 0, h: 0 }).map(decimal)
+      return `.init(color: Color(red: ${r}, green: ${g}, blue: ${b}), location: ${decimal(s.at)})`
+    })
+    return `Gradient(stops: [${stops.join(", ")}])`
+  }
+  if (d.kind === "curve")
+    return `[${(Array.isArray(v) ? (v as readonly CurvePoint[]) : []).map((p) => `CGPoint(x: ${decimal(p.x)}, y: ${decimal(p.y)})`).join(", ")}]`
   if (d.kind === "seed") return String(Math.round(v as number))
   if (typeof v === "boolean") return String(v)
   if (typeof v === "string") return `.${v}`
@@ -451,6 +504,8 @@ const swiftTypes = {
   range: "ClosedRange<Double>",
   seed: "Int",
   keybind: "String",
+  gradient: "Gradient",
+  curve: "[CGPoint]",
 } as const
 
 export function formatSwift(

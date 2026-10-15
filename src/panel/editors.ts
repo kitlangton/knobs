@@ -75,20 +75,24 @@ export interface EditorRow {
   readonly gpu: readonly GpuRowBinding[]
 }
 
-const reducedMotion = (doc: Document) =>
+export const reducedMotion = (doc: Document) =>
   doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
-const rgbCss = (rgb: readonly number[]) =>
+export const rgbCss = (rgb: readonly number[]) =>
   `rgb(${rgb.map((v) => Math.round(v * 2550) / 10).join(" ")})`
-const pathOf = (pts: readonly number[]) => {
+export const pathOf = (pts: readonly number[]) => {
   let d = ""
   for (let i = 0; i < pts.length; i += 2)
     d += `${i ? "L" : "M"}${pts[i]!.toFixed(2)} ${pts[i + 1]!.toFixed(2)}`
   return d
 }
-const visible = (node: HTMLElement) => node.isConnected && !node.closest("[hidden]")
+export const visible = (node: HTMLElement) => node.isConnected && !node.closest("[hidden]")
 
 /** Applies a placement, skipping the transition when it's the first one or a resize. */
-function place(nodes: readonly (HTMLElement | SVGElement)[], instant: boolean, apply: () => void) {
+export function place(
+  nodes: readonly (HTMLElement | SVGElement)[],
+  instant: boolean,
+  apply: () => void,
+) {
   if (instant) for (const n of nodes) n.style.transition = "none"
   apply()
   if (instant) {
@@ -97,12 +101,12 @@ function place(nodes: readonly (HTMLElement | SVGElement)[], instant: boolean, a
   }
 }
 
-function setPath(path: SVGPathElement, pts: readonly number[]) {
+export function setPath(path: SVGPathElement, pts: readonly number[]) {
   path.style.setProperty("d", `path("${pathOf(pts)}")`)
 }
 
 /** One undo step per gesture: the first change that lands records history, the rest fold in. */
-function gesture(c: RowContext<unknown>) {
+export function gesture(c: RowContext<unknown>) {
   let committed = false
   return {
     start() {
@@ -116,7 +120,7 @@ function gesture(c: RowContext<unknown>) {
   }
 }
 
-function factory(doc: Document) {
+export function factory(doc: Document) {
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
     const node = doc.createElement(tag)
     if (cls) node.className = cls
@@ -132,10 +136,11 @@ function factory(doc: Document) {
 }
 
 const arrow = arrowOf
-const plainKey = (event: KeyboardEvent) => !event.metaKey && !event.ctrlKey && !event.isComposing
+export const plainKey = (event: KeyboardEvent) =>
+  !event.metaKey && !event.ctrlKey && !event.isComposing
 
 /** A size kept current by a ResizeObserver, so layout reads stay out of the frame loop. */
-function measure(node: Element, onResize: () => void) {
+export function measure(node: Element, onResize: () => void) {
   const size = { w: 0, h: 0, disconnect: () => ro.disconnect() }
   const ro = new ResizeObserver(() => {
     const w = (node as HTMLElement).clientWidth
@@ -154,7 +159,7 @@ function measure(node: Element, onResize: () => void) {
  * revealed by Enter, Space or a click and folded away by Esc.
  */
 let summaries = 0
-function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
+export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
   const { el, svg } = factory(c.doc)
   const row = el("div", "knobs-x")
   row.dataset.field = c.key
@@ -220,7 +225,7 @@ interface StripOptions {
 }
 
 /** A scrub strip: a capsule track (painted by its row) with a ring thumb and a readout. */
-function strip(c: RowContext<unknown>, o: StripOptions) {
+export function strip(c: RowContext<unknown>, o: StripOptions) {
   const { el } = factory(c.doc)
   const line = el("div", "knobs-strip")
   const label = el("span", "knobs-strip-label", o.label)
@@ -581,21 +586,19 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   }
 }
 
-/** OKLCH: a swatch and hex in the head; hue, relative chroma (0…maxC) and lightness strips in the body. */
-export function colorRow(c: RowContext<ColorField>): EditorRow {
-  const { el } = factory(c.doc)
-  const swatch = el("span", "knobs-swatch")
-  const hex = el("span", "knobs-x-read")
-  let shown: Oklch = parseColor(c.field.value)!
+/**
+ * Hue, relative chroma (0…maxC) and lightness strips for one colour: a colour row's body, and a
+ * gradient's editor for its selected stop. `commit` receives each change as OKLCH.
+ */
+export function colorStrips(
+  c: RowContext<unknown>,
+  o: { aria: string; start(): void; commit(color: Oklch): void },
+) {
+  let shown: Oklch = { l: 0.5, c: 0, h: 0 }
   // The C strip spans 0…maxChroma(l, h), so its thumb sits at C / maxC and stays put while H or L
   // are scrubbed (preserving relative vividness), and remembers its spot when L nears 0 or 1.
-  const relOf = ({ l, c: ch, h }: Oklch, fallback: number) => {
-    const max = maxChroma(l, h)
-    return max > 1e-4 ? clamp(ch / max, 0, 1) : fallback
-  }
-  let rel = relOf(shown, 0)
+  let rel = 0
   let sending = false
-  const g = gesture(c)
   const send = (patch: { l?: number; r?: number; h?: number }) => {
     const l = patch.l ?? shown.l
     const h = patch.h ?? shown.h
@@ -603,7 +606,7 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     const ch = rel * maxChroma(l, h)
     sending = true
     try {
-      g.set({ l, c: ch, h })
+      o.commit({ l, c: ch, h })
     } finally {
       sending = false
     }
@@ -615,50 +618,94 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
   const strips = [
     strip(c, {
       label: "H",
-      aria: `${c.display} hue`,
+      aria: `${o.aria} hue`,
       min: 0,
       max: 360,
       step: 1,
       format: (v) => `${Math.round(v)}°`,
       set: (h) => send({ h: h % 360 }),
-      start: g.start,
+      start: o.start,
     }),
     strip(c, {
       label: "C",
-      aria: `${c.display} chroma`,
+      aria: `${o.aria} chroma`,
       min: 0,
       max: 1,
       step: 0.01,
       format: () => shown.c.toFixed(3),
       set: (r) => send({ r }),
-      start: g.start,
+      start: o.start,
     }),
     strip(c, {
       label: "L",
-      aria: `${c.display} lightness`,
+      aria: `${o.aria} lightness`,
       min: 0,
       max: 1,
       step: 0.01,
       format: (v) => `${Math.round(v * 100)}%`,
       set: (l) => send({ l }),
-      start: g.start,
+      start: o.start,
     }),
   ]
   strips.forEach((s, i) => (s.gpu.mode = i))
   const body = c.doc.createElement("div")
   body.className = "knobs-strips"
   body.append(...strips.map((s) => s.line))
-  const x = expander(c, [hex, swatch], [body])
+  return {
+    body,
+    strips,
+    send,
+    color: () => shown,
+    dragging: () => strips.some((s) => s.gpu.dragging()),
+    /** Shows `color` (a new colour, or the same one after an edit); `mixed` dashes the readouts. */
+    show(color: Oklch, mixed = false, fresh = false) {
+      shown = color
+      const { l, c: ch, h } = shown
+      const maxC = maxChroma(l, h)
+      if (fresh) rel = maxC > 1e-4 ? clamp(ch / maxC, 0, 1) : 0
+      else if (!sending && maxC > 1e-4 && Math.abs(rel * maxC - ch) > 5e-4)
+        rel = clamp(ch / maxC, 0, 1)
+      const rgb = rgbCss(oklchToRgb(shown))
+      const [hs, cs, ls] = strips
+      const dash = mixed ? "—" : undefined
+      hs!.update(h, dash)
+      cs!.update(rel, dash ?? ch.toFixed(3))
+      ls!.update(l, dash)
+      const hc = Math.max(ch, 0.06)
+      hs!.paint(`${l}|${hc}`, (r) => rgbCss(oklchToRgb({ l, c: hc, h: r * 360 })))
+      cs!.paint(`${l}|${h}`, (r) => rgbCss(oklchToRgb({ l, c: r * maxC, h })))
+      ls!.paint(`${ch}|${h}`, (r) => rgbCss(oklchToRgb({ l: r, c: ch, h })))
+      for (const s of strips) s.thumb.style.backgroundColor = rgb
+      return rgb
+    },
+    dispose() {
+      for (const s of strips) s.dispose()
+    },
+  }
+}
+
+/** OKLCH: a swatch and hex in the head; hue, relative chroma (0…maxC) and lightness strips in the body. */
+export function colorRow(c: RowContext<ColorField>): EditorRow {
+  const { el } = factory(c.doc)
+  const swatch = el("span", "knobs-swatch")
+  const hex = el("span", "knobs-x-read")
+  const g = gesture(c)
+  const editor = colorStrips(c, {
+    aria: c.display,
+    start: g.start,
+    commit: (color) => g.set(color),
+  })
+  const strips = editor.strips
+  const x = expander(c, [hex, swatch], [editor.body])
   x.head.addEventListener("keydown", (event) => {
     const dir = arrow(event)
     if (!dir || event.target !== x.head || !plainKey(event)) return
     event.preventDefault()
     event.stopPropagation()
     g.start()
-    send({
-      h:
-        (((shown.h + dir * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)) % 360) + 360) %
-        360,
+    const h = editor.color().h
+    editor.send({
+      h: (((h + dir * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)) % 360) + 360) % 360,
     })
   })
   const gpu: GpuColorRow = {
@@ -670,7 +717,7 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     swatch,
     read: hex,
     strips: strips.map((s) => s.gpu),
-    color: () => shown,
+    color: editor.color,
     wave: c.wave,
     isModified: c.isModified,
   }
@@ -682,28 +729,13 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     tracks: [],
     gpu: [gpu],
     update(value, _delay, _instant, mixed = false) {
-      shown = parseColor(value)!
-      const { l, c: ch, h } = shown
-      const maxC = maxChroma(l, h)
-      if (!sending && maxC > 1e-4 && Math.abs(rel * maxC - ch) > 5e-4) rel = clamp(ch / maxC, 0, 1)
-      const rgb = rgbCss(oklchToRgb(shown))
+      const shown = parseColor(value)!
+      const rgb = editor.show(shown, mixed)
       // Mixed leaves an empty well: no one colour stands for the selection.
       swatch.style.backgroundColor = mixed ? "transparent" : rgb
       hex.textContent = mixed ? "—" : colorHex(shown).toUpperCase()
-      const [hs, cs, ls] = strips
-      const dash = mixed ? "—" : undefined
-      hs!.update(h, dash)
-      cs!.update(rel, dash ?? ch.toFixed(3))
-      ls!.update(l, dash)
-      const hc = Math.max(ch, 0.06)
-      hs!.paint(`${l}|${hc}`, (r) => rgbCss(oklchToRgb({ l, c: hc, h: r * 360 })))
-      cs!.paint(`${l}|${h}`, (r) => rgbCss(oklchToRgb({ l, c: r * maxC, h })))
-      ls!.paint(`${ch}|${h}`, (r) => rgbCss(oklchToRgb({ l: r, c: ch, h })))
-      for (const s of strips) s.thumb.style.backgroundColor = rgb
     },
-    dispose() {
-      for (const s of strips) s.dispose()
-    },
+    dispose: () => editor.dispose(),
   }
 }
 

@@ -14,6 +14,8 @@ export {
   angle,
   seed,
   keybind,
+  gradient,
+  curve,
   toolbar,
   watch,
   sparkline,
@@ -42,6 +44,8 @@ export {
   type AngleField,
   type SeedField,
   type KeybindField,
+  type GradientField,
+  type CurveField,
   type ToolbarField,
   type ToolbarItem,
   type WatchField,
@@ -64,6 +68,18 @@ export {
 } from "./core/schema.js"
 export { springCss, springMotion, type SpringValue } from "./core/spring.js"
 export { colorHex, parseColor, type Oklch } from "./core/color.js"
+export {
+  sampleGradient,
+  sampleCurve,
+  gradientCss,
+  CURVE_SHAPES,
+  type GradientStop,
+  type GradientSpace,
+  type CurvePoint,
+  type CurveInterp,
+  type SampleGradientOptions,
+  type SampleCurveOptions,
+} from "./core/ramp.js"
 export { bezierCss, bezierPoint, EASINGS, type Bezier, type EasingName } from "./core/easing.js"
 export {
   defineControls,

@@ -2,6 +2,16 @@ import { fitColor, formatColor, parseColor, type Oklch } from "./color.js"
 import { EASING_Y, namedEasing, type Bezier, type EasingName } from "./easing.js"
 import { normalizeCombo } from "./keys.js"
 import type { LogEntry, TableRows } from "./readout.js"
+import {
+  CURVE_SHAPES,
+  inRange,
+  normalizePoints,
+  normalizeStops,
+  type CurveInterp,
+  type CurvePoint,
+  type GradientSpace,
+  type GradientStop,
+} from "./ramp.js"
 import type { SpringValue } from "./spring.js"
 
 export interface FieldMeta {
@@ -138,6 +148,27 @@ export interface EasingField extends FieldMeta {
   readonly kind: "easing"
   readonly value: Bezier
 }
+/** Colour over a 0…1 parameter (over life, over the day): stops sorted by position. */
+export interface GradientField extends FieldMeta {
+  readonly kind: "gradient"
+  readonly value: readonly GradientStop[]
+  /** How the stops blend: `oklab` (perceptual, the default) or `srgb` (as CSS does). */
+  readonly space: GradientSpace
+  /** Named ramps offered as chips in the editor. */
+  readonly presets?: Readonly<Record<string, readonly GradientStop[]>>
+}
+/** A number over 0…1 (a falloff, a response): points sorted by x, the ends pinned at 0 and 1. */
+export interface CurveField extends FieldMeta {
+  readonly kind: "curve"
+  readonly value: readonly CurvePoint[]
+  /** The y range, 0…1 by default. */
+  readonly range: readonly [number, number]
+  readonly interp: CurveInterp
+  /** Named shapes offered as chips (y in `range`), after the built-in ones unless `shapes: false`. */
+  readonly presets?: Readonly<Record<string, readonly CurvePoint[]>>
+  /** The built-in shapes (linear, ease-out, inverse², smoothstep, bell) as chips; on by default. */
+  readonly shapes: boolean
+}
 /** A button row. It holds no value: pressing it calls `run` and the store's `onAction(key)`. */
 export interface ActionField extends FieldMeta {
   readonly kind: "action"
@@ -226,6 +257,8 @@ export type ValueField =
   | AngleField
   | SeedField
   | KeybindField
+  | GradientField
+  | CurveField
 /** A readout's own: polled while its row shows, instead of pushed with `controls.watch`. */
 interface ReadoutMeta extends FieldMeta {
   /** Read each frame while the row is on screen (pushing with `controls.watch` is the other way). */
@@ -345,7 +378,11 @@ export type FieldValue<F extends Field> = F extends Knob
                       ? number
                       : F extends KeybindField
                         ? string
-                        : never
+                        : F extends GradientField
+                          ? readonly GradientStop[]
+                          : F extends CurveField
+                            ? readonly CurvePoint[]
+                            : never
 /** The keys of a schema's readouts (what `controls.watch` takes). */
 export type ReadoutKeys<S extends Schema> = {
   [K in keyof S]: [S[K] & ReadoutField] extends [never] ? never : K
@@ -378,6 +415,8 @@ export type Value =
   | Vec3
   | Bezier
   | readonly [number, number]
+  | readonly GradientStop[]
+  | readonly CurvePoint[]
 export type State = Readonly<Record<string, Value>>
 
 /** Ranges for spring fields: duration in seconds, and SwiftUI's bounce (below 0 is overdamped). */
@@ -651,6 +690,85 @@ export function keybind(value = "", meta?: FieldMeta): KeybindField {
   const field: KeybindField = { kind: "keybind", value: normalizeCombo(value) }
   return withMeta(field, { random: false, ...meta })
 }
+/**
+ * Colour over a 0…1 parameter: `gradient([{ at: 0, color: "#fff4d6" }, { at: 1, color: "#20242c" }])`.
+ * Colours take what `color` takes and are kept as `oklch()` strings. `space` blends in `oklab`
+ * (default) or `srgb`; `presets` are named ramps offered as chips. Sample it with `sampleGradient`.
+ */
+export function gradient(
+  stops: readonly {
+    readonly at: number
+    readonly color: string | { l: number; c: number; h: number }
+  }[],
+  options: FieldMeta & {
+    readonly space?: GradientSpace
+    readonly presets?: Readonly<Record<string, readonly { at: number; color: string }[]>>
+  } = {},
+): GradientField {
+  const value = normalizeStops(stops)
+  if (!value) throw new Error("A gradient needs at least two stops with a position and a colour.")
+  const presets = options.presets
+    ? Object.freeze(
+        Object.fromEntries(
+          Object.entries(options.presets).flatMap(([name, p]) => {
+            const s = normalizeStops(p)
+            return s ? [[name, s]] : []
+          }),
+        ),
+      )
+    : undefined
+  return withMeta(
+    {
+      kind: "gradient" as const,
+      value,
+      space: options.space ?? "oklab",
+      ...(presets && Object.keys(presets).length ? { presets } : {}),
+    },
+    options,
+  )
+}
+/**
+ * A number over 0…1: `curve([{ x: 0, y: 1 }, { x: 1, y: 0 }], { range: [0, 1], interp: "smooth" })`.
+ * The ends are pinned at x 0 and 1. `smooth` is a monotone cubic (no overshoot); `linear` and
+ * `step` join the points as they say. Sample it with `sampleCurve`.
+ */
+export function curve(
+  points: readonly CurvePoint[] | keyof typeof CURVE_SHAPES,
+  options: FieldMeta & {
+    readonly range?: readonly [number, number]
+    readonly interp?: CurveInterp
+    readonly presets?: Readonly<Record<string, readonly CurvePoint[]>>
+    readonly shapes?: boolean
+  } = {},
+): CurveField {
+  const range = options.range ?? [0, 1]
+  if (!(Number.isFinite(range[0]) && Number.isFinite(range[1]) && range[1] > range[0]))
+    throw new Error("A curve's range needs finite bounds, max above min.")
+  const given = typeof points === "string" ? inRange(CURVE_SHAPES[points], range) : points
+  const value = normalizePoints(given, range)
+  if (!value) throw new Error("A curve needs at least two points.")
+  const presets = options.presets
+    ? Object.freeze(
+        Object.fromEntries(
+          Object.entries(options.presets).flatMap(([name, p]) => {
+            const s = normalizePoints(p, range)
+            return s ? [[name, s]] : []
+          }),
+        ),
+      )
+    : undefined
+  return withMeta(
+    {
+      kind: "curve" as const,
+      value,
+      range: Object.freeze([range[0], range[1]]) as unknown as readonly [number, number],
+      interp: options.interp ?? "smooth",
+      shapes: options.shapes ?? true,
+      ...(presets && Object.keys(presets).length ? { presets } : {}),
+    },
+    options,
+  )
+}
 /** A wrapping row of buttons with icons and shortcut chips; holds no value. */
 export function toolbar(items: readonly ToolbarItem[], meta?: FieldMeta): ToolbarField {
   if (!items.length) throw new Error("A toolbar needs at least one item.")
@@ -879,6 +997,10 @@ export function normalizeField(field: ValueField, input: unknown): Value {
         : field.value
     case "keybind":
       return typeof input === "string" ? normalizeCombo(input) : field.value
+    case "gradient":
+      return normalizeStops(input) ?? field.value
+    case "curve":
+      return normalizePoints(input, field.range) ?? field.value
   }
 }
 export function normalize<S extends Schema>(schema: S, input: unknown): Values<S> {
@@ -894,14 +1016,15 @@ export function normalize<S extends Schema>(schema: S, input: unknown): Values<S
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
-/** Value equality: springs, points and curves compare by their numbers. */
+/** Value equality: springs, points, beziers, gradients and curves compare by their numbers. */
 export function same(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
   const ka = Object.keys(a)
   return (
     ka.length === Object.keys(b).length &&
-    ka.every((k) => (a as Record<string, unknown>)[k] === (b as Record<string, unknown>)[k])
+    ka.every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
   )
 }
 export function equal(a: State, b: State): boolean {

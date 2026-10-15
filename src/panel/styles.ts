@@ -1,5 +1,6 @@
 import rolling from "./rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
+import { GRADIENT_SAMPLES } from "../core/ramp.js"
 import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
@@ -19,7 +20,20 @@ const DELAY = "var(--k-delay,0ms)"
  * panel.ts) rather than on the row, where the custom property would restyle all of the row.
  */
 export const DELAYED =
-  ".knobs-fill,.knobs-handle,.knobs-seg-pill,.knobs-toggle,.knobs-toggle i,.knobs-arm,.knobs-curve,.knobs-swatch,.knobs-strip-thumb,.knobs-pad>i,.knobs-ease-handle,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand"
+  ".knobs-fill,.knobs-handle,.knobs-seg-pill,.knobs-toggle,.knobs-toggle i,.knobs-arm,.knobs-curve,.knobs-swatch,.knobs-strip-thumb,.knobs-pad>i,.knobs-ease-handle,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand,.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i,.knobs-grad-stop,.knobs-graph-pt"
+
+// A gradient strip is painted from its samples, each a registered colour (so it transitions):
+// a preset blends the strip sample by sample, as the GPU's morph does.
+const GRAD_N = GRADIENT_SAMPLES
+const gradStops = (at: (i: number) => string) =>
+  Array.from({ length: GRAD_N }, (_, i) => `var(--kgrad-${i}) ${at(i)}`).join(",")
+const GRAD_STRIP = `linear-gradient(to right,${gradStops((i) => `calc(var(--kg-r) + (100% - var(--kg-r) * 2) * ${Number((i / (GRAD_N - 1)).toFixed(5))})`)})`
+const GRAD_MINI = `linear-gradient(to right,${gradStops((i) => `${Number(((i / (GRAD_N - 1)) * 100).toFixed(3))}%`)})`
+const GRAD_T = Array.from({ length: GRAD_N }, (_, i) => `--kgrad-${i} ${FILL_T} ${DELAY}`).join(",")
+const GRAD_PROPS = Array.from(
+  { length: GRAD_N },
+  (_, i) => `@property --kgrad-${i}{syntax:"<color>";inherits:false;initial-value:transparent}`,
+).join("\n")
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
 // public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
@@ -77,6 +91,7 @@ const defaultsCss = `
 @property --kr-hi{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-hi{syntax:"<number>";inherits:true;initial-value:0}
+${GRAD_PROPS}
 :where(:root,:host){
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
@@ -441,6 +456,47 @@ const css = `
 .knobs-panel .knobs-ease-chip:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:var(--k-pill-bg);box-shadow:var(--k-lift-shadow)}
 
+/* Gradients: a swatch strip with stop ticks in the head; a wide strip with a handle per stop (the
+   selected one full size), then that stop's colour strips. The ramp runs a handle's radius in from
+   each end, as the colour strips' do. */
+.knobs-grad-mini{position:relative;flex:none;width:calc(var(--k-row) * 2.5);height:var(--k-track-h);border-radius:var(--k-radius-sm);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_MINI};transition:${GRAD_T}}
+.knobs-grad-mini>i{position:absolute;top:calc(100% + 2px);left:0;width:1px;height:3px;margin-left:-.5px;background:var(--k-dim);transition:left ${FILL_T} ${DELAY},opacity .15s}
+.knobs-grad{--kg-h:calc(var(--k-row) - 6px);--kg-r:calc(var(--kg-h) / 2);--kg-pin:round(calc(var(--kg-h) * .42),1px);position:relative;height:var(--kg-h);margin:2px 0 var(--k-gap);border-radius:var(--k-round);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_STRIP};cursor:pointer;touch-action:none;user-select:none;outline:none;transition:${GRAD_T}}
+.knobs-grad-stop{position:absolute;top:50%;left:0;width:var(--kg-pin);height:calc(var(--kg-h) - 4px);margin:calc(2px - var(--kg-h) / 2) 0 0 calc(var(--kg-pin) / -2);border-radius:var(--k-round);box-shadow:0 0 0 2px var(--k-thumb),0 1px 4px rgba(0,0,0,calc(.4 * var(--k-lift)));pointer-events:none;scale:.78;
+  transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease),opacity .15s}
+.knobs-grad-stop[data-selected]{scale:1}
+.knobs-grad:is(:focus-visible,.knobs-active) .knobs-grad-stop[data-selected]{scale:1.12}
+.knobs-grad-stop[data-leaving]{opacity:.35;scale:.6}
+.knobs-x[data-k-active] :is(.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i){transition:none}
+.knobs-x[data-k-active] .knobs-grad-stop{transition:scale .2s var(--k-ease),opacity .15s}
+:is(.knobs-grad-stop,.knobs-graph-pt)[data-born]{animation:knobs-born .24s var(--k-ease)}
+@keyframes knobs-born{from{opacity:0;scale:.4}}
+.knobs-mixed :is(.knobs-grad,.knobs-grad-mini){background:transparent}
+.knobs-panel .knobs-ramp-chips{display:flex;flex-wrap:wrap}
+.knobs-panel .knobs-ramp-chips>.knobs-ease-chip{flex:1 1 auto}
+.knobs-mixed :is(.knobs-grad-stop,.knobs-grad-mini>i){opacity:0}
+
+/* Curves: a mini curve in the head; a graph with a grid, points (the selected one filled) and a
+   hover crosshair whose readout sits in the corner. */
+.knobs-curve-mini{flex:none;width:36px;height:var(--k-track-h);overflow:visible}
+.knobs-graph{position:relative;height:calc(var(--k-row) * 4.5);border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:crosshair;touch-action:none;user-select:none;outline:none;overflow:hidden}
+.knobs-panel .knobs-graph>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.knobs-graph>i{position:absolute;left:0;top:0;pointer-events:none}
+.knobs-graph-pt{width:10px;height:10px;margin:-5px;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));
+  transition:translate ${FILL_T} ${DELAY},background-color .15s,scale .2s var(--k-ease),opacity .15s}
+.knobs-graph-pt[data-selected]{background:var(--k-accent)}
+.knobs-graph:is(:focus-visible,.knobs-active) .knobs-graph-pt[data-selected]{scale:1.2}
+.knobs-graph-pt[data-leaving]{opacity:.35;scale:.7}
+.knobs-graph.knobs-active .knobs-graph-pt{transition:background-color .15s,scale .2s var(--k-ease),opacity .15s}
+.knobs-graph.knobs-active .knobs-curve,.knobs-x[data-k-active] .knobs-curve-mini .knobs-curve{transition:none}
+.knobs-graph :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:0;transition:opacity .15s}
+.knobs-graph[data-hover] :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:1}
+.knobs-graph-v{bottom:0;width:1px;margin-left:-.5px;background:var(--k-line-hi)}
+.knobs-graph-h{right:0;height:1px;margin-top:-.5px;background:var(--k-line-hi)}
+.knobs-graph-dot{width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent)}
+.knobs-graph-read{position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:var(--k-radius-sm);background:var(--k-bg);color:var(--k-label);font-family:var(--k-value-font);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;pointer-events:none}
+.knobs-mixed :is(.knobs-curve-mini,.knobs-graph .knobs-curve,.knobs-graph-pt){opacity:0}
+
 /* Rows as separate bars (--k-row-gap above 0): each row carries its own surface, no hairlines.
    A spring stacks its curve over its two sliders. */
 .knobs-panel[data-rows] .knobs-card{display:flex;flex-direction:column;gap:var(--k-row-gap);background:transparent;overflow:visible}
@@ -465,7 +521,7 @@ const css = `
    full strength. Neither shows a hover wash or an edit cursor. */
 .knobs-panel :is(.knobs-card>[data-disabled],.knobs-sub[data-disabled]){opacity:var(--k-disabled-opacity)}
 .knobs-panel .knobs-card>:is([data-disabled],[data-readonly]):hover{background:transparent}
-.knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-track,.knobs-value,.knobs-seg,.knobs-seg button,.knobs-select,.knobs-toggle,.knobs-action,.knobs-strip-track,.knobs-pad,.knobs-ease-handle,.knobs-ease-chip){cursor:default}
+.knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-track,.knobs-value,.knobs-seg,.knobs-seg button,.knobs-select,.knobs-toggle,.knobs-action,.knobs-strip-track,.knobs-pad,.knobs-ease-handle,.knobs-ease-chip,.knobs-grad,.knobs-graph){cursor:default}
 .knobs-slider:is([data-disabled],[data-readonly]):hover .knobs-fill{--k-fill-mix:var(--k-fill-rest-mix)}
 .knobs-slider:is([data-disabled],[data-readonly]):hover:not(:has(:focus-visible)) :is(.knobs-handle,.knobs-marks>i){opacity:var(--k-handle-rest);background-color:transparent}
 .knobs-slider:is([data-disabled],[data-readonly]):hover:not(:has(:focus-visible)) .knobs-handle::before{transform:scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)))}
@@ -677,7 +733,7 @@ const css = `
 .knobs-panel[data-gpu-active="true"]{background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .knobs-panel[data-gpu-active="true"],.knobs-panel[data-gpu-active="true"] :where(*,:focus-visible):not(.knobs-live *,.knobs-search *){outline-color:transparent!important;box-shadow:none!important}
 .knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
-  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,
+  .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,.knobs-graph,.knobs-graph-read,
   .knobs-tabs,.knobs-tab,.knobs-subhead,.knobs-subhead-label,.knobs-match,.knobs-cell,.knobs-cell-axis,.knobs-cell-read,.knobs-link,.knobs-range-read,.knobs-angle,.knobs-angle-read,.knobs-dial,
   .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,
   .knobs-section-name,.knobs-section-summary,.knobs-section-desc,.knobs-group-desc,.knobs-group-summary,.knobs-tab-count):not(.knobs-live,.knobs-live *){
@@ -685,6 +741,7 @@ const css = `
 }
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
   .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*,
+  .knobs-grad,.knobs-grad-mini,.knobs-graph>svg,.knobs-graph>i,.knobs-curve-mini,
   .knobs-tabs-bar,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand):not(.knobs-live *,.knobs-search *),
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tabs,.knobs-dial)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-section-head::before,

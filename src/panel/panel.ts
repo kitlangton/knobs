@@ -38,6 +38,7 @@ import {
   type EditorRow,
   type SubTrack,
 } from "./editors.js"
+import { curveRow, gradientRow } from "./ramps.js"
 import {
   angleRow,
   keybindRow,
@@ -1280,15 +1281,19 @@ function buildPanel<S extends Schema>(
               ? pointRow({ ...context, field })
               : field.kind === "easing"
                 ? easingRow({ ...context, field })
-                : field.kind === "vec"
-                  ? vecRow(live as typeof live & { field: typeof field })
-                  : field.kind === "range"
-                    ? rangeRow(live as typeof live & { field: typeof field })
-                    : field.kind === "angle"
-                      ? angleRow(live as typeof live & { field: typeof field })
-                      : field.kind === "seed"
-                        ? seedRow(live as typeof live & { field: typeof field })
-                        : keybindRow(live as typeof live & { field: typeof field })
+                : field.kind === "gradient"
+                  ? gradientRow({ ...context, field })
+                  : field.kind === "curve"
+                    ? curveRow({ ...context, field })
+                    : field.kind === "vec"
+                      ? vecRow(live as typeof live & { field: typeof field })
+                      : field.kind === "range"
+                        ? rangeRow(live as typeof live & { field: typeof field })
+                        : field.kind === "angle"
+                          ? angleRow(live as typeof live & { field: typeof field })
+                          : field.kind === "seed"
+                            ? seedRow(live as typeof live & { field: typeof field })
+                            : keybindRow(live as typeof live & { field: typeof field })
       if (field.shortcut) editor.input.setAttribute("aria-keyshortcuts", field.shortcut)
       editor.labelEl.ondblclick = resetRow
       for (const t of editor.tracks) tracks.set(t.slider.track, t)
