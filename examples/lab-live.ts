@@ -71,7 +71,8 @@ export const live = defineControls(
     soak: meter({ label: "Surface soak", group: "budget" }),
     ...sparks,
   },
-  { storage: null },
+  // On by default only on localhost: the Lab is also opened over the tailnet.
+  { storage: null, enabled: true },
 )
 export const diag = defineControls(
   "lab-diag",
@@ -85,7 +86,8 @@ export const diag = defineControls(
     }),
     events: log({ label: "Events", lines: 7, group: "events", groupLabel: "Events" }),
   },
-  { storage: null },
+  // On by default only on localhost: the Lab is also opened over the tailnet.
+  { storage: null, enabled: true },
 )
 
 const mount = <S extends Schema>(controls: Controls<S>, host: HTMLElement) =>

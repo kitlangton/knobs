@@ -490,6 +490,7 @@ const inspector = defineControls(
   },
   {
     storage: null,
+    enabled: true,
     groupLabels: {
       xform: "Transform",
       emitter: "Emitter",
