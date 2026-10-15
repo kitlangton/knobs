@@ -604,8 +604,18 @@ export function injectPreset(doc: Document, preset: TokenPreset) {
  */
 const keyboardQuietsHover = (css: string) =>
   css.replaceAll(":hover", ":hover:where(:not([data-keyboard] *))")
+/** The rules' `:has()` as the attributes has.ts keeps (see there for why). */
+export const withoutHas = (css: string) =>
+  css
+    .replaceAll(
+      ".knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible))",
+      '.knobs-x:is([data-k-head-hover]:where(:not([data-keyboard] *)),[data-k-fv="head"])',
+    )
+    .replaceAll(":has(:focus-visible)", "[data-k-fv]")
+    .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
+    .replaceAll(":has(.knobs-active)", "[data-k-active]")
 export function injectStyles(doc: Document) {
-  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(aliased(css))
+  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(withoutHas(aliased(css)))
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content

@@ -32,6 +32,7 @@ import {
   type SubTrack,
 } from "./editors.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
+import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
@@ -125,6 +126,7 @@ function buildPanel<S extends Schema>(
       ? "knobs-panel knobs-inline"
       : "knobs-panel"
   root.dataset.controls = controls.id
+  const untrackHas = trackHas(root)
   root.dataset.theme = options.theme ?? controls.theme
   root.dataset.density = options.density ?? controls.density
   if (options.preset) {
@@ -2470,6 +2472,7 @@ function buildPanel<S extends Schema>(
       doc.defaultView?.removeEventListener("blur", endCompare)
       controls.compare(false)
       morph?.dispose()
+      untrackHas()
       root.remove()
     },
   }
