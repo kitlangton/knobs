@@ -42,6 +42,7 @@ const panels = [
 Object.assign(window, {
   __host: {
     panels,
+    controls: { plain, lab },
     hostile: (on: boolean) => {
       ;(document.getElementById("hostile") as HTMLStyleElement).disabled = !on
     },

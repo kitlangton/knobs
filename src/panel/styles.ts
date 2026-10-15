@@ -467,7 +467,7 @@ const css = `
 .knobs-mixed :is(.knobs-fill,.knobs-handle-zone,.knobs-marks){opacity:0}
 .knobs-panel .knobs-mixed .knobs-value>:is(.knobs-digits,.knobs-unit,.knobs-lock){display:none}
 .knobs-mixed .knobs-value::after{content:"—"}
-.knobs-mixed :is(.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand){opacity:0}
+.knobs-mixed :is(.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand,.knobs-strip-thumb,.knobs-pad-puck,.knobs-pad-v,.knobs-pad-h,.knobs-ease-mini,.knobs-ease .knobs-curve,.knobs-arm,.knobs-ease-handle){opacity:0}
 .knobs-panel .knobs-toggle[aria-checked="mixed"] i{left:calc(50% - 7px);right:calc(50% - 7px)}
 
 /* Tabs: text over a hairline; the chosen one's underline slides to it, its leading edge first. */

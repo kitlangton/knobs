@@ -91,3 +91,52 @@ test("focus shows no outline, even where the host draws one on :focus", async ({
   })
   expect(outlines).toBe("none")
 })
+
+test("mixed colour, point and easing rows show an empty well and no puck, curve or thumbs", async ({
+  page,
+}) => {
+  await page.goto("/host.html")
+  const panel = page.locator("#plain")
+  await page.evaluate(() =>
+    (
+      window as unknown as { __host: { controls: { plain: { setMixed(k: string[]): void } } } }
+    ).__host.controls.plain.setMixed(["tint", "origin", "curve"]),
+  )
+  const row = (key: string) => panel.locator(`[data-field="${key}"]`)
+  for (const key of ["tint", "origin", "curve"]) {
+    await expect(row(key)).toHaveClass(/knobs-mixed/)
+    await expect(row(key).locator(".knobs-x-read")).toHaveText("—")
+  }
+  await expect(row("tint").locator(".knobs-strip-read")).toHaveText(["—", "—", "—"])
+  await settle(page)
+  const look = await page.evaluate(() => {
+    const q = (s: string) => document.querySelector(`#plain ${s}`)!
+    const op = (s: string) => getComputedStyle(q(s)).opacity
+    return {
+      swatch: getComputedStyle(q('[data-field="tint"] .knobs-swatch')).backgroundColor,
+      thumb: op('[data-field="tint"] .knobs-strip-thumb'),
+      puck: op('[data-field="origin"] .knobs-pad-puck'),
+      mini: op('[data-field="curve"] .knobs-ease-mini'),
+      handle: op('[data-field="curve"] .knobs-ease-handle'),
+      chip: document.querySelectorAll('#plain [data-field="curve"] [aria-checked="true"]').length,
+    }
+  })
+  expect(look).toEqual({
+    swatch: "rgba(0, 0, 0, 0)",
+    thumb: "0",
+    puck: "0",
+    mini: "0",
+    handle: "0",
+    chip: 0,
+  })
+  // A set value settles the row and brings its marks back.
+  await page.evaluate(() =>
+    (
+      window as unknown as {
+        __host: { controls: { plain: { set(v: Record<string, unknown>): void } } }
+      }
+    ).__host.controls.plain.set({ curve: [0, 0, 1, 1] }),
+  )
+  await expect(row("curve")).not.toHaveClass(/knobs-mixed/)
+  await expect(row("curve").locator(".knobs-x-read")).toHaveText("linear")
+})

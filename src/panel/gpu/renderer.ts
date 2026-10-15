@@ -1896,11 +1896,12 @@ class GpuOverlayManager {
     const target = oklchToRgb(col)
     const waiting = clock < row.wave.at
     if (waiting) this.easeMoving = true
+    const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const rgb: Rgba = [
       this.ease(row.swatch, "r", waiting ? undefined : target[0], 30),
       this.ease(row.swatch, "g", waiting ? undefined : target[1], 30),
       this.ease(row.swatch, "b", waiting ? undefined : target[2], 30),
-      rowAlpha,
+      rowAlpha * shown,
     ]
     const sw = this.rectOf(row.swatch)
     const centerY = sw.top + sw.height / 2
@@ -1946,6 +1947,7 @@ class GpuOverlayManager {
         const [x] = this.morph(s.track, [s.thumbX()], row.wave.at - clock, s.dragging(), tr)
         const lift = s.dragging() || this.isFocused(s.track)
         const d = (h + 2) * this.ease(s.track, "grab", lift ? 1.1 : 1, 30)
+        if (shown < 0.005) continue
         this.shape({
           x: tr.left + x! - d / 2,
           y: lineY - d / 2,
@@ -1954,8 +1956,8 @@ class GpuOverlayManager {
           radius: Math.min(d / 2, t.round),
           fill: rgb,
           ring: 2,
-          ringColor: withAlpha(t.thumb, rowAlpha),
-          shadow: [0.4 * t.lift, 4, 1],
+          ringColor: withAlpha(t.thumb, rowAlpha * shown),
+          shadow: [0.4 * t.lift * shown, 4, 1],
           clip: body,
         })
       }
@@ -1997,7 +1999,13 @@ class GpuOverlayManager {
       })
       const active = row.dragging()
       const [px, py] = this.morph(row.pad, row.puck(), row.wave.at - clock, active, pr)
-      const line = withAlpha(t.line, rowAlpha)
+      const shown = this.ease(
+        row.row,
+        "mixed",
+        row.row.classList.contains("knobs-mixed") ? 0 : 1,
+        40,
+      )
+      const line = withAlpha(t.line, rowAlpha * shown)
       this.pushPrim({
         x: pr.left + px! - 0.5,
         y: pr.top,
@@ -2030,17 +2038,18 @@ class GpuOverlayManager {
       })
       const lift = active || this.isFocused(row.pad)
       const d = 12 * this.ease(row.pad, "grab", lift ? 1.2 : 1, 30)
+      if (shown < 0.005) return
       this.shape({
         x: pr.left + px! - d / 2,
         y: pr.top + py! - d / 2,
         w: d,
         h: d,
         radius: Math.min(d / 2, t.round),
-        fill: withAlpha(t.accent, rowAlpha),
+        fill: withAlpha(t.accent, rowAlpha * shown),
         ring: 1.5,
-        ringColor: withAlpha(t.bg, rowAlpha),
+        ringColor: withAlpha(t.bg, rowAlpha * shown),
         glow: t.glowStrength * 10,
-        glowColor: withAlpha(t.accent, 0.5 * rowAlpha),
+        glowColor: withAlpha(t.accent, 0.5 * rowAlpha * shown),
         clip,
       })
     })
@@ -2066,7 +2075,8 @@ class GpuOverlayManager {
     const delay = row.wave.at - clock
     const snap = row.snap()
     const mRect = this.rectOf(row.mini)
-    const accent = withAlpha(t.accent, rowAlpha)
+    const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
+    const accent = withAlpha(t.accent, rowAlpha * shown)
     this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
@@ -2092,13 +2102,13 @@ class GpuOverlayManager {
       }
       const arms = at(this.morph(row.handles[0]!, row.arms(), delay, snap, br), br)
       if (arms.length === 8) {
-        const dim = withAlpha(t.dim, rowAlpha)
+        const dim = withAlpha(t.dim, rowAlpha * shown)
         this.pushLine(arms.slice(0, 4), dim, 1, body)
         this.pushLine(arms.slice(4), dim, 1, body)
       }
       this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
       row.handles.forEach((h, i) => {
-        if (arms.length !== 8) return
+        if (arms.length !== 8 || shown < 0.005) return
         const activeHandle = this.isFocused(h) || (this.curPanelHovered && h.matches(":active"))
         const d = 12 * this.ease(h, "grab", activeHandle ? 1.2 : 1, 30)
         const cx = arms[i * 4 + 2]!
@@ -2109,10 +2119,10 @@ class GpuOverlayManager {
           w: d,
           h: d,
           radius: Math.min(d / 2, t.round),
-          fill: withAlpha(t.bg, rowAlpha),
+          fill: withAlpha(t.bg, rowAlpha * shown),
           ring: -2,
           ringColor: accent,
-          shadow: [0.3 * t.lift, 3, 1],
+          shadow: [0.3 * t.lift * shown, 3, 1],
           clip: body,
         })
       })
