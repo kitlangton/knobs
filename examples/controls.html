@@ -94,6 +94,11 @@
       .stage .caption { position: absolute; left: 12px; bottom: 9px; color: var(--dim); font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; }
       .stage .caption.right { left: auto; right: 12px; }
       .stage[data-replay] { cursor: pointer; }
+      .shows { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+      .shows code { padding: 2px 7px; border-radius: 6px; background: var(--surface); color: var(--label); font: 500 11px/1.5 var(--mono); }
+      section.demo.scene .stage { min-height: 440px; }
+      section.demo.scene .stage .caption { color: rgba(255, 255, 255, .5); }
+      html[data-theme="light"] section.demo.scene .stage .caption { color: rgba(0, 0, 0, .45); }
       .stage:focus-visible { background: var(--surface-hi); }
       .try code, header p code { font: 11.5px var(--mono); color: var(--label); }
       .abs { position: absolute; left: 0; top: 0; will-change: transform; }
@@ -152,6 +157,6 @@
         </div>
       </div>
     </div>
-    <script type="module" src="./controls.ts"></script>
+    <script type="module" src="./controls-boot.ts"></script>
   </body>
 </html>

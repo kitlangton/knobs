@@ -79,6 +79,7 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
+import { lampScene } from "./controls-scene-lamp"
 import { uiSections } from "./controls-ui"
 
 const params = new URLSearchParams(location.search)
@@ -134,9 +135,13 @@ export interface SectionSpec {
   /** A preview stage on the right (else the tries sit there). */
   readonly stage?: boolean
   readonly wide?: boolean
+  /** A scene: a big stage that several kinds of control drive together. */
+  readonly scene?: boolean
+  /** The kinds of control it shows, as chips under the title. */
+  readonly shows?: readonly string[]
 }
 export function section(spec: SectionSpec) {
-  const el = h("section", `demo${spec.wide ? " wide" : ""}`)
+  const el = h("section", `demo${spec.wide ? " wide" : ""}${spec.scene ? " scene" : ""}`)
   el.id = spec.id
   const head = h("header")
   const title = h("h2")
@@ -145,6 +150,11 @@ export function section(spec: SectionSpec) {
   if (spec.tag) title.append(Object.assign(h("span", "tag"), { textContent: spec.tag }))
   const what = h("p", "", spec.what)
   head.append(title, what)
+  if (spec.shows?.length) {
+    const shows = h("div", "shows")
+    for (const k of spec.shows) shows.append(Object.assign(h("code"), { textContent: k }))
+    head.append(shows)
+  }
   const slot = h("div", "slot")
   const side = h("div", "side")
   el.append(head, slot, side)
@@ -221,6 +231,20 @@ const go = (
 const px = (n: number) => `${Math.round(n * 100) / 100}px`
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+
+/** What a scene module needs from the page. */
+export interface SceneKit {
+  readonly section: typeof section
+  readonly define: typeof define
+  readonly mount: typeof mount
+  readonly h: typeof h
+}
+const kit: SceneKit = { section, define, mount, h }
+
+// ── Scenes ───────────────────────────────────────────────────────────────────────────────────
+
+category("Scenes")
+lampScene(kit)
 
 // ── Basics ───────────────────────────────────────────────────────────────────────────────────
 
@@ -460,86 +484,6 @@ category("Basics")
     }
     count = v.count
     setCaption({ n: v.count, size: v.size })
-  })
-}
-
-{
-  const s = section({
-    id: "toggle",
-    title: "Switches",
-    code: "toggle()",
-    what: "On or off. The thumb stretches toward where it's going and settles.",
-    stage: true,
-    tries: [
-      "<kbd>←</kbd> <kbd>→</kbd> or <kbd>Space</kbd> flip a focused switch",
-      "Hold <kbd>\\</kbd> to see the light as it was before your last change",
-    ],
-  })
-  const { store, on } = define("toggle", "Switches", {
-    on: toggle(true, { label: "Light" }),
-    warm: toggle(true, { label: "Warm" }),
-    pool: toggle(true, { label: "Floor pool" }),
-  })
-  mount(store, s.slot, { title: "Lamp" })
-  s.stage.innerHTML = `
-    <div style="position:relative;width:200px;height:170px">
-      <div data-l="pool-warm" style="position:absolute;left:10px;right:10px;bottom:6px;height:44px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--warm) 55%,transparent),transparent)"></div>
-      <div data-l="pool-cool" style="position:absolute;left:10px;right:10px;bottom:6px;height:44px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--cool) 50%,transparent),transparent)"></div>
-      <div style="position:absolute;left:99px;top:0;width:2px;height:58px;background:var(--faint)"></div>
-      <div data-l="glow-warm" style="position:absolute;left:30px;top:18px;width:140px;height:140px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--warm) 60%,transparent),transparent)"></div>
-      <div data-l="glow-cool" style="position:absolute;left:30px;top:18px;width:140px;height:140px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--cool) 55%,transparent),transparent)"></div>
-      <div data-l="bulb" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:var(--surface-hi);box-shadow:inset 0 0 0 1.5px var(--faint)"></div>
-      <div data-l="core-warm" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:#ffe2b8;box-shadow:0 0 18px var(--warm)"></div>
-      <div data-l="core-cool" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:#e4f3ff;box-shadow:0 0 18px var(--cool)"></div>
-    </div>`
-  const layer = (name: string) => s.stage.querySelector<HTMLElement>(`[data-l="${name}"]`)!
-  const L = Object.fromEntries(
-    ["pool-warm", "pool-cool", "glow-warm", "glow-cool", "core-warm", "core-cool", "bulb"].map(
-      (n) => [n, layer(n)],
-    ),
-  )
-  const poolWarmBlur = new DirBlur(L["pool-warm"]!)
-  const poolCoolBlur = new DirBlur(L["pool-cool"]!)
-  const coreWarmBlur = new DirBlur(L["core-warm"]!)
-  const coreCoolBlur = new DirBlur(L["core-cool"]!)
-  const stage = new Stage(s.stage, () => {
-    const on = on1.x
-    const w = warm.x
-    const p = pool.x
-    L["glow-warm"]!.style.opacity = (on * w).toFixed(3)
-    L["glow-cool"]!.style.opacity = (on * (1 - w)).toFixed(3)
-    L["core-warm"]!.style.opacity = (on * w).toFixed(3)
-    L["core-cool"]!.style.opacity = (on * (1 - w)).toFixed(3)
-    L["pool-warm"]!.style.opacity = (on * w * p).toFixed(3)
-    L["pool-cool"]!.style.opacity = (on * (1 - w) * p).toFixed(3)
-    // Glow and pool bloom open as the light comes on, and gather in as it goes; width leads on the floor.
-    const sc = 0.84 + 0.16 * on
-    const pxSc = 0.8 + 0.2 * on * p
-    const pySc = 0.9 + 0.1 * on * p
-    L["pool-warm"]!.style.transform = L["pool-cool"]!.style.transform =
-      `scale(${pxSc.toFixed(4)},${pySc.toFixed(4)})`
-    L["glow-warm"]!.style.transform = L["glow-cool"]!.style.transform = `scale(${sc.toFixed(4)})`
-    const coreSc = 0.94 + 0.06 * on
-    L["core-warm"]!.style.transform = L["core-cool"]!.style.transform =
-      `scale(${coreSc.toFixed(4)})`
-    const poolSpeed = Math.abs(on1.v * p + on * pool.v) * 140 + Math.abs(warm.v) * 80
-    const pb = blurFor(poolSpeed, 3.5)
-    poolWarmBlur.set(pb, pb * 0.35)
-    poolCoolBlur.set(pb, pb * 0.35)
-    const coreSpeed = Math.abs(on1.v) * 110 + Math.abs(warm.v) * 75
-    const cb = blurFor(coreSpeed, 2.5)
-    coreWarmBlur.set(cb, cb)
-    coreCoolBlur.set(cb, cb)
-  })
-  const on1 = stage.val(1, 0.002, true)
-  const warm = stage.val(1, 0.002, true)
-  const pool = stage.val(1, 0.002, true)
-  on((v, how) => {
-    // A light is the switch's result, not the hand itself: it eases on and off either way.
-    const h2 = how === "init" ? "init" : "other"
-    go(on1, v.on ? 1 : 0, h2, v.on ? "calm" : "default")
-    go(warm, v.warm ? 1 : 0, h2, "calm")
-    go(pool, v.pool ? 1 : 0, h2, "calm")
   })
 }
 
@@ -1796,104 +1740,6 @@ const SKIES = {
     })
     hour.go(v.hour, how, "calm")
     setClock({ h: Math.floor(v.hour) % 24, m: Math.round((v.hour % 1) * 60) })
-  })
-}
-
-{
-  const s = section({
-    id: "curve",
-    title: "Curve",
-    code: "curve()",
-    what: "A 1D curve of draggable points. Here it's how a lamp's light falls off with distance; the pool of light bends from one shape to the next.",
-    stage: true,
-    tries: [
-      "Tap the shape chips in turn: the light reshapes smoothly, Bell opening into a ring",
-      "Throw Radius: the pool breathes out and in on a spring",
-      "Open it, double-click empty space to add a point, drag one out to remove it",
-    ],
-  })
-  const { store, on } = define("curve", "Curve", {
-    falloff: curve("inverse²", { label: "Falloff" }),
-    radius: knob(110, { min: 40, max: 180, step: 1, unit: "px", label: "Radius" }),
-    warmth: color("#ffcf8a", { label: "Light" }),
-  })
-  mount(store, s.slot, { title: "Lamp" })
-  s.stage.style.display = "block"
-  const canvas = h("canvas")
-  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%"
-  s.stage.append(canvas)
-  const N = 33
-  const CURVE_TAPS = [
-    { tau: -0.42, w: 0.14 },
-    { tau: -0.21, w: 0.22 },
-    { tau: 0, w: 0.28 },
-    { tau: 0.21, w: 0.22 },
-    { tau: 0.42, w: 0.14 },
-  ] as const
-  const stage = new Stage(s.stage, () => {
-    const dpr = Math.min(2, devicePixelRatio || 1)
-    const w = s.stage.clientWidth
-    const hh = s.stage.clientHeight
-    if (canvas.width !== Math.round(w * dpr)) canvas.width = Math.round(w * dpr)
-    if (canvas.height !== Math.round(hh * dpr)) canvas.height = Math.round(hh * dpr)
-    const ctx = canvas.getContext("2d")!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, w, hh)
-    const cx = w / 2
-    const cy = hh * 0.55
-    const r0 = Math.max(1, radius.x)
-    const [cr, cg, cb] = oklabRgb(light.lab)
-    // Shutter-integrate the radial pool across 5 samples when Radius or Falloff is moving fast.
-    let ySpeed = 0
-    for (let i = 0; i < N; i++) ySpeed = Math.max(ySpeed, Math.abs(ys[i]!.v))
-    const fast = !reduced() && (Math.abs(radius.v) > 8 || ySpeed > 0.15)
-    const taps = fast ? CURVE_TAPS : ([{ tau: 0, w: 1 }] as const)
-    ctx.save()
-    ctx.translate(0, cy)
-    ctx.scale(1, 0.42)
-    ctx.translate(0, -cy)
-    for (const { tau, w: tw } of taps) {
-      const dt = tau * 0.036
-      const r = Math.max(2, r0 + radius.v * dt)
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
-      for (let i = 0; i < N; i++) {
-        const y = clamp01(ys[i]!.x + ys[i]!.v * dt)
-        g.addColorStop(i / (N - 1), `rgba(${cr},${cg},${cb},${(y * 0.85 * tw).toFixed(3)})`)
-      }
-      ctx.fillStyle = g
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    ctx.restore()
-    const bulb = `rgb(${cr},${cg},${cb})`
-    ctx.fillStyle = bulb
-    ctx.shadowColor = bulb
-    ctx.shadowBlur = 16
-    ctx.beginPath()
-    ctx.arc(cx, cy - 46, 7, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.shadowBlur = 0
-    ctx.strokeStyle = "rgba(128,128,128,.35)"
-    ctx.beginPath()
-    ctx.moveTo(cx, 0)
-    ctx.lineTo(cx, cy - 53)
-    ctx.stroke()
-  })
-  const ys = Array.from({ length: N }, () => stage.val(0, 0.001))
-  const radius = stage.val(110, 0.05)
-  const light = new ColorVal(stage, "#ffcf8a")
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
-  on((v, how) => {
-    ys.forEach((y, i) => {
-      y.go(
-        sampleCurve(v.falloff, i / (N - 1), { interp: store.schema.falloff.interp }),
-        how,
-        "calm",
-      )
-    })
-    radius.go(v.radius, how, "calm")
-    light.go(v.warmth, how, "default")
   })
 }
 
