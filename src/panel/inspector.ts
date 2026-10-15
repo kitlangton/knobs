@@ -559,7 +559,12 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     const end = i as 0 | 1
     th.addEventListener("focus", () => {
       lastEnd = end
+      // Which thumb holds focus, for the text fade (an attribute rather than a :has() rule).
+      row.dataset.endFocus = th.dataset.end
       c.wake()
+    })
+    th.addEventListener("blur", () => {
+      if (row.dataset.endFocus === th.dataset.end) delete row.dataset.endFocus
     })
     th.addEventListener("keydown", (event) => {
       if (!plainKey(event)) return

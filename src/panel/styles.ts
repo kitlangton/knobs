@@ -547,8 +547,8 @@ const css = `
   --kg-mask:linear-gradient(to right,#000 calc(var(--kg-lo) - 6.5px),var(--kg-in-lo) calc(var(--kg-lo) - 2.5px),var(--kg-in-lo) calc(var(--kg-lo) + 2.5px),#000 calc(var(--kg-lo) + 6.5px)),linear-gradient(to right,#000 calc(var(--kg-hi) - 6.5px),var(--kg-in-hi) calc(var(--kg-hi) - 2.5px),var(--kg-in-hi) calc(var(--kg-hi) + 2.5px),#000 calc(var(--kg-hi) + 6.5px));
   -webkit-mask:var(--kg-mask);mask:var(--kg-mask);-webkit-mask-composite:source-in;mask-composite:intersect}
 .knobs-range:not(.knobs-mixed):hover .knobs-range-text{--kr-show-lo:1;--kr-show-hi:1}
-.knobs-range:not(.knobs-mixed):is(:has([data-end="lo"]:focus-visible),.knobs-active:has([data-end="lo"]:focus)) .knobs-range-text{--kr-show-lo:1}
-.knobs-range:not(.knobs-mixed):is(:has([data-end="hi"]:focus-visible),.knobs-active:has([data-end="hi"]:focus)) .knobs-range-text{--kr-show-hi:1}
+.knobs-range:not(.knobs-mixed)[data-end-focus="lo"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-lo:1}
+.knobs-range:not(.knobs-mixed)[data-end-focus="hi"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-hi:1}
 .knobs-range-thumb::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:-50% 0;border-radius:var(--k-round);background:var(--k-handle);opacity:0;scale:.25 1;transition:opacity .15s,scale .22s var(--k-ease)}
 .knobs-range-thumb[data-end="lo"]::before{translate:0 0}
 .knobs-range-thumb[data-end="hi"]::before{translate:-100% 0}
