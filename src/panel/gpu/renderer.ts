@@ -20,6 +20,8 @@ import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "..
 import type { DigitPlace, Slider } from "../slider.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
+import { liveThumb } from "../thumb.js"
+import { giveOf } from "../give.js"
 import { rangeSmear } from "../smear.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -2863,7 +2865,9 @@ class GpuOverlayManager {
     const text = el.textContent ?? ""
     const r = this.rectOf(el, text.length)
     const shown = this.fit(text, r.width + 1, t.valueSize, t.fontWeight, t.valueFamily)
-    return this.drawText(shown, align === "right" ? r.right : r.left, centerY, color, {
+    // A number that can't go further gives a little while a pan pushes it (see give.ts).
+    const x = (align === "right" ? r.right : r.left) + giveOf(el)
+    return this.drawText(shown, x, centerY, color, {
       px: t.valueSize,
       weight: t.fontWeight,
       align,
@@ -4324,9 +4328,11 @@ class GpuOverlayManager {
 
           this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, lRect)
 
+          // Past an end the readout gives a little (see give.ts).
+          const give = giveOf(sl.valueButton)
           if (mixed && !sl.isEditing()) {
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
-            const dashW = this.drawText("—", vRect.right, rowCenterY, valCol, {
+            const dashW = this.drawText("—", vRect.right + give, rowCenterY, valCol, {
               px: tokens.valueSize,
               weight: tokens.fontWeight,
               align: "right",
@@ -4339,7 +4345,7 @@ class GpuOverlayManager {
             if (mark > 0.005) {
               const r = 2.5 * Math.max(0, Math.min(1.2, mark))
               this.shape({
-                x: vRect.right - dashW - 6 - 2.5 - r,
+                x: vRect.right + give - dashW - 6 - 2.5 - r,
                 y: rowCenterY - r,
                 w: r * 2,
                 h: r * 2,
@@ -4359,7 +4365,7 @@ class GpuOverlayManager {
             const ink = mark > 0.005 ? cssMix(tokens.modified, valCol, clamp(mark, 0, 1)) : valCol
             const unitInk = withAlpha(ink, rowAlpha)
             const valPx = tokens.valueSize
-            let rightEdge = vRect.right
+            let rightEdge = vRect.right + give
             // The decile pop scales the whole readout about its right edge.
             const popAge = clock - sl.poppedAt
             const pop = reducedMotion ? 1 : popScale(popAge)
@@ -4468,13 +4474,14 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "choice" && row.menu && row.row.dataset.display === "menu") {
           // The same row as a compact drop-down button.
-          this.drawRowHover(row.row, rRect, hovered)
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
           const b = row.menu.button
           const valueEl = row.menu.valueEl
           const br = this.rectOf(b)
           const open = b.getAttribute("aria-expanded") === "true"
-          const on = this.isHovered(b) || this.isFocused(b) || open
+          const panned = row.row.classList.contains("knobs-active")
+          const on = this.isHovered(b) || this.isFocused(b) || open || panned
           const wash = this.wash(b, on)
           this.pushPrim({
             x: br.left,
@@ -4495,7 +4502,7 @@ class GpuOverlayManager {
               tokens.textControl,
               tokens.labelWeight,
             ),
-            vr.left,
+            vr.left + giveOf(valueEl),
             rowCenterY,
             withAlpha(this.hot(b, on), rowAlpha),
             { px: tokens.textControl, weight: tokens.labelWeight, clip: cardClip },
@@ -4511,7 +4518,7 @@ class GpuOverlayManager {
             )
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "choice") {
-          this.drawRowHover(row.row, rRect, hovered)
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
           anyMoving =
             this.drawSeg(row.segEl, row.buttons, row.pill, {
@@ -4574,13 +4581,17 @@ class GpuOverlayManager {
         } else if (row.kind === "angle") {
           this.drawAngle(row, rRect, cardClip, rowAlpha, hovered, clock)
         } else if (row.kind === "seed") {
-          this.drawRowHover(row.row, rRect, hovered)
+          const active = row.row.classList.contains("knobs-active")
+          this.drawRowHover(row.row, rRect, hovered || active)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
           if (!row.editing()) {
-            const ink = withAlpha(this.hot(row.control, this.isFocused(row.control)), rowAlpha)
-            const rr = this.rectOf(row.read)
+            const ink = withAlpha(
+              this.hot(row.control, active || this.isFocused(row.control)),
+              rowAlpha,
+            )
+            const right = this.rectOf(row.read).right + giveOf(row.read)
             if (row.mixed())
-              this.drawText("—", rr.right, rowCenterY, ink, {
+              this.drawText("—", right, rowCenterY, ink, {
                 px: tokens.valueSize,
                 align: "right",
                 family: tokens.valueFamily,
@@ -4588,7 +4599,7 @@ class GpuOverlayManager {
               })
             else
               anyMoving =
-                this.drawReel(row.places, rr.right, rowCenterY, ink, bodyClip, clock) || anyMoving
+                this.drawReel(row.places, right, rowCenterY, ink, bodyClip, clock) || anyMoving
           }
           const { button, die } = row.die
           const dr = this.rectOf(button)
@@ -4618,13 +4629,16 @@ class GpuOverlayManager {
           const from = pad + at - (pressed && on ? 4 : 0)
           const to = pad + at + d + (pressed && !on ? 4 : 0)
           const th = row.thumb
-          if (reducedMotion || th.end.x - th.start.x <= 1) th.snap(from, to)
+          // A pan holds the thumb with the fingers, as the DOM's inline edges do.
+          const held = liveThumb(row.toggleEl)
+          if (held) th.snap(held[0], held[1])
+          else if (reducedMotion || th.end.x - th.start.x <= 1) th.snap(from, to)
           else {
             th.to(from, to, row.wave.at - clock, trailScale(tokens.blurStrength)).step(dt)
             if (!th.resting) anyMoving = true
           }
 
-          this.drawRowHover(row.row, rRect, hovered)
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
 
           // Colours follow the state over the DOM's 0.2 s (not the thumb, which a press moves),

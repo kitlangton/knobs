@@ -3,6 +3,7 @@ import { iconSvg } from "./icons.js"
 import { openMenu, type Menu } from "./menu.js"
 import { placeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
+import { stepBand, textGive, type Steps } from "./give.js"
 import { onPan, panOptions } from "./swipe.js"
 
 export interface ChoiceItem {
@@ -163,28 +164,43 @@ export function createChoice(
     select: (i, coalesce) => o.choose(items[i]!.value, coalesce),
     rest: () => placeSegPill(seg, buttons, o.value()),
     wake: () => o.wake?.(),
+    row,
   })
-  let travel = 0
+  // The menu steps a choice every MENU_PAN_STEP px; past either end its value gives a little.
+  let travel: Steps | undefined
   let panned = false
+  const give = textGive(menuValue, () => o.wake?.())
+  const letGo = () => {
+    give.release()
+    if (!travel) return
+    travel = undefined
+    panned = false
+    row.classList.remove("knobs-active")
+    o.wake?.()
+  }
   onPan(menu, {
     move(dx) {
-      travel += dx
-      while (Math.abs(travel) >= MENU_PAN_STEP) {
-        const d = Math.sign(travel)
-        travel -= d * MENU_PAN_STEP
-        const at = items.findIndex((i) => i.value === o.value())
-        const item = items[Math.max(0, Math.min(items.length - 1, at + d))]
-        if (item && item.value !== o.value()) {
-          o.choose(item.value, panned)
-          panned = true
-          tick(menu)
-        }
+      if (!travel) {
+        travel = { travel: 0, give: 0 }
+        row.classList.add("knobs-active")
+        o.wake?.()
       }
+      const at = Math.max(
+        0,
+        items.findIndex((i) => i.value === o.value()),
+      )
+      const { next, steps } = stepBand(travel, dx, MENU_PAN_STEP, [at, items.length - 1 - at])
+      travel = next
+      const item = items[at + steps]
+      if (steps && item && item.value !== o.value()) {
+        o.choose(item.value, panned)
+        panned = true
+        tick(menu)
+      }
+      if (next.give !== give.give) give.hold(next.give)
     },
-    end() {
-      travel = 0
-      panned = false
-    },
+    lift: () => give.release(),
+    end: letGo,
     step: (d) => step(d, false),
   })
 

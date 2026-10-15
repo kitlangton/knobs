@@ -89,6 +89,7 @@ import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
+import { panSwitch } from "./thumb.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
@@ -1427,6 +1428,13 @@ function buildPanel<S extends Schema>(
       if (!tapped) tick(toggle)
     }
     row.append(toggle)
+    // A sideways pan anywhere on the row takes the thumb in hand (see thumb.ts).
+    panSwitch(row, toggle, {
+      value: () =>
+        toggle.getAttribute("aria-checked") === "mixed" ? "mixed" : Boolean(controls.get()[key]),
+      set: (on, coalesce) => run(() => set(on, { coalesce })),
+      wake: () => wakeGpu(),
+    })
     return {
       ...base,
       row,

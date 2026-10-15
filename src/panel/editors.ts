@@ -26,6 +26,8 @@ import { arrowOf, bigOf } from "./prefs.js"
 import { clamp } from "./motion.js"
 import { reveal } from "./reveal.js"
 import { createSlider, decimals, type Slider } from "./slider.js"
+import { band, stretched, type Band } from "./give.js"
+import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 
 /** What a row needs from the panel. */
@@ -259,8 +261,11 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     const stops = Array.from({ length: 25 }, (_, i) => `${colorAt!(i / 24)} ${xOf(i / 24)}px`)
     track.style.background = `linear-gradient(to right,${stops.join(",")})`
   }
+  /** How far (px) a pan holds the thumb past an end. */
+  let give = 0
+  const thumbX = () => xOf(ratio(current)) + give
   const placeThumb = (instant: boolean) => {
-    if (size.w) place([thumb], instant, () => (thumb.style.left = `${xOf(ratio(current))}px`))
+    if (size.w) place([thumb], instant, () => (thumb.style.left = `${thumbX()}px`))
   }
   const size = measure(track, () => {
     paint(true)
@@ -319,8 +324,9 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
   }
   track.onpointerup = release
   track.onpointercancel = release
-  // A sideways pan scrubs like a drag: 1:1 with the fingers, as one undo step.
-  let panAt: number | undefined
+  // A sideways pan scrubs like a drag: 1:1 with the fingers, as one undo step. Past an end the
+  // thumb gives a little and springs back when it's let go.
+  let panAt: Band | undefined
   onPan(track, {
     accept: () => !dragging,
     move(dx) {
@@ -328,18 +334,31 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
       const w = size.w || track.clientWidth
       const h = size.h || track.clientHeight
       if (!w) return
+      const room = Math.max(1, w - h)
       if (panAt === undefined) {
-        panAt = current
+        panAt = { at: ratio(current) * room, give: 0 }
         o.start()
         line.classList.add("knobs-active")
         c.wake()
       }
-      panAt = clamp(panAt + (dx / Math.max(1, w - h)) * span, o.min, o.max)
-      o.set(quantize(panAt, false))
+      const before = panAt.give
+      panAt = band(panAt, dx, 0, room)
+      if (stretched(before, panAt.give)) tick(track)
+      const moved = give !== panAt.give
+      give = panAt.give
+      o.set(quantize(o.min + (panAt.at / room) * span, false))
+      if (moved) {
+        placeThumb(false)
+        c.wake()
+      }
     },
     end() {
       panAt = undefined
       line.classList.remove("knobs-active")
+      if (give !== 0) {
+        give = 0
+        placeThumb(false)
+      }
       c.wake()
     },
     step(direction) {
@@ -364,7 +383,7 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     track,
     read,
     mode: 0,
-    thumbX: () => (size.w ? xOf(ratio(current)) : 0),
+    thumbX: () => (size.w ? thumbX() : 0),
     dragging: () => line.classList.contains("knobs-active"),
   }
   return {
@@ -771,9 +790,15 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     const [rx, ry] = ratio(p)
     return [PAD_INSET + (size.w - PAD_INSET * 2) * rx, PAD_INSET + (size.h - PAD_INSET * 2) * ry]
   }
+  /** How far (px) a pan holds the puck past the pad's edges. */
+  let give: [number, number] = [0, 0]
+  const puckAt = (): [number, number] => {
+    const [px, py] = at(shown)
+    return [px + give[0], py + give[1]]
+  }
   const layout = (instant: boolean) => {
     if (!size.w) return
-    const [px, py] = at(shown)
+    const [px, py] = puckAt()
     const [hx, hy] = at(f.value)
     place([puck, vLine, hLine], instant, () => {
       puck.style.translate = `${px}px ${py}px`
@@ -839,32 +864,47 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   pad.onpointerup = release
   pad.onpointercancel = release
   // A pan that starts sideways moves the puck with the fingers in both axes, as one undo step.
-  let panAt: Point | undefined
+  // Past an edge the puck gives a little, and springs back when it's let go.
+  let panAt: [Band, Band] | undefined
   onPan(
     pad,
     {
       accept: () => !dragging,
       move(dx, dy) {
-        const w = size.w || pad.clientWidth
-        const h = size.h || pad.clientHeight
-        if (!w) return
+        const w = (size.w || pad.clientWidth) - PAD_INSET * 2
+        const h = (size.h || pad.clientHeight) - PAD_INSET * 2
+        if (w <= 0) return
         if (!panAt) {
-          panAt = shown
+          const [rx, ry] = ratio(shown)
+          panAt = [
+            { at: rx * w, give: 0 },
+            { at: ry * h, give: 0 },
+          ]
           g.start()
           pad.classList.add("knobs-active")
           c.wake()
         }
-        const spanX = f.max.x - f.min.x
-        const spanY = f.max.y - f.min.y
-        panAt = {
-          x: clamp(panAt.x + (dx / (w - PAD_INSET * 2)) * spanX, f.min.x, f.max.x),
-          y: clamp(panAt.y + (dy / (h - PAD_INSET * 2)) * spanY, f.min.y, f.max.y),
+        const before = panAt[0].give || panAt[1].give
+        panAt = [band(panAt[0], dx, 0, w), band(panAt[1], dy, 0, Math.max(0, h))]
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(pad)
+        const moved = give[0] !== panAt[0].give || give[1] !== panAt[1].give
+        give = [panAt[0].give, panAt[1].give]
+        g.set({
+          x: f.min.x + (panAt[0].at / w) * (f.max.x - f.min.x),
+          y: f.min.y + (h > 0 ? panAt[1].at / h : 0.5) * (f.max.y - f.min.y),
+        })
+        if (moved) {
+          layout(false)
+          c.wake()
         }
-        g.set(panAt)
       },
       end() {
         panAt = undefined
         pad.classList.remove("knobs-active")
+        if (give[0] || give[1]) {
+          give = [0, 0]
+          layout(false)
+        }
         c.wake()
       },
       step(direction) {
@@ -907,7 +947,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     x: x.gpu,
     read,
     pad,
-    puck: () => (size.w ? at(shown) : [0, 0]),
+    puck: () => (size.w ? puckAt() : [0, 0]),
     home: () => (size.w ? at(f.value) : [0, 0]),
     dragging: () => pad.classList.contains("knobs-active"),
     wave: c.wave,
@@ -1002,10 +1042,14 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     mapper(size.w, size.h, EASE_PAD.x, EASE_PAD.y, range)(px, py)
   const curvePoints = () =>
     size.w ? bezierCurve(shown, size.w, size.h, EASE_PAD.x, EASE_PAD.y, range) : []
+  /** Which handle a pan holds past the box's edges, and how far (px). */
+  let give: [number, number, number] = [-1, 0, 0]
+  const handleAt = (i: number): [number, number] => {
+    const [hx, hy] = map(shown[i * 2]!, shown[i * 2 + 1]!)
+    return give[0] === i ? [hx + give[1], hy + give[2]] : [hx, hy]
+  }
   const armPoints = () =>
-    size.w
-      ? [...map(0, 0), ...map(shown[0], shown[1]), ...map(1, 1), ...map(shown[2], shown[3])]
-      : []
+    size.w ? [...map(0, 0), ...handleAt(0), ...map(1, 1), ...handleAt(1)] : []
   const miniPoints = () => bezierCurve(shown, MINI.w, miniSize.h, 1.5, 1.5, MINI.y)
   const layout = (instant: boolean) => {
     if (!size.w) return
@@ -1106,9 +1150,13 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       move(i, shown[i * 2]! + dx * by, shown[i * 2 + 1]! + dy * by)
     })
   })
-  // A pan that starts sideways moves the hovered (or focused) handle with the fingers.
+  // A pan that starts sideways moves the hovered (or focused) handle with the fingers; past the
+  // box's edges it gives a little and springs back when it's let go.
   let panned = -1
-  let panAt: [number, number] = [0, 0]
+  let panAt: [Band, Band] = [
+    { at: 0, give: 0 },
+    { at: 0, give: 0 },
+  ]
   const panTarget = () => {
     const hovered = handles.findIndex((h) => h.matches(":hover"))
     return hovered >= 0 ? hovered : handles.findIndex((h) => h === c.doc.activeElement)
@@ -1118,26 +1166,38 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     {
       accept: () => dragging < 0 && panTarget() >= 0,
       move(dx, dy) {
-        const w = size.w || box.clientWidth
-        const h = size.h || box.clientHeight
-        if (!w) return
+        const w = (size.w || box.clientWidth) - EASE_PAD.x * 2
+        const h = (size.h || box.clientHeight) - EASE_PAD.y * 2
+        if (w <= 0 || h <= 0) return
         if (panned < 0) {
           panned = panTarget()
           if (panned < 0) return
-          panAt = [shown[panned * 2]!, shown[panned * 2 + 1]!]
+          panAt = [
+            { at: shown[panned * 2]! * w, give: 0 },
+            { at: ((range[1] - shown[panned * 2 + 1]!) / spanY) * h, give: 0 },
+          ]
           g.start()
           box.classList.add("knobs-active")
           c.wake()
         }
-        panAt = [
-          clamp(panAt[0] + dx / (w - EASE_PAD.x * 2), 0, 1),
-          clamp(panAt[1] - (dy / (h - EASE_PAD.y * 2)) * spanY, range[0], range[1]),
-        ]
-        move(panned, ...panAt)
+        const before = panAt[0].give || panAt[1].give
+        panAt = [band(panAt[0], dx, 0, w), band(panAt[1], dy, 0, h)]
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(box)
+        const moved = give[1] !== panAt[0].give || give[2] !== panAt[1].give
+        give = [panned, panAt[0].give, panAt[1].give]
+        move(panned, panAt[0].at / w, range[1] - (panAt[1].at / h) * spanY)
+        if (moved) {
+          layout(true)
+          c.wake()
+        }
       },
       end() {
         panned = -1
         box.classList.remove("knobs-active")
+        if (give[1] || give[2]) {
+          give = [-1, 0, 0]
+          layout(false)
+        }
         c.wake()
       },
       step(direction) {

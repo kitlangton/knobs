@@ -373,7 +373,7 @@ const css = `
 
 /* Long choices: a compact button that drops down a menu */
 .knobs-panel .knobs-select{position:relative;display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:62%;height:var(--kc-control-h);padding:0 6px 0 10px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-label);font-size:var(--k-text-control);font-weight:var(--k-label-weight);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
-.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]){background:var(--k-surface-hi);color:var(--k-text)}
+.knobs-panel .knobs-select:is(:hover,:focus-visible,[aria-expanded="true"]),.knobs-panel .knobs-active>.knobs-select{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .knobs-panel .knobs-row-full .knobs-select{flex:1;max-width:none;justify-content:space-between}
 .knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 2px);height:calc(var(--k-icon-sm) - 2px);color:var(--k-dim)}
@@ -649,7 +649,7 @@ const css = `
 
 .knobs-panel .knobs-insp[data-kind="seed"]{gap:2px}
 .knobs-seed{display:inline-flex;align-items:center;height:var(--kc-control-h);margin-left:auto;padding:0 4px;border-radius:var(--k-radius-sm);cursor:text;outline:none}
-.knobs-seed:focus-visible .knobs-seed-read{color:var(--k-text)}
+.knobs-seed:focus-visible .knobs-seed-read,.knobs-active>.knobs-seed .knobs-seed-read{color:var(--k-text)}
 .knobs-seed-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
 .knobs-seed-read{display:inline-flex;align-items:center}
 .knobs-seed-read[data-mixed]::before{content:"—"}
