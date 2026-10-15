@@ -2580,19 +2580,31 @@ function buildPanel<S extends Schema>(
     refreshFolds()
     trackSection()
   }
-  /** The section in view: the first, in reading order, that reaches below the header. */
+  /**
+   * The section in view: the one showing the most of itself between the header and the bottom
+   * of the window (the first, in reading order, of equals). Columns can set sections side by side,
+   * so it's what most of the view is, not what's at the top.
+   */
   const sectionInView = () => {
-    if (!layout) return undefined
-    const line = header.getBoundingClientRect().bottom + 8
-    const list = layout.sectionList().filter((s) => s.label)
-    for (const s of list) {
-      let bottom = s.label!.getBoundingClientRect().bottom
-      for (const t of s.tiles)
-        if (!t.hidden && !t.hasAttribute("data-away"))
-          bottom = Math.max(bottom, t.getBoundingClientRect().bottom)
-      if (bottom > line) return s.name
+    if (!layout || !win) return undefined
+    const top = header.getBoundingClientRect().bottom
+    const bottom = win.innerHeight
+    let best: string | undefined
+    let most = -1
+    for (const s of layout.sectionList()) {
+      if (!s.label) continue
+      let area = 0
+      for (const node of [s.label, ...s.tiles]) {
+        if (node.hidden || node.hasAttribute("data-away")) continue
+        const r = node.getBoundingClientRect()
+        area += Math.max(0, Math.min(bottom, r.bottom) - Math.max(top, r.top)) * r.width
+      }
+      if (area > most + 0.5) {
+        most = area
+        best = s.name
+      }
     }
-    return list.at(-1)?.name
+    return best
   }
   function trackSection() {
     if (!nav || !win || navFrame) return

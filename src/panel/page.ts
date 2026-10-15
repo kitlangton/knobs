@@ -1153,12 +1153,15 @@ export function createPageLayout(
       if (!s?.label) return
       if (!s.foldable) makeFoldable(s, s.folded)
       if (s.folded === folded) return
-      s.folded = folded
-      paintFold(s)
       // Focus inside cards folding away stays with the section, on its heading.
       if (folded && !foldsOpen && s.tiles.some((t) => t.contains(doc.activeElement)))
         s.label.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-      if (cols) relayout(undefined, [], !animate)
+      const apply = () => {
+        s.folded = folded
+        paintFold(s)
+      }
+      if (cols) relayout(apply, [], !animate)
+      else apply()
     },
     isFolded(name) {
       return shut(sections.find((x) => x.name === name))
