@@ -3389,7 +3389,7 @@ class GpuOverlayManager {
       cell = Math.max(cell, this.atlas.measure(String(d), valPx, weight, fontFamily))
     }
     this.cachedCellPx = valPx
-    this.cachedCellFont = fontFamily
+    this.cachedCellFont = font
     this.cachedCellWidth = cell
     return cell
   }
