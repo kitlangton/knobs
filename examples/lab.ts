@@ -3,7 +3,17 @@
 // from a recorded seed, skips seeds and switches, gates rows on other settings, folds advanced
 // groups and carries the host's pins in each row. Used by tests/browser/lab.spec.ts.
 import {
+  angle,
   createRemoteControls,
+  defineControls,
+  keybind,
+  knob,
+  range,
+  seed,
+  toggle,
+  toolbar,
+  vec2,
+  vec3,
   type ChangeMeta,
   type ControlDescriptor,
   type State,
@@ -405,8 +415,117 @@ const panels = [
     rowAccessory: accessory,
   }),
 ]
+// The inspector: a toolbar with shortcut chips over three tabs of inspector fields (vectors, a
+// range, dials, a seed and key combinations), with sub-headings and search. The Emitter group's
+// die hands its roll to the host, which rerolls the emitter from a new seed of its own.
+const presses: string[] = []
+const inspector = defineControls(
+  "lab-inspector",
+  {
+    tools: toolbar(
+      [
+        { id: "play", label: "Play", icon: "play", shortcut: "Space" },
+        { id: "frame", label: "Frame", icon: "frame", shortcut: "F" },
+        { id: "retrigger", label: "Retrigger", icon: "retrigger", shortcut: "R", global: true },
+        { id: "clear", label: "Clear", icon: "clear", shortcut: "Shift+Backspace" },
+      ],
+      { label: "Playback" },
+    ),
+    position: vec3(
+      { x: 0, y: 1.2, z: -4 },
+      { label: "Position", min: -50, max: 50, step: 0.1, group: "xform", tab: "transform" },
+    ),
+    yaw: angle(90, { label: "Yaw", group: "xform" }),
+    scale: vec3(
+      { x: 1, y: 1, z: 1 },
+      { label: "Scale", min: 0.01, max: 10, step: 0.01, linked: true, group: "xform" },
+    ),
+    pivot: vec2(
+      { x: 0.5, y: 0 },
+      { label: "Pivot", min: 0, max: 1, step: 0.01, group: "xform", subsection: "Pivot & bounds" },
+    ),
+    visible: range([4, 40], {
+      label: "Visible range",
+      min: 0,
+      max: 100,
+      step: 0.5,
+      unit: "m",
+      group: "xform",
+      subsection: "Pivot & bounds",
+    }),
+    seed: seed(1234, { label: "Seed", group: "emitter", tab: "emitter" }),
+    rate: knob(240, { label: "Rate", min: 0, max: 1000, step: 10, unit: "/s", group: "emitter" }),
+    lifetime: range([0.6, 1.4], {
+      label: "Lifetime",
+      min: 0,
+      max: 4,
+      step: 0.05,
+      unit: "s",
+      group: "emitter",
+    }),
+    direction: angle(0, { label: "Direction", group: "emitter" }),
+    spread: angle(30, { label: "Spread", min: 0, max: 180, group: "emitter" }),
+    drag: knob(0.2, {
+      label: "Drag",
+      min: 0,
+      max: 1,
+      step: 0.01,
+      group: "emitter",
+      subsection: "Forces",
+    }),
+    turbulence: knob(0.35, {
+      label: "Turbulence",
+      min: 0,
+      max: 2,
+      step: 0.01,
+      group: "emitter",
+      subsection: "Forces",
+    }),
+    fire: keybind("Space", { label: "Fire", group: "input", tab: "input" }),
+    reload: keybind("Shift+R", { label: "Reload", group: "input" }),
+    inspect: keybind("Meta+Alt+I", { label: "Inspect", group: "input" }),
+    invertY: toggle(false, { label: "Invert look Y", group: "input" }),
+  },
+  {
+    storage: null,
+    groupLabels: { xform: "Transform", emitter: "Emitter", input: "Bindings" },
+    onAction: (id) => presses.push(id),
+  },
+)
+const hostRolls: string[] = []
+const inspectorPanel = mountPanel(inspector, document.getElementById("inspector")!, {
+  title: false,
+  header: { buttons: ["random", "reset"] },
+  preset: labPreset,
+  theme: "dark",
+  density: "compact",
+  variants: false,
+  haptics: false,
+  session: false,
+  renderer: gpu ? "gpu" : "dom",
+  tabs: [
+    { id: "transform", label: "Transform" },
+    { id: "emitter", label: "Emitter" },
+    { id: "input", label: "Input" },
+  ],
+  search: true,
+  subsectionFolded: { Forces: true },
+  groupRandom: (group, mode) => {
+    if (group !== "emitter") return false
+    hostRolls.push(mode)
+    const next = inspector.get().seed + 1
+    inspector.set({ seed: next, rate: 100 + ((next * 37) % 900), drag: ((next * 13) % 100) / 100 })
+    return true
+  },
+})
+panels.push(inspectorPanel)
+
 Object.assign(window, {
   __lab: {
+    inspector,
+    inspectorPanel,
+    presses,
+    hostRolls,
     station,
     details,
     descriptors,
