@@ -337,6 +337,9 @@ A few things to watch:
 - **Long choices.** Menus with more than eight options open with a search field, values truncate
   with a tooltip, and labels keep their words up to half the row. The Lab's own label-column sizing
   can go.
-- **What stays in Arcade.** A group with its own "Randomize <group>" action still needs the facade
-  for that group's Random (knobs has no hook to hand a group's roll to an action), and the
-  `data-lab-flash` highlight is the Lab's own.
+- **A group's own Randomize.** A group with its own "Randomize <group>" action no longer needs the
+  facade: `groupRandom: (group, mode) => …` on the mount runs for the group's die, `g` and `⌥G`.
+  Return `true` when the host rolled the group (the die still tumbles) and knobs leaves its values
+  alone; return anything else to let knobs roll it. The Lab's Emitter group in `examples/lab.ts`
+  works this way.
+- **What stays in Arcade.** The `data-lab-flash` highlight is the Lab's own.

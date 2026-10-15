@@ -123,6 +123,54 @@ el.style.background = v.tint                                // OKLCH strings wor
 - **`point(value, { min, max, step? })`**: `{ x, y }`; bounds and step take a number or `{ x, y }`. y grows downward, as in CSS and UIKit. The pad marks the default with a ring; a drag is one undo step, and `⌥` drags at 1/10 speed.
 - **`easing(value, meta?)`**: `[x1, y1, x2, y2]` or a name: `ease`, `ease-in`/`in`, `ease-out`/`out`, `ease-in-out`/`in-out`, `linear`, `smooth`, `snappy` or `back`. x stays within 0–1 and y within −0.6–1.6. The row shows a mini curve; the editor has two handles and the named curves as chips. `bezierCss(value)` writes the CSS.
 
+### Inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars
+
+```ts
+import { angle, defineControls, keybind, range, seed, toolbar, vec2, vec3 } from "knobs"
+
+const node = defineControls("node", {
+  tools: toolbar([
+    { id: "play", label: "Play", icon: "play", shortcut: "Space" },
+    { id: "retrigger", label: "Retrigger", icon: "retrigger", shortcut: "R", global: true },
+  ]),
+  position: vec3({ x: 0, y: 1.2, z: -4 }, { min: -50, max: 50, step: 0.1 }), // { x, y, z }
+  scale: vec3({ x: 1, y: 1, z: 1 }, { min: 0.01, max: 10, step: 0.01, linked: true }),
+  pivot: vec2({ x: 0.5, y: 0 }, { min: 0, max: 1, step: 0.01 }),             // { x, y }
+  visible: range([4, 40], { min: 0, max: 100, step: 0.5, unit: "m" }),       // [low, high]
+  yaw: angle(90),                                                             // degrees
+  seed: seed(1234),                                                           // a whole number
+  fire: keybind("Space"),                                                     // "Meta+Shift+K", "" for none
+}, { onAction: (id) => run(id) })
+```
+
+- **`vec2(value, { min, max, step?, unit?, decimals? })` / `vec3(…)`**: inline x, y (and z) number
+  cells. Each cell is a ↑↓ stop: drag it sideways or press ←/→ to scrub (`⇧` ×10, `⌥` finest),
+  Enter or a digit to type. `link: true` adds a link button; while linked (`linked: true` starts
+  that way) changing one axis scales the others with it.
+- **`range([low, high], { min, max, step?, unit?, decimals? })`**: one slider with two thumbs that
+  can't cross. The nearer thumb follows the pointer; a press well inside the band moves the whole
+  band. Each thumb is a stop: ←/→ move it, Enter types it.
+- **`angle(value, { min?, max?, step?, wrap? })`**: degrees on a small dial, 0° up and clockwise.
+  0–360 by default, where `wrap` (on for a full turn) carries 359° on to 0°. Drag the hand round
+  (`⇧` snaps to 15°) or scrub the readout; ←/→ turn it, Enter types it.
+- **`seed(value, { min?, max? })`**: a whole number with a die. Clicking the die or pressing Space
+  rolls a new one; ←/→ step it and Enter types it. Random and Mutate leave seeds alone unless the
+  field says `random: true`.
+- **`keybind(value?)`**: a key combination such as `"Meta+Shift+K"` (stored canonically, `""` for
+  none), drawn as key caps. Enter or a click starts listening; the next combination is the value,
+  Esc cancels and ⌫ clears. Not rolled by Random or Mutate.
+- **`toolbar(items)`**: a wrapping row of buttons with an icon (`play`, `pause`, `frame`,
+  `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
+  and a shortcut chip. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
+  does it from code. Shortcuts work while the panel has focus, and anywhere on the page with
+  `global: true` (not while typing). A panel's shortcuts win over its own single-key commands. The
+  row holds no value; ←/→ move along it and Enter or Space presses.
+
+Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle" | "seed" |
+"keybind"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
+`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`. Each kind takes
+`disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
+
 Spring, point and easing values compare by their numbers everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
 
 ## Keyboard
@@ -136,7 +184,9 @@ Panels and switchers are keyboard-first:
 | `Enter` / `Space` | Open a colour, point or easing row's editor; `↓` then walks into it (strips, chips, handles, pad) |
 | `Esc` | Fold an open editor and return to its row (before closing the panel) |
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
-| `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
+| `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
+| `⌥1`–`⌥9` | Show tab 1–9 |
+| `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
@@ -359,9 +409,14 @@ mountPanel(station, column, {
 - **Header.** `header: false` drops it; `{ title?: false, buttons?: [...] }` keeps it and picks what
   shows. A hidden button keeps its key; a command that's off (`keys`) loses both.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
-  foldable in `mountPanel`, starting folded. Its header folds and opens it with a click, Enter or
-  Space; it's a ↑↓ stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from
-  code.
+  foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
+  stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
+  [full page](#full-page) the group's tile folds to its header, the cards below follow, and the
+  filter opens it while it runs.
+- **Group Random by the host.** `groupRandom: (group, mode) => …` runs first for a group's die, `g`
+  and `⌥G` (`mode` is `"random"` or `"mutate"`). Return `true` when the host rolled the group (its
+  own seeded "Randomize <group>"): the die tumbles and knobs leaves the values alone. Return
+  anything else and knobs rolls it. With `groupRandom` set, group dice stay enabled.
 - **Row accessories.** `rowAccessory(key)` puts the host's node just after each row's label (a pin,
   a spawn-time marker); slider ticks and the label make room for it. The node stays the host's
   (style it, listen on it, its clicks never reach the row); `panel.updateAccessories()` asks again.
@@ -369,6 +424,43 @@ mountPanel(station, column, {
 - **Long menus.** A menu of more than eight options (not numbered presets) opens with a search
   field: typing filters, ↑↓ and Enter choose, Esc closes. The row's value truncates with its whole
   text as a tooltip, and the label keeps its words.
+
+### Tabs, sub-headings and search
+
+A tool's inspector usually has more than fits in one column. Fields name a `tab` and a
+`subsection`; the mount adds a tab strip and a search field:
+
+```ts
+const node = defineControls("node", {
+  position: vec3({ x: 0, y: 0, z: 0 }, { min: -50, max: 50, group: "xform", tab: "transform" }),
+  pivot: vec2({ x: 0.5, y: 0 }, { min: 0, max: 1, group: "xform", subsection: "Pivot & bounds" }),
+  seed: seed(1234, { group: "emitter", tab: "emitter" }),
+  drag: knob(0.2, { min: 0, max: 1, group: "emitter", subsection: "Forces" }),
+})
+const panel = mountPanel(node, column, {
+  tabs: [{ id: "transform", label: "Transform" }, "emitter"], // order and labels
+  tab: "transform",                 // first shown (else the last one shown, else the first)
+  onTab: (id) => save(id),
+  subsectionFolded: { Forces: true },
+  search: { placeholder: "Search", chips: ["modified"] },
+})
+panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
+```
+
+- **Tabs.** A row shows on its field's `tab`, or else the first `tab` its group names; rows with
+  none show on every tab. The strip's underline slides to the chosen tab and the rows cross: what
+  leaves folds away as what arrives unfolds, a moment behind. `⌥1`–`⌥9` pick a tab, and `[` / `]`
+  cycle tabs when there's no preset strip. The tab last shown is remembered for these controls (and
+  in the session).
+- **Sub-headings.** Fields with the same `subsection` in a group sit under a flat heading inside the
+  group's card, split off by a hairline (never a card inside a card). The heading is a ↑↓ stop: a
+  click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded; the
+  session remembers the rest.
+- **Search.** `search: true` (or `{ placeholder, chips }`) puts a field under the header. Typing
+  filters rows by label, key, group or sub-heading across every tab, opening folded groups and
+  sub-headings while it runs; matches show in the accent colour. Chips narrow it further:
+  `"modified"` keeps rows off their defaults and counts them, and a chip of your own is
+  `{ id, label, count?, test(key, controls) }`. `/` focuses the field.
 
 ### Shipping
 
@@ -428,6 +520,10 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
 | `--k-frame` | `card` | `flat`: no card inside the host's own card (see below) |
 | `--k-disabled-opacity` | `.32` | How far a disabled row dims |
+| `--k-control-h` | row − 2 × unit | Height of the controls inside a row: segments, menus, switches, number cells, key caps, toolbar buttons |
+| `--k-value-size` | font size − `.5px` | Size of every readout (sliders, cells, ranges, dials, seeds, editor summaries) |
+| `--k-button-bg`, `--k-button-line`, `--k-button-hover-bg`, `--k-button-hover-line` | each button's own | Fill and outline of custom actions, Export/Import and toolbar buttons, at rest and hovered |
+| `--k-button-h`, `--k-button-font-size`, `--k-button-radius` | each button's own | Their height, label size and corners |
 
 **Frame.** `--k-frame: flat` is for a panel set into the host's own column or card. Group cards
 lose their surface and corners, rows are split by hairlines, and groups by `--k-group-divider` over
@@ -642,13 +738,18 @@ The package has two core exports selected through the standard `development` con
 | `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |
 | `point({ x, y }, { min, max, step?, ...meta })` | 2D pad; bounds and step take a number or `{ x, y }`. |
 | `easing([x1, y1, x2, y2] \| name, meta?)` | Cubic bezier with a mini curve, a handle editor and named curves. |
+| `vec2({ x, y }, { min, max, step?, link?, linked? })` / `vec3({ x, y, z }, …)` | Inline number cells, optionally linked for uniform scaling. |
+| `range([low, high], { min, max, step?, unit? })` | One slider with two thumbs. |
+| `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |
+| `seed(value, { min?, max? })` / `keybind(combo?)` | A whole number with a die; a captured key combination. Both stay out of Random and Mutate by default. |
+| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
-| Field meta `random?`, `disabled?`, `readOnly?`, `folded?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)` and `panel.updateAccessories()`. |
+| Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)` and `panel.updateAccessories()`. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element, collapsed?, summary? })` adds custom cards (`card.collapse(bool)`, `card.collapsed`, `card.summary(text)`), and `page.highlight({ groups?, sections? } \| null, { reveal? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel` and `groupPresetDisplay` over the store's. |
 
 ### Store (`Controls<S>`)
@@ -660,7 +761,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.canRoll(key)` / `controls.isDisabled(key)` / `controls.isReadOnly(key)` / `controls.persist`
 - `controls.setMixed(keys, on?)` / `controls.isMixed(key)`
 - `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
-- `controls.action(key)` — press an action row
+- `controls.action(key, item?)` — press an action row, or a toolbar's item
 - `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
 - `controls.isModified(key?)` / `controls.modified()`
 - `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
