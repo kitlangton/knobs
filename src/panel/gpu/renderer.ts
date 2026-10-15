@@ -20,6 +20,7 @@ import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "..
 import type { DigitPlace, Slider } from "../slider.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
+import { rangeSmear } from "../smear.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
   cssMix,
@@ -2006,6 +2007,13 @@ class GpuOverlayManager {
     return m.shown
   }
 
+  /** How fast each of a morph's points moves now (its units per second), 0 at rest. */
+  private morphVelocity(key: object, i: number) {
+    const m = this.morphs.get(key)
+    if (!m || m.p.resting) return 0
+    return ((m.to[i] ?? 0) - (m.from[i] ?? 0)) * m.p.v
+  }
+
   /** A shape with an outer (ring > 0) or inner (ring < 0) ring, drop shadow and glow. */
   private shape(o: {
     x: number
@@ -2956,11 +2964,17 @@ class GpuOverlayManager {
     const corners = this.rowCorners(row.row)
     const x0 = tr.left + a * tr.width
     const x1 = tr.left + b * tr.width
+    // Edge blur (--k-range-blur): each end smears by its own speed, as the DOM's does.
+    const smear = (i: number) =>
+      this.curReduced
+        ? 0
+        : rangeSmear(Math.abs(this.morphVelocity(row.track, i)) * tr.width, t.rangeBlur)
+    const [sLo, sHi] = [smear(0), smear(1)]
     if (x1 - x0 > 0.01 && shown > 0.005)
       this.pushPrim({
-        x: x0,
+        x: x0 - sLo / 2,
         y: tr.top,
-        w: x1 - x0,
+        w: x1 - x0 + (sLo + sHi) / 2,
         h: tr.height,
         color: withAlpha(tint, rowAlpha * shown),
         corners: [
@@ -2970,6 +2984,8 @@ class GpuOverlayManager {
           a < 0.001 ? corners[3] : 0,
         ],
         kind: 1,
+        blurX: sLo,
+        blurY: sHi,
       })
     // Each end's handle: a hairline inside the band, shown on hover, full while in hand or focused.
     const gaps = [0, 0]

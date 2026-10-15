@@ -19,6 +19,7 @@ import {
 } from "../core/schema.js"
 import { createHeaderDie, GROUP_DIE } from "./die.js"
 import type { EditorRow, RowContext } from "./editors.js"
+import { rangeSmear } from "./smear.js"
 import type {
   GpuAngleRow,
   GpuCell,
@@ -409,11 +410,63 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   // The label and readout fade around a thumb that shows, so a thumb never sits on their text.
   const words = el("span", "knobs-range-text")
   words.append(label, read)
-  track.append(fill, ...thumbs, words)
+  const band = el("i", "knobs-range-smear")
+  track.append(fill, band, ...thumbs, words)
   row.append(track)
   let shown = c.get() as readonly [number, number]
   let mixed = false
   let dragging = false
+  // Edge blur (--k-range-blur): while the ends glide on their transitions, each smears by its own
+  // speed, sampled from the animating --kr-lo/--kr-hi each frame. A drag or pan doesn't smear (the
+  // GPU's doesn't either), and nothing runs while the band rests.
+  let smearFrame = 0
+  let smearAt = 0
+  let smearStrength = 0
+  let lastEnds: readonly [number, number] = [0, 0]
+  const smears: [number, number] = [0, 0]
+  const ends = (): readonly [number, number] => {
+    const cs = getComputedStyle(track)
+    return [
+      parseFloat(cs.getPropertyValue("--kr-lo")) || 0,
+      parseFloat(cs.getPropertyValue("--kr-hi")) || 0,
+    ]
+  }
+  const setSmears = (lo: number, hi: number) => {
+    // Half toward the new width each frame, which keeps a frame's jitter out of the ramp.
+    smears[0] = lo === 0 ? 0 : (smears[0] + lo) / 2
+    smears[1] = hi === 0 ? 0 : (smears[1] + hi) / 2
+    track.classList.toggle("knobs-range-smearing", smears[0] > 0 || smears[1] > 0)
+    track.style.setProperty("--kr-smear-lo", smears[0].toFixed(2))
+    track.style.setProperty("--kr-smear-hi", smears[1].toFixed(2))
+  }
+  const runSmear = (now: number) => {
+    const at = ends()
+    const dt = (now - smearAt) / 1000
+    const w = track.clientWidth
+    const speed = (i: 0 | 1) => (dt > 0 ? (Math.abs(at[i] - lastEnds[i]) * w) / dt : 0)
+    lastEnds = at
+    smearAt = now
+    const gliding = !dragging && track.getAnimations().length > 0
+    setSmears(
+      gliding ? rangeSmear(speed(0), smearStrength) : 0,
+      gliding ? rangeSmear(speed(1), smearStrength) : 0,
+    )
+    smearFrame = gliding ? requestAnimationFrame(runSmear) : 0
+  }
+  track.addEventListener("transitionrun", (event) => {
+    if (event.target !== track || smearFrame || dragging) return
+    if (track.closest('[data-gpu-active="true"]')) return
+    smearStrength = clamp(
+      parseFloat(getComputedStyle(track).getPropertyValue("--k-range-blur")) || 0,
+      0,
+      1,
+    )
+    const reduced = c.doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (smearStrength <= 0 || reduced) return
+    lastEnds = ends()
+    smearAt = performance.now()
+    smearFrame = requestAnimationFrame(runSmear)
+  })
   let lastEnd: 0 | 1 = 0
   const g = gesture(c)
   const span = () => f().max - f().min || 1
@@ -620,7 +673,9 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       paint(first || Boolean(instant) || dragging)
       first = false
     },
-    dispose() {},
+    dispose() {
+      cancelAnimationFrame(smearFrame)
+    },
     tracks: [],
     gpu: [gpu],
   }

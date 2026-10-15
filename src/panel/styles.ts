@@ -104,7 +104,7 @@ ${GRAD_PROPS}
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -548,7 +548,7 @@ const css = `
 .knobs-mixed :is(.knobs-fill,.knobs-handle-zone,.knobs-marks){opacity:0}
 .knobs-panel .knobs-mixed .knobs-value>:is(.knobs-digits,.knobs-unit,.knobs-lock){display:none}
 .knobs-mixed .knobs-value::after{content:"—"}
-.knobs-mixed :is(.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand,.knobs-strip-thumb,.knobs-pad-puck,.knobs-pad-v,.knobs-pad-h,.knobs-ease-mini,.knobs-ease .knobs-curve,.knobs-arm,.knobs-ease-handle){opacity:0}
+.knobs-mixed :is(.knobs-range-fill,.knobs-range-smear,.knobs-range-thumb,.knobs-dial-hand,.knobs-strip-thumb,.knobs-pad-puck,.knobs-pad-v,.knobs-pad-h,.knobs-ease-mini,.knobs-ease .knobs-curve,.knobs-arm,.knobs-ease-handle){opacity:0}
 .knobs-panel .knobs-toggle[aria-checked="mixed"] i{left:calc(50% - 7px);right:calc(50% - 7px)}
 
 /* Tabs: text over a hairline; the chosen one's underline slides to it, its leading edge first. */
@@ -606,10 +606,16 @@ const css = `
 .knobs-panel[data-gpu-active="true"] .knobs-cell-edit{z-index:2147480003}
 
 .knobs-panel .knobs-row.knobs-range{display:block;height:var(--k-row);padding:0}
-.knobs-range-track{position:absolute;inset:0;overflow:hidden;cursor:ew-resize;user-select:none;touch-action:none;transition:--kr-lo ${FILL_T} ${DELAY},--kr-hi ${FILL_T} ${DELAY}}
-.knobs-range-fill{position:absolute;inset:0;transform-origin:0 0;transform:scaleX(0);background:var(--k-fill-rest);pointer-events:none;transition:transform ${FILL_T} ${DELAY},background .15s}
-.knobs-range:hover .knobs-range-fill{background:color-mix(in srgb,var(--k-accent) var(--k-fill-hover-mix),var(--k-fill-base))}
-.knobs-range.knobs-active .knobs-range-fill{background:var(--k-fill-active)}
+.knobs-range-track{position:absolute;inset:0;overflow:hidden;cursor:ew-resize;user-select:none;touch-action:none;transition:--kr-lo ${FILL_T} ${DELAY},--kr-hi ${FILL_T} ${DELAY};--kr-tint:var(--k-fill-rest)}
+.knobs-range-fill{position:absolute;inset:0;transform-origin:0 0;transform:scaleX(0);background:var(--kr-tint);pointer-events:none;transition:transform ${FILL_T} ${DELAY},background .15s}
+.knobs-range:hover .knobs-range-track{--kr-tint:color-mix(in srgb,var(--k-accent) var(--k-fill-hover-mix),var(--k-fill-base))}
+.knobs-range.knobs-active .knobs-range-track{--kr-tint:var(--k-fill-active)}
+/* --k-range-blur: while the ends glide, the band is a gradient in the track's space whose ends ramp
+   over their smears (--kr-smear-lo/hi, px; see inspector.ts), standing in for the scaled fill. */
+.knobs-range-smear{position:absolute;inset:0;display:none;pointer-events:none;--ks-a:calc(var(--kr-lo) * 100%);--ks-b:calc(var(--kr-hi) * 100%);
+  background:linear-gradient(to right,transparent calc(var(--ks-a) - var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-a) + var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-b) - var(--kr-smear-hi,0) * .5px),transparent calc(var(--ks-b) + var(--kr-smear-hi,0) * .5px))}
+.knobs-range-smearing .knobs-range-smear{display:block}
+.knobs-range-smearing .knobs-range-fill{opacity:0}
 .knobs-range-thumb{position:absolute;top:0;bottom:0;left:calc(var(--kr-lo) * 100%);width:0;outline:none}
 .knobs-range-thumb[data-end="hi"]{left:calc(var(--kr-hi) * 100%)}
 /* Where a thumb shows, the label and readout fade around it (2.5px either side of its hairline). */
@@ -762,7 +768,7 @@ const css = `
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
   .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*,
   .knobs-grad,.knobs-grad-mini,.knobs-graph>svg,.knobs-graph>i,.knobs-curve-mini,
-  .knobs-tabs-bar,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand):not(.knobs-live *,.knobs-search *),
+  .knobs-tabs-bar,.knobs-range-fill,.knobs-range-smear,.knobs-range-thumb,.knobs-dial-hand):not(.knobs-live *,.knobs-search *),
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tabs,.knobs-dial)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-section-head::before,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::before,
