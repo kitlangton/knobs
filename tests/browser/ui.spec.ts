@@ -137,7 +137,7 @@ test("split: collapsing springs to a rail, interruptibly, and the rail opens it 
   await expect(pane).toHaveAttribute("data-collapsed", "")
   const rail = pane.locator(".knobs-pane-rail")
   await expect(rail).toHaveAttribute("aria-label", "Open Scene")
-  expect(Number(await rail.evaluate((el) => getComputedStyle(el).opacity))).toBe(1)
+  await expect.poll(() => rail.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
   // Its content is out of reach while collapsed.
   expect(
     await pane
@@ -397,11 +397,9 @@ test("tree: visibility and lock toggles sit at the row's end", async ({ page }) 
   await expect(r).toHaveAttribute("data-off", "visible locked")
   // Off states stay visible at rest; on states only on hover.
   await page.mouse.move(700, 400)
-  expect(
-    Number(
-      await r.locator('[data-toggle="visible"]').evaluate((el) => getComputedStyle(el).opacity),
-    ),
-  ).toBe(1)
+  await expect
+    .poll(() => r.locator('[data-toggle="visible"]').evaluate((el) => getComputedStyle(el).opacity))
+    .toBe("1")
   const other = row(page, "Porch post lantern").locator('[data-toggle="visible"]')
   await expect.poll(() => other.evaluate((el) => getComputedStyle(el).opacity)).toBe("0")
   const ids = await ws(page, (w) => [[...w.hidden], [...w.locked]])
