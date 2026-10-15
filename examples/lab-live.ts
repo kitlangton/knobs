@@ -14,7 +14,7 @@ import {
   watch,
 } from "knobs"
 import { mountPanel } from "knobs/panel"
-import { labPreset } from "knobs/themes"
+import { lookOptions } from "./lab-look"
 
 const params = new URLSearchParams(location.search)
 const gpu = params.has("gpu")
@@ -91,9 +91,7 @@ const mount = <S extends Schema>(controls: Controls<S>, host: HTMLElement) =>
   mountPanel(controls, host, {
     title: false,
     header: false,
-    preset: labPreset,
-    theme: "dark",
-    density: "compact",
+    ...lookOptions(),
     variants: false,
     haptics: false,
     session: false,

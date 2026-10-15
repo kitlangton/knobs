@@ -5,7 +5,8 @@ import { expect, type Page, test } from "@playwright/test"
 async function open(page: Page, query = "?paused") {
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
-  await page.goto(`/lab.html${query}`)
+  // The Lab look (labPreset): these tests measure its rows and colours.
+  await page.goto(`/lab.html${query}${query ? "&" : "?"}look=lab`)
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await expect(page.locator('[data-controls="lab-station"] [data-field="intensity"]')).toBeVisible()

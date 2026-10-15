@@ -20,7 +20,7 @@ import {
   type Value,
 } from "knobs"
 import { mountPanel } from "knobs/panel"
-import { labPreset } from "knobs/themes"
+import { bindLookSwitch, lookOptions } from "./lab-look"
 import { fxSchema, startFx } from "./lab-fx"
 import { startOverlays } from "./lab-overlays"
 import "./lab-workspace"
@@ -396,9 +396,7 @@ const panels = [
   mountPanel(station, document.getElementById("controls")!, {
     title: false,
     header: { buttons: ["random", "reset", "undo", "redo", "help"] },
-    preset: labPreset,
-    theme: "dark",
-    density: "compact",
+    ...lookOptions(),
     variants: false,
     haptics: false,
     session: false,
@@ -409,9 +407,7 @@ const panels = [
   mountPanel(details, document.getElementById("details")!, {
     title: false,
     header: false,
-    preset: labPreset,
-    theme: "dark",
-    density: "compact",
+    ...lookOptions(),
     variants: false,
     haptics: false,
     session: false,
@@ -509,9 +505,7 @@ const mountInspector = () =>
   mountPanel(inspector, document.getElementById("inspector")!, {
     title: false,
     header: { buttons: ["random", "reset"] },
-    preset: labPreset,
-    theme: "dark",
-    density: "compact",
+    ...lookOptions(),
     variants: false,
     haptics: false,
     session: false,
@@ -538,6 +532,7 @@ const mountInspector = () =>
   })
 let inspectorPanel = mountInspector()
 startFx(inspector, document.getElementById("viewport")!)
+bindLookSwitch()
 const overlays = startOverlays({
   station,
   details,

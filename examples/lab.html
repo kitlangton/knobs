@@ -81,6 +81,84 @@
       .lab-menu button:is(:hover, :focus-visible) { background: #ffffff14; color: var(--text); }
       .lab-menu button[aria-checked="true"] { color: var(--text); }
       .lab-menu button[aria-checked="true"]::after { content: " ✓"; color: var(--blue); }
+      .top .look-switch { margin-left: 4px; }
+      .top .theme { width: 26px; padding: 0; }
+      html[data-look="lab"] .top .theme { display: none; }
+
+      /* knobs' own look (the default): the panels' palette, type and radii on the host's chrome.
+         The workspace's panes are rounded cards a gap apart on the page, and what sits in them
+         (stations, notes, chips, the panels' groups) are soft surfaces, never cards in cards. */
+      html[data-look="knobs"] {
+        --page: #101012; --card: #1c1c1e; --dock: transparent; --field: rgba(0, 0, 0, .26);
+        --line: rgba(255, 255, 255, .1); --text: rgba(255, 255, 255, .92); --text2: rgba(255, 255, 255, .78);
+        --label: rgba(255, 255, 255, .64); --dim: rgba(255, 255, 255, .42); --blue: #fff;
+        --surface: rgba(255, 255, 255, .055); --surface-hi: rgba(255, 255, 255, .11); --ink: rgba(255, 255, 255, .48);
+        --rim: rgba(255, 255, 255, .09); --pill: rgba(255, 255, 255, .13); --lift: 0 1px 2px rgba(0, 0, 0, .16);
+        --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+      }
+      html[data-look="knobs"][data-theme="light"] {
+        --page: #e6e6eb; --card: #f5f5f7; --field: rgba(0, 0, 0, .065);
+        --line: rgba(0, 0, 0, .1); --text: rgba(0, 0, 0, .88); --text2: rgba(0, 0, 0, .72);
+        --label: rgba(60, 60, 67, .68); --dim: rgba(60, 60, 67, .5); --blue: #1c1c1e;
+        --surface: rgba(0, 0, 0, .05); --surface-hi: rgba(0, 0, 0, .095); --ink: rgba(60, 60, 67, .5);
+        --rim: rgba(255, 255, 255, .75); --pill: #fff; --lift: 0 1px 2px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .06);
+      }
+      html[data-look="knobs"] body { letter-spacing: normal; }
+      html[data-look="knobs"] button { border: 0; border-radius: 8px; transition: background .15s, color .15s; }
+      html[data-look="knobs"] button:hover { background: var(--surface); }
+      html[data-look="knobs"] .app { grid-template-rows: 44px 1fr 28px; }
+      html[data-look="knobs"] .top { gap: 6px; padding: 0 12px; border-bottom: 0; }
+      html[data-look="knobs"] .top b { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; margin-right: 10px; }
+      html[data-look="knobs"] .top b::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text); background: conic-gradient(from 210deg, var(--text) 0 4%, transparent 4%) ; }
+      html[data-look="knobs"] .top > button { height: 26px; min-width: 26px; padding: 0 8px; color: var(--label); }
+      html[data-look="knobs"] .top > button:hover { color: var(--text); }
+      html[data-look="knobs"] .top .seg { gap: 2px; padding: 2px; border: 0; border-radius: 9px; background: var(--field); }
+      html[data-look="knobs"] .top .seg button { height: 24px; padding: 0 10px; border-radius: 7px; color: var(--label); }
+      html[data-look="knobs"] .top .seg button:hover { background: transparent; color: var(--text); }
+      html[data-look="knobs"] .top .seg button.on { background: var(--pill); color: var(--text); box-shadow: var(--lift); font-weight: 500; }
+      html[data-look="knobs"] .top .mono { color: var(--dim); }
+      html[data-look="knobs"] .top input { width: 240px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--surface); color: var(--text); }
+      html[data-look="knobs"] .top input::placeholder { color: var(--dim); }
+      html[data-look="knobs"] .main { padding: 0 3px; }
+      html[data-look="knobs"] .outliner .find { margin: 0 8px 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; outline: none; }
+      html[data-look="knobs"] .outliner .find::placeholder { color: var(--dim); }
+      html[data-look="knobs"] .side { gap: 8px; padding: 2px 6px 8px; }
+      html[data-look="knobs"] .stations { gap: 2px; padding: 0; }
+      html[data-look="knobs"] .station { height: 28px; padding: 0 8px; border-radius: 6px; color: var(--label); transition: background .15s, color .15s; }
+      html[data-look="knobs"] .station:hover { background: var(--surface); color: var(--text); }
+      html[data-look="knobs"] .station.on { background: var(--surface-hi); color: var(--text); box-shadow: none; font-weight: 500; }
+      html[data-look="knobs"] .station .dot.y { background: #ff9f0a; }
+      html[data-look="knobs"] .station .dot.g { background: #30d158; }
+      html[data-look="knobs"] .station .dot:not(.y):not(.g) { background: #0a84ff; }
+      html[data-look="knobs"] .card { border: 0; border-radius: 8px; background: var(--surface); padding: 10px 12px; }
+      html[data-look="knobs"] .cap { color: var(--ink); font-size: 10px; letter-spacing: .04em; margin-bottom: 8px; }
+      html[data-look="knobs"] .card p { line-height: 1.45; }
+      html[data-look="knobs"] .card a { font-weight: 500; }
+      html[data-look="knobs"] .viewport .tag { top: 10px; left: 10px; padding: 3px 9px; border: 0; border-radius: 6px; background: rgba(0, 0, 0, .42); color: #fff; font-family: var(--sans); font-weight: 500; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+      html[data-look="knobs"] .dock { gap: 8px; padding: 2px 8px 8px; }
+      html[data-look="knobs"] .dock-side { gap: 8px; }
+      html[data-look="knobs"] .chips { gap: 4px; }
+      html[data-look="knobs"] .chips button { height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: var(--field); color: var(--text2); }
+      html[data-look="knobs"] .chips button:hover { background: var(--surface-hi); }
+      html[data-look="knobs"] .chips button kbd { font: 500 10px var(--sans); color: var(--dim); }
+      html[data-look="knobs"] .chips button.on { background: var(--pill); color: var(--text); box-shadow: var(--lift); }
+      html[data-look="knobs"] .card.live { background: transparent; padding: 0; }
+      html[data-look="knobs"] :is(.dock .live, .details) .knobs-panel { --k-chrome: 0; }
+      html[data-look="knobs"] .details { gap: 0; padding: 0 0 8px; }
+      html[data-look="knobs"] .details .row { padding: 14px 10px 2px; }
+      html[data-look="knobs"] .details .row b { font-size: 13px; }
+      html[data-look="knobs"] .details .row span { color: var(--dim); }
+      html[data-look="knobs"] .controls { background: transparent; padding: 0; }
+      html[data-look="knobs"] .controls .cap { padding: 12px 20px 0; margin: 0; }
+      html[data-look="knobs"] .status { gap: 16px; padding: 0 14px; border-top: 0; color: var(--dim); }
+      html[data-look="knobs"] .status b { font-weight: 500; color: var(--label); }
+      html[data-look="knobs"] .lab-pin { color: var(--dim); }
+      html[data-look="knobs"] .lab-spawn { background: #ff9f0a; }
+      html[data-look="knobs"] .lab-menu { gap: 1px; }
+      html[data-look="knobs"] .lab-menu button { height: 28px; padding: 0 10px; border-radius: 6px; color: var(--text2); }
+      html[data-look="knobs"] .lab-menu button:is(:hover, :focus-visible) { background: var(--surface-hi); }
+      html[data-look="knobs"] .lab-menu button[aria-checked="true"]::after { color: var(--text); }
+      html[data-look="knobs"][data-theme="light"] .viewport { filter: saturate(1.05); }
     </style>
   </head>
   <body>
@@ -91,6 +169,8 @@
         <button id="restart" aria-label="Restart" data-tip="Restart the station">⟲</button><button id="pause" aria-label="Pause the live feed">❚❚</button><button data-tip="Playback speed">1×</button>
         <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
         <span class="spacer"></span>
+        <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look">knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat">Lab</button></div>
+        <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark">☾</button>
         <button data-tip="Switch game">All games ▾</button>
         <input id="search" placeholder="Search" aria-label="Search commands" readonly />
       </div>

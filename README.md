@@ -887,6 +887,10 @@ Every change of layout, drag frames and springs included, calls `onLayout(layout
 
 Dragging rows shows a line where they'll land, or a wash on the row they'll go into, and scrolls near the edges. Drags and `⌥↑↓` report `onMove({ ids, parent, index })`, where `index` is counted after the moved rows are taken out. Apply the move to your items (`applyMove(items, move)` does it for plain `{ id, children }` items, or `applyMove(items, access, move)` for your own shape) and call `update(items)`. Rows that stay glide to their new places. `canDrop(move)` can refuse a drop. The handle also has `select`, `expand`, `filter`, `reveal`, `focus`, `rename`, `rows()` and `refresh()`.
 
+**Two frames.** By default the pieces wear knobs' own look, in dark and light: every leaf pane is a rounded card on the page (`--k-panel-radius`, the panel's surface and hairline rim) half a gap inside its slot, so panes sit `--k-ui-gap` (6px) apart with a small capsule grip in each gap that shows on hover and lengthens in the accent while dragged; the outliner's rows are inset washes with concentric corners; overlays are glass at the panel's radius. A preset or host with `--k-frame: flat` (`labPreset`) puts panes edge to edge on hairlines instead, square, as a dense editor's columns. A pane that holds another split is only its slot, so cards never nest. `--k-ui-gap`, `--k-ui-pane` (a card's fill), `--k-ui-row-x` (the rows' inset) and `--k-ui-divider` tune either frame.
+
+**`restyle(target, { preset?, theme?, density? })`** changes the look of what's already on screen: every piece and panel inside `target` (the document by default) takes the preset (none for knobs' own), theme and, for panels, density. Panels' tokens glide to the new values, splits and trees measure again, readouts redraw in the new colours, and on a document, overlays opened afterwards take it too. The Lab's top bar switches between knobs' look and the Lab's this way (`?look=lab` opens on the Lab's, `?theme=light` on knobs' light).
+
 The active row and the selection show as soft washes in the accent, with no outlines. You can tune them with `--k-ui-select`, `--k-ui-select-focus`, `--k-ui-wash`, `--k-ui-wash-hi`, `--k-ui-indent` (14px) and `--k-ui-divider` (the hairline's colour, `--k-line` by default). The model behind both pieces is exported too (`solveSplit`, `dragDivider`, `softClamp`, `parseLayout`, `flatten`, `navigate`, `select`, `typeahead`, `dropTarget`, `validMove`, `stepMove`, `virtualWindow`), for hosts that draw their own.
 
 React and Solid wrappers come from `knobs/ui/react` and `knobs/ui/solid`:
@@ -1090,6 +1094,7 @@ The package has two core exports selected through the standard `development` con
 | `confirm({ title, body?, confirm?, cancel?, destructive? })` | `Promise<boolean>`, modal, focus kept inside. |
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
+| `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
 | `place` / `fuzzy` / `rank` / `marks` | The overlays' pure model. |
 
 ## Develop

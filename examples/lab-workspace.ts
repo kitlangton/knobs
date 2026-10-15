@@ -2,9 +2,9 @@
 // dock under it, and the inspector column on the right, in resizable splits that collapse to rails
 // and headers. Loaded by lab.ts before its panels mount into the right column.
 // ?rows=10000 fills the outliner with a big scene (the virtual-scroll check).
-import { labPreset } from "knobs/themes"
 import { applyMove, split, tree, type TreeAccess, type TreeMove } from "knobs/ui"
 import { startLive } from "./lab-live"
+import { uiLook } from "./lab-look"
 
 interface SceneItem {
   id: string
@@ -78,7 +78,7 @@ const dock = document.getElementById("dock")!
 const column = document.getElementById("details-column")!
 workspaceEl.replaceChildren()
 
-const look = { preset: labPreset, theme: "dark" as const }
+const look = uiLook()
 const main = split(workspaceEl, {
   ...look,
   id: "lab-workspace",

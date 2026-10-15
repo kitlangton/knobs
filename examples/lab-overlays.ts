@@ -2,7 +2,6 @@
 // and fields and the workspace's own commands; the top bar's buttons and the panes' actions carry
 // tooltips; deleting from the outliner asks first.
 import type { Controls } from "knobs"
-import { labPreset } from "knobs/themes"
 import {
   type Command,
   commandPalette,
@@ -14,9 +13,10 @@ import {
   tooltip,
   tooltips,
 } from "knobs/ui"
+import { uiLook } from "./lab-look"
 import { liveFeed, workspace } from "./lab-workspace"
 
-overlayLook({ preset: labPreset, theme: "dark" })
+overlayLook(uiLook())
 tooltips(document)
 
 interface Panelish {

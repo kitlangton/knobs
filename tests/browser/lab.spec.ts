@@ -10,7 +10,8 @@ const lab = <T>(page: Page, fn: (lab: any) => T) =>
 async function open(page: Page, query = "") {
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
-  await page.goto(`/lab.html${query}`)
+  // The Lab look (labPreset): these tests measure its rows and colours.
+  await page.goto(`/lab.html${query}${query ? "&" : "?"}look=lab`)
   await expect(row(station(page), "intensity")).toBeVisible()
   return errors
 }

@@ -7,7 +7,8 @@ const ws = <T>(page: Page, fn: (w: any) => T) =>
 async function open(page: Page, query = "") {
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
-  await page.goto(`/lab.html${query}`)
+  // The Lab look (labPreset): these tests measure its rows and colours.
+  await page.goto(`/lab.html${query}${query ? "&" : "?"}look=lab`)
   await expect(page.locator(".knobs-tree-row").first()).toBeVisible()
   return errors
 }
@@ -547,5 +548,58 @@ test("wrappers: React (in StrictMode) and Solid put children in panes, follow ne
     await page.evaluate((w) => (window as any).__splits[w].collapse("outline", true), which)
     await expect.poll(async () => Math.round((await outline.boundingBox())!.width)).toBeLessThan(40)
   }
+  expect(errors).toEqual([])
+})
+
+test("the Lab opens in knobs' own look, and its switch re-themes everything live", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  await page.goto("/lab.html?paused")
+  await expect(page.locator(".knobs-tree-row").first()).toBeVisible()
+  const look = () =>
+    page.evaluate(() => {
+      const split = document.querySelector<HTMLElement>(".knobs-split")!
+      const clip = document.querySelector<HTMLElement>('[data-pane="view"]>.knobs-pane-clip')!
+      const row = document.querySelector<HTMLElement>(".knobs-tree-row")!
+      const panel = document.querySelector<HTMLElement>("#details .knobs-panel")!
+      return {
+        frame: split.dataset.frame ?? "card",
+        radius: getComputedStyle(clip).borderTopLeftRadius,
+        rowInset:
+          row.getBoundingClientRect().left - row.parentElement!.getBoundingClientRect().left,
+        preset: panel.dataset.preset ?? null,
+        density: panel.dataset.density,
+        theme: panel.dataset.theme,
+        treeTheme: document.querySelector<HTMLElement>(".knobs-tree")!.dataset.theme,
+        rowH: Math.round(row.getBoundingClientRect().height),
+      }
+    })
+  // knobs' own: rounded cards a gap apart, inset washes, default panels.
+  await expect
+    .poll(look)
+    .toMatchObject({ frame: "card", radius: "12px", rowInset: 6, preset: null, density: "default" })
+  await page.click('.look-switch [data-look="lab"]')
+  await expect.poll(look).toMatchObject({
+    frame: "flat",
+    radius: "0px",
+    rowInset: 0,
+    preset: "lab",
+    density: "compact",
+    rowH: 26,
+  })
+  await expect(page).toHaveURL(/look=lab/)
+  await page.click('.look-switch [data-look="knobs"]')
+  await expect.poll(look).toMatchObject({ frame: "card", preset: null, rowH: 32 })
+  await page.click("#theme")
+  await expect.poll(look).toMatchObject({ theme: "light", treeTheme: "light" })
+  // Overlays opened afterwards take the look.
+  await page.keyboard.press("Meta+k")
+  await expect(page.locator(".knobs-palette")).toHaveAttribute("data-theme", "light")
+  await page.keyboard.press("Escape")
+  // ?look=lab opens on Arcade's look.
+  await page.goto("/lab.html?paused&look=lab")
+  await expect.poll(look).toMatchObject({ frame: "flat", preset: "lab" })
   expect(errors).toEqual([])
 })
