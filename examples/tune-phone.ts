@@ -497,10 +497,13 @@ export function connectPhone(): FakeSocket {
     phone.paired = true
     push()
   }, 3200)
+  // `?still` keeps the phone to itself after it pairs (no screen changes, jumps or tuning of its
+  // own), for measurements that want the page to come to rest.
+  const still = new URLSearchParams(location.search).has("still")
   // Kit moves around the app now and then: the page highlights what's on screen.
   const order: Screen[] = ["transcript", "sessionList", "composer"]
   setInterval(() => {
-    if (document.hidden) return
+    if (document.hidden || still) return
     const at = order.indexOf(phone.playgroundStatus.active ?? "transcript")
     const next = order[(at + 1) % order.length]!
     phone.playgroundStatus.active = next
@@ -510,10 +513,10 @@ export function connectPhone(): FakeSocket {
   // Now and then the phone has news of its own.
   setTimeout(noticeJump, 1500)
   setTimeout(noticeJump, 2600)
-  setInterval(noticeJump, 9000)
+  setInterval(() => !still && noticeJump(), 9000)
   setInterval(() => {
     // Tuned on the device itself: the page follows without echoing it back.
-    if (document.hidden) return
+    if (document.hidden || still) return
     const numbers = schema.filter((d) => d.kind === "number" && d.key.startsWith("transcript.row"))
     const d = numbers[Math.floor(Math.random() * numbers.length)]!
     const current = Number(phone.values[d.key] ?? d.default)
