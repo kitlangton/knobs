@@ -21,6 +21,7 @@ import {
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { labPreset } from "knobs/themes"
+import "./lab-workspace"
 
 const scenes = [
   "Outbreak · Streetlamp & rain",

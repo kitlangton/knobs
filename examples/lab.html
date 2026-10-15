@@ -27,8 +27,12 @@
       .top .seg button.on { background: #1e2024; color: var(--text); }
       .top .spacer { flex: 1; }
       .top input { width: 220px; }
-      .main { display: grid; grid-template-columns: 232px 1fr 292px; min-height: 0; }
-      .side { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-right: 1px solid var(--line); overflow: hidden; }
+      /* The workspace: knobs/ui splits (examples/lab-workspace.ts) lay these out and resize them. */
+      .main { min-height: 0; min-width: 0; }
+      .side { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 6px; }
+      .outliner { display: flex; flex-direction: column; height: 100%; }
+      .outliner .find { margin: 0 6px 4px; padding: 0 8px; height: 22px; font-size: 11.5px; }
+      .outliner .rows { flex: 1; min-height: 0; }
       .head { display: flex; align-items: center; gap: 6px; padding: 4px 4px 2px; font-weight: 600; }
       .head .n { color: var(--dim); font-weight: 400; }
       .head .link { color: var(--blue); font-weight: 500; }
@@ -44,16 +48,18 @@
       .card p { margin: 0 0 6px; color: var(--text2); }
       .card .mono { font-family: var(--mono); color: var(--label); }
       .card a { color: var(--blue); text-decoration: none; }
-      .viewport { position: relative; overflow: hidden; background: radial-gradient(120% 90% at 45% 35%, #6b5532 0%, #2b2618 38%, #12141a 75%); }
+      .viewport { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 45% 35%, #6b5532 0%, #2b2618 38%, #12141a 75%); }
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .viewport .orb { position: absolute; left: 58%; top: 26%; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3c27a, #a8692c 60%, #5c3818); box-shadow: 0 0 60px #c58a3a66; }
       .viewport .rain { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 22px, #ffffff10 22px 23px); }
-      .dock { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; padding: 6px; background: var(--dock); border-top: 1px solid var(--line); }
+      .dock { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
+      [data-pane="dock"] { background: var(--dock); }
       .chips { display: flex; flex-wrap: wrap; gap: 4px; }
       .chips button { border: 1px solid var(--line); color: var(--text2); }
       .chips button kbd { font: 10px var(--mono); color: var(--dim); margin-right: 5px; }
       .chips button.on { background: var(--chip); border-color: var(--chip-line); color: var(--text); }
-      .details { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-left: 1px solid var(--line); overflow: auto; min-height: 0; }
+      .details { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 6px; }
+      .details .knobs-panel { --k-width: 100%; }
       .details .row { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; }
       .details .row b { font-size: 13px; font-weight: 600; }
       .details .row span { color: var(--dim); }
@@ -78,9 +84,8 @@
         <button>All games ▾</button>
         <input placeholder="Search" />
       </div>
-      <div class="main">
-        <aside class="side">
-          <div class="head">Stations <span class="n">3</span> <span class="link">Weather</span></div>
+      <div class="main" id="workspace">
+        <aside class="side" id="side">
           <div class="stations">
             <div class="station"><i>1</i>Explosions<span class="dot"></span></div>
             <div class="station"><i>2</i>Smoke &amp; fire<span class="dot g"></span></div>
@@ -100,26 +105,26 @@
             <p><span class="mono" style="color: var(--text)">3.0–3.9 ms</span> Outbreak street GPU across the six presets</p>
           </div>
         </aside>
-        <section class="viewport">
+        <section class="viewport" id="viewport">
           <div class="rain"></div>
           <div class="orb"></div>
           <span class="tag">Weather</span>
-          <div class="dock">
-            <div class="card">
-              <div class="cap">Variants</div>
-              <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
-            </div>
-            <div class="card">
-              <div class="cap">Compare</div>
-              <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
-            </div>
-            <div class="card">
-              <div class="cap">Live</div>
-              <p class="mono">0 fps · Weather · Rain · 1428 drops</p>
-            </div>
-          </div>
         </section>
-        <aside class="details">
+        <div class="dock" id="dock">
+          <div class="card">
+            <div class="cap">Variants</div>
+            <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
+          </div>
+          <div class="card">
+            <div class="cap">Compare</div>
+            <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
+          </div>
+          <div class="card">
+            <div class="cap">Live</div>
+            <p class="mono">0 fps · Weather · Rain · 1428 drops</p>
+          </div>
+        </div>
+        <aside class="details" id="details-column">
           <div class="card controls">
             <div class="cap">Controls</div>
             <div id="controls"></div>
@@ -132,7 +137,7 @@
           </div>
         </aside>
       </div>
-      <div class="status"><b>Edit · Canvas</b><span>Weather · Storm · 1980 drops</span><span>GPU 2.17 ms</span></div>
+      <div class="status"><b>Edit · Canvas</b><span>Weather · Storm · 1980 drops</span><span id="picked">Nothing selected</span><span>GPU 2.17 ms</span></div>
     </div>
     <script type="module" src="./lab.ts"></script>
   </body>
