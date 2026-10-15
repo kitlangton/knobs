@@ -45,6 +45,9 @@ export default defineConfig(({ command, mode }) => ({
             { find: /^knobs\/solid$/, replacement: resolve(rootDir, "src/solid/index.ts") },
             { find: /^knobs\/panel$/, replacement: resolve(rootDir, "src/panel/index.ts") },
             { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
+            { find: /^knobs\/ui$/, replacement: resolve(rootDir, "src/ui/index.ts") },
+            { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "src/ui/react.tsx") },
+            { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "src/ui/solid.ts") },
           ],
         },
         plugins: [

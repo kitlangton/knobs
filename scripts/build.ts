@@ -18,6 +18,9 @@ for (const [name, entry] of [
   ["solid", "src/solid/index.ts"],
   ["panel", "src/panel/index.ts"],
   ["themes", "src/themes/index.ts"],
+  ["ui", "src/ui/index.ts"],
+  ["ui-react", "src/ui/react.tsx"],
+  ["ui-solid", "src/ui/solid.ts"],
 ]) {
   const result = await Bun.build({
     entrypoints: [entry],
@@ -26,8 +29,8 @@ for (const [name, entry] of [
     target: "browser",
     format: "esm",
     jsx: { development: false },
-    external: ["react", "react/jsx-runtime", "solid-js", "solid-js/web"],
-    banner: name === "react" ? '"use client";' : undefined,
+    external: ["react", "react/jsx-runtime", "react-dom", "solid-js", "solid-js/web"],
+    banner: name === "react" || name === "ui-react" ? '"use client";' : undefined,
   })
   if (!result.success) throw new AggregateError(result.logs, `${name} build failed`)
 }
