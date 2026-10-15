@@ -277,7 +277,7 @@ for (const mode of modes) {
     const page = await open(mode)
     const panel = await inspectorOf(page)
     const region = await clipOf(panel)
-    const frames = await film(page, region, 420, () =>
+    const frames = await film(page, region, 300, () =>
       panel.getByRole("tab", { name: "Emitter" }).click(),
     )
     await sheet(
@@ -290,8 +290,8 @@ for (const mode of modes) {
   if (want("motion-range")) {
     const page = await open(mode)
     const panel = await inspectorOf(page)
-    const region = await clipOf(panel.locator('[data-field="visible"]'), 1)
-    const frames = await film(page, region, 500, () =>
+    const region = await clipOf(panel.locator('[data-field="visible"]'), 0)
+    const frames = await film(page, region, 360, () =>
       lab(page, (l) => l.inspector.set({ visible: [30, 90] })),
     )
     await sheet(
@@ -308,11 +308,11 @@ for (const mode of modes) {
     await page.mouse.move(2, 2)
     await settle()
     const row = panel.locator('[data-field="seed"]')
-    const region = await clipOf(row, 1)
+    const region = await clipOf(row, 0)
     const die = row.locator(".knobs-seed-roll")
     await die.hover()
     await settle()
-    const frames = await film(page, region, 700, () => die.click())
+    const frames = await film(page, region, 480, () => die.click())
     await sheet(
       `Seed die roll (${mode})`,
       [{ label: mode, shots: frames }],
