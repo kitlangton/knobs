@@ -40,6 +40,8 @@ export {
   type DensityMode,
   type GroupPreset,
   type GroupPresetDisplay,
+  type HeaderButton,
+  type HeaderOptions,
   type HostHistory,
   type LabelOptions,
   type MountPanelOptions,

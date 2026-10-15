@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lab · knobs in a dense editor</title>
+    <style>
+      /* A dense, flat, square editor in the manner of Arcade's Lab. Its own bare element rules
+         (button, input, letter-spacing on the body) are the kind knobs must not inherit. */
+      :root {
+        --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+        --page: #141518; --card: #191a1e; --dock: #0c0d0f; --field: #0e0f11; --line: #23252a;
+        --text: #d8dbe0; --text2: #babdc2; --label: #8b9098; --dim: #5b6068; --blue: #4d8dff;
+        --chip: #2c3747; --chip-line: #517097;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--page); color: var(--text); font: 12px/1.35 var(--sans); letter-spacing: .01em; -webkit-font-smoothing: antialiased; overflow: hidden; }
+      button { font: inherit; color: var(--text); background: transparent; border: 1px solid transparent; padding: 2px 7px; letter-spacing: .02em; cursor: pointer; }
+      button:hover { background: #1e2024; }
+      input { font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line); padding: 3px 8px; }
+      .app { display: grid; grid-template-rows: 34px 1fr 22px; height: 100%; }
+      .top { display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid var(--line); color: var(--label); }
+      .top b { color: var(--text); font-weight: 600; margin-right: 8px; }
+      .top .seg { display: flex; border: 1px solid var(--line); }
+      .top .seg button.on { background: #1e2024; color: var(--text); }
+      .top .spacer { flex: 1; }
+      .top input { width: 220px; }
+      .main { display: grid; grid-template-columns: 232px 1fr 292px; min-height: 0; }
+      .side { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-right: 1px solid var(--line); overflow: hidden; }
+      .head { display: flex; align-items: center; gap: 6px; padding: 4px 4px 2px; font-weight: 600; }
+      .head .n { color: var(--dim); font-weight: 400; }
+      .head .link { color: var(--blue); font-weight: 500; }
+      .stations { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 6px; padding: 0 4px; }
+      .station { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px; color: var(--label); }
+      .station i { font-style: normal; color: var(--dim); width: 12px; }
+      .station .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+      .station .dot.y { background: #d9a03c; }
+      .station .dot.g { background: #41b06e; }
+      .station.on { background: #242e3b; color: var(--text); box-shadow: inset 2px 0 var(--blue); }
+      .card { background: var(--card); border: 1px solid var(--line); padding: 8px 10px; }
+      .cap { color: var(--label); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+      .card p { margin: 0 0 6px; color: var(--text2); }
+      .card .mono { font-family: var(--mono); color: var(--label); }
+      .card a { color: var(--blue); text-decoration: none; }
+      .viewport { position: relative; overflow: hidden; background: radial-gradient(120% 90% at 45% 35%, #6b5532 0%, #2b2618 38%, #12141a 75%); }
+      .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
+      .viewport .orb { position: absolute; left: 58%; top: 26%; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3c27a, #a8692c 60%, #5c3818); box-shadow: 0 0 60px #c58a3a66; }
+      .viewport .rain { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 22px, #ffffff10 22px 23px); }
+      .dock { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; padding: 6px; background: var(--dock); border-top: 1px solid var(--line); }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chips button { border: 1px solid var(--line); color: var(--text2); }
+      .chips button kbd { font: 10px var(--mono); color: var(--dim); margin-right: 5px; }
+      .chips button.on { background: var(--chip); border-color: var(--chip-line); color: var(--text); }
+      .details { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-left: 1px solid var(--line); overflow: auto; min-height: 0; }
+      .details .row { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; }
+      .details .row b { font-size: 13px; font-weight: 600; }
+      .details .row span { color: var(--dim); }
+      .controls { padding: 0; }
+      .controls .cap { padding: 8px 10px 2px; margin: 0; }
+      .status { display: flex; align-items: center; gap: 14px; padding: 0 8px; border-top: 1px solid var(--line); color: var(--dim); font-family: var(--mono); font-size: 11px; }
+      .status b { color: var(--text2); font-family: var(--sans); font-weight: 600; }
+      .lab-pin { width: 14px; height: 16px; padding: 0; border: 0; color: var(--dim); font: 12px/16px var(--sans); opacity: 0; }
+      .knobs-row:hover .lab-pin, .lab-pin[aria-pressed="true"] { opacity: 1; }
+      .lab-pin[aria-pressed="true"] { color: var(--blue); }
+      .lab-spawn { width: 5px; height: 5px; border-radius: 50%; background: #d9a03c; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="top">
+        <b>Lab</b>
+        <div class="seg"><button class="on">Edit</button><button>▶ Play</button><button>Box</button></div>
+        <button>⟲</button><button>❚❚</button><button>1×</button>
+        <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
+        <span class="spacer"></span>
+        <button>All games ▾</button>
+        <input placeholder="Search" />
+      </div>
+      <div class="main">
+        <aside class="side">
+          <div class="head">Stations <span class="n">3</span> <span class="link">Weather</span></div>
+          <div class="stations">
+            <div class="station"><i>1</i>Explosions<span class="dot"></span></div>
+            <div class="station"><i>2</i>Smoke &amp; fire<span class="dot g"></span></div>
+            <div class="station on"><i>3</i>Weather<span class="dot y"></span></div>
+            <div class="station"><i>4</i>Vegetation<span class="dot g"></span></div>
+            <div class="station"><i>5</i>Looks<span class="dot y"></span></div>
+            <div class="station"><i>6</i>Lighting<span class="dot g"></span></div>
+          </div>
+          <div class="card">
+            <div class="cap">Status</div>
+            <p>In progress <a href="#">AR-19 ↗</a></p>
+            <p>Rain, fog, snow and wind from the shared weather kit, shown in the Looks room.</p>
+            <p class="mono">Runs weather</p>
+          </div>
+          <div class="card">
+            <div class="cap">Measured</div>
+            <p><span class="mono" style="color: var(--text)">3.0–3.9 ms</span> Outbreak street GPU across the six presets</p>
+          </div>
+        </aside>
+        <section class="viewport">
+          <div class="rain"></div>
+          <div class="orb"></div>
+          <span class="tag">Weather</span>
+          <div class="dock">
+            <div class="card">
+              <div class="cap">Variants</div>
+              <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
+            </div>
+            <div class="card">
+              <div class="cap">Compare</div>
+              <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
+            </div>
+            <div class="card">
+              <div class="cap">Live</div>
+              <p class="mono">0 fps · Weather · Rain · 1428 drops</p>
+            </div>
+          </div>
+        </section>
+        <aside class="details">
+          <div class="card controls">
+            <div class="cap">Controls</div>
+            <div id="controls"></div>
+          </div>
+          <div class="row"><b>Details</b><span>Weather</span></div>
+          <div class="card controls"><div id="details"></div></div>
+        </aside>
+      </div>
+      <div class="status"><b>Edit · Canvas</b><span>Weather · Storm · 1980 drops</span><span>GPU 2.17 ms</span></div>
+    </div>
+    <script type="module" src="./lab.ts"></script>
+  </body>
+</html>

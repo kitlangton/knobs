@@ -106,6 +106,14 @@ export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
   /** `false` stops ↑/↓ at the first and last rows instead of wrapping around. */
   readonly wrap?: boolean
 }
+/** A header button (see `MountPanelOptions.header`). */
+export type HeaderButton = "random" | "reset" | "copy" | "undo" | "redo" | "help" | "close"
+export interface HeaderOptions {
+  /** `false` hides the title; the buttons stay at the right. */
+  readonly title?: boolean
+  /** Which buttons show, all of them (that are on) by default. */
+  readonly buttons?: readonly HeaderButton[]
+}
 export interface MountPanelOptions extends LabelOptions {
   readonly title?: string | false
   /**
@@ -123,8 +131,25 @@ export interface MountPanelOptions extends LabelOptions {
   readonly marks?: boolean
   /** Token values to style the panel with, e.g. `problemsPreset` (see `TokenPreset`). */
   readonly preset?: TokenPreset
-  /** `false` drops the header (title and buttons) for a host that draws its own. */
-  readonly header?: boolean
+  /**
+   * `false` drops the header (title and buttons) for a host that draws its own. An object keeps
+   * it and chooses what shows: `{ title: false, buttons: ["random", "undo", "redo"] }`. A button
+   * left out keeps its key; a command that's off (`keys`) loses its button either way.
+   */
+  readonly header?: boolean | HeaderOptions
+  /**
+   * `false`: no per-tab session, so a rebuilt panel doesn't take focus back to the row it last
+   * had or reopen editors and folded groups. On while the store has storage.
+   */
+  readonly session?: boolean
+  /** Groups folded (`true`) or open (`false`) at first, over their fields' `folded`. */
+  readonly groupFolded?: Readonly<Record<string, boolean>>
+  /**
+   * A node for a row's accessory slot, just after its label (a pin, a marker), or null. Called
+   * with the row's key when the row is built; `panel.updateAccessories()` asks again. The node
+   * stays the host's: style it, listen on it. With the WebGPU renderer it stays DOM (see README).
+   */
+  readonly rowAccessory?: (key: string) => Node | null
   /**
    * Light haptic ticks on phones (a stepped slider crossing a stop, the default's magnet, a
    * choice changing mid-pan, a switch flipping); on by default, `false` turns them off.

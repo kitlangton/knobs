@@ -192,6 +192,8 @@ export interface GpuGroupBinding {
   readonly die?: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
   /** On a page: the header reads as a card title rather than a small-caps label. */
   readonly title?: boolean
+  /** A foldable group's caret (`folded`): it turns as the header's aria-expanded changes. */
+  readonly fold?: SVGElement
   /** On a page: a preset's name, shown in place of the title while its chip is hovered. */
   readonly peek?: HTMLElement
   /** On a page: the group's presets, as named or numbered segments, or a compact menu. */
