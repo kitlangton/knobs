@@ -258,17 +258,41 @@ export function validMove<T>(roots: readonly T[], access: TreeAccess<T>, move: T
   return !move.ids.some((id) => above.has(id))
 }
 
+/** The tree's defaults: `item.id`, `item.children`, and `item.label` or the id. */
+export const plainAccess: TreeAccess<{
+  readonly id: string
+  readonly label?: string
+  readonly children?: readonly unknown[] | null
+}> = {
+  id: (item) => item.id,
+  children: (item) => item.children as never,
+  label: (item) => item.label ?? item.id,
+}
+
 /**
- * Applies a move to plain `{ children }` items, returning new arrays along the changed paths
- * (items themselves are copied only where their children change). `make(item, children)` builds a
- * parent with new children; the default spreads the item.
+ * Applies a move to plain `{ id, children }` items (or any, through `access`), returning new
+ * arrays along the changed paths (items themselves are copied only where their children change).
+ * `make(item, children)` builds a parent with new children; the default spreads the item.
  */
+export function applyMove<T extends { readonly id: string }>(
+  roots: readonly T[],
+  move: TreeMove,
+): T[]
 export function applyMove<T>(
   roots: readonly T[],
   access: TreeAccess<T>,
   move: TreeMove,
+  make?: (item: T, children: T[]) => T,
+): T[]
+export function applyMove<T>(
+  roots: readonly T[],
+  accessOrMove: TreeAccess<T> | TreeMove,
+  maybeMove?: TreeMove,
   make: (item: T, children: T[]) => T = (item, children) => ({ ...item, children }) as T,
 ): T[] {
+  const plain = "ids" in accessOrMove
+  const access = plain ? (plainAccess as unknown as TreeAccess<T>) : accessOrMove
+  const move = plain ? accessOrMove : maybeMove!
   if (!validMove(roots, access, move)) return [...roots]
   const moving = new Set(move.ids)
   const taken = new Map<string, T>()

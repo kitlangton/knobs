@@ -248,6 +248,8 @@ describe("tree model", () => {
     const next = applyMove(original, access, { ids: ["c1"], parent: "cones", index: 1 })
     expect(next[0]).toBe(original[0])
     expect(next[2]).toBe(original[2])
+    // Plain { id, children } items need no access.
+    expect(applyMove(sample(), { ids: ["cones"], parent: "lights", index: 1 })).toEqual(moved)
   })
   it("keeps only the topmost of a selection", () => {
     expect(topmost(sample(), access, ["c1", "cones", "porch"])).toEqual(["porch", "cones"])

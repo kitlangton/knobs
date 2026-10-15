@@ -556,6 +556,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
   }
 
   const ro = new ResizeObserver(() => {
+    // A split made before it's in the page (a Solid component) reads its tokens once it is.
+    readRail()
     if (springs.size) return loop.wake()
     const shown = target()
     render(shown)

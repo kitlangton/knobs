@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, untrack, type JSX } from "solid-js"
+import { children, createEffect, onCleanup, untrack, type JSX } from "solid-js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
 
@@ -8,33 +8,31 @@ export type SplitProps = SplitOptions & {
   onReady?: (split: SplitHandle) => void
 }
 
-const nodes = (value: unknown): Node[] =>
-  Array.isArray(value)
-    ? value.flatMap(nodes)
-    : value instanceof Node
-      ? [value]
-      : value == null || value === false
-        ? []
-        : [document.createTextNode(String(value))]
-
-/** `split()` as a component: each child goes into its pane. */
+/**
+ * `split()` as a component: each child goes into its pane. The split is made once; children
+ * that change move into their panes.
+ */
 export function Split(props: SplitProps): JSX.Element {
   if (typeof document === "undefined") return null as unknown as JSX.Element
   const host = document.createElement("div")
   host.style.cssText = "width:100%;height:100%"
+  const s = untrack(() => split(host, { ...props, onLayout: (layout) => props.onLayout?.(layout) }))
+  const kids = children(() => props.children)
   createEffect(() => {
-    const s = untrack(() =>
-      split(host, { ...props, onLayout: (layout) => props.onLayout?.(layout) }),
-    )
-    const kids = nodes(props.children)
-    untrack(() => {
+    const list = kids.toArray()
+    untrack(() =>
       props.panes.forEach((p, i) => {
-        if (kids[i]) s.pane(p.id).body.append(kids[i]!)
-      })
-      props.onReady?.(s)
-    })
-    onCleanup(() => s.dispose())
+        const body = s.pane(p.id).body
+        const kid = list[i]
+        const node =
+          kid instanceof Node ? kid : kid == null ? null : document.createTextNode(String(kid))
+        if (node ? body.firstChild !== node || body.childNodes.length > 1 : body.firstChild)
+          body.replaceChildren(...(node ? [node] : []))
+      }),
+    )
   })
+  untrack(() => props.onReady?.(s))
+  onCleanup(() => s.dispose())
   return host as unknown as JSX.Element
 }
 

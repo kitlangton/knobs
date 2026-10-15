@@ -481,3 +481,51 @@ test("split: with the GPU renderer, the overlay follows a panel through a collap
     .toBe(true)
   expect(errors).toEqual([])
 })
+
+test("wrappers: React (in StrictMode) and Solid put children in panes, follow new items and report selection and moves", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()))
+  await page.goto("/ui-wrappers.html")
+  for (const which of ["react", "solid"] as const) {
+    const half = page.locator(`#${which}`)
+    // One split each (StrictMode's double mount leaves no stray one), two panes, the tree and the
+    // view in their bodies.
+    await expect(half.locator(".knobs-split")).toHaveCount(1)
+    const outline = half.locator('[data-pane="outline"]')
+    await expect(outline.locator(".knobs-tree")).toHaveCount(1)
+    await expect(half.locator('[data-pane="view"] .view')).toHaveCount(1)
+    expect(Math.round((await outline.boundingBox())!.width)).toBe(200)
+    const rows = outline.locator(".knobs-tree-row")
+    await expect(rows).toHaveCount(3)
+    // Selecting reaches app state in the other pane.
+    await rows.filter({ hasText: "Sun" }).click()
+    await expect(half.locator("[data-picked]")).toHaveText("sun")
+    // New items flow into the tree.
+    await half.getByRole("button", { name: "Add cone" }).click()
+    await half.getByRole("button", { name: "Add cone" }).click()
+    await rows.filter({ hasText: "Props" }).click()
+    await page.keyboard.press("ArrowRight")
+    await expect(rows.filter({ hasText: "Cone" })).toHaveCount(2)
+    // ⌥↑ moves a row; applyMove and the new items put it in its new place.
+    await rows.filter({ hasText: "Cone 1" }).click()
+    await page.keyboard.press("Alt+ArrowUp")
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (w) =>
+            [...document.querySelectorAll(`#${w} .knobs-tree-row`)]
+              .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+              .map((r) => r.getAttribute("aria-label")),
+          which,
+        ),
+      )
+      .toEqual(["Lights", "Sun", "Props", "Cone 1", "Cone 0"])
+    // The split's handle works through onReady.
+    await page.evaluate((w) => (window as any).__splits[w].collapse("outline", true), which)
+    await expect.poll(async () => Math.round((await outline.boundingBox())!.width)).toBeLessThan(40)
+  }
+  expect(errors).toEqual([])
+})

@@ -20,6 +20,7 @@ export {
 export { tree, type Tree, type TreeOptions, type TreeRowContext, type TreeToggle } from "./tree.js"
 export {
   applyMove,
+  plainAccess,
   dropTarget,
   flatten,
   indexTree,
