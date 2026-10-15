@@ -123,6 +123,59 @@ test("graph: a crosshair follows the pointer, or ←/→ walk it; the legend rea
   await expect(legend.first()).toHaveText("149.0")
 })
 
+test("block heads keep their titles' words: legends drop units, then wrap; a log's tools wrap", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  // knobs' own look, whose 12px type is the tightest.
+  await page.goto("/lab.html?paused")
+  await expect(row(livePanel(page), "fps")).toBeVisible()
+  await page.evaluate(() => {
+    const l = (window as any).__live.live
+    for (let i = 0; i < 40; i++) l.watch("frame", { cpu: 6.2, gpu: 10.4 })
+  })
+  await expect(row(livePanel(page), "frame").locator(".knobs-rd-num").nth(1)).toHaveText("10.4")
+  // Each panel narrowed step by step: at every width the title and what's beside it show whole.
+  const sweep = await page.evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const seen: Record<string, string[]> = {}
+    const clipped: string[] = []
+    for (const id of ["lab-live", "lab-diag"]) {
+      const root = document.querySelector<HTMLElement>(`[data-controls="${id}"]`)!
+      const h = root.querySelector<HTMLElement>(
+        ".knobs-rd-graph .knobs-rd-head, .knobs-rd-log .knobs-rd-head",
+      )!
+      const title = h.firstElementChild as HTMLElement
+      const tools = h.querySelector<HTMLElement>(".knobs-rd-legend, .knobs-rd-tools")!
+      seen[id] = []
+      for (let w = 600; w >= 220; w -= 8) {
+        root.style.cssText = `width:${w}px;max-width:none`
+        await frame()
+        const fit = h.hasAttribute("data-wrap")
+          ? "wrap"
+          : h.hasAttribute("data-short")
+            ? "short"
+            : ""
+        if (seen[id].at(-1) !== fit) seen[id].push(fit)
+        if (
+          title.scrollWidth > title.clientWidth + 0.5 ||
+          tools.scrollWidth > tools.clientWidth + 0.5 ||
+          tools.getBoundingClientRect().right > h.getBoundingClientRect().right + 0.5
+        )
+          clipped.push(`${id}@${w}`)
+      }
+      root.style.cssText = ""
+    }
+    return { seen, clipped }
+  })
+  expect(sweep.clipped).toEqual([])
+  // The graph's legend gives up its units first, then wraps; the log's tools wrap.
+  expect(sweep.seen["lab-live"]).toEqual(["", "short", "wrap"])
+  expect(sweep.seen["lab-diag"]).toEqual(["", "wrap"])
+  expect(errors).toEqual([])
+})
+
 test("meter: unknown is indeterminate (busy), then it fills; past warn it takes the warning colour", async ({
   page,
 }) => {
