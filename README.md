@@ -2,13 +2,24 @@
 
 Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
-Give a component a few knobs. Hover it to reveal a tiny affordance (`⚙ knobs`) and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
+Give a component a few knobs. Hover it to reveal a tiny cog and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
+Each panel's header carries **Random · Reset · Copy · Undo/Redo** as icon buttons, quiet until the pointer or keyboard is in the panel. Undo and redo fold in once there's history and away when there's none; Copy turns into a check for a moment once it has copied, and Reset's ↺ turns once each time it resets (a press mid-turn adds another; with reduced motion it blinks instead). The header has no `?` button: `?` opens the shortcuts, as the title's tooltip says (`header: { buttons: [..., "help"] }` brings the button back). It sits above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die beside its reset icon. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, a faint notch at the default that pulls drags onto it, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, and the momentum after you lift is ignored, so it stops where your fingers did. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, a faint notch at the default that pulls drags onto it, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, `⌥`-drag for 1/10 speed, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, flips a switch from anywhere on its row, scrubs a seed and steps a ramp's presets, and the momentum after you lift is ignored, so it stops where your fingers did. At an end, a pan gives a little like a rubber band instead of stopping dead. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+
+## Install
+
+```sh
+bun add knobs@npm:@kitlangton/knobs
+```
+
+The package is published as `@kitlangton/knobs`; installing it under the alias `knobs` keeps
+every import in this README (`knobs`, `knobs/react`, `knobs/panel`, `knobs/ui`…) as written.
+React and Solid are optional peers, needed only for `knobs/react`, `knobs/ui/react`,
+`knobs/solid` and `knobs/ui/solid`.
 
 ## 30 seconds
 
@@ -319,11 +330,11 @@ Panels and switchers are keyboard-first:
 | `⌥1`–`⌥9` | Show tab 1–9 |
 | `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
 | `Home` / `End` | Jump slider to `min` or `max` |
-| `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
+| `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline: the readout's own digits, in place, with the unit after them. `↑` `↓` step the text (`⇧` by the big step), `Enter` commits (the readout rolls from what was typed to the nearest step in range), `Esc` cancels |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed |
-| Pan sideways (two fingers) | Moves a slider, colour strip, pad or easing handle 1:1 with the fingers; over the preset strip or a choice, drags the pill through the options. One undo entry per gesture; momentum is ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
-| `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
+| Pan sideways (two fingers) | Every control that holds a value answers it, in the active state a drag gives it. Sliders, colour strips, pads, easing handles, vector cells, ranges and dials move 1:1 with the fingers; over the preset strip or a choice, the pill slides through the options, and a choice menu steps them. Anywhere on a switch's row, its thumb follows the fingers and the switch flips past the middle (a flick goes its way). A seed scrubs a step every 12 px, its die rolling along, and a flick carries on a few steps. Over a gradient strip or a curve graph it moves the stop or point under the pointer; on a gradient, curve or easing row's head it steps through the presets, and on a colour row's head it turns the hue. At a limit everything gives a little (6 px at most, with one tick) and springs back when you let go. One undo entry per gesture; momentum is otherwise ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
+| `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply). With other panels or `knobs/ui` pieces on the page, it labels all of them (see [Hint mode across the page](#hint-mode-across-the-page)) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
 | `r` / `⇧R` | Randomize all fields / reset all fields to defaults (locked fields keep their values on Random, not on Reset) |
@@ -336,8 +347,48 @@ Panels and switchers are keyboard-first:
 | `⇧C` | Copy the current values (or the selected fields) as code |
 | `⇧S` | Save the current values as a new preset chip |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
-| `?` | Toggle keyboard shortcuts popover |
+| `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
 | `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |
+
+### Hint mode across the page
+
+With more than one thing on the page to label (two panels, a panel beside a `knobs/ui` tree,
+timeline or split, or the host's own `data-hint` buttons), `s` reaches all of them: pressed in a
+panel or anywhere outside a text field, every visible control in every panel (rows, tabs, toolbar
+buttons, header buttons), each tree row on screen, a timeline's Play, markers and playhead, the
+splits' header actions, collapse buttons and rails, and the host's elements gets a code. Typing one
+focuses its control (a row) or presses it (a button, a marker, a tree row); `Backspace` takes a
+letter back, `Enter` takes the first match, `Esc`, a click or a scroll cancels. Only what shows is
+labelled: rows on other tabs, in folded groups or scrolled out of their pane aren't.
+
+Codes are one or two letters, grouped: each panel or piece takes a letter of its own (panels first,
+then the pieces, then the host's; down each column, left to right; home row first) and its controls
+a second letter, home row first, so `a` then `s` is the first panel's second control. A group of
+one is just its letter; spare letters split a big group so its second letters stay on the home row.
+With only one panel on the page, nothing changes: `s` works while focus is in it, with codes from
+its labels.
+
+```ts
+import { hints } from "knobs/panel" // or "knobs/ui"
+
+// The host's own targets: elements, or { el, label?, labelEl?, activate? }.
+const off = hints.register(toolbar, () => toolbar.querySelectorAll("button"))
+```
+
+```html
+<!-- Or no code: a data-hint (its value labels it; empty uses the aria-label or text). -->
+<nav data-hint-group>
+  <button data-hint>Edit</button>
+  <button data-hint="Play">▶ Play</button>
+</nav>
+```
+
+A `data-hint` element is pressed (a click) unless it's a field or focusable without being a button,
+which takes focus. `data-hint-group` keeps a container's elements under one letter. Panels opt out
+with `keys: { hint: false }`, or keep `s` to themselves with `hints: "panel"` on the mount (the
+default is `"page"`); `tree`, `timeline` and `split` take `hints: false`. A tree leaves `s` to hint
+mode while the page has it (type-ahead keeps every other letter). `hints.start()` and `hints.stop()`
+drive it from a host's own key.
 
 In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
 
@@ -372,7 +423,7 @@ defineControls("tune", schema, {
 knob(44, { min: 28, max: 72, group: "drawer.spacing", groupLabel: "Spacing", section: "drawer", sectionLabel: "Session List" })
 ```
 
-`createRemoteControls` takes the same options (and `groupLabel` / `sectionLabel` on descriptors), and `mountPanel` / `mountPage` take them too, over the store's. Everything that shows a name uses the label: card headers in both renderers, aria names, hint codes, the preset strip, its hint badges. The filter matches labels and ids alike. The preset id stays `default` for `[` / `]`, storage and `matchingPreset()`; there's no second "default" chip. Stores answer `groupLabel(id)`, `sectionLabel(id)` and `presetLabel(id)`. Group presets already have names, so `presetLabels` doesn't apply to them. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's notch brightens once it moves off its default; changed choices and switches show a small dot.
+`createRemoteControls` takes the same options (and `groupLabel` / `sectionLabel` on descriptors), and `mountPanel` / `mountPage` take them too, over the store's. Everything that shows a name uses the label: card headers in both renderers, aria names, hint codes, the preset strip, its hint badges. The filter matches labels and ids alike. The preset id stays `default` for `[` / `]`, storage and `matchingPreset()`; there's no second "default" chip. Stores answer `groupLabel(id)`, `sectionLabel(id)` and `presetLabel(id)`. Group presets already have names, so `presetLabels` doesn't apply to them. A small reset icon appears beside the header while anything in that group differs from its defaults, next to a die that randomizes just that group (`⌥`-click mutates it). A slider's default is a short notch rising from its bottom edge while the row is hovered, focused or dragged, brighter once the value moves off it; changed choices and switches show a small dot.
 
 ### Remote / Socket-Driven Controls (`createRemoteControls`)
 
@@ -490,13 +541,14 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
   focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
   command that's off loses its header button too, and the `?` popover and row menu list only what's
-  on. `vim: false` drops j/k/h/l, `edit: false` leaves digits and Enter to the page, `bigStep` sets
-  ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
+  on (see **Header** for picking buttons). `vim: false` drops j/k/h/l, `edit: false` leaves digits
+  and Enter to the page, `bigStep` sets ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
 - **Marks.** `marks: false` (on the store or the mount) hides modified dots, readout marks, group
   resets and Reset, for values that belong to someone else. A command that's off takes its marks
   too: with `reset: false` rows show nothing to reset, and group resets follow `resetAll`.
 - **Haptics.** On phones, a stepped slider crossing a stop, the default's notch catching a drag, a
-  choice changing mid-pan and a switch flipping each give a light tick: `navigator.vibrate` on
+  choice, preset or seed changing mid-pan, a pan meeting a limit and a switch flipping each give a
+  light tick: `navigator.vibrate` on
   Android; on iPhone, Safari's switch tick (iOS 17.4–26.4 for every tick; from iOS 26.5, which only
   plays it for a tap, switches alone). `haptics: false` on the mount turns them off, and so does
   reduced motion.
@@ -558,7 +610,12 @@ mountPanel(station, column, {
   keeps nothing. `session: false` on the mount stops the per-tab session too, so a rebuilt panel
   doesn't take focus back to its last row or reopen editors and groups (on while there's storage).
 - **Header.** `header: false` drops it; `{ title?: false, buttons?: [...] }` keeps it and picks what
-  shows. A hidden button keeps its key; a command that's off (`keys`) loses both.
+  shows (`"random" | "reset" | "copy" | "undo" | "redo" | "help" | "close"`). A hidden button keeps
+  its key; a command that's off (`keys`) loses both. **Without a `buttons` list, every button shows
+  except `help`** (the `?` button): `?` still opens the shortcuts, and the title's tooltip says so.
+  This is a change of default: before, `?` had a header button unless `buttons` left it out. List
+  `"help"` to keep it (`buttons: ["random", "reset", "copy", "undo", "redo", "help", "close"]`); a
+  `buttons` list that already names `"help"`, as the Lab's does, behaves as before.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
   stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
@@ -634,6 +691,20 @@ defineControls("settings", schema, { ship: () => import("knobs/panel") })
 A shipped store stays live in production (`enabled` defaults to true) and mounts from the module you
 name, which your bundler splits into its own chunk. The core never imports the panel itself.
 Stores without `ship` are unchanged.
+
+In production its chips stay hidden until someone presses **⌥⇧D**, which turns knobs mode on and off
+for the tab (remembered in `sessionStorage`, with a brief "knobs on" / "knobs off"); then they show on
+hover as in development. The key works anywhere on the page except while typing in a field. `chip`
+sets when chips show, the key and a label beside the cog, per store or per `attach`:
+
+```ts
+defineControls("hero", schema, {
+  ship: () => import("knobs/panel"),
+  // reveal: "hover" (dev default) | "shortcut" (production default) | "always"
+  chip: { reveal: "shortcut", shortcut: "Alt+Shift+K", label: "knobs" },
+})
+hero.attach(element, { reveal: "always" })
+```
 
 ### Styling and tokens
 
@@ -711,7 +782,7 @@ turns off.
 
 ## Full page
 
-When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
+When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
 
 Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, when a section folds or opens, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
 
@@ -1003,6 +1074,35 @@ const clock = timeline(dock, {
 
 **`timeline(container, options)`** is a scrubber for time-based work. The ruler counts in seconds or frames (`units`) with ticks that thin out as it zooms (`⌘` wheel, a pinch, `+`/`-`, `0` fits) and pans with the wheel or a trackpad. The playhead follows the hand 1:1, pulls softly toward markers and lands on frames (`snap`). Markers can be added (`M`), dragged, renamed (`Enter`) and removed, and `[`/`]` jump between them; `I` and `O` set a loop range. `Space` plays on one rAF clock that sleeps when nothing moves, and `←`/`→` step a frame (`⇧` ten). A right-click on the ruler, a marker or a range opens a context menu. It reports `onSeek(time, source)` (`"scrub" | "key" | "marker" | "play" | "code"`), `onPlay`, `onMarkers`, `onRanges` and `onCross(marker)`. The handle has `time`, `playing`, `markers`, `ranges`, `view`, `seek`, `play`, `pause`, `toggle`, `update`, `fit`, `zoom`, `focus` and `dispose`. `Timeline` in `knobs/ui/react` and `knobs/ui/solid` follows its props. The Lab's scene clock and Boom retrigger run from one under the viewport.
 
+### Ideas grid (bento)
+
+```ts
+import { bento } from "knobs/ui"
+
+const ideas = bento(container, {
+  items: [
+    { id: "a", src: "a.jpg", srcset: "a-640.jpg 640w, a.jpg 1600w", label: "Light table" },
+    { id: "b", aspect: 4 / 3, render: (el) => mountPrototype(el), label: "Chip → panel" },
+  ],
+  onPick: (ids) => save(ids),
+})
+```
+
+**`bento(container, options)`** lays out ideas (images, live canvases, prototypes) for someone to look at and pick from. There's no chrome: tiles sit on the page with hairline gutters (`gap`, 2px), no cards, borders or shadows, and a label shows as type on hover. Items take `id`, `src` (with `srcset` and `alt`) or `render(el)` (return a cleanup), `aspect` (width / height; images without one take their natural size, read from the smallest `srcset` candidate before the first paint), `label`, `group` and `hero`.
+
+The layout shows as much as it can without cropping. Up to 24 items lay out on one screen when every tile stays at least a sixth of the view tall: as justified rows, at the row count that covers the most, or with a hero (one tile large beside or above the rest) when an item asks for it or the first item as a hero shows 4% more. Larger sets, groups and narrow views scroll in justified rows near a third of the view tall (`rowHeight`). A row only looks at the items from its own start, so adding or removing an item never moves the rows before it. Tiles keep their own shape, except that the last row (or a block a little narrower than the view) may crop by up to `tolerance` (8%) to fill the width. Tiles that change place glide there on the calm spring (.4 s, no bounce), new ones come in, and removed ones soften out (scale .96, 3px blur) while the rest close the gap. Only the tiles near the view are in the page (about 30 of 500), and the frame loop sleeps when nothing moves.
+
+Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one continuous spring (.45 s, no bounce; .38 s back) from its place in the grid, while the grid fades under it. The tile blurs with its speed, up to `blur` (2.5px), and is sharp at rest. `Esc`, a click, `Enter` or a pinch out returns it to its exact place, scrolling the grid under it first if you moved on. While zoomed, `←`/`→` or a two-finger swipe slide to the neighbour (.3 s) and a zoomed prototype takes the pointer. `⌘`-scroll or a pinch zooms by hand: the tile follows the fingers 1:1 and settles in or out by where and how fast you let go. Under reduced motion, everything fades instead of travelling.
+
+| Key | Action |
+| --- | --- |
+| `←` `→` `↑` `↓` | Move the focus wash by geometry (zoomed: `←`/`→` go to the neighbour) |
+| `Enter` / `Esc` | Zoom in / out |
+| `Space`, `⇧`/`⌘` click | Pick or unpick (a dot in the accent); `onPick(ids)` |
+| `1`–`9`, `Home` / `End` | Jump to an item |
+
+The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
+
 ## Theming, Density & WebGPU Renderer
 
 Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
@@ -1052,9 +1152,9 @@ Override CSS variables on `:root` or `.knobs-panel`:
 
 Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
 
-A floating panel opens out of its chip like the Dynamic Island: one shape springs from the chip's pill to the panel's card (position, size and corners), the chip's label fades as it goes and the content, laid out at full size, is revealed top first. Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is. A reload brings an open panel back in place, with no morph.
+A floating panel opens out of its chip like liquid glass. The press squeezes the cog (to 0.94, easing in over 60 ms); then each edge of the glass rides its own spring from the chip to the panel. The edges facing the way it travels lead on a stiff spring (as stiff as their axis carries the travel) and the others trail on a softer one, so the glass stretches toward the panel, overshoots a little and settles in under 300 ms, its corners going from the cog's circle to the panel's radius. The content follows a beat behind: blurred 8 px, faded and at 97%, revealed top first, landing exactly crisp. Closing runs it backwards and faster: the content blurs out first, then the glass pulls into the cog with its far edges trailing (about 200 ms). Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is, keeping its velocity. The WebGPU overlay blurs, fades and scales the content in its shader, so both renderers match. A reload brings an open panel back in place, with no morph.
 
-Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot and the editors' height reveals, and panels simply fade in and out.
+Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot, the editors' height reveals and the chip's squeeze, and panels simply fade in and out, with no stretch or blur.
 
 ### Reacting to Random, Reset and presets
 
@@ -1145,7 +1245,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.groupFolded` / `controls.sectionFolded`: how groups and a page's sections start, as given to `defineControls` or `createRemoteControls` (`groupFolded?: Record<string, boolean>`, `sectionFolded?: SectionFolded`); mounts read them under their own
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
-- `controls.attach(element)` — floating chip + anchored panel
+- `controls.attach(element, chip?)` — floating chip + anchored panel; `chip` (`{ label?, reveal?, shortcut? }`) overrides the store's `chip` option
 - `controls.mount(container, options?)` — inline panel
 
 ### Workspace pieces (`knobs/ui`)
@@ -1162,7 +1262,10 @@ The package has two core exports selected through the standard `development` con
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
 | `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
 | `timeline(container, { duration, time?, fps?, units?, markers?, ranges?, snap?, onSeek?, … })` | A zoomable ruler and playhead with markers, loop ranges and playback. |
+| `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
+| `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
+| `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
 | `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
 | `place` / `fuzzy` / `rank` / `marks` | The overlays' pure model. |
 

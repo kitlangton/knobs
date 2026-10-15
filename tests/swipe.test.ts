@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
+import { GIVE } from "../src/panel/give.js"
 import {
   createPan,
   GESTURE_GAP,
+  giving,
   pillAt,
   slide,
   type Slot,
@@ -412,11 +414,17 @@ describe("panning a row of options", () => {
     expect(at).toEqual({ index: 2, offset: 12 })
   })
 
-  it("holds at the ends, within a pill's width", () => {
-    expect(slide(row, { index: 3, offset: 0 }, 500)).toEqual({ index: 3, offset: 60 })
-    expect(slide(row, { index: 0, offset: 0 }, -500)).toEqual({ index: 0, offset: -60 })
-    // So turning back answers at once.
-    expect(slide(row, { index: 3, offset: 60 }, -20).offset).toBe(40)
+  it("gives a little past the ends, like every control, and turns back at once", () => {
+    const far = slide(row, { index: 3, offset: 0 }, 500)
+    expect(far.index).toBe(3)
+    expect(far.offset).toBeGreaterThan(5)
+    expect(far.offset).toBeLessThan(GIVE)
+    expect(slide(row, { index: 0, offset: 0 }, -500).offset).toBeCloseTo(-far.offset)
+    // Turning back takes the give up 1:1, then moves on.
+    expect(slide(row, { index: 3, offset: 5 }, -2)).toEqual({ index: 3, offset: 3 })
+    expect(slide(row, { index: 3, offset: 5 }, -20)).toEqual({ index: 3, offset: -15 })
+    expect(giving(row, far)).toBe(true)
+    expect(giving(row, { index: 3, offset: -15 })).toBe(false)
   })
 
   it("the pill's centre is its option's plus the offset, continuous across a hand-over", () => {
@@ -431,9 +439,9 @@ describe("panning a row of options", () => {
     expect(after.right).toBeCloseTo(before.right, 0)
     expect(pillAt(row, { index: 2, offset: 0 })).toEqual(row[2])
     // Past the end it gives way like a rubber band.
-    const pulled = pillAt(row, { index: 3, offset: 60 })
+    const pulled = pillAt(row, slide(row, { index: 3, offset: 0 }, 60))
     expect(pulled.left - row[3]!.left).toBeGreaterThan(0)
-    expect(pulled.left - row[3]!.left).toBeLessThan(30)
+    expect(pulled.left - row[3]!.left).toBeLessThan(GIVE)
   })
 
   it("options that wrap onto rows carry on in reading order", () => {

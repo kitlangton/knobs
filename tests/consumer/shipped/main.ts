@@ -35,6 +35,13 @@ const dock = defineControls(
   { enabled: true },
 )
 dock.set({ size: 9 })
+// A shipped store's chip: hidden until ⌥⇧D turns on knobs mode.
+const hero = defineControls(
+  "hero",
+  { radius: knob(12, { min: 0, max: 40, step: 1 }) },
+  { ship: () => import("knobs/panel") },
+)
+hero.attach(document.getElementById("hero")!)
 render(
   () =>
     html`<${KnobsPanel} controls=${params} header=${false} variants=${false} preset=${problemsPreset} keys=${{ vim: false, edit: false }} />`,

@@ -35,6 +35,17 @@ import { clamp, Roll, rollTarget, springEasing } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
 import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
 import { rollingReadout, rollMs, type RollingReadout } from "./reel.js"
+import {
+  band as pushBand,
+  carryAt,
+  carrySteps,
+  moves,
+  stepBand,
+  textGive,
+  type Band,
+  type Steps,
+} from "./give.js"
+import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
 
@@ -299,22 +310,32 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
         c.wake()
       },
     })
-    let panAt: number | undefined
+    // A pan scrubs the cell like a drag; past an end its number gives a little.
+    let panAt: Band | undefined
+    const give = textGive(read, () => c.wake())
     onPan(cell, {
       accept: () => !drag.scrubbing() && !editor.open,
       move(dx) {
+        const perPx = rate(f().min, f().max, f().step)
         if (panAt === undefined) {
           g.start()
           base = c.get() as Vec
-          panAt = 0
+          panAt = { at: 0, give: 0 }
           row.classList.add("knobs-active")
+          // In hand like a scrubbed cell, which a scrub's press also focuses.
+          cell.setAttribute("data-panned", "")
         }
-        panAt += dx
-        g.set(withAxis(base, axis, (base[axis] ?? 0) + panAt * rate(f().min, f().max, f().step)))
+        const from = base[axis] ?? 0
+        panAt = pushBand(panAt, dx, (f().min - from) / perPx, (f().max - from) / perPx)
+        g.set(withAxis(base, axis, from + panAt.at * perPx))
+        if (panAt.give !== give.give) give.hold(panAt.give)
       },
+      lift: () => give.release(),
       end() {
         panAt = undefined
+        give.release()
         row.classList.remove("knobs-active")
+        cell.removeAttribute("data-panned")
         c.wake()
       },
       step(direction) {
@@ -593,7 +614,9 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   }
   track.addEventListener("pointerup", release)
   track.addEventListener("pointercancel", release)
-  let panAt: number | undefined
+  // A pan moves the last-held end like a drag; past the track's ends the readout gives a little.
+  let panAt: Band | undefined
+  const give = textGive(read, () => c.wake())
   onPan(track, {
     accept: () => !dragging,
     move(dx) {
@@ -601,15 +624,20 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       if (!w) return
       if (panAt === undefined) {
         g.start()
-        panAt = shown[lastEnd]
+        panAt = { at: ((shown[lastEnd] - f().min) / span()) * w, give: 0 }
         dragging = true
         row.classList.add("knobs-active")
       }
-      panAt = clamp(panAt + (dx / w) * span(), f().min, f().max)
-      g.set(withEnd(c.get() as readonly [number, number], lastEnd, panAt))
+      panAt = pushBand(panAt, dx, 0, w)
+      g.set(
+        withEnd(c.get() as readonly [number, number], lastEnd, f().min + (panAt.at / w) * span()),
+      )
+      if (panAt.give !== give.give) give.hold(panAt.give)
     },
+    lift: () => give.release(),
     end() {
       panAt = undefined
+      give.release()
       dragging = false
       row.classList.remove("knobs-active")
       c.wake()
@@ -830,20 +858,28 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
   }
   control.addEventListener("pointerup", release)
   control.addEventListener("pointercancel", release)
-  let panAt: number | undefined
+  // A pan turns the dial a step a px; unless it wraps, past an end its readout gives a little.
+  let panAt: Band | undefined
+  const give = textGive(read, () => c.wake())
   onPan(control, {
     accept: () => !dragging,
     move(dx) {
+      const step = f().step
       if (panAt === undefined) {
         g.start()
-        panAt = value
+        panAt = { at: value / step, give: 0 }
         row.classList.add("knobs-active")
       }
-      panAt += dx * f().step
-      g.set(snapTo(f().wrap ? panAt : clamp(panAt, f().min, f().max), false))
+      panAt = f().wrap
+        ? { at: panAt.at + dx, give: 0 }
+        : pushBand(panAt, dx, f().min / step, f().max / step)
+      g.set(snapTo(panAt.at * step, false))
+      if (panAt.give !== give.give) give.hold(panAt.give)
     },
+    lift: () => give.release(),
     end() {
       panAt = undefined
+      give.release()
       row.classList.remove("knobs-active")
       c.wake()
     },
@@ -919,6 +955,8 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
 
 // ——— seed ———
 
+/** Px of pan per seed step. */
+const SEED_STEP = 12
 /** How long a rolled seed's digits spin: about as long as its die tumbles. */
 const DICE_ROLL_MS = 620
 
@@ -993,6 +1031,7 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
   let mixed = false
   const g = gesture(c)
   const set = (v: number) => {
+    stopCarry()
     g.start()
     g.set(Math.round(clamp(v, f().min, f().max)))
   }
@@ -1008,6 +1047,70 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
   }
   roll.onclick = () => reroll()
   const editor = inlineEdit(c.doc, row, `${c.display} value`, set, () => control)
+  // A sideways pan anywhere on the row scrubs the seed a step every SEED_STEP px, the digits
+  // rolling and the die turning with it, as one undo step. Past an end the number gives a little;
+  // a flick carries on a few steps after the lift.
+  const give = textGive(read, () => c.wake())
+  const recent = moves()
+  let panned: Steps | undefined
+  let carry: ReturnType<typeof setTimeout>[] = []
+  const stopCarry = () => {
+    for (const t of carry) clearTimeout(t)
+    carry = []
+  }
+  /** Takes `steps` (signed) from the pan, one tick and quarter turn each; false at an end. */
+  const scrubBy = (steps: number) => {
+    const { min, max } = f()
+    const next = clamp(value + steps, min, max)
+    if (next === value) return false
+    const dir = next > value ? 1 : -1
+    for (let i = 0; i < Math.min(3, Math.abs(next - value)); i++) die.turn(dir)
+    g.set(next)
+    tick(control)
+    return true
+  }
+  const letGo = () => {
+    panned = undefined
+    give.release()
+    row.classList.remove("knobs-active")
+    c.wake()
+  }
+  onPan(row, {
+    accept: () => !editor.open,
+    move(dx) {
+      if (!panned) {
+        stopCarry()
+        g.start()
+        recent.reset()
+        panned = { travel: 0, give: 0 }
+        row.classList.add("knobs-active")
+        c.wake()
+      }
+      recent.add(dx)
+      const { min, max } = f()
+      const { next, steps } = stepBand(panned, dx, SEED_STEP, [value - min, max - value])
+      panned = next
+      if (steps) scrubBy(steps)
+      if (next.give !== give.give) give.hold(next.give)
+    },
+    lift() {
+      if (!panned) return
+      const n = carrySteps(recent.speed())
+      const dir = Math.sign(recent.speed())
+      letGo()
+      for (let i = 0; i < n; i++)
+        carry.push(
+          setTimeout(() => {
+            if (!scrubBy(dir)) stopCarry()
+          }, carryAt(i)),
+        )
+    },
+    end: letGo,
+    step(direction) {
+      stopCarry()
+      set(value + direction)
+    },
+  })
   control.addEventListener("click", () => {
     if (!editor.open) editor.start(mixed ? "" : String(value))
   })
@@ -1077,6 +1180,7 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
       paint(previous, Boolean(instant))
     },
     dispose: () => {
+      stopCarry()
       die.dispose()
       roller.destroy()
     },

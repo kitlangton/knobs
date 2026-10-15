@@ -1,5 +1,6 @@
 import { springEasing } from "../core/spring.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
+import { bentoCss } from "./bento-css.js"
 import { overlayCss } from "./overlay-css.js"
 import { readoutCss } from "./readout-css.js"
 
@@ -281,7 +282,7 @@ export function injectUiStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-ui]")) return
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
-  style.textContent = css + readoutCss + overlayCss
+  style.textContent = css + readoutCss + overlayCss + bentoCss
   doc.head.append(style)
 }
 

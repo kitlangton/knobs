@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
+import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
@@ -166,6 +167,50 @@ export function Timeline(props: TimelineProps) {
   follow("fps")
   follow("units")
   follow("speed")
+  useEffect(() => {
+    first.current = false
+  }, [])
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type BentoProps = BentoOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (bento: BentoHandle) => void
+}
+
+/**
+ * `bento()` as a component. New `items` update it in place (tiles glide); `picks` follows its
+ * prop; callbacks always call the latest props.
+ */
+export function Bento(props: BentoProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<BentoHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const b = bento(ref.current!, {
+      ...latest.current,
+      onPick: (ids) => latest.current.onPick?.(ids),
+      onZoom: (id) => latest.current.onZoom?.(id),
+      onActive: (id) => latest.current.onActive?.(id),
+    })
+    handle.current = b
+    latest.current.onReady?.(b)
+    return () => {
+      b.dispose()
+      handle.current = null
+    }
+  }, [])
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) return
+    handle.current?.update(props.items)
+  }, [props.items])
+  useEffect(() => {
+    if (first.current || !props.picks) return
+    handle.current?.pick(props.picks)
+  }, [props.picks])
   useEffect(() => {
     first.current = false
   }, [])
