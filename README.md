@@ -510,7 +510,9 @@ mountPanel(station, column, {
   structural pickers); `controls.canRoll(key)` says whether a key is in.
 - **Host history.** With `history`, the panel's Undo and Redo buttons and keys call the host's
   stack, and the buttons follow its `canUndo()` and `canRedo()` (re-read when `subscribe` fires).
-  knobs' own entries are then only for compare (hold `\`), which previews the last of them.
+  knobs' own entries are then only for compare (hold `\`), which previews the last of them. The
+  preview and its release reach `onSet` / `onChange` with `source: "compare"`: apply them, but
+  don't record them as steps of the host's own history.
 - **Disabled, read-only and mixed.** A field's `disabled` dims its row and `readOnly` keeps it at
   full strength; either takes no edits from the pointer or keys, and Random, Mutate and Reset skip
   it. Each takes a boolean or `(values) => boolean`, re-checked on every change, so a row follows

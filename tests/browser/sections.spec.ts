@@ -409,17 +409,24 @@ test("descriptions show under titles and headings in both renderers, and the fil
     }
   }
   const root = page.getByRole("region", { name: "Sections controls" })
+  const all = await root.locator(".knobs-tile:visible").count()
+  /** Opens the filter once the last one has cleared (every card back), so the keys reach it. */
+  const filter = async (key: string) => {
+    await expect(root.locator(".knobs-tile:visible")).toHaveCount(all)
+    await page.keyboard.press(key)
+    await expect(root.locator(".knobs-filter")).toBeFocused()
+  }
   await page.getByRole("slider", { name: "hue" }).focus()
-  await page.keyboard.press("/")
+  await filter("/")
   await page.keyboard.type("gutters")
   await expect(root.locator(".knobs-tile:visible")).toHaveCount(1)
   await expect(tile(root, "Grid")).toBeVisible()
   await page.keyboard.press("Escape")
-  await page.keyboard.press("/")
+  await filter("/")
   await page.keyboard.type("timing for every")
   await expect(root.locator(".knobs-tile:visible")).toHaveCount(2)
   await page.keyboard.press("Escape")
-  await page.keyboard.press("/")
+  await filter("/")
   await page.keyboard.type("free text")
   await expect(root.locator(".knobs-tile:visible")).toHaveCount(1)
 })

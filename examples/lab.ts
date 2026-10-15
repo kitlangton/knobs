@@ -305,7 +305,8 @@ let gesture: ReturnType<typeof setTimeout> | undefined
 const write = (key: string, value: Value | null, meta: ChangeMeta) => {
   if (value === null) return
   if (meta.source === "randomize" || meta.source === "mutate") rolled()
-  if (!gesture) {
+  // Compare only previews knobs' last entry and puts it back: it's no step of the host's own.
+  if (meta.source !== "compare" && !gesture) {
     past.push({ ...settings })
     future.length = 0
     notifyHistory()
