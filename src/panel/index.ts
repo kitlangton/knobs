@@ -21,6 +21,10 @@ export {
   type PageCard,
   type PageCardOptions,
   type PageControl,
+  type PageFoldOptions,
+  type PageGroupInfo,
+  type PageHighlight,
+  type PageSectionInfo,
 } from "./page.js"
 export {
   createPresetStrip,

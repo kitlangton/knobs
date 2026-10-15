@@ -170,13 +170,81 @@ export interface Page extends Panel {
     options?: { readonly reveal?: boolean; readonly expand?: boolean },
   ): void
   /**
-   * Folds a section to its heading (or opens it, with `false`; toggles without `folded`), and
-   * remembers it as the user's choice. Its cards fold away and the columns re-balance, gliding.
-   * Makes the section foldable if it wasn't.
+   * Folds a foldable group's card to its header (or opens it, with `false`; toggles without
+   * `folded`). Remembered as the user's choice unless `remember: false`; `reveal` glides the card
+   * into view.
    */
-  foldSection(section: string, folded?: boolean): void
-  /** Whether a section is folded to its heading. */
+  fold(group: string, folded?: boolean, options?: PageFoldOptions): void
+  /**
+   * Folds a section to its heading (or opens it, with `false`; toggles without `folded`). Its
+   * cards fold away and the columns re-balance, gliding. Remembered as the user's choice unless
+   * `remember: false`; `reveal` glides the heading into view. Makes the section foldable if it
+   * wasn't.
+   */
+  foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void
+  /** Whether a section is folded to its heading (its own state; the filter's opening aside). */
   sectionFolded(section: string): boolean
+  /**
+   * Opens a section, or a group's card and its section, and glides it into view. By default
+   * it's for context (what's on another screen) and isn't remembered; a jump the user asked for
+   * passes `remember: true` so it stays open after a reload.
+   */
+  reveal(
+    target: { readonly section: string } | { readonly group: string },
+    options?: { readonly remember?: boolean },
+  ): void
+  /** The page's sections in reading order, with their groups, for a navigation of your own. */
+  sections(): readonly PageSectionInfo[]
+  /**
+   * The section filling most of the window below the header, as the page scrolls; after a
+   * `reveal` (or a jump), that section until the user scrolls.
+   */
+  activeSection(): string | undefined
+  /**
+   * Calls `listener` (after a microtask) whenever `sections()` would say something new: a fold,
+   * a changed count, a label or description, sections and groups coming or going. Returns an
+   * unsubscribe.
+   */
+  onSections(listener: (sections: readonly PageSectionInfo[]) => void): () => void
+  /** Calls `listener` when `activeSection()` changes. Returns an unsubscribe. */
+  onActiveSection(listener: (section: string | undefined) => void): () => void
+}
+
+export interface PageFoldOptions {
+  /**
+   * `true` (the default) keeps it as the user's choice, across reloads (the store's storage);
+   * `false` is for context and leaves what's remembered alone.
+   */
+  readonly remember?: boolean
+  /** Glides the card or heading into view. */
+  readonly reveal?: boolean
+}
+
+/** A group's card, as `page.sections()` describes it. */
+export interface PageGroupInfo {
+  readonly id: string
+  /** Its title as the card shows it. */
+  readonly label: string
+  /** Folded to its header (false for a group that doesn't fold). */
+  readonly folded: boolean
+  /** How many of its rows differ from their defaults. */
+  readonly changed: number
+  /** The group preset its values match, "Custom" when none does; null without presets. */
+  readonly preset: string | null
+}
+
+/** A section, as `page.sections()` describes it. */
+export interface PageSectionInfo {
+  readonly id: string
+  /** Its heading as the page shows it. */
+  readonly label: string
+  readonly description?: string
+  /** Folded to its heading (its own state: a running filter's opening doesn't count). */
+  readonly folded: boolean
+  /** Changed rows across its groups. */
+  readonly changed: number
+  /** Its group cards in reading order (custom cards aren't listed). */
+  readonly groups: readonly PageGroupInfo[]
 }
 
 export interface PageLayout {

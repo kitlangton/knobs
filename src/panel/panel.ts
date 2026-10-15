@@ -67,8 +67,11 @@ import {
   type MountPageOptions,
   type Page,
   type PageCardOptions,
+  type PageFoldOptions,
+  type PageGroupInfo,
   type PageHighlight,
   type PageLayout,
+  type PageSectionInfo,
 } from "./page.js"
 import { foldMemory, type FoldMemory } from "./folds.js"
 import { positionPanel } from "./position.js"
@@ -2527,6 +2530,8 @@ function buildPanel<S extends Schema>(
         const n = changedRows((r) => r.section === b.dataset.tab)
         nav.count(b.dataset.tab!, marks && n ? String(n) : "", n ? `${n} changed` : "")
       }
+    announceSections()
+    trackSection()
   }
   /**
    * Folds a page's section to its heading or opens it. `remember: false` leaves what's
@@ -2570,6 +2575,61 @@ function buildPanel<S extends Schema>(
   /** Set by a jump until the user scrolls: the section it went to stays marked. */
   let navForced: string | undefined
   let navFrame = 0
+  // What a navigation of the host's own reads: `page.sections()`, `page.activeSection()`.
+  const sectionListeners = new Set<(sections: readonly PageSectionInfo[]) => void>()
+  const activeListeners = new Set<(section: string | undefined) => void>()
+  let lastSections = ""
+  let sectionsQueued = false
+  /** The section last found in view, while something tracks it (the strip or a listener). */
+  let activeSectionId: string | undefined
+  /** A section's own fold, apart from a running filter's opening. */
+  const sectionState = (section: string) =>
+    layout?.sectionList().find((s) => s.name === section)?.folded ??
+    layout?.isFolded(section) ??
+    false
+  function describeSections(): PageSectionInfo[] {
+    if (!layout) return []
+    return layout
+      .sectionList()
+      .filter((s) => s.label)
+      .map((s) => {
+        const groups: PageGroupInfo[] = []
+        for (const tile of s.tiles) {
+          const id = tile.dataset.group
+          if (id === undefined || tile.hidden || !tiles.has(id)) continue
+          const info = groupInfo(id)
+          groups.push({
+            id,
+            label: groupTitle(id, s.name),
+            folded: folds.get(id) ?? false,
+            changed: info.changed,
+            preset: info.preset,
+          })
+        }
+        const description = sectionDescription(s.name)
+        return {
+          id: s.name,
+          label: sectionTitle(s.name),
+          ...(description ? { description } : {}),
+          folded: s.folded,
+          changed: sectionInfo(s.name).changed,
+          groups,
+        }
+      })
+  }
+  /** Tells `onSections` listeners, once per microtask, when what they'd read has changed. */
+  function announceSections() {
+    if (!sectionListeners.size || sectionsQueued) return
+    sectionsQueued = true
+    queueMicrotask(() => {
+      sectionsQueued = false
+      const list = describeSections()
+      const key = JSON.stringify(list)
+      if (key === lastSections) return
+      lastSections = key
+      for (const listener of [...sectionListeners]) listener(list)
+    })
+  }
   function syncNav() {
     if (!nav || !layout) return
     const list = layout
@@ -2608,11 +2668,15 @@ function buildPanel<S extends Schema>(
     return best
   }
   function trackSection() {
-    if (!nav || !win || navFrame) return
+    if ((!nav && !activeListeners.size) || !win || navFrame) return
     navFrame = win.requestAnimationFrame(() => {
       navFrame = 0
       const id = navForced ?? sectionInView()
-      if (id === undefined) return
+      if (id !== activeSectionId) {
+        activeSectionId = id
+        for (const listener of [...activeListeners]) listener(id)
+      }
+      if (id === undefined || !nav) return
       if (id !== nav.active) {
         nav.select(id, true)
         wakeGpu()
@@ -3758,13 +3822,69 @@ function buildPanel<S extends Schema>(
       }
       if (target && highlightOptions?.reveal) revealHighlight()
     },
-    foldSection(section: string, folded?: boolean) {
-      foldSection(section, folded ?? !pageLayout.isFolded(section))
+    fold(group: string, folded?: boolean, foldOptions?: PageFoldOptions) {
+      const next = folded ?? !folds.get(group)
+      fold(group, next, true, foldOptions?.remember ?? true)
+      const tile = tiles.get(group)?.parentElement
+      if (foldOptions?.reveal && tile) glideTo(tile)
+    },
+    foldSection(section: string, folded?: boolean, foldOptions?: PageFoldOptions) {
+      const next = folded ?? !sectionState(section)
+      foldSection(section, next, { remember: foldOptions?.remember ?? true })
+      const head = pageLayout.sectionList().find((s) => s.name === section)?.label
+      if (foldOptions?.reveal && head) glideTo(head)
     },
     sectionFolded(section: string) {
-      return pageLayout.isFolded(section)
+      return sectionState(section)
+    },
+    reveal(
+      target: { readonly section: string } | { readonly group: string },
+      revealOptions?: { readonly remember?: boolean },
+    ) {
+      revealTarget(target, revealOptions?.remember ?? false)
+    },
+    sections: () => describeSections(),
+    activeSection() {
+      return navForced ?? sectionInView()
+    },
+    onSections(listener: (sections: readonly PageSectionInfo[]) => void) {
+      sectionListeners.add(listener)
+      // The first call says what's there now; later ones, what changed.
+      queueMicrotask(() => {
+        if (!sectionListeners.has(listener)) return
+        const list = describeSections()
+        if (sectionListeners.size === 1) lastSections = JSON.stringify(list)
+        listener(list)
+      })
+      return () => void sectionListeners.delete(listener)
+    },
+    onActiveSection(listener: (section: string | undefined) => void) {
+      if (!activeListeners.size && !nav) activeSectionId = undefined
+      activeListeners.add(listener)
+      trackSection()
+      return () => void activeListeners.delete(listener)
     },
   })
+  /** Opens a section (or a group and its section) and glides it into view. */
+  function revealTarget(
+    target: { readonly section: string } | { readonly group: string },
+    remember: boolean,
+  ) {
+    const tile = ("group" in target && tiles.get(target.group)?.parentElement) || undefined
+    const section = "section" in target ? target.section : tile && pageLayout.sectionOf(tile)
+    if (section !== undefined && pageLayout.isFoldable(section) && pageLayout.isFolded(section))
+      foldSection(section, false, { remember })
+    if ("group" in target && folds.get(target.group)) fold(target.group, false, true, remember)
+    const node =
+      tile ?? pageLayout.sectionList().find((s) => s.name === section)?.label ?? undefined
+    if (!node) return
+    if (section !== undefined) {
+      navForced = section
+      trackSection()
+    }
+    glideTo(node)
+    wakeGpu()
+  }
   /** Glides the first highlighted card (or heading) into view, unless the user is busy here. */
   function revealHighlight(again?: HTMLElement, tries = 0) {
     if (!win) return
