@@ -207,6 +207,23 @@ try {
   await report("lab live paused")
   await page.evaluate(() => (window as any).__live.diag.watch("events", "A new event"))
   await report("lab log push")
+
+  // Gradients and curves: a shape morphs, a preset glides, the crosshair fades, then all sleep.
+  await page.goto(`http://127.0.0.1:${port}/ramps.html?gpu`)
+  await page.locator('#lab [data-gpu-active="true"]').waitFor()
+  const ramps = page.locator("#lab")
+  await ramps.getByRole("button", { name: "Light falloff", exact: true }).click()
+  await report("ramps opens")
+  await ramps.getByRole("radio", { name: "bell" }).click()
+  await report("ramps morph")
+  const graph = (await ramps.getByRole("slider", { name: "Light falloff points" }).boundingBox())!
+  await page.mouse.move(graph.x + graph.width / 3, graph.y + graph.height / 2)
+  await page.mouse.move(graph.x + graph.width / 2, graph.y + graph.height / 2, { steps: 4 })
+  await page.mouse.move(0, 0)
+  await report("ramps crosshair")
+  await page.locator("#default").getByRole("button", { name: "Sky by hour", exact: true }).click()
+  await page.locator("#default").getByRole("radio", { name: "Alien" }).click()
+  await report("ramps glide")
   await browser.close()
 } finally {
   server.kill()

@@ -398,7 +398,7 @@ test("tabs: a sliding underline, ⌥1–9 and [ ] switch, untabbed rows stay, th
   const errors = await openInspector(page)
   const panel = inspector(page)
   const tabs = panel.getByRole("tab")
-  await expect(tabs).toHaveText(["Transform", "Emitter", "Input"])
+  await expect(tabs).toHaveText(["Transform", "Emitter", "Input", "FX"])
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
   expect(await shown(panel, "position")).toBe(true)
   expect(await shown(panel, "seed")).toBe(false)
@@ -426,7 +426,11 @@ test("tabs: a sliding underline, ⌥1–9 and [ ] switch, untabbed rows stay, th
   // The focused row left with its tab: focus stays with the strip.
   await expect(tabs.nth(2)).toBeFocused()
   await page.keyboard.press("]")
+  await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true")
+  await page.keyboard.press("]")
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
+  await page.keyboard.press("[")
+  await expect(tabs.nth(3)).toHaveAttribute("aria-selected", "true")
   await page.keyboard.press("[")
   await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true")
   // ←/→ on the strip.
@@ -439,6 +443,50 @@ test("tabs: a sliding underline, ⌥1–9 and [ ] switch, untabbed rows stay, th
     "true",
   )
   expect(await lab(page, (l) => l.inspectorPanel.tab())).toBe("emitter")
+  expect(errors).toEqual([])
+})
+
+test("FX: gradients and curves paint the viewport; presets, Random and the hour change it", async ({
+  page,
+}) => {
+  const errors = await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "FX" }).click()
+  await still(page)
+  for (const key of ["smoke", "puffs", "hour", "sky", "fog", "falloff", "unseen"])
+    expect(await shown(panel, key)).toBe(true)
+  expect(await shown(panel, "position")).toBe(false)
+  await expect(row(panel, "falloff").locator(".knobs-x-read")).toHaveText("inverse²")
+  const viewport = page.locator("#viewport")
+  const sky = () => viewport.locator(".fx-sky").evaluate((el) => el.style.background)
+  const glow = () => viewport.locator(".fx-glow").evaluate((el) => el.style.background)
+  await expect(viewport.locator(".fx-smoke i")).toHaveCount(6)
+  // The hour samples the sky and fog gradients.
+  const dusk = await sky()
+  await lab(page, (l) => l.inspector.set({ hour: 3 }))
+  await expect(viewport).toHaveAttribute("data-hour", "3.00")
+  expect(await sky()).not.toBe(dusk)
+  // A sky preset, from its chips.
+  const night = await sky()
+  await panel.getByRole("button", { name: "Sky by hour", exact: true }).click()
+  await still(page)
+  await panel.getByRole("radio", { name: "Storm" }).click()
+  expect(await sky()).not.toBe(night)
+  // The light's falloff shapes its glow.
+  const lamp = await glow()
+  await panel.getByRole("button", { name: "Light falloff", exact: true }).click()
+  await still(page)
+  await panel.getByRole("radio", { name: "linear" }).click()
+  expect(await glow()).not.toBe(lamp)
+  // Random keeps every ramp in order.
+  for (let i = 0; i < 4; i++) {
+    await panel.getByRole("button", { name: "Randomize Sky & fog" }).click()
+    const v = await values(page)
+    for (const stops of [v.sky, v.fog]) {
+      const ats = stops.map((s: { at: number }) => s.at)
+      expect(ats).toEqual([...ats].sort((a, b) => a - b))
+    }
+  }
   expect(errors).toEqual([])
 })
 
