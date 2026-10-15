@@ -639,6 +639,7 @@ Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a prese
 | `--k-handle`, `--k-handle-rest`, `--k-handle-inset` | accent, `0`, `0px` | The handle's colour, its opacity at rest, and how far inside the fill's edge it sits; it fades where it passes under the label or readout |
 | `--k-step-resist` | `0.25` | How far a stepped slider's fill follows the pointer off its stop while dragged: `0` snaps, `1` follows freely |
 | `--k-motion-blur` | `0` | Up to `1`: moving fill edges and selection pills smear by their speed |
+| `--k-range-blur` | `.5` | Up to `1`: a range band's gliding ends each smear by their own speed (`0` is off) |
 | `--k-value-font`, `--k-unit-gap`, `--k-unit-color` | font, `.28em`, dim | The readout's face, and the unit's spacing and colour (`currentColor` matches the value) |
 | `--k-readout-mark` | `0` | `1`: a modified value takes `--k-modified` behind a small dot |
 | `--k-group-transform`, `--k-group-size`, `--k-group-color`, `--k-group-tracking`, `--k-group-inset` | uppercase, text-cap, dim, `.04em`, inset | Group headings |
@@ -1021,6 +1022,7 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-label-weight: 500;
   --k-blur: 1;          /* motion strength: readout blur and pill stretch */
   --k-motion-blur: 0;   /* up to 1: moving fill edges and pills smear by their speed */
+  --k-range-blur: .5;   /* up to 1: a range band's gliding ends smear by their speed */
   --k-step-resist: 0.25; /* a stepped slider's pull off its stop (0 snaps, 1 follows) */
   --k-glow: 0.5;
   --k-roll: 420;        /* readout roll (ms) */

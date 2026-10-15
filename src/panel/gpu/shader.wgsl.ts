@@ -170,7 +170,11 @@ fn shadeTrack(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     }
   }
 
-  let cov = covSd(dist);
+  var cov = covSd(dist);
+  // A range band's moving ends (motion.x low, motion.y high, px): each edge box-blurred by its own
+  // smear, which is a linear ramp as wide as the smear, centred on the edge.
+  if (p.motion.x > 0.0) { cov *= clamp(local.x / p.motion.x, 0.0, 1.0); }
+  if (p.motion.y > 0.0) { cov *= clamp((size.x - local.x) / p.motion.y, 0.0, 1.0); }
   if (cov > 0.0) {
     let hover = clamp(p.extra.x, 0.0, 1.0);
     let top = 1.0 - smoothstep(0.0, size.y * 0.65, local.y);

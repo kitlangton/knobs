@@ -186,6 +186,8 @@ export interface PanelThemeTokens {
   readonly blurStrength: number
   /** Smear on moving fill edges and selection pills, 0 (off) to 1 (--k-motion-blur). */
   readonly motionBlur: number
+  /** Smear on a range band's moving ends, 0 (off) to 1 (--k-range-blur). */
+  readonly rangeBlur: number
   readonly glowStrength: number
   /** 0 is an opaque panel; up to 1 thins it over a blurred backdrop (--k-glass). */
   readonly glass: number
@@ -409,6 +411,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     hintTypedOpacity: numProp(style, "hint-typed-opacity", 0.42),
     blurStrength: numProp(style, "blur", 1),
     motionBlur: Math.min(1, Math.max(0, numProp(style, "motion-blur", 0))),
+    rangeBlur: Math.min(1, Math.max(0, numProp(style, "range-blur", 0.5))),
     glowStrength: numProp(style, "glow", 0.5),
     glass: Math.min(1, Math.max(0, numProp(style, "glass", 0))),
     glassTone: numProp(style, "glass-tone", isLight ? 1.08 : 0.5),
