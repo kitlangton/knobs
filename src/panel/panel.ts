@@ -49,6 +49,7 @@ import {
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
+import { toast } from "../ui/toast.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
 import { createHintController, type HintTarget } from "./hints.js"
@@ -174,6 +175,11 @@ function buildPanel<S extends Schema>(
   // Messages glide in, linger, then fold away so the panel returns to its resting height.
   let statusTimer: ReturnType<typeof setTimeout> | undefined
   const say = (message: string, linger = 3200) => {
+    // A page says it in a toast, as the workspace's overlays do.
+    if (page) {
+      toast(message, { within: root, linger, ...(linger > 3200 ? { tone: "error" as const } : {}) })
+      return
+    }
     clearTimeout(statusTimer)
     status.textContent = message
     reveal(status, true)
