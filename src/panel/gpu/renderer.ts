@@ -2975,6 +2975,13 @@ class GpuOverlayManager {
         const tc = tile && tileClips.get(tile)
         return tc ? intersectClip(clip, tc) : clip
       }
+      // A card folding away fades over its last moments, with all it draws (the DOM's opacity).
+      const tileFades = new Map<HTMLElement, number>()
+      const fadeOf = (node: HTMLElement) => {
+        if (!tileFades.size) return 1
+        const tile = node.closest<HTMLElement>(".knobs-tile")
+        return (tile && tileFades.get(tile)) ?? 1
+      }
       if (pageB) {
         // A page's own actions sit in its header, quiet until hovered.
         this.curSubHovered = this.curPanelHovered
@@ -3086,20 +3093,25 @@ class GpuOverlayManager {
           // A card easing its height clips what's inside it, as the DOM's overflow does.
           if (tile.style.height && tr.width > 0)
             tileClips.set(tile, intersectClip(bodyClip, [tr.left, tr.top, tr.right, tr.bottom]))
+          const fade =
+            tile.dataset.leaving !== undefined && tile.style.opacity
+              ? Number(tile.style.opacity)
+              : 1
+          if (fade < 1) tileFades.set(tile, fade)
           if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
           this.pushPrim({
             x: tr.left,
             y: tr.top,
             w: tr.width,
             h: tr.height,
-            color: tokens.bg,
-            color2: tokens.line,
+            color: withAlpha(tokens.bg, fade),
+            color2: withAlpha(tokens.line, fade),
             radius: tokens.panelRadius,
             strokeWidth: 1,
             glowOrBlur: 0,
             kind: 0,
             p0: 0,
-            aux2: tokens.rim,
+            aux2: withAlpha(tokens.rim, fade),
           })
         }
       }
@@ -3110,7 +3122,7 @@ class GpuOverlayManager {
       this.curSubHovered = bodyHovered
       const panelAlpha = this.curAlpha
       for (const g of panel.groups) {
-        this.curAlpha = panelAlpha * this.presence(g.element)
+        this.curAlpha = panelAlpha * this.presence(g.element) * fadeOf(g.element)
         const gr = this.rectOf(g.element)
         if (gr.width <= 0 || gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
         this.curClip = clipToTile(g.element, bodyClip)
@@ -3279,7 +3291,7 @@ class GpuOverlayManager {
         cardRects.set(card, cr)
         if (cr.width <= 0 || cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
         this.curClip = clipToTile(card, bodyClip)
-        this.curAlpha = panelAlpha * this.presence(card)
+        this.curAlpha = panelAlpha * this.presence(card) * fadeOf(card)
         // The flat frame draws no card surfaces: rows sit on the panel (or the host) directly.
         const bars = tokens.flat
           ? []
@@ -3319,9 +3331,10 @@ class GpuOverlayManager {
         if (rRect.width <= 0 || rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
         // A row folding open or shut (the page's filter) fades with its DOM reveal.
         const folding = revealing && isRevealing(row.row)
-        this.curAlpha = folding
-          ? rowsAlpha * (Number(getComputedStyle(row.row).opacity) || 0)
-          : rowsAlpha
+        const rowFade = fadeOf(row.row)
+        this.curAlpha =
+          (folding ? rowsAlpha * (Number(getComputedStyle(row.row).opacity) || 0) : rowsAlpha) *
+          rowFade
         const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
         // Disabled and read-only rows take no edits, so nothing in them answers the pointer.
@@ -3357,7 +3370,7 @@ class GpuOverlayManager {
         if (item) {
           const shown = this.presence(item) * this.presence(item.parentElement!)
           if (shown < 1) {
-            this.curAlpha = panelAlpha * shown
+            this.curAlpha = panelAlpha * shown * rowFade
             const ir = item === row.row ? rRect : this.rectOf(item)
             cardClip = intersectClip(cardClip, [ir.left, ir.top, ir.right, ir.bottom])
           }
@@ -3567,7 +3580,7 @@ class GpuOverlayManager {
               // Same reel as the DOM readout: faces 2.1em apart, seen through a 2.1em window
               // whose top and bottom 0.5em feather out (.knobs-digits line-height / --rn-edge-fade).
               const faceH = valPx * 2.1
-              const slotClip = intersectClip(bodyClip, [
+              const slotClip = intersectClip(cardClip, [
                 rRect.left,
                 rowCenterY - faceH / 2,
                 rRect.right,
@@ -3823,6 +3836,7 @@ class GpuOverlayManager {
           if (!lit) continue
           const tr = this.rectOf(tile)
           if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
+          this.curAlpha = panelAlpha * fadeOf(tile)
           if (lit.dim > 0.0005)
             this.pushPrim({
               x: tr.left,
@@ -3836,6 +3850,7 @@ class GpuOverlayManager {
             })
           if (lit.dot) this.drawMark(lit.dot, lit.mark, clipToTile(tile, bodyClip))
         }
+      this.curAlpha = panelAlpha
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered
