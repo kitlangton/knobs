@@ -30,9 +30,20 @@ export const onAt = (box: SwitchBox, at: number) => at > room(box) / 2
 /** Moves a held thumb `d` px, giving at the ends. */
 export const pushThumb = (box: SwitchBox, from: Band, d: number) =>
   band(from, d, 0, room(box), SWITCH_GIVE)
-/** A held thumb's edges (px from the switch's left): pressed wide, its leading edge giving past an end. */
-export function thumbEdges(box: SwitchBox, { at, give }: Band): [number, number] {
-  return [box.pad + at + Math.min(0, give), box.pad + at + box.size + box.press + Math.max(0, give)]
+/** Finger travel (px) over which a held thumb widens to its pressed size, so it never jumps. */
+export const PRESS_IN = 6
+/**
+ * A held thumb's edges (px from the switch's left): pressed wide by `pressed` (0…1) of its press,
+ * toward the side it can go (so unpressed it's exactly the resting thumb), its leading edge
+ * giving past an end.
+ */
+export function thumbEdges(box: SwitchBox, { at, give }: Band, pressed = 1): [number, number] {
+  const missing = box.press * (1 - Math.max(0, Math.min(1, pressed)))
+  const u = room(box) > 0 ? at / room(box) : 0
+  return [
+    box.pad + at + missing * u + Math.min(0, give),
+    box.pad + at + box.size + box.press - missing * (1 - u) + Math.max(0, give),
+  ]
 }
 /** How a pan lets go: a flick goes its way, anything slower stays on the side the thumb is on. */
 export const settleOn = (box: SwitchBox, at: number, speed: number) =>
@@ -57,6 +68,8 @@ export function panSwitch(
   let at: Band = { at: 0, give: 0 }
   let shown = false
   let changed = false
+  /** Finger travel since the thumb was taken (px), for its press. */
+  let travelled = 0
   const recent = moves()
   const measure = (): SwitchBox | undefined => {
     const w = toggle.clientWidth
@@ -74,7 +87,7 @@ export function panSwitch(
   }
   const paint = () => {
     if (!box) return
-    const edges = thumbEdges(box, at)
+    const edges = thumbEdges(box, at, travelled / PRESS_IN)
     live.set(toggle, edges)
     const s = thumb.style
     s.transition = "none"
@@ -108,10 +121,12 @@ export function panSwitch(
         at = { at: heldAt(box, o.value()), give: 0 }
         changed = false
         shown = true
+        travelled = 0
         recent.reset()
         row.classList.add("knobs-active")
       }
       recent.add(dx)
+      travelled += Math.abs(dx)
       const before = at.give
       at = pushThumb(box, at, dx)
       if (before === 0 && at.give !== 0) tick(toggle)

@@ -151,6 +151,13 @@ describe("a switch in hand", () => {
     expect(heldAt(box, "mixed")).toBe(5)
   })
 
+  it("widens into its press as the fingers start, so it never jumps", () => {
+    // Unpressed, it's exactly the resting thumb at either end.
+    expect(thumbEdges(box, { at: heldAt(box, false), give: 0 }, 0)).toEqual([2, 16])
+    expect(thumbEdges(box, { at: heldAt(box, true), give: 0 }, 0)).toEqual([16, 30])
+    expect(thumbEdges(box, { at: heldAt(box, false), give: 0 }, 0.5)).toEqual([2, 18])
+  })
+
   it("flips as it crosses the middle", () => {
     expect(onAt(box, 4.9)).toBe(false)
     expect(onAt(box, 5.1)).toBe(true)
