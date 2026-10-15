@@ -1124,6 +1124,11 @@ export function createCustomCard(
     makeCollapsible()
     if (!collapsible() || next === folded) return
     folded = next
+    // Opening from hidden, the body first shows at its folded (clear) look, so it fades in.
+    if (!next && body.hidden) {
+      body.hidden = false
+      void getComputedStyle(body).opacity
+    }
     tile.toggleAttribute("data-collapsed", next)
     head.setAttribute("aria-expanded", String(!next))
     body.setAttribute("aria-hidden", String(next))
