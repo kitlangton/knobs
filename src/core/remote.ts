@@ -341,6 +341,10 @@ export function formatSwift(
 }
 
 /** How long a local change outranks the peer's state for that key. */
+/**
+ * The longest echo hold; a key is released early once the remote reports its new value. Raise it
+ * (`echo`) for peers that acknowledge slowly: a stale echo and a clamped value look alike.
+ */
 const ECHO_MS = 600
 
 /** Copies `source`'s properties, getters as getters, then `extra`'s. */

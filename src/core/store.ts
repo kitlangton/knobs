@@ -181,8 +181,10 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    */
   ship?: () => Promise<PanelModule>
   /**
-   * How long (ms) a key changed here outranks incoming values for it (see `sync`), so an echo of
-   * an older value still in flight can't pull it back. 0 by default; remote controls use 600.
+   * The longest (ms) a key changed here outranks incoming values for it (see `sync`), so an echo
+   * of an older value still in flight can't pull it back. The hold ends early once the remote
+   * reports the value that was sent (for numbers, within half a step). 0 by default; remote
+   * controls use 600. Raise it for peers that acknowledge slowly.
    */
   echo?: number
   storage?: StoragePort | null
@@ -347,6 +349,8 @@ export function defineControls<const S extends Schema>(
   /** Keys in hand, and when each key last changed here (for the echo window). */
   const grabbed = new Set<string>()
   const changedAt = new Map<string, number>()
+  /** The value each held key was last set to here: its acknowledgement ends the hold. */
+  const sent = new Map<string, unknown>()
   /** The newest incoming value for each held key, applied when the hold ends. */
   const pending = new Map<string, unknown>()
   let echoTimer: ReturnType<typeof setTimeout> | undefined
@@ -529,7 +533,10 @@ export function defineControls<const S extends Schema>(
   const markChanged = (diff: Record<string, unknown>) => {
     if (echo > 0) {
       const at = now()
-      for (const k of Object.keys(diff)) changedAt.set(k, at)
+      for (const k of Object.keys(diff)) {
+        changedAt.set(k, at)
+        sent.set(k, diff[k])
+      }
       scheduleEcho()
     }
     for (const k of Object.keys(diff)) pending.delete(k)
@@ -572,6 +579,15 @@ export function defineControls<const S extends Schema>(
       landing = false
     }
   }
+  /** Whether an incoming value is the one sent for `key` (numbers within half a step). */
+  function acknowledges(key: string, value: unknown) {
+    if (!sent.has(key)) return false
+    const was = sent.get(key)
+    const field = schema[key] as { kind?: string; step?: number } | undefined
+    if (field?.kind === "knob" && typeof value === "number" && typeof was === "number")
+      return Math.abs(value - was) <= (field.step ?? 0) / 2 + 1e-9
+    return same(value, was)
+  }
   /** Splits incoming values into what lands now and what waits for its key's hold to end. */
   function incoming(values: Record<string, unknown>, replace: boolean) {
     const current = load() as Record<string, unknown>
@@ -579,6 +595,11 @@ export function defineControls<const S extends Schema>(
     for (const k of replace ? fieldKeys() : Object.keys(values)) {
       if (!valueField(k)) continue
       const target = Object.hasOwn(values, k) ? values[k] : locked[k]
+      // The remote reporting what was sent ends the key's echo hold (not a drag still in hand).
+      if (!grabbed.has(k) && changedAt.has(k) && acknowledges(k, target)) {
+        changedAt.delete(k)
+        sent.delete(k)
+      }
       if (isHeld(k)) {
         pending.set(k, target)
         out[k] = current[k]
@@ -604,6 +625,7 @@ export function defineControls<const S extends Schema>(
     past.length = 0
     future.length = 0
     changedAt.clear()
+    sent.clear()
     for (const k of [...pending.keys()]) if (!grabbed.has(k)) pending.delete(k)
     scheduleEcho()
   }

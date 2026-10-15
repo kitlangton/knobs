@@ -84,6 +84,22 @@ describe("holds: the row in hand is never clobbered", () => {
     expect(sent).toEqual([["size", 6]])
   })
 
+  it("an acknowledgement ends a key's echo hold early, so the peer's next change lands at once", () => {
+    // A slow peer (the phone renders each acknowledgement): a long window, released by the ack.
+    const r = createRemoteControls("ack", params(), { echo: 5000 })
+    r.set({ size: 6, duration: 0.4 })
+    // A stale snapshot from before the change: held.
+    r.sync({ size: 3, duration: 0.45 }, { replace: true })
+    expect(r.get()).toMatchObject({ size: 6, duration: 0.4 })
+    // The peer acknowledges size (and reports duration on its own grid, within half a step).
+    r.sync({ size: 6, duration: 0.42 }, { replace: true })
+    expect(r.isHeld("size")).toBe(false)
+    expect(r.isHeld("duration")).toBe(false)
+    // Its next change applies immediately, long before the 5 s window would have ended.
+    r.sync({ size: 8, duration: 0.42 }, { replace: true })
+    expect(r.get()).toMatchObject({ size: 8, duration: 0.42 })
+  })
+
   it("undo and redo also hold against stale echoes for the echo window", () => {
     const sent: [string, unknown][] = []
     const r = createRemoteControls("undo-echo", params(), {
