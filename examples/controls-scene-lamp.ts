@@ -3,8 +3,8 @@
 //
 // Switching on is a filament warming: heat rises on a spring while an ignition flicker dies away,
 // and the colour climbs from ember red to the set temperature. Switching off cools it to an ember
-// that fades. The cord is a lightly damped pendulum, nudged by each switch and each turn of Aim.
-import { angle, color, curve, knob, range, sampleCurve, springMotion, toggle } from "knobs"
+// that fades. The cord is a pendulum that each switch nudges, and it always settles hanging straight.
+import { color, curve, knob, range, sampleCurve, springMotion, toggle } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
 import lampWgsl from "./controls-lamp.wgsl?raw"
@@ -23,20 +23,17 @@ const IGNITE = springMotion({ duration: 0.5, bounce: 0 })
 const COOL = springMotion({ duration: 1.3, bounce: 0 })
 const FLICKER = springMotion({ duration: 0.6, bounce: 0 })
 const CORD = 2.6
-/** A pendulum on that cord: ω = √(g/L) (a 3.2 s period), lightly damped by the air. */
-const SWAY = { omega: Math.sqrt(9.81 / CORD), zeta: 0.15 }
+/** A pendulum on that cord: ω = √(g/L) (a 3.2 s period), damped to rest in about 6 s. */
+const SWAY = { omega: Math.sqrt(9.81 / CORD), zeta: 0.3 }
 const ANCHOR = [0, 4.2, -0.2] as const
 const N = 32
-
-/** An angle as signed degrees, −180…180. */
-const signed = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180
 
 export function lampScene({ section, define, mount, h }: SceneKit) {
   const s = section({
     id: "lamp",
     title: "Lamp",
     sub: "A pendant light, ray-traced on the GPU.",
-    shows: ["toggle()", "knob()", "color()", "angle()", "range()", "curve()"],
+    shows: ["toggle()", "knob()", "color()", "range()", "curve()"],
     stage: true,
     scene: true,
   })
@@ -59,7 +56,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
       group: "bulb",
     }),
     shade: color("#3f7a62", { label: "Enamel", group: "shade", groupLabel: "Shade" }),
-    aim: angle(0, { label: "Aim", group: "shade" }),
     beam: range([26, 64], { min: 4, max: 86, step: 1, unit: "°", label: "Beam", group: "shade" }),
     falloff: curve("inverse²", { label: "Falloff", group: "room", groupLabel: "Room" }),
     haze: knob(0.4, { min: 0, max: 1, step: 0.01, label: "Haze", group: "room" }),
@@ -98,15 +94,14 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     // sets how many instants are rendered: 4 at rest (anti-aliasing only), up to 12 when fast.
     const blur = !reduced() && stage.active
     let dphi = blur ? sway.v * SHUTTER_S : 0
-    let dtau = blur ? rad(tilt.v) * SHUTTER_S : 0
     const hh = stage.height || s.stage.clientHeight
-    const arc = ((Math.abs(dphi) * CORD + Math.abs(dtau) * 0.3) * 1.5 * hh) / 3.6
-    if (arc < 0.25) dphi = dtau = 0
-    const samples = dphi || dtau ? Math.min(12, Math.max(4, Math.ceil(arc * 1.5))) : 4
+    const arc = (Math.abs(dphi) * CORD * 1.5 * hh) / 3.6
+    if (arc < 0.25) dphi = 0
+    const samples = dphi ? Math.min(12, Math.max(4, Math.ceil(arc * 1.5))) : 4
     const v = (i: number, x: number, y: number, z: number, w: number) =>
       data.set([x, y, z, w], 4 + i * 4)
     v(0, ANCHOR[0], ANCHOR[1], ANCHOR[2], CORD)
-    v(1, phi, rad(tilt.x), dphi, dtau)
+    v(1, phi, 0, dphi, 0)
     v(2, lc[0], lc[1], lc[2], Math.cos(rad(Math.min(lo.x, hi.x - 0.5))))
     const fil = 30 * hot ** 1.3 * flicker * Math.min(1, 0.25 + k)
     v(3, lc[0] * fil, lc[1] * fil, lc[2] * fil, Math.cos(rad(hi.x)))
@@ -124,7 +119,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   const sway = stage.val(0, 0.001)
   const brightness = stage.val(800, 0.5)
   const temperature = stage.val(2700, 1)
-  const tilt = stage.val(0, 0.02)
   const lo = stage.val(26, 0.02)
   const hi = stage.val(64, 0.02)
   const haze = stage.val(0.4, 0.001)
@@ -154,10 +148,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     brightness.go(v.brightness, how, "calm")
     temperature.go(v.temperature, how, "calm")
     shade.go(v.shade, how, "default")
-    const aim = Math.max(-55, Math.min(55, signed(v.aim)))
-    if (how !== "init" && Math.abs(aim - tilt.target) > 0.01)
-      sway.to(0, SWAY).push(-rad(aim - tilt.target) * 0.5)
-    tilt.go(aim, how, "default")
     lo.go(v.beam[0], how)
     hi.go(v.beam[1], how)
     haze.go(v.haze, how, "calm")
