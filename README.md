@@ -181,9 +181,12 @@ then move on past the ends, and `[` / `]` cycle through them. `n` adds one halfw
 and `Delete` removes the selected one. On a gradient, `Enter` edits the stop's colour and `Esc`
 comes back. `←`/`→` on a closed row or on the chips cycle the presets. A drag is one undo step.
 
-Presets change smoothly: both ramps are sampled at fixed points (64 colours, 129 curve points)
-and the samples blend on the panel's spring, so a strip shifts colour and a curve bends into its
-new shape while the pins and points glide. The WebGPU renderer draws the same samples. Random
+Presets change smoothly, on one .3 s spring per row that both renderers read. Stops and points
+keep their identity: the ends travel, inner ones pair up in order with the nearest, one left over
+shrinks into its neighbour and a new one buds out of the line in place. The line is resampled
+(129 curve points, 64 colours) and blended between the two, and anything moving fast smears along
+its path by its speed (`--k-curve-blur`, 0 at rest). Changing preset mid-flight keeps the speed.
+An easing row morphs the same way. Random
 keeps a gradient's stop count and walks its hue along a lightness ramp. On a curve, Random picks
 a built-in shape and jitters it. Mutate nudges colours as it does a `color` and moves stops and
 points without letting them pass each other.
@@ -300,23 +303,24 @@ Panels and switchers are keyboard-first:
 | `↑` / `↓` or `j` / `k` | Move between presets, rows and custom actions (`←`/`→` move along the custom actions); a spring's two sliders are two stops |
 | `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`); on a colour row turn the hue, on a point row move x, on an easing row cycle the named curves |
 | `Enter` / `Space` | Open a colour, point, easing, gradient or curve row's editor; `↓` then walks into it (strips, chips, handles, pad) |
-| `Esc` | Fold an open editor and return to its row (before closing the panel) |
+| `Esc` | Climb one level: fold an open editor back to its row, then from a row to its card, from a card to the panel, then out (a floating panel closes). Inline edits, the search field and the tree's type-ahead take `Esc` first |
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | On a gradient strip or curve graph | Arrows move the selected stop or point; `Tab` / `⇧Tab` and `[` / `]` pick another; `n` adds one, `Delete` removes it; `Enter` edits a stop's colour (`Esc` returns) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
+| `1`–`9` | Pick the focused row's Nth option: a choice (segmented or menu) or a curve's, easing's or gradient's presets. Tiny digit hints show on the options once focus settles. A row with options keeps the digits; elsewhere they do what they did before (inline number edits, a page's group presets) |
 | `⌥1`–`⌥9` | Show tab 1–9 |
 | `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed |
-| Pan sideways (two fingers) | Every control that holds a value answers it, in the active state a drag gives it. Sliders, colour strips, pads, easing handles, vector cells, ranges and dials move 1:1 with the fingers; over the preset strip or a choice, the pill slides through the options, and a choice menu steps them. Anywhere on a switch's row, its thumb follows the fingers and the switch flips past the middle (a flick goes its way). A seed scrubs a step every 12 px, its die rolling along, and a flick carries on a few steps. Over a gradient strip or a curve graph it moves the stop or point under the pointer; on a gradient, curve or easing row's head it steps through the presets, and on a colour row's head it turns the hue. At a limit everything gives a little (6 px at most, with one tick) and springs back when you let go. One undo entry per gesture; momentum is otherwise ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
+| Pan sideways (two fingers) | Every control that holds a value answers it, in the active state a drag gives it. Sliders, colour strips, pads, easing handles, vector cells, ranges and dials move 1:1 with the fingers; over the preset strip or a choice, the pill slides through the options, and a choice menu steps them. Anywhere on a switch's row, its thumb follows the fingers and the switch flips past the middle (a flick goes its way). A seed scrubs a step every 12 px, its die rolling along, and a flick carries on a few steps. Over a gradient strip or a curve graph it moves the stop or point under the pointer; on a gradient, curve or easing row's head it steps through the presets (a mouse dragged sideways on the folded head does too, a step every 24 px; under 4 px it's still a click that opens the row), and on a colour row's head it turns the hue. At a limit everything gives a little (6 px at most, with one tick) and springs back when you let go. One undo entry per gesture; momentum is otherwise ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
-| `r` / `⇧R` | Randomize all fields / reset all fields to defaults (locked fields keep their values on Random, not on Reset) |
-| `⌥R` | Mutate: nudge every unlocked value a little (numbers and points 8–12% of their range, colours a few degrees of hue and a touch of chroma and lightness, springs and curves slightly; choices and switches change about 15% of the time) |
-| `g` / `⌥G` | Randomize / mutate the focused row's group (also the die beside each group's reset icon; `⌥`-click mutates) |
+| `r` / `⇧R` | Randomize / reset to defaults, scoped to focus: the selection, else the focused row, else the focused card (its group), else every field. Locked fields and `random: false` keep their values on Random, not on Reset. The header's die and reset icon always act on everything |
+| `⌥R` | Mutate, scoped the same way: nudge every unlocked value a little (numbers and points 8–12% of their range, colours a few degrees of hue and a touch of chroma and lightness, springs and curves slightly; choices and switches change about 15% of the time) |
+| `g` / `⌥G` | Randomize / mutate the focused row's whole group from any row in it (also the die beside each group's reset icon; `⌥`-click mutates) |
 | `⇧L` | Lock or unlock the focused row (or the selection) from Random and Mutate |
 | `⇧`-click / `⇧↑` `⇧↓` | Select a range of rows (`⌘`-click adds or removes one); `r`, `⌥R`, `⌫`, `⇧L` and `⇧C` then act on the selection; `Esc` or a plain click clears it |
 | Right-click / `⇧F10` / `ContextMenu` | Menu for the row or selection: Lock from Random, Randomize, Reset, Copy; `↑↓`, a letter, `Enter`, `Esc` |
@@ -325,7 +329,8 @@ Panels and switchers are keyboard-first:
 | `⇧S` | Save the current values as a new preset chip |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover |
-| `Esc` | Close shortcuts popover or floating panel and restore focus to its chip |
+| `Esc` | Close the shortcuts popover; on a focused floating panel (nothing deeper focused), close it and restore focus to its chip |
+| Click a card's empty area or heading | Focus the card (a soft wash shows it); `↑` / `↓` go to its first or last row, and `r`, `⌥R` and `⇧R` act on its group |
 
 In `VariantSwitcher` (React, Solid, or `attachVariantSwitcher` from `knobs/panel`): hover or focus, then press **`1`–`9`** or **`←`/`→`**; `Enter`/`Space` cycles when focused. Nested switchers share a single hover owner, and text inputs keep their own keys.
 
@@ -641,6 +646,7 @@ Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a prese
 | `--k-step-resist` | `0.25` | How far a stepped slider's fill follows the pointer off its stop while dragged: `0` snaps, `1` follows freely |
 | `--k-motion-blur` | `0` | Up to `1`: moving fill edges and selection pills smear by their speed |
 | `--k-range-blur` | `.5` | Up to `1`: a range band's gliding ends each smear by their own speed (`0` is off) |
+| `--k-curve-blur` | `.5` | Up to `1`: a curve's, easing's or gradient's line, points and stops smear by their speed while they morph between presets (`0` is off) |
 | `--k-value-font`, `--k-unit-gap`, `--k-unit-color` | font, `.28em`, dim | The readout's face, and the unit's spacing and colour (`currentColor` matches the value) |
 | `--k-readout-mark` | `0` | `1`: a modified value takes `--k-modified` behind a small dot |
 | `--k-group-transform`, `--k-group-size`, `--k-group-color`, `--k-group-tracking`, `--k-group-inset` | uppercase, text-cap, dim, `.04em`, inset | Group headings |
@@ -850,12 +856,12 @@ On a page, the keyboard spans every card:
 | `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
 | `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits); from the header, the first highlighted card |
 | `⌥↑` / `⌥↓` | Glide to the previous / next section, opening it if it's folded; focus goes with it |
-| `1`–`9` | Apply the focused group's preset, by its number (in groups without them, digits still edit numbers; `Enter` always does) |
+| `1`–`9` | On a row with options (a choice, a curve's, easing's or gradient's presets), pick its Nth; elsewhere apply the focused group's preset, by its number (in groups without them, digits still edit numbers; `Enter` always does) |
 | `Enter` / `Space` on a section heading or a foldable card's header | Fold or open it (on a section heading or group card, `←` folds and `→` opens too) |
 | `/` | Filter rows by label, group or section, live; rows fold shut, cards with nothing left fold away and the rest glide into re-balanced columns; `Esc` clears |
 | `s` | Hints for what's on screen, custom cards included |
 
-Focus that lands off screen (or under the header) glides into view, retargeting from where the last glide was headed so held keys don't fall behind. The rest (`[` `]`, `r`, `g`, `⇧L`, selection, the row menu, hold `\`) works as in a panel.
+Focus that lands off screen (or under the header) glides into view, retargeting from where the last glide was headed so held keys don't fall behind. The rest (`[` `]`, `r` and `⇧R` scoped to focus, `g`, `Esc` climbing from row to card to page, focusing a card by its empty area or heading, `⇧L`, selection, the row menu, hold `\`) works as in a panel.
 
 Both renderers draw the page. With `?gpu`, the overlay draws the header's contents, section headings, cards and rows, clipped to below the sticky header, and follows every frame of a glide or fold; the page's background, the header's glass (a real `backdrop-filter`) and custom cards stay in the DOM under the transparent canvas, so they look the same in both. Scrolling and layout motion wake the overlay and it sleeps once the page is still. The demo is `examples/tune.html`: the OpenCode iOS tune page on a simulated iPhone that speaks the tune server's protocol.
 
@@ -1024,6 +1030,7 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-blur: 1;          /* motion strength: readout blur and pill stretch */
   --k-motion-blur: 0;   /* up to 1: moving fill edges and pills smear by their speed */
   --k-range-blur: .5;   /* up to 1: a range band's gliding ends smear by their speed */
+  --k-curve-blur: .5;   /* up to 1: morphing curves, easings and gradients smear by their speed */
   --k-step-resist: 0.25; /* a stepped slider's pull off its stop (0 snaps, 1 follows) */
   --k-glow: 0.5;
   --k-roll: 420;        /* readout roll (ms) */
