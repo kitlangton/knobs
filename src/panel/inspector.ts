@@ -31,10 +31,11 @@ import type {
 } from "./gpu/renderer.js"
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import { iconSvg } from "./icons.js"
-import { clamp, Roll, rollTarget } from "./motion.js"
+import { clamp, Roll, rollTarget, springEasing } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
 import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
 import { onPan } from "./swipe.js"
+import { toolbarColumns } from "./toolbar-grid.js"
 
 const plainKey = (e: KeyboardEvent) => !e.metaKey && !e.ctrlKey && !e.isComposing
 const reduced = (doc: Document) =>
@@ -1061,39 +1062,92 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
 
 // ——— keybind ———
 
-export function keybindRow(c: RowContext<KeybindField>): EditorRow {
-  const { row, label, el } = shell(c, "keybind")
-  const chip = el("button", "knobs-keys")
+/** A key cap's width change: snappy, no bounce (.25 s). */
+const CAP_MORPH = springEasing((2 * Math.PI) / 0.25, 1)
+
+export interface KeyCap {
+  readonly chip: HTMLButtonElement
+  readonly text: HTMLElement
+  capturing(): boolean
+  /** The combination it shows: `""` for none, undefined for mixed ("—"). */
+  show(combo: string | undefined): void
+}
+
+/**
+ * A key cap that records a combination: a click, Enter or Space listens, the next combination is
+ * the value, Esc cancels and ⌫ clears. While it listens its row takes the active wash and the cap
+ * breathes, "Type keys…" (or the modifiers held so far) in its place; its width follows its text
+ * on a spring, its right edge still. Keybind rows and rebindable action rows use it.
+ */
+export function keyCap(o: {
+  readonly doc: Document
+  readonly row: HTMLElement
+  /** What the cap reads with no combination. */
+  readonly empty: string
+  name(): string
+  set(combo: string): void
+  wake(): void
+}): KeyCap {
+  const chip = o.doc.createElement("button")
+  chip.className = "knobs-keys"
   chip.type = "button"
-  const text = el("span", "knobs-keys-text")
+  const text = o.doc.createElement("span")
+  text.className = "knobs-keys-text"
   chip.append(text)
-  row.append(chip)
-  let value = c.get() as string
-  let mixed = false
+  let value: string | undefined = ""
   let capturing = false
   let preview = ""
+  let morph: Animation | undefined
+  /** New text, the cap's width gliding to fit it (the canvas does the same when it draws). */
+  const write = (shown: string) => {
+    const glide =
+      chip.isConnected &&
+      chip.offsetWidth > 0 &&
+      !chip.closest('[data-gpu-active="true"]') &&
+      !reduced(o.doc)
+    const from = glide ? chip.getBoundingClientRect().width : 0
+    morph?.cancel()
+    text.textContent = shown
+    if (!glide) return
+    const to = chip.getBoundingClientRect().width
+    text.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "ease-out" })
+    if (Math.abs(to - from) < 0.5) return
+    chip.dataset.morph = ""
+    morph = chip.animate([{ width: `${from}px` }, { width: `${to}px` }], {
+      duration: CAP_MORPH.ms,
+      easing: CAP_MORPH.easing,
+    })
+    morph.onfinish = () => delete chip.dataset.morph
+    morph.oncancel = () => delete chip.dataset.morph
+  }
   const paint = () => {
     const shown = capturing
       ? preview || "Type keys…"
-      : mixed
+      : value === undefined
         ? "—"
         : value
           ? comboLabel(value)
-          : "None"
-    if (text.textContent !== shown) text.textContent = shown
-    chip.toggleAttribute("data-empty", !capturing && !mixed && !value)
+          : o.empty
+    if (text.textContent !== shown) write(shown)
+    chip.toggleAttribute("data-empty", !capturing && value === "")
     chip.setAttribute("aria-pressed", String(capturing))
     chip.setAttribute(
       "aria-label",
-      `${c.display}: ${capturing ? "press a key combination" : value ? comboLabel(value) : "none"}`,
+      `${o.name()}: ${capturing ? "press a key combination" : value ? comboLabel(value) : "none"}`,
     )
-    c.wake()
+    o.wake()
   }
   const capture = (on: boolean) => {
     if (capturing === on) return
+    if (on && o.row.closest("[data-disabled],[data-readonly]")) return
     capturing = on
     preview = ""
-    row.classList.toggle("knobs-active", on)
+    o.row.classList.toggle("knobs-active", on)
+    paint()
+  }
+  const held = (event: KeyboardEvent) => {
+    const mods = heldMods(event)
+    preview = mods.length ? comboLabel(`${mods.join("+")}+…`) : ""
     paint()
   }
   chip.onclick = () => capture(!capturing)
@@ -1113,28 +1167,46 @@ export function keybindRow(c: RowContext<KeybindField>): EditorRow {
     event.stopPropagation()
     const mods = heldMods(event)
     if (event.key === "Escape" && !mods.length) return capture(false)
-    if ((event.key === "Backspace" || event.key === "Delete") && !mods.length) {
+    // The cap shows what it heard at once, so it glides straight there from "Type keys…".
+    const take = (combo: string) => {
+      value = combo
       capture(false)
-      c.set("")
-      return
+      o.set(combo)
     }
+    if ((event.key === "Backspace" || event.key === "Delete") && !mods.length) return take("")
     const combo = comboFromEvent(event)
-    if (!combo) {
-      preview = mods.length ? comboLabel(`${mods.join("+")}+…`) : ""
-      paint()
-      return
-    }
-    capture(false)
-    c.set(combo)
+    if (!combo) return held(event)
+    take(combo)
   })
   chip.addEventListener("keyup", (event) => {
-    if (!capturing) return
-    const mods = heldMods(event)
-    preview = mods.length ? comboLabel(`${mods.join("+")}+…`) : ""
-    paint()
+    if (capturing) held(event)
   })
   chip.addEventListener("blur", () => capture(false))
   paint()
+  return {
+    chip,
+    text,
+    capturing: () => capturing,
+    show(combo) {
+      value = combo
+      paint()
+    },
+  }
+}
+
+export function keybindRow(c: RowContext<KeybindField>): EditorRow {
+  const { row, label } = shell(c, "keybind")
+  const cap = keyCap({
+    doc: c.doc,
+    row,
+    empty: "None",
+    name: () => c.display,
+    set: (combo) => c.set(combo),
+    wake: c.wake,
+  })
+  const { chip, text } = cap
+  row.append(chip)
+  cap.show(c.get() as string)
   const gpu: GpuKeybindRow = {
     kind: "keybind",
     key: c.key,
@@ -1143,7 +1215,7 @@ export function keybindRow(c: RowContext<KeybindField>): EditorRow {
     labelEl: label,
     chip,
     text,
-    capturing: () => capturing,
+    capturing: cap.capturing,
     wave: c.wave,
     isModified: c.isModified,
   }
@@ -1153,9 +1225,7 @@ export function keybindRow(c: RowContext<KeybindField>): EditorRow {
     input: chip,
     stops: () => [chip],
     update(next: Value, _delay: number, _instant?: boolean, isMixed = false) {
-      value = next as string
-      mixed = isMixed
-      paint()
+      cap.show(isMixed ? undefined : (next as string))
     },
     dispose() {},
     tracks: [],
@@ -1171,11 +1241,34 @@ export interface ToolbarRow extends EditorRow {
   match(event: KeyboardEvent, global: boolean): ToolbarItem | undefined
   press(item: ToolbarItem): void
   swap(field: ToolbarField): void
+  /** Shows the shortcuts as they are now (after a rebinding). */
+  refresh(): void
 }
 
+type Shortcut = ReturnType<typeof toolbarShortcut>
+
+/** A button's width at its content's own size, however wide its grid cell has stretched it. */
+function naturalWidth(b: HTMLElement) {
+  const cs = getComputedStyle(b)
+  let w = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)
+  const parts = [...b.children]
+  for (const part of parts) {
+    const ps = getComputedStyle(part)
+    const margin = parseFloat(ps.marginRight) || 0
+    w += part instanceof HTMLElement ? part.scrollWidth + margin : parseFloat(ps.width) || 0
+  }
+  return Math.ceil(w + (parseFloat(cs.columnGap) || 0) * Math.max(0, parts.length - 1))
+}
+
+/**
+ * A toolbar: its buttons in equal columns, as many as fit and balanced across the rows (see
+ * `toolbarColumns`), each with its icon and label at the start and its shortcut at the end.
+ * `keyOf` is each item's shortcut as it is now (the store's rebinding, else its own).
+ */
 export function toolbarRow(
   c: RowContext<ToolbarField>,
   press: (item: ToolbarItem) => void,
+  keyOf: (item: ToolbarItem) => Shortcut = toolbarShortcut,
 ): ToolbarRow {
   const el = make(c.doc)
   const row = el("div", "knobs-row knobs-toolbar")
@@ -1185,6 +1278,26 @@ export function toolbarRow(
   let field = c.field
   let buttons: HTMLButtonElement[] = []
   let last = 0
+  let keys = ""
+  const keysNow = () => field.items.map((item) => keyOf(item)?.key ?? "").join("\u0000")
+  const layout = () => {
+    const cs = getComputedStyle(row)
+    const avail =
+      row.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+    if (avail <= 0 || !buttons.length) return
+    const widest = Math.max(...buttons.map(naturalWidth))
+    const cols = String(
+      toolbarColumns(buttons.length, widest, avail, parseFloat(cs.columnGap) || 0),
+    )
+    if (row.style.getPropertyValue("--k-tool-cols") !== cols) {
+      row.style.setProperty("--k-tool-cols", cols)
+      c.wake()
+    }
+  }
+  const sizes = new ResizeObserver(layout)
+  sizes.observe(row)
+  // A web font arriving changes the labels' widths, not the row's.
+  void c.doc.fonts?.ready.then(() => row.isConnected && layout())
   const gpu: GpuToolbarRow = {
     kind: "toolbar",
     key: c.key,
@@ -1210,7 +1323,7 @@ export function toolbarRow(
       const name = el("span", "knobs-tool-label", item.label)
       b.append(name)
       let chip: HTMLElement | undefined
-      const key = toolbarShortcut(item)
+      const key = keyOf(item)
       if (key) {
         chip = el("kbd", "knobs-tool-key", comboLabel(key.key))
         b.append(chip)
@@ -1233,6 +1346,8 @@ export function toolbarRow(
     })
     row.replaceChildren(...buttons)
     ;(gpu as { items: GpuToolbarRow["items"] }).items = items
+    keys = keysNow()
+    if (row.isConnected) layout()
   }
   build()
   // ←/→ move along the buttons; Enter and Space press them (as buttons do).
@@ -1262,9 +1377,16 @@ export function toolbarRow(
       return [b && !b.disabled ? b : first()]
     },
     update() {},
+    refresh() {
+      if (keysNow() === keys) return
+      const focused = buttons.indexOf(c.doc.activeElement as HTMLButtonElement)
+      build()
+      if (focused >= 0) buttons[focused]?.focus({ preventScroll: true })
+      c.wake()
+    },
     match(event, global) {
       return field.items.find((item) => {
-        const key = toolbarShortcut(item)
+        const key = keyOf(item)
         return (
           key !== undefined &&
           !item.disabled &&
@@ -1288,7 +1410,9 @@ export function toolbarRow(
       build()
       c.wake()
     },
-    dispose() {},
+    dispose() {
+      sizes.disconnect()
+    },
     tracks: [],
     gpu: [gpu],
   }

@@ -230,8 +230,16 @@ export interface GpuActionRow {
   readonly display: string
   readonly row: HTMLElement
   readonly button: HTMLButtonElement
+  /** Its shortcut's key cap, at the row's end: a rebindable one listens while `capturing`. */
+  readonly keys?: GpuKeyCap
   readonly wave: RowWave
   isModified(): boolean
+}
+/** A key cap (a keybind's, an action's shortcut): its text, and whether it's listening for keys. */
+export interface GpuKeyCap {
+  readonly chip: HTMLElement
+  readonly text: HTMLElement
+  capturing(): boolean
 }
 /** A vector's number cell: its axis letter and readout (DOM-placed text). */
 export interface GpuCell {
@@ -3080,40 +3088,88 @@ class GpuOverlayManager {
     rowAlpha: number,
     hovered: boolean,
   ) {
-    const t = this.curTokens
     const centerY = rRect.top + rRect.height / 2
-    this.drawRowHover(row.row, rRect, hovered)
+    this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
     this.drawRowLabel(row.labelEl, row.display, row.isModified(), centerY, rowAlpha)
-    const capturing = row.capturing()
-    const on = this.isHovered(row.chip) || this.isFocused(row.chip)
-    const cap = this.ease(row.chip, "capture", capturing ? 1 : 0, 30)
-    // The chip's width follows its text ("Type keys…" while capturing).
-    const text = row.text.textContent ?? ""
+    this.drawKeyCap(row, centerY, rowAlpha, cardClip, true)
+    this.drawRowOverlay(row.row, rRect, cardClip)
+  }
+
+  /** When each listening key cap started, so its breathing starts from full strength. */
+  private readonly capSince = new WeakMap<object, number>()
+  /** Each key cap's text and the one before it, for their crossfade. */
+  private readonly capTexts = new WeakMap<object, { now: string; was: string }>()
+
+  /**
+   * A key cap, as the DOM's: its tray's width glides to fit new text (snappy, no bounce) with its
+   * right edge still, while the old text fades out and the new in. Listening, it takes a soft
+   * accent wash and its text breathes; no ring.
+   */
+  private drawKeyCap(
+    cap: GpuKeyCap,
+    centerY: number,
+    rowAlpha: number,
+    clip: Clip,
+    interactive: boolean,
+  ) {
+    const t = this.curTokens
+    const el = cap.chip
+    const text = cap.text.textContent ?? ""
     const key = textKey(text)
-    const cr = this.cellTray(row.chip, on ? 1 : 0, rowAlpha * (1 - cap), t.radiusMd, key)
-    if (cap > 0.005)
-      this.shape({
-        x: cr.left,
-        y: cr.top,
-        w: cr.width,
-        h: cr.height,
-        radius: t.radiusMd,
-        fill: withAlpha(t.pillBg, rowAlpha * cap),
-        ring: -1,
-        ringColor: withAlpha(t.pillBorder, rowAlpha * cap),
-      })
-    const empty = row.chip.hasAttribute("data-empty")
-    const tr = this.rectOf(row.text, key)
-    const color = empty ? t.dim : capturing ? t.label : t.text
+    const r = this.rectOf(el, key)
+    if (r.width <= 0) return
+    const still = this.curReduced
+    const capturing = cap.capturing()
+    const on = interactive && (this.isHovered(el) || this.isFocused(el))
+    const w = this.ease(el, "capw", r.width, still ? SNAP_OMEGA : (2 * Math.PI) / 0.25)
+    let texts = this.capTexts.get(el)
+    if (!texts) this.capTexts.set(el, (texts = { now: text, was: "" }))
+    if (texts.now !== text) {
+      texts.was = texts.now
+      texts.now = text
+      this.ease(el, "swap", 0, SNAP_OMEGA)
+    }
+    const swap = this.ease(el, "swap", 1, still ? SNAP_OMEGA : 40)
+    const listen = this.ease(el, "capture", capturing ? 1 : 0, 30)
+    const mid = cssMix(t.surfaceHi, t.segBg, 0.7)
+    const base = cssMix(mid, t.segBg, this.wash(el, on))
+    const tray: DOMRect = new DOMRect(r.right - w, r.top, w, r.height)
+    this.pushPrim({
+      x: tray.left,
+      y: tray.top,
+      w: tray.width,
+      h: tray.height,
+      clip,
+      color: withAlpha(cssMix(t.pillBg, base, listen), rowAlpha),
+      radius: t.radiusMd,
+      kind: 1,
+    })
+    let breath = 1
+    if (capturing && !still) {
+      let since = this.capSince.get(el)
+      if (since === undefined) this.capSince.set(el, (since = performance.now()))
+      breath = 1 - 0.45 * (0.5 - 0.5 * Math.cos(((performance.now() - since) / 1600) * 2 * Math.PI))
+      this.easeMoving = true
+    } else this.capSince.delete(el)
+    const empty = el.hasAttribute("data-empty")
+    const color = empty || capturing ? (capturing ? t.label : t.dim) : t.text
     const track = empty ? 0 : 0.08
+    const tr = this.rectOf(cap.text, key)
+    const inside = this.clipTo(clip, tray)
+    const cx = tray.left + tray.width / 2
+    const opts = { px: t.valueSize, weight: t.fontWeight, track, align: "center" as const }
+    if (swap < 0.995 && texts.was)
+      this.drawText(texts.was, cx, centerY, withAlpha(t.label, rowAlpha * (1 - swap)), {
+        ...opts,
+        clip: inside,
+      })
     this.drawText(
       this.fit(text, tr.width + 1, t.valueSize, t.fontWeight, undefined, track),
-      tr.left,
+      cx,
       centerY,
-      withAlpha(color, rowAlpha),
-      { px: t.valueSize, weight: t.fontWeight, track },
+      withAlpha(color, rowAlpha * swap * breath),
+      { ...opts, clip: inside },
     )
-    this.drawRowOverlay(row.row, rRect, cardClip)
   }
 
   /** A readout's clip: the card's, narrowed to `el` when given. */

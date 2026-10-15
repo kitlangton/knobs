@@ -215,7 +215,7 @@ const css = `
   background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:color-mix(in srgb,var(--k-line) calc(var(--k-chrome) * 100%),transparent);
   --k-backdrop:blur(calc(var(--k-glass) * var(--k-chrome) * 24px)) saturate(calc(1 + var(--k-glass) * var(--k-chrome) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass) * var(--k-chrome)))}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}.knobs-keys .knobs-keys-text,.knobs-number,.knobs-cell-edit{animation:none}}
 
 /* A scoped reset, (0,1,1): above a host's element rules (button{...}, button:hover{...},
    input[type=text]{...}) and below every knobs rule that styles these elements, which are all
@@ -351,8 +351,10 @@ const css = `
   border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .4s}
 .knobs-value:hover{border-bottom-color:var(--k-label)}
 .knobs-active .knobs-value,.knobs-track:focus-visible .knobs-value{color:var(--k-text)}
-.knobs-panel .knobs-number{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);z-index:2;width:6.5ch;padding:1px 4px;text-align:right;background:var(--k-bg)!important;
-  border-radius:var(--k-radius-sm)!important;border-bottom:1px solid var(--k-text)!important;color:var(--k-text);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size);appearance:textfield}
+/* The inline editor: a soft wash over the readout, its digits where the readout's were, no rule
+   under it; it fades in. */
+.knobs-panel .knobs-number{position:absolute;right:calc(var(--k-inset) - 6px);top:50%;transform:translateY(-50%);z-index:2;width:calc(6.5ch + 12px);height:var(--kc-control-h);padding:0 6px;text-align:right;background:linear-gradient(var(--k-surface-hi),var(--k-surface-hi)),var(--k-bg)!important;
+  border:0!important;border-radius:var(--k-radius-md)!important;outline:none;color:var(--k-text);caret-color:var(--k-accent);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size);appearance:textfield;animation:knobs-fade .12s ease-out}
 .knobs-number::-webkit-inner-spin-button,.knobs-number::-webkit-outer-spin-button{appearance:none}
 .knobs-number:focus-visible{outline:none;box-shadow:none}
 
@@ -599,9 +601,9 @@ const css = `
 .knobs-panel .knobs-link[aria-pressed="true"]{color:var(--k-text)}
 .knobs-link .knobs-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
 /* The inline editor over a readout: above the GPU canvas, which leaves that readout to it. */
-.knobs-panel .knobs-cell-edit{position:absolute;z-index:3;right:var(--k-inset);top:50%;transform:translateY(-50%);width:7ch;height:auto;padding:1px 4px;text-align:right;background:var(--k-bg);border-radius:var(--k-radius-sm);border-bottom:1px solid var(--k-text);color:var(--k-text);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size)}
+.knobs-panel .knobs-cell-edit{position:absolute;z-index:3;right:calc(var(--k-inset) - 6px);top:50%;transform:translateY(-50%);width:calc(7ch + 12px);height:var(--kc-control-h);padding:0 6px;text-align:right;background:linear-gradient(var(--k-surface-hi),var(--k-surface-hi)),var(--k-bg);border:0;border-radius:var(--k-radius-md);outline:none;color:var(--k-text);caret-color:var(--k-accent);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size);animation:knobs-fade .12s ease-out}
 .knobs-cell.knobs-editing>:not(.knobs-cell-edit){visibility:hidden}
-.knobs-panel .knobs-cell>.knobs-cell-edit{inset:0;width:auto;transform:none;padding:0 6px;border-radius:var(--k-radius-md)}
+.knobs-panel .knobs-cell>.knobs-cell-edit{inset:0;width:auto;height:auto;transform:none}
 .knobs-panel[data-gpu-active="true"] .knobs-cell-edit{z-index:2147480003}
 
 .knobs-panel .knobs-row.knobs-range{display:block;height:var(--k-row);padding:0}
@@ -657,23 +659,33 @@ const css = `
 .knobs-panel .knobs-seed-roll:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-seed-roll .knobs-die-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
 
-.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;justify-content:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;overflow:hidden;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-family:inherit;font-weight:inherit;font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 .knobs-panel .knobs-keys:is(:hover,:focus-visible){background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
 .knobs-panel .knobs-keys[data-empty]{color:var(--k-dim);letter-spacing:0}
-.knobs-panel .knobs-keys[aria-pressed="true"]{background:var(--k-pill-bg);box-shadow:inset 0 0 0 1px var(--k-pill-border);color:var(--k-label);letter-spacing:.08em}
+/* Listening: a soft accent wash, no ring, and the text breathing in "Type keys…" (keyCap). */
+.knobs-panel .knobs-keys[aria-pressed="true"]{background:var(--k-pill-bg);color:var(--k-label)}
+.knobs-keys[aria-pressed="true"] .knobs-keys-text{animation:knobs-breathe 1.6s ease-in-out infinite}
+@keyframes knobs-breathe{50%{opacity:.55}}
 .knobs-keys-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.knobs-keys[data-morph] .knobs-keys-text{flex:none;overflow:visible}
+.knobs-panel .knobs-keys[data-static]{cursor:default}
+.knobs-panel .knobs-keys[hidden]{display:none}
 
-/* Toolbars: icon, label and shortcut per button; they wrap. Buttons take the button tokens. */
-.knobs-panel .knobs-row.knobs-toolbar{flex-wrap:wrap;justify-content:flex-start;gap:var(--k-tray-pad);height:auto;min-height:var(--k-row);padding:calc((var(--k-row) - var(--k-button-h,var(--kc-control-h))) / 2) var(--k-inset)}
+/* Toolbars: icon, label and shortcut per button, in equal columns balanced across their rows
+   (inspector.ts sets --k-tool-cols); one gap between them and around them. Buttons take the
+   button tokens. */
+.knobs-panel .knobs-row.knobs-toolbar{--k-tool-gap:max(4px,calc((var(--k-row) - var(--k-button-h,var(--kc-control-h))) / 2));display:grid;grid-template-columns:repeat(var(--k-tool-cols,1),minmax(0,1fr));gap:var(--k-tool-gap);height:auto;min-height:var(--k-row);padding:var(--k-tool-gap) var(--k-inset)}
 .knobs-card>.knobs-toolbar:hover{background:transparent}
 .knobs-card>.knobs-toolbar:has(:focus-visible)::after{opacity:0}
-.knobs-panel .knobs-tool{display:inline-flex;align-items:center;gap:6px;height:var(--k-button-h,var(--kc-control-h));padding:0 8px;background:var(--k-button-bg,var(--k-seg-bg));border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);
+.knobs-panel .knobs-tool{display:flex;align-items:center;gap:6px;min-width:0;height:var(--k-button-h,var(--kc-control-h));padding:0 8px;background:var(--k-button-bg,var(--k-seg-bg));border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);
   color:var(--k-button-color,var(--k-label));font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color .15s,box-shadow .15s,scale .12s var(--k-ease),opacity .15s}
 .knobs-panel .knobs-tool:is(:hover:not([disabled]),:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 .knobs-panel .knobs-tool:is(:active:not([disabled]),.knobs-pressed){scale:.96}
 .knobs-panel .knobs-tool[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
-.knobs-tool .knobs-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
-.knobs-panel .knobs-tool-key{font:inherit;font-size:var(--k-text-cap);color:var(--k-dim);letter-spacing:.06em}
+.knobs-tool .knobs-icon{flex:none;width:var(--k-icon-sm);height:var(--k-icon-sm)}
+.knobs-tool-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* The shortcut sits at the button's end, so a column of buttons lines their chips up. */
+.knobs-panel .knobs-tool-key{flex:none;margin-left:auto;padding-left:4px;font:inherit;font-size:var(--k-text-cap);font-variant-numeric:tabular-nums;color:var(--k-dim);letter-spacing:.06em}
 .knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-cell,.knobs-range-track,.knobs-angle,.knobs-dial,.knobs-seed,.knobs-keys,.knobs-tool){cursor:default}
 
 /* Row accessories (rowAccessory): the host's node, just after the label. */
