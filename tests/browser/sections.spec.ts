@@ -543,3 +543,138 @@ test("remote controls set descriptions and folds from descriptors and options; u
     "1 changed · 1 card",
   )
 })
+
+test("sections() describes sections and groups for a host's own navigation; onSections and onActiveSection follow folds, changes and scrolling", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  const root = await mount(page, {
+    width: 520,
+    height: 600,
+    mount: { sectionFolded: { Motion: true } },
+    store: { groupFolded: { Grid: true } },
+  })
+  const read = () => page.evaluate(() => (window as any).__s.page.sections())
+  const list = await read()
+  expect(list.map((s: any) => s.id)).toEqual(["Look", "Motion", "Layout"])
+  expect(list[0]).toMatchObject({
+    id: "Look",
+    label: "Look",
+    description: "How things look at rest",
+    folded: false,
+    changed: 0,
+  })
+  expect(list[0].groups).toEqual([
+    { id: "Color", label: "Color", folded: false, changed: 0, preset: "Plain" },
+    { id: "Shape", label: "Shape", folded: false, changed: 0, preset: null },
+  ])
+  expect(list[1]).toMatchObject({ id: "Motion", folded: true })
+  expect(list[1].groups.map((g: any) => g.id)).toEqual(["Springs", "Timing"])
+  // Custom cards aren't groups; Grid folds from the store's groupFolded.
+  expect(list[2].groups.map((g: any) => [g.id, g.folded])).toEqual([
+    ["Grid", true],
+    ["Rows", false],
+  ])
+
+  // Listeners hear the first state, then each change, batched.
+  await page.evaluate(() => {
+    const s = (window as any).__s
+    s.calls = []
+    s.active = []
+    s.page.onSections((list: any) => s.calls.push(list))
+    s.page.onActiveSection((id: any) => s.active.push(id))
+  })
+  await expect.poll(() => page.evaluate(() => (window as any).__s.calls.length)).toBe(1)
+  await page.evaluate(() => (window as any).__s.controls.set({ hue: 80, glow: 90, radius: 30 }))
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__s.calls.at(-1)[0]))
+    .toMatchObject({ changed: 3, groups: [{ changed: 2, preset: "Vivid" }, { changed: 1 }] })
+  const before = await page.evaluate(() => (window as any).__s.calls.length)
+  await head(root, "Motion").click()
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__s.calls.at(-1)[1].folded))
+    .toBe(false)
+  // One fold, one call.
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => (window as any).__s.calls.length)).toBe(before + 1)
+
+  // Scrolling moves the active section.
+  expect(await page.evaluate(() => (window as any).__s.page.activeSection())).toBe("Look")
+  await page.mouse.move(260, 400)
+  await page.mouse.wheel(0, 4000)
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__s.page.activeSection()))
+    .toBe("Layout")
+  await expect.poll(() => page.evaluate(() => (window as any).__s.active.at(-1))).toBe("Layout")
+  expect(errors).toEqual([])
+})
+
+test("reveal opens a section or a group and glides to it; for context it isn't remembered, a jump with remember is; fold and foldSection take remember and reveal", async ({
+  page,
+}) => {
+  const root = await mount(page, {
+    width: 520,
+    height: 600,
+    mount: { sectionFolded: { Layout: true } },
+    store: { groupFolded: { Grid: true } },
+  })
+  const saved = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem("knobs:sections-fixture:folds:v1") ?? "{}"))
+  const scrollY = () => page.evaluate(() => scrollY)
+  // Context: Grid (and its folded section) open and glide into view; nothing is remembered.
+  await page.evaluate(() => (window as any).__s.page.reveal({ group: "Grid" }))
+  await expect(head(root, "Layout")).toHaveAttribute("aria-expanded", "true")
+  await expect(tile(root, "Grid")).not.toHaveAttribute("data-folded", "")
+  await expect.poll(scrollY).toBeGreaterThan(100)
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__s.page.activeSection()))
+    .toBe("Layout")
+  expect(await saved()).toEqual({})
+
+  // A jump the user asked for is remembered.
+  await page.evaluate(() => (window as any).__s.page.foldSection("Layout", true))
+  await page.evaluate(() =>
+    (window as any).__s.page.reveal({ section: "Layout" }, { remember: true }),
+  )
+  await expect(head(root, "Layout")).toHaveAttribute("aria-expanded", "true")
+  expect((await saved()).sections).toEqual({ Layout: false })
+
+  // fold / foldSection: remembered by default, not with remember: false; reveal glides.
+  await page.evaluate(() => (window as any).__s.page.fold("Grid", true, { remember: false }))
+  await expect(tile(root, "Grid")).toHaveAttribute("data-folded", "")
+  expect((await saved()).groups).toBeUndefined()
+  await page.evaluate(() => window.scrollTo({ top: 0 }))
+  await page.evaluate(() => (window as any).__s.page.fold("Grid", false, { reveal: true }))
+  expect((await saved()).groups).toEqual({ Grid: false })
+  await expect.poll(scrollY).toBeGreaterThan(100)
+  await page.evaluate(() => (window as any).__s.page.foldSection("Look", true, { remember: false }))
+  expect(await page.evaluate(() => (window as any).__s.page.sectionFolded("Look"))).toBe(true)
+  expect((await saved()).sections).toEqual({ Layout: false })
+})
+
+test("the filter opens matching folded sections and cards for a while, and leaves their saved folds alone", async ({
+  page,
+}) => {
+  const root = await mount(page, {
+    mount: { sectionFolded: { Layout: true, Motion: false } },
+  })
+  await page.evaluate(() => (window as any).__s.page.fold("Timing", true))
+  const saved = () => page.evaluate(() => localStorage.getItem("knobs:sections-fixture:folds:v1"))
+  const kept = await saved()
+  await page.getByRole("slider", { name: "hue" }).focus()
+  await page.keyboard.press("/")
+  await page.keyboard.type("gutter")
+  await expect(tile(root, "Grid")).toBeVisible()
+  await root.getByRole("searchbox").fill("stagger")
+  await expect(tile(root, "Timing").locator(".knobs-card")).toBeVisible()
+  // Its own state stays folded while the filter shows it (and sections() lists what shows).
+  const shown = await page.evaluate(() => (window as any).__s.page.sections())
+  expect(shown.map((x: any) => x.id)).toEqual(["Motion"])
+  expect(shown[0].groups.find((g: any) => g.id === "Timing").folded).toBe(true)
+  await page.keyboard.press("Escape")
+  await expect(head(root, "Layout")).toHaveAttribute("aria-expanded", "false")
+  await expect(tile(root, "Grid")).toBeHidden()
+  await expect(tile(root, "Timing").locator(".knobs-card")).toBeHidden()
+  expect(await saved()).toBe(kept)
+})
