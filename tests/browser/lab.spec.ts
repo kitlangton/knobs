@@ -298,6 +298,12 @@ test("long choices: the row truncates its value, the menu searches; keys and hin
   await expect(search).toBeFocused()
   await page.keyboard.type("hour")
   await expect(page.locator(".knobs-menu-item:not([hidden])")).toHaveCount(2)
+  // The match is marked by colour, so the labels keep the width the menu measured.
+  expect(
+    await page
+      .locator(".knobs-menu-item:not([hidden]) > span")
+      .evaluateAll((spans) => spans.map((s) => s.scrollWidth <= s.clientWidth)),
+  ).toEqual([true, true])
   await page.keyboard.press("ArrowDown")
   await page.keyboard.press("Enter")
   expect((await settings(page)).scene).toBe("Look & threat by hour · midnight")

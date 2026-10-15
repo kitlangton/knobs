@@ -517,7 +517,9 @@ const css = `
 .knobs-menu-item{position:relative;display:flex;align-items:center;justify-content:space-between;gap:24px;height:var(--k-control-h);min-height:20px;padding:0 8px;border-radius:var(--k-radius-sm);cursor:default;white-space:nowrap;transition:background .08s}
 .knobs-menu-item>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .knobs-menu-item[hidden]{display:none}
-.knobs-menu-item mark{background:none;color:var(--k-text);font-weight:var(--k-title-weight)}
+/* The match shows by colour, not weight, so a filtered label keeps the width the menu measured. */
+.knobs-menu-item>span:has(>mark){color:var(--k-label)}
+.knobs-menu-item mark{background:none;color:var(--k-text)}
 .knobs-menu .knobs-menu-search{display:block;width:100%;height:var(--k-control-h);min-height:22px;margin:0 0 var(--k-unit);padding:0 8px;border:0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);color:var(--k-text);font:inherit;outline:none;-webkit-appearance:none;appearance:none}
 .knobs-menu .knobs-menu-search::placeholder{color:var(--k-dim)}
 .knobs-menu .knobs-menu-search::-webkit-search-cancel-button{display:none}
