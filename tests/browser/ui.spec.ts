@@ -300,6 +300,14 @@ test("tree: dragging reorders and reparents, with a line or an into wash; ⌥↑
 }) => {
   const errors = await open(page)
   const drag = async (from: string, to: string, fraction: number, check?: () => Promise<void>) => {
+    // Rows glide after a move: measure once they're still.
+    await expect
+      .poll(async () => {
+        const one = (await row(page, from).boundingBox())?.y
+        await page.waitForTimeout(50)
+        return one === (await row(page, from).boundingBox())?.y
+      })
+      .toBe(true)
     const a = (await row(page, from).boundingBox())!
     const b = (await row(page, to).boundingBox())!
     await page.mouse.move(a.x + 60, a.y + a.height / 2)
