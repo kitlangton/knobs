@@ -378,7 +378,9 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   // The OKLCH accent: ←→ on its row turns the hue, keeping relative chroma, and --k-accent follows at once
   await tokensPanel.getByRole("button", { name: "Accent", exact: true }).focus()
   await page.keyboard.press("Shift+ArrowRight")
-  await expect(page.locator("[data-css-output]")).toContainText("--k-accent: oklch(0.7 0.12518 260)")
+  await expect(page.locator("[data-css-output]")).toContainText(
+    "--k-accent: oklch(0.7 0.12518 260)",
+  )
 
   // Switch preset to "compact" and verify CSS variables update on :root and affect both panels
   const presetStrip = tokensPanel.getByRole("radiogroup", { name: "Preset or variant" })

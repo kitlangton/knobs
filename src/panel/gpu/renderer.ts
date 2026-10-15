@@ -1157,8 +1157,14 @@ class GpuOverlayManager {
 
   /** While set, drawn text isn't recorded in `lastTexts` (its whole string already was). */
   private quietText = false
-  /** While set, text fades 2.5px either side of these x's (a range's thumbs), by these strengths. */
-  private textGaps: readonly [number, number, number, number] | undefined
+  /**
+   * While set, text fades around these x's (a range's thumbs), by these strengths: clear for a
+   * half-width either side (2.5px unless given), then back over a ramp (4px unless given).
+   */
+  private textGaps:
+    | readonly [number, number, number, number]
+    | readonly [number, number, number, number, number, number]
+    | undefined
 
   private drawText(text: string, x: number, centerY: number, color: Rgba, opts: TextOpts = {}) {
     if (!text) return 0
@@ -1199,7 +1205,12 @@ class GpuOverlayManager {
         ? {
             p1: this.textGaps[2],
             p2: this.textGaps[3],
-            aux: [this.textGaps[0], this.textGaps[1], 2.5, 4] as const,
+            aux: [
+              this.textGaps[0],
+              this.textGaps[1],
+              this.textGaps[4] ?? 2.5,
+              this.textGaps[5] ?? 4,
+            ] as const,
           }
         : {}),
     })
@@ -1344,6 +1355,23 @@ class GpuOverlayManager {
     lRect = this.rectOf(labelEl),
   ) {
     const t = this.curTokens
+    // A row accessory lying over the label's end (choice.ts, data-acc-over): the end fades from
+    // under it while the row is hovered or focused, a wipe in from the right like the DOM's mask.
+    const outer = this.textGaps
+    const row = labelEl.parentElement
+    const over = row?.hasAttribute("data-acc-over")
+      ? parseFloat(row.style.getPropertyValue("--k-acc-over")) || 0
+      : 0
+    if (row && (over > 0 || this.eased.get(labelEl)?.has("acc"))) {
+      const on =
+        over > 0 && (this.isHovered(row) || (!!this.curActiveEl && row.contains(this.curActiveEl)))
+      const k = this.ease(labelEl, "acc", on ? 1 : 0, this.hoverOmega(on))
+      if (over > 0 && k > 0.002) {
+        const start = lRect.right + 6 - (over + 6) * k
+        const half = over + 6
+        this.textGaps = [start + half, -1e4, 1, 0, half, 6]
+      }
+    }
     // Ellipsized exactly when the DOM's text-overflow ellipsizes it, to the label's box.
     const shown =
       lRect.width > 0 && this.domClipped(labelEl, text, lRect.width)
@@ -1382,6 +1410,7 @@ class GpuOverlayManager {
         kind: 7,
       })
     }
+    this.textGaps = outer
   }
 
   /**
@@ -1881,14 +1910,18 @@ class GpuOverlayManager {
     return n > 0 ? `${text.slice(0, n)}…` : ""
   }
 
-  private clipCache = new WeakMap<HTMLElement, { key: number; text: string; clipped: boolean }>()
+  private clipCache = new WeakMap<
+    HTMLElement,
+    { key: number; text: string; width: number; clipped: boolean }
+  >()
   /** Whether the DOM lays `el`'s text out wider than its box (so text-overflow shows "…"). */
   private domClipped(el: HTMLElement, text: string, width: number) {
     const key = this.curLayoutKey
     const hit = this.clipCache.get(el)
-    if (hit && hit.key === key && hit.text === text) return hit.clipped
+    // The box can change on its own (a choice row sharing out its room), so its width keys it too.
+    if (hit && hit.key === key && hit.text === text && hit.width === width) return hit.clipped
     const clipped = width > 0 && el.scrollWidth > el.clientWidth
-    this.clipCache.set(el, { key, text, clipped })
+    this.clipCache.set(el, { key, text, width, clipped })
     return clipped
   }
 

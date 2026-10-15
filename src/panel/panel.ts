@@ -1461,6 +1461,7 @@ function buildPanel<S extends Schema>(
     const slot = el("span")
     slot.className = "knobs-accessory"
     row.accessory = slot
+    row.row.dataset.accessory = ""
     if (row.slider) row.slider.slot(slot)
     else if (row.field.kind === "spring" && row.editor?.tracks[0])
       row.editor.tracks[0].slider.slot(slot)

@@ -123,4 +123,63 @@ for (const renderer of ["dom", "gpu"] as const)
     })
   }
 
+// A narrow column (Arcade's 270px inspector) whose rows carry a host's pin that only shows on
+// hover: a long label beside a long menu value keeps its words, and the value truncates.
+const tight = {
+  mood: choice("dynamic", ["dynamic", "day", "night"], {
+    label: "Look & threat by hour",
+    labels: { dynamic: "Dynamic (time of day)", day: "Always day", night: "Always night" },
+    group: "world",
+  }),
+  keyLabels: choice("QWERTY", ["QWERTY", "My keyboard layout"], {
+    label: "Key labels",
+    group: "world",
+  }),
+  weather: choice("rain", ["rain", "fog"], { label: "Weather", group: "world" }),
+  tooLong: choice("a", ["a", "b", "c", "d", "e"], {
+    label: "A label far too long for any column to hold it whole",
+    labels: { a: "Automatic", b: "B", c: "C", d: "D", e: "E" },
+    group: "world",
+  }),
+}
+const tightEl = document.getElementById("tight")!
+const pinned = new Set<string>(["weather"])
+const pin = (key: string) => {
+  const button = document.createElement("button")
+  button.className = "pin"
+  button.type = "button"
+  button.ariaLabel = `Pin ${key}`
+  button.toggleAttribute("data-pinned", pinned.has(key))
+  button.onclick = () => {
+    if (!pinned.delete(key)) pinned.add(key)
+    button.toggleAttribute("data-pinned", pinned.has(key))
+  }
+  return button
+}
+for (const renderer of ["dom", "gpu"] as const)
+  for (const look of [looks[0], looks[1]]) {
+    const id = `tight-${look.id}-${renderer}`
+    const cell = document.createElement("div")
+    const heading = document.createElement("h2")
+    heading.textContent = `${look.title} · ${renderer.toUpperCase()} · 270px`
+    const slot = document.createElement("div")
+    slot.className = "slot tight"
+    slot.dataset.look = look.id
+    slot.id = id
+    cell.append(heading, slot)
+    tightEl.append(cell)
+    const store = defineControls(`rows-${id}`, tight, { enabled: true, storage: null })
+    stores[id] = store as never
+    panels[id] = mountPanel(store, slot, {
+      title: false,
+      header: false,
+      ...(look.preset ? { preset: look.preset } : {}),
+      variants: false,
+      haptics: false,
+      session: false,
+      renderer,
+      rowAccessory: pin,
+    })
+  }
+
 Object.assign(window, { __rows: { panels, stores, presses } })

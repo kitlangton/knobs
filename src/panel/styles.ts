@@ -686,9 +686,13 @@ const css = `
 .knobs-group-head[aria-expanded="true"] .knobs-caret{transform:rotate(90deg)}
 .knobs-group-head[data-foldable]:hover .knobs-caret{color:var(--k-label)}
 
-/* A long choice's menu row: the label keeps its words (up to half the row) and the value takes
-   the rest, truncating at its end; the whole value is in the menu and the button's tooltip. */
-.knobs-panel .knobs-row:is([data-display="menu"],[data-display="segmented"])>span:first-child{flex:0 0 auto;max-width:50%}
+/* A choice row: the label keeps its words and the value takes the rest, truncating at its end
+   (the whole value is in the menu and the button's tooltip); choice.ts sets how far the label may
+   go (--k-label-cap, at least half the row) and how far an accessory lies over its end. */
+.knobs-panel .knobs-row:is([data-display="menu"],[data-display="segmented"])>span:first-child{flex:0 0 auto;max-width:var(--k-label-cap,50%)}
+.knobs-panel .knobs-row:is([data-display="menu"],[data-display="segmented"])>.knobs-accessory{margin-left:calc(-4px - var(--k-acc-over,0px))}
+.knobs-panel .knobs-row[data-acc-over]>span:first-child{mask:linear-gradient(to left,transparent var(--k-acc-over),#000 calc(var(--k-acc-over) + 6px)) 0 0/calc(100% + var(--k-acc-over) + 6px) 100% no-repeat;transition:mask-position var(--k-hover-t)}
+.knobs-panel .knobs-row[data-acc-over]:is(:hover,:focus-within)>span:first-child{mask-position:100% 0}
 .knobs-panel .knobs-row[data-display="segmented"]>.knobs-seg{flex:0 1 auto;min-width:0}
 .knobs-panel .knobs-row[data-display="menu"]>.knobs-select{flex:0 1 auto;max-width:none}
 
@@ -770,6 +774,11 @@ const css = `
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
 .knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
+/* A row accessory is the host's own DOM, so it sits above the canvas too (its row then can't
+   contain its layout, which would trap it in a stacking context under the canvas). */
+.knobs-panel[data-gpu-active="true"] .knobs-row[data-accessory]{contain:style}
+:where(.knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory){position:relative}
+.knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory{z-index:2147480003}
 
 /* Page: sections of cards in balanced columns, under a sticky glass header. The page scrolls the
    window, so nothing here may become a scroll container or a containing block for the fixed

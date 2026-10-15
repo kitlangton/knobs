@@ -12,10 +12,16 @@
       .slot::before { content: ""; position: absolute; inset: 0 -1px; border-inline: 1px dashed rgba(77, 141, 255, .45); pointer-events: none; }
       .slot .knobs-panel { width: 100%; }
       .slot[data-look="lab"], .slot[data-look="buttons"] { background: #191a1e; }
+      .grid.tight-grid { grid-template-columns: repeat(4, 270px); }
+      .slot.tight { width: 270px; }
+      /* A host's pin: hidden at rest unless pinned, shown while its row is hovered or focused. */
+      .pin { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 3px; background: #4d8dff; opacity: 0; cursor: pointer; transition: opacity .15s; }
+      .pin[data-pinned], .knobs-row:hover .pin, .knobs-row:focus-within .pin { opacity: 1; }
     </style>
   </head>
   <body>
     <div class="grid" id="grid"></div>
+    <div class="grid tight-grid" id="tight"></div>
     <script type="module" src="./rows.ts"></script>
   </body>
 </html>

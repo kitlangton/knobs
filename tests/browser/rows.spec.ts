@@ -223,3 +223,111 @@ test("the GPU draws them as the DOM does", async ({ page }) => {
     })
     .toEqual(expect.arrayContaining(["Frame", "F", "Grid", "G", "Play", "Space"]))
 })
+
+test("a long label beside a long menu value keeps its words; the value and a host's pin give way", async ({
+  page,
+}) => {
+  const errors = await open(page)
+  // Arcade's 270px column: "Look & threat by hour" over "Dynamic (time of day)", each row with a
+  // host's pin that only shows on hover (Weather's is pinned, so it shows).
+  const ids = ["tight-knobs-dom", "tight-lab-dom", "tight-knobs-gpu", "tight-lab-gpu"]
+  const measure = (id: string, field: string) =>
+    page.evaluate(
+      ([id, field]) => {
+        const row = document.querySelector<HTMLElement>(`#${id} [data-field="${field}"]`)!
+        const label = row.querySelector<HTMLElement>(":scope > span:first-child")!
+        const select = row.querySelector<HTMLElement>(".knobs-select")!
+        const value = row.querySelector<HTMLElement>(".knobs-select-value")!
+        const pin = row.querySelector<HTMLElement>(".pin")!.getBoundingClientRect()
+        const cs = getComputedStyle(row)
+        const inner = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+        const l = label.getBoundingClientRect()
+        const s = select.getBoundingClientRect()
+        return {
+          display: row.dataset.display,
+          labelCut: label.scrollWidth > label.clientWidth + 0.5,
+          labelShare: l.width / inner,
+          valueCut: value.scrollWidth > value.clientWidth + 0.5,
+          valueEm: value.clientWidth / parseFloat(getComputedStyle(value).fontSize),
+          title: select.title,
+          pinClear: pin.right <= s.left + 0.5,
+          over: row.hasAttribute("data-acc-over"),
+          labelRight: l.right,
+          pinLeft: pin.left,
+        }
+      },
+      [id, field],
+    )
+  for (const id of ids) {
+    await expect.poll(async () => (await measure(id, "mood")).labelCut, { message: id }).toBe(false)
+    const mood = await measure(id, "mood")
+    expect(mood.display, id).toBe("menu")
+    // Only the value truncates; its whole text is the button's tooltip.
+    expect(mood.valueCut, id).toBe(true)
+    expect(mood.title, id).toBe("Dynamic (time of day)")
+    // The pin, hidden at rest, stays clear of the value and off the label's words.
+    expect(mood.pinClear, id).toBe(true)
+    // A label too long for any column gives way, but keeps more than half the row, and the
+    // value keeps a few letters; the pin lies over the label's end instead of shrinking it.
+    const long = await measure(id, "tooLong")
+    expect(long.labelCut, id).toBe(true)
+    expect(long.labelShare, id).toBeGreaterThan(0.5)
+    expect(long.valueEm, id).toBeGreaterThan(3)
+    expect(long.pinClear, id).toBe(true)
+    expect(long.over, id).toBe(true)
+    expect(long.pinLeft, id).toBeLessThan(long.labelRight)
+  }
+  // The label's end fades from under the pin while the row is hovered, and back after.
+  const tail = panel(page, "tight-knobs-dom").locator('[data-field="tooLong"] > span:first-child')
+  const maskAt = () => tail.evaluate((el) => getComputedStyle(el).maskPosition)
+  expect(await maskAt()).toMatch(/^0(%|px)? /)
+  await panel(page, "tight-knobs-dom").locator('[data-field="tooLong"]').hover()
+  await expect.poll(maskAt).toMatch(/^100%/)
+  await page.mouse.move(2, 2)
+  await expect.poll(maskAt).toMatch(/^0(%|px)? /)
+
+  // Narrowed step by step, the label only loses letters once the value is down to its few.
+  const early = await page.evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const slot = document.getElementById("tight-knobs-dom")!
+    const row = slot.querySelector<HTMLElement>('[data-field="mood"]')!
+    const label = row.querySelector<HTMLElement>(":scope > span:first-child")!
+    const value = row.querySelector<HTMLElement>(".knobs-select-value")!
+    const out: string[] = []
+    for (let w = 380; w >= 200; w -= 6) {
+      slot.style.width = `${w}px`
+      await frame()
+      const em = value.clientWidth / parseFloat(getComputedStyle(value).fontSize)
+      if (label.scrollWidth > label.clientWidth + 0.5 && em > 4.5) out.push(`${w}: ${em}`)
+    }
+    slot.style.width = ""
+    return out
+  })
+  expect(early).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test("on the GPU, the narrow column's labels draw whole and the host's pins sit above the canvas", async ({
+  page,
+}) => {
+  await open(page)
+  const gpu = panel(page, "tight-knobs-gpu")
+  await expect(gpu).toHaveAttribute("data-gpu-active", /true|false/)
+  test.skip((await gpu.getAttribute("data-gpu-active")) !== "true", "no WebGPU here")
+  // The overlay draws what's on screen.
+  await gpu.scrollIntoViewIfNeeded()
+  const drawn = () => page.evaluate(() => (window as any).__knobsGpu.lastTexts as string[])
+  await expect
+    .poll(drawn, { timeout: 10_000 })
+    .toEqual(expect.arrayContaining(["Look & threat by hour", "Dyna…"]))
+  expect(
+    (await drawn()).filter((t) => t.startsWith("Look") && t !== "Look & threat by hour"),
+  ).toEqual([])
+  // The pin is the host's DOM: its row doesn't trap it in a stacking context under the canvas.
+  const stack = await gpu.locator('[data-field="weather"]').evaluate((row) => ({
+    contain: getComputedStyle(row).contain,
+    z: getComputedStyle(row.querySelector(".knobs-accessory")!).zIndex,
+  }))
+  expect(stack.contain).not.toMatch(/layout|paint|strict|content/)
+  expect(Number(stack.z)).toBeGreaterThan(2147480002)
+})
