@@ -23,9 +23,10 @@ import {
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { bindLookSwitch, lookOptions } from "./lab-look"
-import { fxSchema, startFx } from "./lab-fx"
+import { fxSchema, type FxValues } from "./lab-fx"
 import { speedChanged, startOverlays } from "./lab-overlays"
-import { sceneTime } from "./lab-workspace"
+import { startScene } from "./lab-scene"
+import { liveFeed, sceneTime, workspace } from "./lab-workspace"
 
 const scenes = [
   "Outbreak · Streetlamp & rain",
@@ -515,6 +516,7 @@ const inspector = defineControls(
   },
   {
     storage: null,
+    enabled: true,
     groupLabels: {
       xform: "Transform",
       emitter: "Emitter",
@@ -561,9 +563,31 @@ const mountInspector = () =>
     },
   })
 let inspectorPanel = mountInspector()
-startFx(inspector, document.getElementById("viewport")!)
+// The viewport: a WebGPU street the station, details and FX values drive.
+const scene = startScene({
+  viewport: document.getElementById("viewport")!,
+  settings: () => settings,
+  fx: () => inspector.get() as unknown as FxValues,
+  subscribe: (cb) => {
+    station.subscribe(cb)
+    details.subscribe(cb)
+    inspector.subscribe(cb)
+  },
+  apply: (values) => {
+    const of = (d: ControlDescriptor[]) =>
+      Object.fromEntries(d.filter((x) => x.key in values).map((x) => [x.key, values[x.key]!]))
+    station.set(of(descriptors) as State)
+    details.set(of(detailDescriptors) as State)
+  },
+  sceneTime,
+  workspace,
+  live: liveFeed,
+})
 bindLookSwitch()
-speedChanged((speed) => sceneTime.timeline.update({ speed }))
+speedChanged((speed) => {
+  sceneTime.timeline.update({ speed })
+  scene.setSpeed(speed)
+})
 const overlays = startOverlays({
   station,
   details,

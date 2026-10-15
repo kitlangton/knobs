@@ -1,42 +1,22 @@
-// The Lab's timeline, under the viewport: it drives the fake scene's clock (the orb drifts, the
-// top bar's time follows) and its markers cue the scene: playback passing "Boom" retriggers the
-// explosion, as the inspector's Retrigger does. Space plays, ←/→ step frames, [ ] jump between
-// markers, I / O set the loop, M adds a marker; ⌘wheel or a pinch zooms the ruler.
-import { timeline, type TimelineMarker } from "knobs/ui"
+// The Lab's timeline, under the viewport: it drives the scene's clock (examples/lab-scene.ts
+// follows its seeks, and plays while it plays; the top bar's time follows) and its markers cue the
+// scene: playback passing "Boom" sets off the propane tank, as the inspector's Retrigger does, and
+// "Debris" and "Smoke" throw embers and a smoke burst. Space plays, ←/→ step frames, [ ] jump
+// between markers, I / O set the loop, M adds a marker; ⌘wheel or a pinch zooms the ruler.
+import { type SeekSource, timeline, type TimelineMarker } from "knobs/ui"
 import { uiLook } from "./lab-look"
 
-export function startTimeline(host: HTMLElement, viewport: HTMLElement) {
+export function startTimeline(host: HTMLElement) {
   const clock = document.querySelector<HTMLElement>(".top .mono")
-  const orb = viewport.querySelector<HTMLElement>(".orb")
-  const boom = document.createElement("div")
-  boom.className = "boom"
-  boom.setAttribute("aria-hidden", "true")
-  viewport.append(boom)
   const booms: number[] = []
+  const seeks = new Set<(time: number, source: SeekSource) => void>()
+  const cues = new Set<(id: string) => void>()
   const explode = () => {
     booms.push(performance.now())
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      boom.animate([{ opacity: 0.7 }, { opacity: 0 }], { duration: 200 })
-      return
-    }
-    // A flash that blooms and fades, and the orb kicked out of its rest.
-    boom.animate(
-      [
-        { opacity: 0.95, scale: "0.35" },
-        { opacity: 0.55, scale: "1", offset: 0.35 },
-        { opacity: 0, scale: "1.5" },
-      ],
-      { duration: 700, easing: "cubic-bezier(.2,.8,.2,1)" },
-    )
-    orb?.animate([{ scale: "1" }, { scale: "1.12", offset: 0.18 }, { scale: "1" }], {
-      duration: 520,
-      easing: "cubic-bezier(.2,.8,.2,1)",
-    })
+    for (const f of cues) f("boom")
   }
   const paint = (t: number) => {
     if (clock) clock.textContent = `${t.toFixed(2)}s · f${Math.round(t * 30)}`
-    if (orb)
-      orb.style.translate = `${(Math.sin(t * 1.3) * 18).toFixed(2)}px ${(Math.cos(t * 2.1) * 8).toFixed(2)}px`
   }
   const markers: TimelineMarker[] = [
     { id: "boom", time: 1.2, label: "Boom" },
@@ -51,9 +31,29 @@ export function startTimeline(host: HTMLElement, viewport: HTMLElement) {
     markers,
     ranges: [{ id: "loop", start: 0.8, end: 4.2, loop: true }],
     label: "Scene time",
-    onSeek: paint,
-    onCross: (m) => m.id === "boom" && explode(),
+    onSeek: (t, source) => {
+      paint(t)
+      for (const f of seeks) f(t, source)
+    },
+    onCross: (m) => {
+      if (m.id === "boom") explode()
+      else for (const f of cues) f(m.id)
+    },
   })
   paint(tl.time)
-  return { timeline: tl, explode, booms }
+  return {
+    timeline: tl,
+    explode,
+    booms,
+    /** Each seek: a scrub, a key, a marker jump, playback or code. */
+    onSeek(f: (time: number, source: SeekSource) => void) {
+      seeks.add(f)
+      return () => seeks.delete(f)
+    },
+    /** A marker passed in playback, or a retrigger ("boom"). */
+    onCue(f: (id: string) => void) {
+      cues.add(f)
+      return () => cues.delete(f)
+    },
+  }
 }

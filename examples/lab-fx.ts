@@ -1,16 +1,8 @@
-// The Lab's FX tab feeds the fake viewport: the sky and fog take their colours from gradients at
-// the hour, smoke puffs take theirs from a colour-over-life gradient by age, the lamp's glow is
-// drawn from a light-falloff curve and "the unseen" darkens the frame by a falloff of its own.
-// Everything is CSS gradients written on change, so nothing runs while nothing changes.
-import {
-  curve,
-  gradient,
-  knob,
-  sampleCurve,
-  sampleGradient,
-  type CurvePoint,
-  type GradientStop,
-} from "knobs"
+// The Lab's FX tab feeds the viewport's scene (examples/lab-scene.ts), which samples each field in
+// its shaders from a small ramp texture: the sky and fog take their colours from gradients at the
+// hour, smoke takes its colour from a colour-over-life gradient by age, every lamp fades by the
+// light-falloff curve, and "the unseen" darkens what lies past the lights by a curve of its own.
+import { curve, gradient, knob, type CurvePoint, type GradientStop } from "knobs"
 
 const fx = { tab: "fx" } as const
 const sky = (stops: [number, string][]) => stops.map(([at, color]) => ({ at, color }))
@@ -85,7 +77,7 @@ export const fxSchema = {
     },
   ),
   puffs: knob(6, { label: "Puffs", min: 1, max: 12, step: 1, group: "smoke" }),
-  hour: knob(17.5, { label: "Hour", min: 0, max: 24, step: 0.25, unit: "h", group: "sky", ...fx }),
+  hour: knob(21.5, { label: "Hour", min: 0, max: 24, step: 0.25, unit: "h", group: "sky", ...fx }),
   sky: gradient(SKIES.Clear, { label: "Sky by hour", group: "sky", presets: SKIES }),
   fog: gradient(
     [
@@ -109,7 +101,7 @@ export const fxSchema = {
   ),
 } as const
 
-type FxValues = {
+export type FxValues = {
   readonly smoke: readonly GradientStop[]
   readonly puffs: number
   readonly hour: number
@@ -117,53 +109,4 @@ type FxValues = {
   readonly fog: readonly GradientStop[]
   readonly falloff: readonly CurvePoint[]
   readonly unseen: readonly CurvePoint[]
-}
-
-/** Paints the viewport from the FX values, now and on each change. */
-export function startFx(
-  controls: { get(): unknown; subscribe(cb: () => void): () => void },
-  viewport: HTMLElement,
-) {
-  const layer = document.createElement("div")
-  layer.className = "fx"
-  layer.setAttribute("aria-hidden", "true")
-  layer.innerHTML = `<div class="fx-sky"></div><div class="fx-glow"></div><div class="fx-smoke"></div><div class="fx-unseen"></div>`
-  viewport.prepend(layer)
-  const [skyEl, glow, smoke, unseen] = [...layer.children] as HTMLElement[]
-  const rgba = (rgb: readonly number[], a: number) =>
-    `rgb(${rgb.map((v) => Math.round(v * 255)).join(" ")} / ${a.toFixed(3)})`
-  const paint = (v: FxValues) => {
-    const t = v.hour / 24
-    const top = sampleGradient(v.sky, t, { ...fxSchema.sky, as: "rgb" })
-    const low = sampleGradient(v.fog, t, { ...fxSchema.fog, as: "rgb" })
-    skyEl!.style.background = `linear-gradient(to bottom,${rgba(top, 1)},${rgba(low, 1)} 78%)`
-    // The lamp's glow: alpha by the falloff, out to its radius.
-    const steps = Array.from({ length: 13 }, (_, i) => i / 12)
-    glow!.style.background = `radial-gradient(circle at 62% 30%,${steps
-      .map(
-        (d) =>
-          `${rgba([1, 0.82, 0.55], 0.75 * sampleCurve(v.falloff, d, fxSchema.falloff))} ${(d * 46).toFixed(1)}%`,
-      )
-      .join(",")})`
-    // Smoke: puffs rising from the lamp, coloured and faded by their age.
-    smoke!.replaceChildren(
-      ...Array.from({ length: v.puffs }, (_, i) => {
-        const age = v.puffs === 1 ? 0.5 : i / (v.puffs - 1)
-        const puff = document.createElement("i")
-        const size = 18 + age * 70
-        puff.style.cssText = `left:calc(62% + ${(Math.sin(i * 1.7) * 26 * age).toFixed(1)}px);top:calc(30% - ${(age * 120).toFixed(1)}px);width:${size}px;height:${size}px;background:${sampleGradient(v.smoke, age, { ...fxSchema.smoke, as: "hex" })};opacity:${(0.9 - age * 0.55).toFixed(2)}`
-        return puff
-      }),
-    )
-    // The unseen: past the light, the frame sinks into darkness by its curve.
-    unseen!.style.background = `radial-gradient(ellipse at 55% 40%,${steps
-      .map(
-        (d) =>
-          `rgb(0 0 0 / ${sampleCurve(v.unseen, d, fxSchema.unseen).toFixed(3)}) ${(d * 78).toFixed(1)}%`,
-      )
-      .join(",")})`
-    viewport.dataset.hour = v.hour.toFixed(2)
-  }
-  paint(controls.get() as FxValues)
-  return controls.subscribe(() => paint(controls.get() as FxValues))
 }

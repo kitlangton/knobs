@@ -1,7 +1,8 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 
-// The Lab's Live dock (examples/lab-live.ts): readouts fed by a fake viewport. ?paused stops the
-// feed so tests step it with __live.tick().
+// The Lab's Live dock (examples/lab-live.ts): readouts fed by the viewport's scene (lab-scene.ts).
+// ?paused stops the feed so tests step it with __live.tick(); each test starts once the scene is up
+// (or has fallen back to its still), so its first frame lands before the test's own.
 const livePanel = (page: Page) => page.locator('[data-controls="lab-live"]')
 const diagPanel = (page: Page) => page.locator('[data-controls="lab-diag"]')
 const row = (scope: Locator, key: string) => scope.locator(`[data-field="${key}"]`)
@@ -12,6 +13,19 @@ async function open(page: Page, query = "?paused") {
   // The Lab look (labPreset): these tests measure its rows and colours.
   await page.goto(`/lab.html${query}${query ? "&" : "?"}look=lab`)
   await expect(row(livePanel(page), "fps")).toBeVisible()
+  await page.waitForFunction(
+    () => (window as any).__scene?.ready || (window as any).__scene?.failed,
+  )
+  // Paused, the scene draws again only when something changes (the layout settling, say).
+  const frames = () => page.evaluate(() => (window as any).__scene.stats.frames as number)
+  if (query.includes("paused"))
+    await expect
+      .poll(async () => {
+        const a = await frames()
+        await page.waitForTimeout(250)
+        return (await frames()) - a
+      })
+      .toBe(0)
   return errors
 }
 const tick = (page: Page, n = 1, ms = 16.7) =>
@@ -42,28 +56,35 @@ test("readouts: values land, formatted with units, and the dock's rows hold thei
   await tick(page, 60)
   const after = (await plot.boundingBox())!
   expect(after.x).toBeLessThanOrEqual(before.x + 0.5)
-  // The legend reads the newest frame's CPU and GPU time.
-  const frame = (await watched(page, "live", "frame")) as { cpu: number; gpu: number }
+  // The legend reads the newest frame's CPU and GPU time (GPU once a timestamp has come back).
+  const frame = (await watched(page, "live", "frame")) as { cpu: number; gpu?: number }
   const legend = row(live, "frame").locator(".knobs-rd-key .knobs-rd-num")
   await expect(legend.nth(0)).toHaveText(frame.cpu.toFixed(1))
-  await expect(legend.nth(1)).toHaveText(frame.gpu.toFixed(1))
+  if (frame.gpu !== undefined) await expect(legend.nth(1)).toHaveText(frame.gpu.toFixed(1))
   expect(errors).toEqual([])
 })
 
 test("readouts: text is throttled to a readable rate while samples arrive every frame", async ({
   page,
 }) => {
-  await open(page, "")
+  await open(page)
+  // A new value every frame (the scene's own samples come slower on a software GPU).
   const changes = await num(livePanel(page), "particles").evaluate(
     (el) =>
       new Promise<number>((resolve) => {
         let n = 0
         const mo = new MutationObserver(() => n++)
         mo.observe(el, { childList: true, characterData: true, subtree: true })
-        setTimeout(() => {
-          mo.disconnect()
-          resolve(n)
-        }, 2000)
+        const end = performance.now() + 2000
+        const feed = () => {
+          ;(window as any).__live.live.watch("particles", 10 + Math.random() * 80)
+          if (performance.now() < end) requestAnimationFrame(feed)
+          else {
+            mo.disconnect()
+            resolve(n)
+          }
+        }
+        requestAnimationFrame(feed)
       }),
   )
   // 4 Hz by default: about 8 writes in 2 s, never 120.
@@ -182,14 +203,14 @@ test("meter: unknown is indeterminate (busy), then it fills; past warn it takes 
   await open(page)
   const live = livePanel(page)
   // Offscreen readouts sleep, so the meters are brought into the dock's view.
-  await row(live, "stream").scrollIntoViewIfNeeded()
-  await tick(page, 1)
-  const stream = row(live, "stream").locator("[role=meter]")
-  await expect(stream).toHaveAttribute("aria-busy", "true")
-  await expect(num(live, "stream")).toHaveText("—")
+  await row(live, "soak").scrollIntoViewIfNeeded()
+  await page.evaluate(() => (window as any).__live.live.watch("soak", null))
+  const soak = row(live, "soak").locator("[role=meter]")
+  await expect(soak).toHaveAttribute("aria-busy", "true")
+  await expect(num(live, "soak")).toHaveText("—")
   await tick(page, 30, 100)
-  await expect(stream).not.toHaveAttribute("aria-busy", "true")
-  await expect(num(live, "stream")).toHaveText(/^\d+%$/)
+  await expect(soak).not.toHaveAttribute("aria-busy", "true")
+  await expect(num(live, "soak")).toHaveText(/^\d+%$/)
   const memory = row(live, "memory").locator("[role=meter]")
   const v = Number(await memory.getAttribute("aria-valuenow"))
   expect(v).toBeGreaterThan(0)
@@ -206,10 +227,25 @@ test("table: rows and columns from arrays, numbers right-aligned in tabular cell
   await expect(passes.locator(".knobs-rd-th")).toContainText(["ms", "Draws"])
   const rows = passes.locator(".knobs-rd-tr:not(.knobs-rd-thead)")
   await expect(rows).toHaveCount(4)
-  await expect(rows.first().locator(".knobs-rd-td").first()).toHaveText("Shadow")
-  await expect(rows.first().locator(".knobs-rd-td").nth(1)).toHaveText(/^0\.\d\d$/)
-  await expect(rows.first().locator(".knobs-rd-td").nth(2)).toHaveText("12")
-  await expect(rows.first().locator(".knobs-rd-td").nth(1)).toHaveAttribute("data-num", "")
+  await expect(rows.locator(".knobs-rd-td:first-child")).toHaveText([
+    "Scene",
+    "Rain & FX",
+    "Bloom",
+    "Post",
+  ])
+  await expect(rows.first().locator(".knobs-rd-td").nth(2)).toHaveText(/^\d+$/)
+  await expect(rows.first().locator(".knobs-rd-td").nth(2)).toHaveAttribute("data-num", "")
+  // Timed passes read in ms once their timestamps come back; without timestamp queries, a dash.
+  const ms = rows.first().locator(".knobs-rd-td").nth(1)
+  if (await page.evaluate(() => !!(window as any).__scene.renderer?.timed)) {
+    await expect
+      .poll(async () => {
+        await tick(page, 1)
+        return ms.textContent()
+      })
+      .toMatch(/^\d+\.\d\d$/)
+    await expect(ms).toHaveAttribute("data-num", "")
+  } else await expect(ms).toHaveText("—")
 })
 
 test("log: level chips and a filter narrow it, it follows the tail until scrolled, then offers the latest", async ({
@@ -234,6 +270,14 @@ test("log: level chips and a filter narrow it, it follows the tail until scrolle
   const lastShown = async () => (await shown()).at(-1) ?? ""
   // Following: the last line shown is the newest entry.
   await expect.poll(lastShown).toContain("Weather station ready")
+  // A history long enough to scroll.
+  await page.evaluate(() => {
+    for (let i = 0; i < 40; i++)
+      (window as any).__live.diag.watch("events", {
+        level: "debug",
+        text: `Frame ${i + 1} in budget`,
+      })
+  })
   await page.evaluate(() => {
     const d = (window as any).__live.diag
     d.watch("events", { level: "warn", text: "Gutter drip over budget" })
@@ -248,21 +292,29 @@ test("log: level chips and a filter narrow it, it follows the tail until scrolle
   await expect(lines).toHaveCount(2)
   await events.locator(".knobs-rd-chip[data-level=all]").click()
   // The filter marks its match in each line.
-  await events.locator(".knobs-rd-find").fill("frame 1")
-  await expect(lines.first().locator("mark")).toHaveText("frame 1")
-  await expect.poll(async () => (await shown()).every((t) => t.includes("frame 1"))).toBe(true)
+  await events.locator(".knobs-rd-find").fill("station")
+  await expect(lines.first().locator("mark")).toHaveText("station")
+  await expect.poll(async () => (await shown()).every((t) => t.includes("station"))).toBe(true)
   await events.locator(".knobs-rd-find").press("Escape")
   await expect(events.locator(".knobs-rd-find")).toHaveValue("")
+  // Cleared, the whole log is back and following its tail again.
+  await expect.poll(lastShown).toContain("Shadow atlas full")
   // Scrolled up, new entries don't pull it down; a pill counts them and jumps back.
-  await scroller.evaluate((el) => {
-    el.scrollTop = 0
-  })
+  const jump = events.locator(".knobs-rd-jump")
+  // Once it has seen the scroll, it stops following and offers the latest.
+  await expect
+    .poll(async () => {
+      await scroller.evaluate((el) => {
+        el.scrollTop = 0
+      })
+      return jump.evaluate((el) => Number(getComputedStyle(el).opacity))
+    })
+    .toBe(1)
   await page.evaluate(() => {
     const d = (window as any).__live.diag
     d.watch("events", "One")
     d.watch("events", "Two")
   })
-  const jump = events.locator(".knobs-rd-jump")
   await expect(jump).toHaveText("2 new ↓")
   await expect.poll(() => jump.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1)
   expect(await scroller.evaluate((el) => el.scrollTop)).toBe(0)
@@ -297,7 +349,7 @@ test("readouts draw on the GPU overlay as they do in the DOM", async ({ page }) 
         "GPU",
         "60 fps",
         fps,
-        "Shadow",
+        "Scene",
         "Draws",
         "/ 512 MB",
         "All",
@@ -305,7 +357,7 @@ test("readouts draw on the GPU overlay as they do in the DOM", async ({ page }) 
       ]),
     )
   const texts = await page.evaluate(() => (window as any).__knobsGpu.lastTexts as string[])
-  expect(texts.some((t) => t.startsWith("Warm-up frame"))).toBe(true)
+  expect(texts.some((t) => t.includes("Weather station ready"))).toBe(true)
   // The DOM's text and canvases stay put but don't paint under the overlay (once the fade settles).
   await expect
     .poll(() =>
