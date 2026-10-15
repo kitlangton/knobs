@@ -556,7 +556,7 @@ turns off.
 
 When there are more controls than a panel holds (a tuning page with a dozen groups), `mountPage` lays them out as a page: a sticky glass header with the title, the presets strip and **Random · Reset · Copy · Undo/Redo · ?**, then **sections** of cards: every group is a card, and each section is a column of them under its heading. As many columns fit as `columnWidth` allows. A long section takes two or more adjacent columns (its cards read down one and on to the next, and the extra columns line up under its heading); when the sections outnumber the columns, short ones stack, in order, with their headings. The split keeps the tallest column as short as it can be. Columns are independent stacks: a card that changes height moves only the cards below it in its own column, never another column.
 
-Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
+Everything moves rather than jumps. A card whose content changes (an editor opening, rows the filter hides, rows added or removed, a custom card swapping its content) eases to its new height and the cards below it glide. The columns re-balance only when the window gains or loses a column (after a brief pause while it's being resized), when cards come or go, when a section folds or opens, and when the filter changes, and then every card glides from where it was to its new place, interruptibly. With reduced motion, layout changes snap.
 
 ```ts
 import { createRemoteControls } from "knobs"
@@ -615,7 +615,7 @@ watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `
 speed.set("0.25") // the phone changed it
 ```
 
-**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. A reload brings back what each card was last in this tab (sessionStorage, with the panel's other per-tab state), over `collapsed`.
+**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. `description` puts one muted line under the title. What the user last chose comes back after a reload, and in a new tab, over `collapsed` (see [Folding sections](#folding-sections-summaries-and-the-jump-strip)).
 
 ```ts
 const connection = page.card({ title: "Connection", section: "Connection", collapsed: false, summary: "Waiting for iPhone…" })
@@ -638,7 +638,32 @@ scenarios.set(screen === "composer" ? [{ label: "Call", run: call }, { label: "D
 
 ```ts
 // The tune server's Context { id, groups, label? }: the phone's groups are the page's sections.
-page.highlight({ sections: phone.context.groups.map((g) => SECTIONS[g] ?? title(g)) }, { reveal: true })
+page.highlight({ sections: phone.context.groups.map((g) => SECTIONS[g] ?? title(g)) }, { reveal: true, expand: true })
+```
+
+With `{ expand: true }`, the highlight also opens the folded sections and cards it names. What it opened folds again once a later highlight (any, `null` included) moves away from it, unless you worked in it meanwhile (a click or a key inside, or folding it yourself makes it yours). Opening and refolding this way isn't remembered.
+
+#### Folding sections, summaries and the jump strip
+
+A page with many sections reads better folded. `sectionFolded` starts sections folded to their headings: `true` for all of them, or by section id (`{ Transcript: true }`). It's taken from the mount, then the store or remote options, then a field's `sectionFolded: true` (the first field of a section that says wins). A section that says either way can fold, and its heading toggles it by a click, or `Enter` / `Space` where it's focused. Its cards fold away where they are and the columns re-balance with a folded section counted as its heading alone; everything glides and can be interrupted. `page.foldSection(section, folded?)` does it from code (it toggles without `folded`), and `page.sectionFolded(section)` says which. The filter opens folded sections and cards while it runs.
+
+Folded things say what's in them. A folded group card trades its presets, reset and die for "Compact · 7 changed" (the matching group preset, or "Custom", then its changed rows; each part only when it applies). A folded section's heading reads "2 changed · 3 cards". `groupSummary(group, info)` and `sectionSummary(section, info)` on the mount replace either (`info` is a `FoldSummaryInfo`: `{ preset, changed, keys }`; return `null` for nothing). Group cards fold as in a panel, by a field's `folded` or `groupFolded` on the mount or store.
+
+Descriptions add one muted line under a title: `groupDescriptions` and `sectionDescriptions` by id (on the store, remote options or the mount), or `groupDescription` / `sectionDescription` on any field or descriptor (the first that gives one wins). `page.card({ description })` does the same for a custom card. The filter matches descriptions too.
+
+What the user folds and opens is remembered in the store's storage under its id, so it comes back after a reload and in a new tab, and wins over `sectionFolded`, `groupFolded` and `collapsed`. Nothing is remembered with `session: false` on the mount or `persist: "none"`. Remote controls have no storage unless you pass one.
+
+`nav: true` adds a strip of section chips to the sticky header. The chip for the section that fills most of the screen is underlined as you scroll, and each chip counts its section's changed rows. A chip glides the page to its section and opens it if it's folded (that's remembered); `⌥↑` / `⌥↓` do the same for the section before or after. Hint mode reaches the chips and the folding headings.
+
+```ts
+const page = mountPage(tune, app, {
+  sectionFolded: { "Session List": true, Transcript: true, Composer: true },
+  nav: true,
+  sectionDescriptions: { Playground: "What the phone shows, how fast it moves" },
+  groupSummary: (group, { preset, changed }) => (changed ? `${changed} changed` : preset),
+})
+page.foldSection("Composer", false)
+page.highlight({ sections: ["Transcript"] }, { expand: true }) // opens Transcript until the phone moves on
 ```
 
 On a page, the keyboard spans every card:
@@ -647,8 +672,9 @@ On a page, the keyboard spans every card:
 | --- | --- |
 | `↑` / `↓` or `j` / `k` | Every row and custom control, down each column and on to the next |
 | `Tab` / `⇧Tab` | Next / previous group (the whole card glides into view where it fits); from the header, the first highlighted card |
+| `⌥↑` / `⌥↓` | Glide to the previous / next section, opening it if it's folded; focus goes with it |
 | `1`–`9` | Apply the focused group's preset, by its number (in groups without them, digits still edit numbers; `Enter` always does) |
-| `Enter` on a collapsible card's header | Fold or open it |
+| `Enter` / `Space` on a section heading or a foldable card's header | Fold or open it (on a section heading or group card, `←` folds and `→` opens too) |
 | `/` | Filter rows by label, group or section, live; rows fold shut, cards with nothing left fold away and the rest glide into re-balanced columns; `Esc` clears |
 | `s` | Hints for what's on screen, custom cards included |
 
@@ -755,8 +781,11 @@ The package has two core exports selected through the standard `development` con
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
+| Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
 | `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)` and `panel.updateAccessories()`. |
-| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element, collapsed?, summary? })` adds custom cards (`card.collapse(bool)`, `card.collapsed`, `card.summary(text)`), and `page.highlight({ groups?, sections? } \| null, { reveal? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel` and `groupPresetDisplay` over the store's. |
+| `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
+| `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
+| `page.foldSection(section: string, folded?: boolean): void` / `page.sectionFolded(section: string): boolean` | Fold a section to its heading or open it (toggles without `folded`; remembered as the user's), and ask which it is. |
 
 ### Store (`Controls<S>`)
 
@@ -777,6 +806,8 @@ The package has two core exports selected through the standard `development` con
 - `controls.preset(id)` / `controls.matchingPreset()`
 - `controls.groupPresets` / `controls.groupPreset(group, index, { coalesce? })` / `controls.matchingGroupPreset(group)` / `controls.groupPresetDisplay`
 - `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
+- `controls.groupDescription(group): string | undefined` / `controls.sectionDescription(section): string | undefined`: `groupDescriptions` / `sectionDescriptions`, else the fields' `groupDescription` / `sectionDescription`
+- `controls.groupFolded` / `controls.sectionFolded`: how groups and a page's sections start, as given to `defineControls` or `createRemoteControls` (`groupFolded?: Record<string, boolean>`, `sectionFolded?: SectionFolded`); mounts read them under their own
 - `controls.code("ts" | "json" | "jsx", values?)`
 - `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element)` — floating chip + anchored panel

@@ -275,6 +275,7 @@ function buildPanel<S extends Schema>(
     ...((page
       ? [
           ["Tab / ⇧Tab", "Next / previous group"],
+          ["⌥↑ / ⌥↓", "Previous / next section"],
           ["1–9", "Group preset"],
           ...(page.filter !== false ? [["/", "Filter rows"]] : []),
         ]

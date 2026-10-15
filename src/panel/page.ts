@@ -52,8 +52,8 @@ export interface PageCardOptions {
   readonly element?: HTMLElement
   /**
    * Makes the card collapsible, starting folded (`true`) or open (`false`): its header toggles it
-   * (a click, or Enter where it's focused) and shows a caret. A reload brings back what it was
-   * last in this tab.
+   * (a click, or Enter where it's focused) and shows a caret. What the user last chose comes back
+   * after a reload (the store's storage), over this.
    */
   readonly collapsed?: boolean
   /** One quiet line on the right of a folded card's header, e.g. "iPhone · 0.142.4 · connected". */
