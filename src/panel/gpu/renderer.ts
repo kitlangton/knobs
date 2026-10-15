@@ -1173,7 +1173,7 @@ class GpuOverlayManager {
 
   /** How far an arriving or leaving node has revealed (its opacity while the reveal runs). */
   private presence(el: HTMLElement) {
-    if (el.dataset.presence === undefined) return 1
+    if (el.dataset.presence === undefined && !isRevealing(el)) return 1
     return Number(getComputedStyle(el).opacity) || 0
   }
 

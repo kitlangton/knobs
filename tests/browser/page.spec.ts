@@ -16,6 +16,7 @@ async function fixture(
     width?: number
     height?: number
     extra?: boolean
+    foldable?: boolean
   } = {},
 ) {
   await page.setViewportSize({ width: options.width ?? 1440, height: options.height ?? 900 })
@@ -32,7 +33,7 @@ async function fixture(
     const schema: Record<string, unknown> = {
       arrivalsFade: n(25, "Transcript · Arrivals", "Transcript"),
       arrivalsRise: n(6, "Transcript · Arrivals", "Transcript"),
-      rhythmGap: n(8, "Rhythm", "Transcript"),
+      rhythmGap: n(8, "Rhythm", "Transcript", o.foldable ? { folded: false } : {}),
       drawerRow: n(44, "drawer.spacing", "drawer", { groupLabel: "Spacing" }),
       drawerGap: n(2, "drawer.spacing", "drawer", { sectionLabel: "Session List" }),
       composerMargin: n(20, "composer.spacing", "composer"),
@@ -520,6 +521,44 @@ test("collapsible cards fold to their header, glide the cards below, and remembe
   await page.evaluate(() => (window as any).__fixture.card.collapse(false))
   await expect(again.locator('[data-card="Pairing"]')).not.toHaveAttribute("data-collapsed", "")
   await expect(again.getByRole("switch", { name: "Keep awake" })).toBeVisible()
+})
+
+test("a group's tile folds to its header like a panel group, and a filter opens it", async ({
+  page,
+}) => {
+  const root = await fixture(page, { foldable: true })
+  const rhythm = tile(root, "Rhythm")
+  const head = rhythm.locator(":scope > .knobs-group-head")
+  const card = rhythm.locator(":scope > .knobs-card")
+  await expect(head).toHaveAttribute("aria-expanded", "true")
+  await expect(rhythm.locator(".knobs-caret")).toBeVisible()
+  const open = (await rhythm.boundingBox())!.height
+  // Folding animates the card shut (the reveal the panel's groups use), not at once.
+  const animated = await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('.knobs-tile[data-group="Rhythm"]')!
+    t.querySelector<HTMLElement>(":scope > .knobs-group-head")!.click()
+    const c = t.querySelector<HTMLElement>(":scope > .knobs-card")!
+    return c.dataset.presence === "out" && c.getAnimations().length > 0
+  })
+  expect(animated).toBe(true)
+  await expect(card).toBeHidden()
+  await expect(head).toHaveAttribute("aria-expanded", "false")
+  await expect.poll(async () => (await rhythm.boundingBox())!.height).toBeLessThan(open - 20)
+  // Keys: Enter toggles, ← folds and → opens.
+  await head.focus()
+  await page.keyboard.press("Enter")
+  await expect(card).toBeVisible()
+  await page.keyboard.press("ArrowLeft")
+  await expect(card).toBeHidden()
+  // The filter opens it while it runs, then it folds again.
+  await page.keyboard.press("/")
+  await page.keyboard.type("gap")
+  await expect(card).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(card).toBeHidden()
+  await page.evaluate(() => (window as any).__fixture.page.fold("Rhythm", false))
+  await expect(card).toBeVisible()
+  await expect(head).toHaveAttribute("aria-expanded", "true")
 })
 
 test("the tune demo: the phone's screen drives the highlight; pairing folds the Connection card", async ({

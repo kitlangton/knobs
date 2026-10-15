@@ -718,6 +718,8 @@ const css = `
 .knobs-column>:not([hidden])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
 .knobs-tile{position:relative;min-width:0;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
 .knobs-tile>.knobs-card{margin:0}
+.knobs-tile[data-foldable]>.knobs-group-head{margin-bottom:0}
+.knobs-tile[data-foldable]>.knobs-card{margin-top:var(--k-head-gap)}
 /* A card's header is compact: as tall as its 20px controls, then a gap and a half before its rows. */
 .knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-head-gap);min-height:20px;color:var(--k-text);font-size:var(--k-text-title);font-weight:var(--k-title-weight);letter-spacing:-.01em;text-transform:none}
 .knobs-panel.knobs-page{--k-head-gap:calc(var(--k-gap) * 1.5)}

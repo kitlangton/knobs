@@ -489,6 +489,10 @@ function buildPanel<S extends Schema>(
     const inner = el("div")
     inner.className = "knobs-card"
     tile.append(inner)
+    if (group !== undefined && folds.has(group)) {
+      tile.dataset.foldable = ""
+      inner.hidden = folds.get(group)!
+    }
     cards.push(inner)
     gpuTiles.push(tile)
     layout!.add(tile, section ?? "")
@@ -539,17 +543,28 @@ function buildPanel<S extends Schema>(
     if (!folds.has(group)) return
     folds.set(group, next)
     const block = blocks.find((b) => b.group === group && !b.leaving)
-    if (!block) return
-    block.head?.setAttribute("aria-expanded", String(!next))
-    const card = block.card
+    const card = page ? tiles.get(group) : block?.card
+    if (!card) return
+    const head = page
+      ? card.parentElement!.querySelector<HTMLElement>(":scope > .knobs-group-head")
+      : block!.head
+    head?.setAttribute("aria-expanded", String(!next))
     // Focus inside a card folding away stays with the group, on its header.
     if (next && card.contains(doc.activeElement))
-      block.head?.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    applyVisibility(animate ? "reveal" : "instant")
+      head?.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+    // A page's tile folds to its header; the cards below in its column follow.
+    if (page) foldTile(card, next && !filterEl.value.trim(), animate)
+    else applyVisibility(animate ? "reveal" : "instant")
     if (remember)
       writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
     positioned?.constrain()
     wakeGpu()
+  }
+  function foldTile(card: HTMLElement, shut: boolean, animate: boolean) {
+    const showing = !card.hidden && card.dataset.leaving !== "true"
+    if (showing !== shut) return
+    if (animate || shifting.has(card)) shift(card, !shut, 0)
+    else card.hidden = shut
   }
   /** A fold's chevron: it points right while folded and down while open (see .knobs-caret). */
   function caretSvg() {
@@ -695,7 +710,7 @@ function buildPanel<S extends Schema>(
     if (ui) groupChips.set(groupName, ui)
     gRight.append(gReset, gRandom)
     // A panel's group folds when it says how it starts (`folded`, `groupFolded`).
-    const foldAt = page ? undefined : foldDefault(groupName)
+    const foldAt = foldDefault(groupName)
     let caret: SVGSVGElement | undefined
     if (foldAt !== undefined) {
       caret = caretSvg()
@@ -2182,7 +2197,9 @@ function buildPanel<S extends Schema>(
   const pageStops = () => {
     const nodes: HTMLElement[] = []
     for (const r of rows) nodes.push(...(r.editor?.stops() ?? [r.input]))
-    nodes.push(...body.querySelectorAll<HTMLElement>("[data-knobs-stop]"))
+    nodes.push(
+      ...body.querySelectorAll<HTMLElement>("[data-knobs-stop],.knobs-tile>[data-foldable]"),
+    )
     return nodes
       .filter(visible)
       .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
@@ -2249,43 +2266,46 @@ function buildPanel<S extends Schema>(
     if (!layout) return
     const query = filterEl.value.trim()
     root.toggleAttribute("data-filtering", Boolean(query))
-    layout.change(
-      () => {
-        for (const r of rows) {
-          const show =
-            !query ||
-            matchesFilter(
-              query,
-              r.display,
-              r.key,
-              r.group,
-              r.group && groupTitle(r.group, r.section),
-              r.section,
-              r.section && sectionTitle(r.section),
-            )
-          if (r.row.hidden === show) r.row.hidden = !show
-        }
-        for (const inner of tiles.values()) {
-          const tile = inner.parentElement!
-          // Rows folding away (a reshape dropped them) don't count.
-          const empty = ![...inner.children].some(
-            (c) => !(c as HTMLElement).hidden && (c as HTMLElement).dataset.presence !== "out",
+    layout.change(() => {
+      for (const r of rows) {
+        const show =
+          !query ||
+          matchesFilter(
+            query,
+            r.display,
+            r.key,
+            r.group,
+            r.group && groupTitle(r.group, r.section),
+            r.section,
+            r.section && sectionTitle(r.section),
           )
-          if (tile.hidden !== empty) tile.hidden = empty
+        if (r.row.hidden === show) r.row.hidden = !show
+      }
+      for (const inner of tiles.values()) {
+        const tile = inner.parentElement!
+        // Rows folding away (a reshape dropped them) don't count.
+        const empty = ![...inner.children].some(
+          (c) => !(c as HTMLElement).hidden && (c as HTMLElement).dataset.presence !== "out",
+        )
+        if (tile.hidden !== empty) tile.hidden = empty
+        // A folded tile opens while the filter runs, so its matches show.
+        const group = tile.dataset.group
+        if (group !== undefined && folds.has(group)) {
+          const shut = folds.get(group)! && !query
+          if (inner.hidden !== shut && !shifting.has(inner)) inner.hidden = shut
         }
-        for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
-          const hide =
-            Boolean(query) &&
-            !matchesFilter(
-              query,
-              tile.dataset.card,
-              tile.querySelector(".knobs-group-label")?.textContent ?? undefined,
-            )
-          if (tile.hidden !== hide) tile.hidden = hide
-        }
-      },
-      rows.map((r) => r.row),
-    )
+      }
+      for (const tile of body.querySelectorAll<HTMLElement>(".knobs-live")) {
+        const hide =
+          Boolean(query) &&
+          !matchesFilter(
+            query,
+            tile.dataset.card,
+            tile.querySelector(".knobs-group-label")?.textContent ?? undefined,
+          )
+        if (tile.hidden !== hide) tile.hidden = hide
+      }
+    }, [...rows.map((r) => r.row), ...[...tiles.values()].filter((c) => !shifting.has(c))])
   }
   function openFilter() {
     if (!(doc.activeElement === filterEl)) filterReturn = doc.activeElement as HTMLElement | null
