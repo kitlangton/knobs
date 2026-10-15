@@ -2,7 +2,7 @@
 // dock under it, and the inspector column on the right, in resizable splits that collapse to rails
 // and headers. Loaded by lab.ts before its panels mount into the right column.
 // ?rows=10000 fills the outliner with a big scene (the virtual-scroll check).
-import { applyMove, split, tree, type TreeAccess, type TreeMove } from "knobs/ui"
+import { applyMove, split, toast, tree, type TreeAccess, type TreeMove } from "knobs/ui"
 import { startLive } from "./lab-live"
 import { uiLook } from "./lab-look"
 import { startTimeline } from "./lab-timeline"
@@ -170,10 +170,23 @@ const names = (ids: readonly string[]) => {
   walk(scene)
   return ids.map((id) => index.get(id) ?? id)
 }
+/** The workbench's single-key commands, which the outliner leaves to the window. */
+const WORKBENCH: Record<string, string> = { f: "Frame selection", g: "Toggle grid", p: "Place" }
+const workbench: string[] = []
+window.addEventListener("keydown", (e) => {
+  const command = WORKBENCH[e.key.toLowerCase()]
+  if (!command || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  if ((e.target as Element | null)?.closest?.("input,textarea,[contenteditable],.knobs-panel"))
+    return
+  workbench.push(command)
+  toast(command)
+})
 const outline = tree(rows, {
   ...look,
   items: scene,
   label: "Scene objects",
+  // F, G and P are the workbench's; other letters jump to a label.
+  typeahead: (key) => !(key.toLowerCase() in WORKBENCH),
   expanded: ["lights", "props", "cones"],
   icon: (n) => n.icon,
   detail: (n) =>
@@ -341,6 +354,7 @@ Object.assign(window, {
     moves,
     hidden,
     locked,
+    workbench,
     get scene() {
       return scene
     },

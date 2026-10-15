@@ -250,10 +250,16 @@ test("tree: keys move, open and close; children slide out from under their paren
   await page.keyboard.press("Home")
   await expect(row(page, "Vehicles")).toHaveAttribute("aria-selected", "true")
   // Type-ahead.
-  await page.keyboard.type("pro")
-  await expect(row(page, "Props")).toHaveAttribute("aria-selected", "true")
+  await page.keyboard.type("ch")
+  await expect(row(page, "Characters")).toHaveAttribute("aria-selected", "true")
   await page.waitForTimeout(800)
   await page.keyboard.type("c")
+  await expect(row(page, "Cone")).toHaveAttribute("aria-selected", "true")
+  // F, G and P are the workbench's (typeahead: (key) => …): they reach the window, the row stays.
+  await page.waitForTimeout(800)
+  await page.keyboard.press("f")
+  await page.keyboard.press("p")
+  await expect.poll(() => ws(page, (w) => w.workbench)).toEqual(["Frame selection", "Place"])
   await expect(row(page, "Cone")).toHaveAttribute("aria-selected", "true")
   // The active row is the tree's active descendant, with a wash and no outline.
   const tree = page.locator(".knobs-tree")

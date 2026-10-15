@@ -81,6 +81,11 @@ export function Tree<T>(props: TreeProps<T>) {
       onRename: p.onRename && call("onRename"),
       onActivate: p.onActivate && call("onActivate"),
       canDrop: p.canDrop && (call("canDrop") as (m: never) => boolean),
+      // The latest rule, read per key.
+      typeahead: (key: string) => {
+        const rule = latest.current.typeahead ?? true
+        return typeof rule === "function" ? rule(key) : rule
+      },
     } as TreeOptions<T>)
     handle.current = t
     p.onReady?.(t)

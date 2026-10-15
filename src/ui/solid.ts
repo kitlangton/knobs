@@ -56,6 +56,10 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
       onMove: props.onMove && ((move) => props.onMove?.(move)),
       onRename: props.onRename && ((id, label) => props.onRename?.(id, label)),
       onActivate: props.onActivate && ((id) => props.onActivate?.(id)),
+      typeahead: (key) => {
+        const rule = props.typeahead ?? true
+        return typeof rule === "function" ? rule(key) : rule
+      },
     }),
   )
   untrack(() => props.onReady?.(t))
