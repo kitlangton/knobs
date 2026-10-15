@@ -556,6 +556,7 @@ function buildPanel<S extends Schema>(
     tile.append(inner)
     if (group !== undefined && folds.has(group)) {
       tile.dataset.foldable = ""
+      inner.dataset.drift = ""
       inner.hidden = folds.get(group)!
       tile.toggleAttribute("data-folded", folds.get(group)!)
     }

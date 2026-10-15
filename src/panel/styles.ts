@@ -189,7 +189,7 @@ const css = `
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
    contrast; a 1px specular rim catches the top edge. */
-.knobs-panel{transition:${TOKEN_TRANSITIONS};position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
+.knobs-panel{-webkit-user-select:none;user-select:none;transition:${TOKEN_TRANSITIONS};position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
   background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);scrollbar-width:thin;
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
@@ -425,6 +425,7 @@ const css = `
 .knobs-guide-dashed{stroke:var(--k-line-hi)}
 .knobs-spring:has(.knobs-active) .knobs-curve{transition:none}
 
+.knobs-panel :is(input,textarea,[contenteditable]){-webkit-user-select:text;user-select:text}
 .knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
 .knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
 .knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}

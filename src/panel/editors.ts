@@ -184,6 +184,7 @@ export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) 
   head.append(label, sum)
   const bodyEl = el("div", "knobs-x-body")
   bodyEl.hidden = !c.expanded
+  bodyEl.dataset.drift = ""
   bodyEl.append(...body)
   row.append(head, bodyEl)
   const isOpen = () => head.getAttribute("aria-expanded") === "true"
