@@ -101,6 +101,9 @@ test("a 50-key page preset forces a bounded number of style and layout passes", 
     // Before reads were batched ahead of writes: 57–67 style passes and 5–7 layouts per switch.
     expect(r.styles).toBeLessThanOrEqual(16)
     expect(r.layouts).toBeLessThanOrEqual(4)
+    // Those passes come before the writes. When the pills and the strip's focus read after them,
+    // the click restyled every changed readout (1,100–1,400 elements).
+    expect(r.elements).toBeLessThanOrEqual(100)
   }
   const bench = await page.evaluate(() => {
     const b = (window as any).__bench

@@ -54,7 +54,7 @@ import {
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
-import { placeSegPill } from "./seg.js"
+import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
@@ -1507,13 +1507,20 @@ function buildPanel<S extends Schema>(
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
     const moving = initialized ? rows.filter(changed) : rows
-    // Reads before writes: every row about to move reads its tokens before any row writes, and
-    // the pills measure once all of it is written (see measure.ts).
-    for (const row of moving) {
-      row.slider?.prime()
-      row.editor?.prime?.()
-    }
-    batchMeasures(() => showValues(values, moving, stagger, landing))
+    // The preset strip first: its chip's weight moves the chips, so it reads after its own writes
+    // and before the rows dirty everything else.
+    presetStrip.update()
+    // Reads before writes: every row about to move reads its tokens, and every segmented pill its
+    // options, before any row writes (see measure.ts).
+    batchMeasures(() => {
+      for (const row of moving) {
+        row.slider?.prime()
+        row.editor?.prime?.()
+        if (row.choice) primeSegPill(row.choice.seg, row.choice.buttons)
+      }
+      for (const chips of groupChips.values()) primeSegPill(chips.seg, chips.buttons)
+      showValues(values, moving, stagger, landing)
+    })
     shown = values as Values<S>
     initialized = true
 
@@ -1599,7 +1606,6 @@ function buildPanel<S extends Schema>(
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
-    presetStrip.update()
   }
 
   const visible = (node: HTMLElement) =>
