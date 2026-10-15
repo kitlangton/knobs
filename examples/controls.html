@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controls · knobs</title>
+    <script>
+      if (new URLSearchParams(location.search).get("theme") === "light")
+        document.documentElement.dataset.theme = "light"
+    </script>
+    <style>
+      /* knobs' own look: the panels' palette, type and radii on a calm page. The page scrolls in
+         .scroller, under a fixed top bar, so the WebGPU overlay clips panels at its edge. Nothing
+         that holds a panel makes a stacking context (no transform, opacity or z-index on it). */
+      :root {
+        --page: #101012; --card: #1c1c1e; --surface: rgba(255, 255, 255, .045); --surface-hi: rgba(255, 255, 255, .09);
+        --line: rgba(255, 255, 255, .075); --text: rgba(255, 255, 255, .92); --label: rgba(255, 255, 255, .62);
+        --dim: rgba(255, 255, 255, .4); --faint: rgba(255, 255, 255, .16); --accent: #fff; --pill: rgba(255, 255, 255, .13);
+        --lift: 0 1px 2px rgba(0, 0, 0, .16); --warm: #ffb35c; --cool: #7cc4ff;
+        --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+        --ease: cubic-bezier(.2, .8, .2, 1);
+        color-scheme: dark;
+      }
+      html[data-theme="light"] {
+        --page: #e9e9ee; --card: #f5f5f7; --surface: rgba(0, 0, 0, .04); --surface-hi: rgba(0, 0, 0, .08);
+        --line: rgba(0, 0, 0, .08); --text: rgba(0, 0, 0, .88); --label: rgba(60, 60, 67, .7);
+        --dim: rgba(60, 60, 67, .5); --faint: rgba(0, 0, 0, .14); --accent: #1c1c1e; --pill: #fff;
+        --lift: 0 1px 2px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .06); --warm: #e08a2a; --cool: #2f86d6;
+        color-scheme: light;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--page); color: var(--text); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; transition: background-color .3s var(--ease), color .3s var(--ease); }
+      a { color: inherit; text-decoration: none; outline: none; }
+      button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; outline: none; }
+      kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 5px; background: var(--surface-hi); color: var(--label); font: 500 11px/1 var(--sans); }
+
+      .app { display: grid; grid-template-rows: 48px auto 1fr; height: 100%; }
+      .top { display: flex; align-items: center; gap: 4px; padding: 0 14px 0 18px; }
+      .top .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 600; font-size: 13px; margin-right: 10px; }
+      .top .brand::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text); background: conic-gradient(from 210deg, var(--text) 0 4%, transparent 4%); }
+      .top .brand span { color: var(--dim); font-weight: 500; }
+      .top .spacer { flex: 1; }
+      .top .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; color: var(--label); transition: background-color .15s, color .15s; }
+      .top .btn:hover, .top .btn:focus-visible { background: var(--surface); color: var(--text); }
+      .top .btn kbd { height: 17px; font-size: 10.5px; }
+      .top .seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--surface); margin: 0 4px; }
+      .top .seg a { height: 24px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 7px; color: var(--label); font-size: 12px; transition: background-color .15s, color .15s, box-shadow .15s; }
+      .top .seg a:hover { color: var(--text); }
+      .top .seg a.on { background: var(--pill); color: var(--text); box-shadow: var(--lift); font-weight: 500; }
+      .top .theme { width: 30px; justify-content: center; padding: 0; }
+
+      /* Narrow screens: the index becomes a strip of categories under the top bar. */
+      .strip { display: none; gap: 2px; padding: 0 12px 8px; overflow-x: auto; scrollbar-width: none; }
+      .strip a { flex: none; height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 7px; color: var(--label); font-size: 12px; transition: background-color .15s, color .15s; }
+      .strip a.on { background: var(--surface-hi); color: var(--text); }
+
+      .scroller { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+      .layout { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 56px; max-width: 1180px; margin: 0 auto; padding: 28px 36px 160px; }
+      .index { position: sticky; top: 28px; align-self: start; max-height: calc(100vh - 48px - 56px); overflow: auto; scrollbar-width: none; padding-bottom: 12px; }
+      .index .cat { margin: 18px 0 4px 10px; color: var(--dim); font: 600 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
+      .index .cat:first-child { margin-top: 2px; }
+      .index a { display: block; padding: 4px 10px; border-radius: 7px; color: var(--label); font-size: 12.5px; transition: background-color .15s, color .15s; }
+      .index a:hover { color: var(--text); }
+      .index a.on { background: var(--surface); color: var(--text); font-weight: 500; }
+      .index a:focus-visible, .strip a:focus-visible, .top .seg a:focus-visible { background: var(--surface-hi); color: var(--text); }
+
+      .intro { padding: 4px 0 8px; }
+      .intro h1 { margin: 0 0 6px; font: 600 26px/1.15 var(--sans); letter-spacing: -.015em; }
+      .intro p { margin: 0; max-width: 62ch; color: var(--label); font-size: 14px; }
+      .intro p + p { margin-top: 8px; color: var(--dim); font-size: 12.5px; }
+
+      .cathead { margin: 64px 0 0; padding-bottom: 10px; color: var(--dim); font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
+      .cathead:first-of-type { margin-top: 40px; }
+
+      section.demo { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px 28px; padding: 26px 0 30px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
+      section.demo > header { grid-column: 1 / -1; }
+      section.demo h2 { margin: 0 0 3px; font: 600 15px/1.3 var(--sans); letter-spacing: -.005em; }
+      section.demo h2 code { font: 500 12px var(--mono); color: var(--dim); margin-left: 8px; letter-spacing: 0; }
+      section.demo header p { margin: 0; max-width: 64ch; color: var(--label); }
+      section.demo .slot { min-width: 0; }
+      section.demo .slot .knobs-panel { --k-width: 100%; }
+      section.demo.wide { grid-template-columns: minmax(0, 1fr); }
+      .side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+      .try { margin: 0; padding: 0; list-style: none; color: var(--dim); font-size: 12px; }
+      .try li { padding: 3px 0; }
+      .try li::before { content: "·"; margin: 0 8px 0 2px; color: var(--faint); }
+      .try kbd { height: 17px; min-width: 17px; padding: 0 4px; font-size: 10.5px; margin: 0 1px; }
+      .tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: var(--surface-hi); color: var(--label); font: 500 10.5px/1.5 var(--sans); letter-spacing: .02em; vertical-align: 2px; }
+
+      /* Previews: small stages the controls drive. Transforms and opacity only. */
+      .stage { position: relative; min-height: 188px; border-radius: 14px; background: var(--surface); overflow: hidden; display: grid; place-items: center; user-select: none; -webkit-user-select: none; }
+      .side > .stage { flex: 1 1 auto; }
+      .stage .caption { position: absolute; left: 12px; bottom: 9px; color: var(--dim); font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; }
+      .stage .caption.right { left: auto; right: 12px; }
+      .stage[data-replay] { cursor: pointer; }
+      .stage:focus-visible { background: var(--surface-hi); }
+      .try code, header p code { font: 11.5px var(--mono); color: var(--label); }
+      .abs { position: absolute; left: 0; top: 0; will-change: transform; }
+
+      .host { border-radius: 14px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); padding: 6px 0; }
+      .host .knobs-panel { --k-width: 100%; }
+      .looks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+      .looks h3 { margin: 0 0 8px; color: var(--dim); font: 600 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
+      .looks .lab-host { background: #191a1e; padding: 0; }
+      .looks .flat-host { --k-frame: flat; }
+
+      .ui-box { position: relative; height: 230px; border-radius: 14px; background: var(--surface); overflow: hidden; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 9px; background: var(--surface-hi); color: var(--text); font-size: 12.5px; transition: background-color .15s; }
+      .chip:hover, .chip:focus-visible { background: var(--faint); }
+      .chip.quiet { background: var(--surface); color: var(--label); }
+      .chip.danger { color: #ff6b5e; }
+      html[data-theme="light"] .chip.danger { color: #d63a2c; }
+
+      @media (max-width: 1040px) {
+        .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 24px 140px; }
+        .index { display: none; }
+        .strip { display: flex; }
+        .looks { grid-template-columns: minmax(0, 1fr); }
+      }
+      @media (max-width: 720px) {
+        section.demo { grid-template-columns: minmax(0, 1fr); }
+        .top .hide-narrow { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html, body, .index a, .strip a, .chip { transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="top">
+        <span class="brand">knobs <span>Controls</span></span>
+        <a class="btn hide-narrow" href="lab.html" data-tip="The Lab: knobs in a dense editor">Lab</a>
+        <span class="spacer"></span>
+        <button class="btn" id="palette" data-tip="Every section and control" data-tip-shortcut="Mod+K">Search <kbd>⌘K</kbd></button>
+        <div class="seg hide-narrow" role="radiogroup" aria-label="Renderer"><a id="dom" role="radio" data-tip="Panels drawn by the DOM">DOM</a><a id="gpu" role="radio" data-tip="Panels drawn by WebGPU">GPU</a></div>
+        <button class="btn theme" id="theme" aria-label="Light or dark" data-tip="Light or dark">☾</button>
+      </div>
+      <nav class="strip" id="strip" aria-label="Categories"></nav>
+      <div class="scroller" id="scroller">
+        <div class="layout">
+          <nav class="index" id="index" aria-label="Sections"></nav>
+          <main id="main">
+            <div class="intro">
+              <h1>Every control</h1>
+              <p>Each panel below is live. Most drive a small preview beside them; a few stand alone. Click into a panel and the keyboard is yours: arrows, <kbd>r</kbd> for Random, <kbd>⇧R</kbd> to reset, <kbd>u</kbd> to undo, <kbd>?</kbd> for the rest.</p>
+              <p id="renderer-note"></p>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./controls.ts"></script>
+  </body>
+</html>

@@ -79,6 +79,8 @@
       .lab-menu button[aria-checked="true"]::after { content: " ✓"; color: var(--blue); }
       .top .look-switch { margin-left: 4px; }
       .top .theme { width: 26px; padding: 0; }
+      .top a.nav { color: var(--label); text-decoration: none; padding: 2px 7px; }
+      .top a.nav:hover { color: var(--text); background: #1e2024; }
       html[data-look="lab"] .top .theme { display: none; }
 
       /* knobs' own look (the default): the panels' palette, type and radii on the host's chrome.
@@ -108,6 +110,8 @@
       html[data-look="knobs"] .top b::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text); background: conic-gradient(from 210deg, var(--text) 0 4%, transparent 4%) ; }
       html[data-look="knobs"] .top > button { height: 26px; min-width: 26px; padding: 0 8px; color: var(--label); }
       html[data-look="knobs"] .top > button:hover { color: var(--text); }
+      html[data-look="knobs"] .top a.nav { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border-radius: 8px; transition: background .15s, color .15s; }
+      html[data-look="knobs"] .top a.nav:hover { background: var(--surface); color: var(--text); }
       html[data-look="knobs"] .top .seg { gap: 2px; padding: 2px; border: 0; border-radius: 9px; background: var(--field); }
       html[data-look="knobs"] .top .seg button { height: 24px; padding: 0 10px; border-radius: 7px; color: var(--label); }
       html[data-look="knobs"] .top .seg button:hover { background: transparent; color: var(--text); }
@@ -165,6 +169,7 @@
         <button id="restart" aria-label="Restart" data-tip="Restart the station">⟲</button><button id="pause" aria-label="Pause the live feed">❚❚</button><button data-tip="Playback speed">1×</button>
         <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
         <span class="spacer"></span>
+        <a class="nav" href="controls.html" data-tip="Every control, one by one">Controls</a>
         <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look">knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat">Lab</button></div>
         <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark">☾</button>
         <button data-tip="Switch game">All games ▾</button>
