@@ -100,8 +100,6 @@ export interface Tree<T> {
 }
 
 const MOVE = springMotion({ duration: 0.34, bounce: 0.02 })
-const CASCADE_MS = 14
-const CASCADE_MAX = 168
 const EDGE = 28
 
 interface View<T> {
@@ -406,9 +404,9 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
 
   /**
    * Brings views in line with `rows`: `"snap"` places everything; `"animate"` springs rows that
-   * stay to their new places, reveals new ones from under their parent (cascading after
-   * `toggled`) and folds removed ones back under theirs; `"scroll"` only adds and drops rows at
-   * the window's edges.
+   * stay to their new places, reveals new ones from under their parent and folds removed ones
+   * back under theirs; `"scroll"` only adds and drops rows at the window's edges. Rows opened or
+   * shut under `toggled` move as one block with the rows below, like a drawer, so none cross.
    */
   function sync(mode: "snap" | "animate" | "scroll", toggled?: string) {
     const animate = mode !== "snap" && !reducedMotion(win)
@@ -440,7 +438,13 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       return best
     }
     const toggledView = toggled ? views.get(toggled) : undefined
-    let cascade = 0
+    const drawer = (ids: Iterable<{ id: string }>, keep: (id: string) => boolean) => {
+      let n = 0
+      if (toggledView) for (const r of ids) if (keep(r.id) && isUnder(r.id, toggled!)) n++
+      return n * h
+    }
+    const opened = mode === "animate" ? drawer(rows, (id) => !before.has(id)) : 0
+    const shut = mode === "animate" ? drawer(lastRows, (id) => !rowIndex.has(id)) : 0
     for (const id of wanted) {
       const i = rowIndex.get(id)!
       const row = rows[i]!
@@ -451,19 +455,18 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
         if (!animate) v.y.snap(goal)
         else {
           let from = goal - shiftNear(i)
-          let delay = 0
           if (mode === "animate" && !before.has(id)) {
-            // New: out from under its nearest drawn ancestor (the row that opened, cascading).
+            // New: out from under the row that opened (the whole block slides down together), or
+            // its nearest drawn ancestor.
             const under = toggledView && isUnder(id, toggled!) ? toggled! : nearestDrawn(id)
             const parent = under ? views.get(under) : undefined
             if (parent) {
               v.under = under
-              from = parent.y.x
-              if (under === toggled) delay = Math.min(CASCADE_MAX, cascade++ * CASCADE_MS)
+              from = under === toggled ? goal - opened + parent.y.x - parent.y.target : parent.y.x
             }
           }
           v.y.snap(from)
-          v.y.set(goal, delay)
+          v.y.set(goal)
         }
       }
       bind(v, row)
@@ -484,7 +487,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       }
       v.leaving = true
       v.under = under
-      v.y.set(parent.y.target)
+      v.y.set(under === toggled ? v.y.target - shut : parent.y.target)
       v.el.removeAttribute("data-active")
       v.el.setAttribute("aria-selected", "false")
     }

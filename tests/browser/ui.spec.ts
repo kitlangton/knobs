@@ -202,13 +202,14 @@ test("split: a column dock folds to its header, and a panel in a pane reflows wi
   expect((await panel.boundingBox())!.width).toBeCloseTo(before + 64, 0)
 })
 
-test("tree: keys move, open and close; children cascade out from under their parent", async ({
+test("tree: keys move, open and close; children slide out from under their parent as one block", async ({
   page,
 }) => {
   const errors = await open(page)
   await row(page, "Vehicles").click()
   await page.keyboard.press("ArrowRight")
-  // Rows below glide down over several frames while the child slides out from under Vehicles.
+  // Rows below glide down over several frames while the children slide out from under Vehicles,
+  // all of them together like a drawer, so no two rows ever cross.
   const frames = await page.evaluate(
     () =>
       new Promise<{ lights: number; child: number; opacity: number }[]>((done) => {
@@ -234,6 +235,9 @@ test("tree: keys move, open and close; children cascade out from under their par
   expect(last.child + 26).toBeCloseTo(last.lights, 0)
   expect(last.opacity).toBe(1)
   expect(frames[0]!.child).toBeLessThan(last.child)
+  for (const f of frames)
+    if (!Number.isNaN(f.child))
+      expect(Math.abs(f.lights - f.child - (last.lights - last.child))).toBeLessThan(1.5)
   await page.keyboard.press("ArrowDown")
   await expect(row(page, "Getaway · Muscle")).toHaveAttribute("aria-selected", "true")
   await page.keyboard.press("ArrowLeft")
