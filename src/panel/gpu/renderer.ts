@@ -716,6 +716,8 @@ class GpuOverlayManager {
     }
     win.addEventListener("scroll", this.wake, { capture: true, passive: true })
     win.addEventListener("resize", bumpLayout, { passive: true })
+    // knobs/ui splits announce panes resizing, collapsing and sliding.
+    this.doc.addEventListener("knobs-layout", bumpLayout)
     win.visualViewport?.addEventListener("resize", bumpLayout, { passive: true })
     win.visualViewport?.addEventListener("scroll", this.wake, { passive: true })
     this.doc.addEventListener("pointermove", this.onDocPointer, { passive: true })
@@ -2639,6 +2641,11 @@ class GpuOverlayManager {
       let panelClip = intersectClip(outerClip, [pRect.left, pRect.top, pRect.right, pRect.bottom])
       if (morph)
         panelClip = intersectClip(panelClip, [card.left, card.top, card.right, card.bottom])
+      // Clipped away entirely (a collapsed pane, scrolled out of its column): nothing to draw.
+      if (panelClip[2] <= panelClip[0] || panelClip[3] <= panelClip[1]) {
+        this.placeBackdrop(panel)
+        continue
+      }
       const pillFill = tokens.pillBg
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
