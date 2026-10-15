@@ -2,7 +2,8 @@
 // strips) and a curve (points on a graph with a grid). Each is an EditorRow (see editors.ts): it
 // owns its DOM, pointer and keys, and hands the GPU overlay the numbers it draws from, so both
 // renderers place things identically. Strips and curves are drawn from a fixed number of samples,
-// so a preset morphs them sample by sample (the DOM's transitions, the GPU's morph spring).
+// so a preset morphs them sample by sample, and their stops and points keep their identity: one
+// morph per row (ramp-morph.ts) that the DOM writes each frame and the GPU reads.
 import { fitColor, formatColor, oklchToRgb, parseColor } from "../core/color.js"
 import {
   curveSamples,
@@ -24,7 +25,6 @@ import {
   gesture,
   measure,
   panPresets,
-  place,
   plainKey,
   reducedMotion,
   rgbCss,
@@ -41,37 +41,13 @@ import { arrowOf, bigOf } from "./prefs.js"
 import { curveSmear, MORPH_SPRING, RampMorph, sampleAt, type MorphDot } from "./ramp-morph.js"
 import { onPan } from "./swipe.js"
 
-/** The custom properties a gradient strip's samples ride on (registered, so they transition). */
+/** The custom properties a gradient strip's samples ride on (written each frame of a morph). */
 export const GRADIENT_VARS = Array.from({ length: GRADIENT_SAMPLES }, (_, i) => `--kgrad-${i}`)
 /** How far past its strip or graph a dragged handle comes off (and goes when let go). */
 const LEAVE = 28
 const locked = (row: HTMLElement) => row.closest("[data-disabled],[data-readonly]") !== null
 const hinting = (row: HTMLElement) => row.closest(".knobs-hinting") !== null
 const quiet = { preventScroll: true, focusVisible: false } as FocusOptions
-
-/** A new handle fades and grows in (`data-born`), unless it arrived with the row. */
-function born(node: HTMLElement) {
-  node.dataset.born = ""
-  node.addEventListener("animationend", () => delete node.dataset.born, { once: true })
-  setTimeout(() => delete node.dataset.born, 400)
-}
-
-/** Keeps `list` at `n` nodes made by `make`, appended to `parent`; new ones are born unless `quietly`. */
-function sync(
-  list: HTMLElement[],
-  n: number,
-  parent: Element,
-  make: () => HTMLElement,
-  quietly: boolean,
-) {
-  while (list.length < n) {
-    const node = make()
-    if (!quietly) born(node)
-    parent.append(node)
-    list.push(node)
-  }
-  while (list.length > n) list.pop()!.remove()
-}
 
 /** Named presets as chips in a radiogroup (the easing editor's look); ←/→ cycle them. */
 function presetChips(
@@ -149,9 +125,6 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   let shown: readonly GradientStop[] = f.value
   let rgbs = shown.map(stopRgb)
   let selected = 0
-  let samples: number[] = []
-  const handles: HTMLElement[] = []
-  const ticks: HTMLElement[] = []
   let dragging = false
   let leaving = false
   let initialized = false
@@ -177,31 +150,106 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   /** A stop held by a pan: its band along the strip (px), past an end giving a little. */
   let panAt: Band | undefined
   const held = () => dragging || panAt !== undefined || editor.dragging()
-  const stopX = (i: number) => xOf(shown[i]!.at) + (panAt && i === selected ? panAt.give : 0)
-
-  const layout = (instant: boolean) => {
-    sync(handles, shown.length, strip, () => el("i", "knobs-grad-stop"), instant || !initialized)
-    sync(ticks, shown.length, mini, () => el("i"), instant || !initialized)
-    place([...handles, ...ticks], instant, () => {
-      for (const [i, s] of shown.entries()) {
-        const h = handles[i]!
-        if (size.w) h.style.left = `${stopX(i)}px`
-        h.style.backgroundColor = rgbCss(rgbs[i]!)
-        h.toggleAttribute("data-selected", i === selected)
-        h.toggleAttribute("data-leaving", leaving && i === selected)
-        ticks[i]!.style.left = `${s.at * 100}%`
-      }
-    })
+  // What's drawn: the strip's samples and each stop (where it sits, then its colour) moving
+  // between gradients on one spring, the stops keeping their identity as a curve's points do.
+  const rgbAt = (s: readonly number[], t: number) => {
+    const n = s.length / 3
+    const f = clamp(t, 0, 1) * (n - 1)
+    const i = Math.min(n - 2, Math.floor(f))
+    const k = f - i
+    return [0, 1, 2].map((c) => s[i * 3 + c]! + (s[(i + 1) * 3 + c]! - s[i * 3 + c]!) * k)
   }
-  const paint = (instant: boolean) => {
-    samples = gradientSamples(shown, f.space)
-    place([strip, mini], instant, () => {
-      for (let i = 0; i < GRADIENT_SAMPLES; i++) {
-        const v = rgbCss(samples.slice(i * 3, i * 3 + 3))
-        strip.style.setProperty(GRADIENT_VARS[i]!, v)
-        mini.style.setProperty(GRADIENT_VARS[i]!, v)
+  const morph = new RampMorph(3, 5, MORPH_SPRING, (to, s) => [to[0]!, 0, ...rgbAt(s, to[0]!)])
+  const unitStops = () => {
+    const room = Math.max(1, size.w - inset() * 2)
+    return shown.map((s, i) => [
+      s.at + (panAt && i === selected ? panAt.give / room : 0),
+      0,
+      ...rgbs[i]!,
+    ])
+  }
+  const stops = new Map<number, { stop: HTMLElement; tick: HTMLElement }>()
+  const holder = c.doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+  holder.setAttribute("aria-hidden", "true")
+  holder.setAttribute("width", "0")
+  holder.setAttribute("height", "0")
+  holder.style.position = "absolute"
+  strip.append(holder)
+  const smears = smearFilters(c.doc, holder)
+  let strength = 0
+  const nodesOf = (id: number) => {
+    let n = stops.get(id)
+    if (!n) {
+      n = { stop: el("i", "knobs-grad-stop"), tick: el("i") }
+      strip.append(n.stop)
+      mini.append(n.tick)
+      stops.set(id, n)
+    }
+    return n
+  }
+  const all = () => [...morph.live, ...morph.gone]
+  /** A stop's smear along the strip (px): 0 at rest and in hand. */
+  const stopSmear = (d: MorphDot): [number, number] =>
+    strength && morph.moving
+      ? [
+          Math.sign(d.vel[0]!) * curveSmear(Math.abs(d.vel[0]!) * (size.w - inset() * 2), strength),
+          0,
+        ]
+      : [0, 0]
+  /** Writes the morph's frame to the DOM (the GPU reads the same numbers through its binding). */
+  const draw = () => {
+    const gpu = x.row.closest('[data-gpu-active="true"]') !== null
+    const seen = new Set<number>()
+    for (const [i, d] of morph.live.entries()) {
+      seen.add(d.id)
+      const { stop } = nodesOf(d.id)
+      stop.toggleAttribute("data-selected", i === selected)
+      stop.toggleAttribute("data-leaving", leaving && i === selected)
+    }
+    for (const d of morph.gone) {
+      seen.add(d.id)
+      const { stop } = nodesOf(d.id)
+      stop.removeAttribute("data-selected")
+      stop.removeAttribute("data-leaving")
+    }
+    for (const [id, n] of stops)
+      if (!seen.has(id)) {
+        n.stop.remove()
+        n.tick.remove()
+        smears.drop(n.stop)
+        stops.delete(id)
       }
+    if (gpu) return
+    const s = morph.samples
+    for (let i = 0; i < GRADIENT_SAMPLES; i++) {
+      const v = rgbCss(s.slice(i * 3, i * 3 + 3))
+      strip.style.setProperty(GRADIENT_VARS[i]!, v)
+      mini.style.setProperty(GRADIENT_VARS[i]!, v)
+    }
+    for (const d of all()) {
+      const { stop, tick } = nodesOf(d.id)
+      if (size.w) stop.style.left = `${xOf(d.at[0]!)}px`
+      stop.style.backgroundColor = rgbCss(d.at.slice(2, 5))
+      const grow = d.at[5]!
+      stop.style.setProperty("--kgs-grow", grow >= 0.999 ? "" : grow.toFixed(3))
+      tick.style.left = `${d.at[0]! * 100}%`
+      tick.style.setProperty("--kgs-grow", grow >= 0.999 ? "" : grow.toFixed(3))
+      smears.dot(stop, ...stopSmear(d))
+    }
+  }
+  const loop = morphLoop(c, morph, draw)
+  const layout = (instant: boolean, delay = 0) => {
+    const still = instant || !initialized || reducedMotion(c.doc)
+    morph.set(gradientSamples(shown, f.space), unitStops(), {
+      instant: still,
+      delay,
+      now: performance.now(),
     })
+    if (morph.moving) {
+      strength = curveBlur(x.row)
+      loop.kick()
+    }
+    draw()
   }
   const describe = () => {
     const s = shown[selected]
@@ -428,20 +476,27 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
     x: x.gpu,
     read,
     mini,
-    ticks: () => ticks.map((node, i) => ({ el: node, x: (shown[i]?.at ?? 0) * miniSize.w })),
-    samples: () => samples,
+    advance: (now) => morph.step(now),
+    ticks: () =>
+      all().map((d) => ({ el: nodesOf(d.id).tick, x: d.at[0]! * miniSize.w, grow: d.at[5]! })),
+    samples: () => morph.samples,
     strip,
     inset,
     handles: (): GpuRampHandle[] =>
       size.w
-        ? shown.map((s, i) => ({
-            el: handles[i]!,
-            x: stopX(i),
-            y: size.h / 2,
-            rgb: rgbs[i],
-            selected: i === selected,
-            leaving: leaving && i === selected,
-          }))
+        ? all().map((d, i) => {
+            const mine = d.into === undefined && i === selected
+            return {
+              el: nodesOf(d.id).stop,
+              x: xOf(d.at[0]!),
+              y: size.h / 2,
+              rgb: d.at.slice(2, 5) as [number, number, number],
+              selected: mine,
+              leaving: leaving && mine,
+              grow: d.at[5]!,
+              smear: stopSmear(d),
+            }
+          })
         : [],
     strips: editor.strips.map((s) => s.gpu),
     color: editor.color,
@@ -473,15 +528,12 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
           },
         }
       : {}),
-    update(value, _delay, instant = false, mixed = false) {
-      const prev = shown
+    update(value, delay, instant = false, mixed = false) {
       shown = value as readonly GradientStop[]
       rgbs = shown.map(stopRgb)
       if (selected >= shown.length) selected = shown.length - 1
       read.textContent = mixed ? "—" : ""
-      const still = !initialized || instant || held()
-      if (!initialized || !sameRamp(prev, shown) || !samples.length) paint(still)
-      layout(still)
+      layout(!initialized || instant || held(), delay)
       initialized = true
       showColor(false, mixed)
       describe()
@@ -491,6 +543,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       size.disconnect()
       miniSize.disconnect()
       editor.dispose()
+      loop.dispose()
     },
   }
 }

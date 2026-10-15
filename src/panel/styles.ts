@@ -29,7 +29,6 @@ const gradStops = (at: (i: number) => string) =>
   Array.from({ length: GRAD_N }, (_, i) => `var(--kgrad-${i}) ${at(i)}`).join(",")
 const GRAD_STRIP = `linear-gradient(to right,${gradStops((i) => `calc(var(--kg-r) + (100% - var(--kg-r) * 2) * ${Number((i / (GRAD_N - 1)).toFixed(5))})`)})`
 const GRAD_MINI = `linear-gradient(to right,${gradStops((i) => `${Number(((i / (GRAD_N - 1)) * 100).toFixed(3))}%`)})`
-const GRAD_T = Array.from({ length: GRAD_N }, (_, i) => `--kgrad-${i} ${FILL_T} ${DELAY}`).join(",")
 const GRAD_PROPS = Array.from(
   { length: GRAD_N },
   (_, i) => `@property --kgrad-${i}{syntax:"<color>";inherits:false;initial-value:transparent}`,
@@ -89,6 +88,7 @@ const defaultsCss = `
 @property --kc-value-size{syntax:"<length>";inherits:true;initial-value:11.5px}
 @property --kr-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kpt-sel{syntax:"<number>";inherits:false;initial-value:1}
+@property --kgs-sel{syntax:"<number>";inherits:false;initial-value:1}
 @property --kr-hi{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-hi{syntax:"<number>";inherits:true;initial-value:0}
@@ -478,18 +478,17 @@ const css = `
 /* Gradients: a swatch strip with stop ticks in the head; a wide strip with a handle per stop (the
    selected one full size), then that stop's colour strips. The ramp runs a handle's radius in from
    each end, as the colour strips' do. */
-.knobs-grad-mini{position:relative;flex:none;width:calc(var(--k-row) * 2.5);height:var(--k-track-h);border-radius:var(--k-radius-sm);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_MINI};transition:${GRAD_T}}
-.knobs-grad-mini>i{position:absolute;top:calc(100% + 2px);left:0;width:1px;height:3px;margin-left:-.5px;background:var(--k-dim);transition:left ${FILL_T} ${DELAY},opacity .15s}
-.knobs-grad{--kg-h:calc(var(--k-row) - 6px);--kg-r:calc(var(--kg-h) / 2);--kg-pin:round(calc(var(--kg-h) * .42),1px);position:relative;height:var(--kg-h);margin:2px 0 var(--k-gap);border-radius:var(--k-round);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_STRIP};cursor:pointer;touch-action:none;user-select:none;outline:none;transition:${GRAD_T}}
-.knobs-grad-stop{position:absolute;top:50%;left:0;width:var(--kg-pin);height:calc(var(--kg-h) - 4px);margin:calc(2px - var(--kg-h) / 2) 0 0 calc(var(--kg-pin) / -2);border-radius:var(--k-round);box-shadow:0 0 0 2px var(--k-thumb),0 1px 4px rgba(0,0,0,calc(.4 * var(--k-lift)));pointer-events:none;scale:.78;
-  transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease),opacity .15s}
-.knobs-grad-stop[data-selected]{scale:1}
-.knobs-grad:is(:focus-visible,.knobs-active) .knobs-grad-stop[data-selected]{scale:1.12}
-.knobs-grad-stop[data-leaving]{opacity:.35;scale:.6}
-.knobs-x[data-k-active] :is(.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i){transition:none}
-.knobs-x[data-k-active] .knobs-grad-stop{transition:scale .2s var(--k-ease),opacity .15s}
-.knobs-grad-stop[data-born]{animation:knobs-born .24s var(--k-ease)}
-@keyframes knobs-born{from{opacity:0;scale:.4}}
+.knobs-grad-mini{position:relative;flex:none;width:calc(var(--k-row) * 2.5);height:var(--k-track-h);border-radius:var(--k-radius-sm);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_MINI}}
+.knobs-grad-mini>i{position:absolute;top:calc(100% + 2px);left:0;width:1px;height:3px;margin-left:-.5px;background:var(--k-dim);scale:1 var(--kgs-grow,1);transform-origin:top;transition:opacity .15s}
+.knobs-grad{--kg-h:calc(var(--k-row) - 6px);--kg-r:calc(var(--kg-h) / 2);--kg-pin:round(calc(var(--kg-h) * .42),1px);position:relative;height:var(--kg-h);margin:2px 0 var(--k-gap);border-radius:var(--k-round);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_STRIP};cursor:pointer;touch-action:none;user-select:none;outline:none}
+.knobs-grad-stop{position:absolute;top:50%;left:0;width:var(--kg-pin);height:calc(var(--kg-h) - 4px);margin:calc(2px - var(--kg-h) / 2) 0 0 calc(var(--kg-pin) / -2);border-radius:var(--k-round);box-shadow:0 0 0 2px var(--k-thumb),0 1px 4px rgba(0,0,0,calc(.4 * var(--k-lift)));pointer-events:none;
+  --kgs-sel:.78;scale:calc(var(--kgs-sel) * var(--kgs-grow,1));transition:--kgs-sel .2s var(--k-ease),opacity .15s}
+/* The row's morph moves the strip, stops and ticks each frame (ramp-morph.ts), so none transition
+   but a stop's focus scale (--kgs-sel); its growth (--kgs-grow) buds it from the strip or merges it
+   into a neighbour. */
+.knobs-grad-stop[data-selected]{--kgs-sel:1}
+.knobs-grad:is(:focus-visible,.knobs-active) .knobs-grad-stop[data-selected]{--kgs-sel:1.12}
+.knobs-grad-stop[data-leaving]{opacity:.35;--kgs-sel:.6}
 .knobs-mixed :is(.knobs-grad,.knobs-grad-mini){background:transparent}
 /* A ramp's shapes and presets share one row: each chip gives up padding before its words, and only
    a very narrow column ellipsizes them (the GPU overlay does the same). */

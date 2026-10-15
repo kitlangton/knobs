@@ -210,9 +210,11 @@ export interface GpuGradientRow {
   readonly row: HTMLElement
   readonly x: GpuExpander
   readonly read: HTMLElement
-  /** The head's swatch strip, and its stop ticks (x in the strip). */
+  /** The head's swatch strip, and its stop ticks (x in the strip; grown 0…1 as its stop is). */
   readonly mini: HTMLElement
-  ticks(): readonly { readonly el: HTMLElement; readonly x: number }[]
+  ticks(): readonly { readonly el: HTMLElement; readonly x: number; readonly grow?: number }[]
+  /** Steps the row's morph to this frame (samples, stops and ticks); whether it still moves. */
+  advance(now: number): boolean
   /** Evenly spaced samples as gamma sRGB triples, flat (see `gradientSamples`). */
   samples(): readonly number[]
   /** The editor's strip and how far in from each end its ramp starts (the handles' radius). */
@@ -2554,12 +2556,6 @@ class GpuOverlayManager {
     })
   }
 
-  /** How far a handle that arrived mid-life has grown in (`data-born`), like the DOM's keyframes. */
-  private appear(el: HTMLElement) {
-    if (!this.eased.get(el)?.has("in")) this.ease(el, "in", el.hasAttribute("data-born") ? 0 : 1)
-    return this.ease(el, "in", 1, 26)
-  }
-
   private drawGradient(
     row: GpuGradientRow,
     rRect: DOMRect,
@@ -2581,19 +2577,22 @@ class GpuOverlayManager {
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
-    // Both strips draw the same samples, blended on the morph spring as the DOM's transitions do.
-    const samples = this.morph(row.mini, row.samples(), delay, snap, mRect)
+    // The row's own morph moves the strips' samples, stops and ticks (one spring, the stops
+    // keeping their identity, see ramp-morph.ts): drawn as they stand this frame.
+    if (row.advance(this.frameNow)) this.easeMoving = true
+    const samples = row.samples()
     const rim = withAlpha(t.line, rowAlpha)
     this.pushRamp(mRect, samples, 0, t.radiusSm, rowAlpha * shown, rim, cardClip)
     for (const tick of row.ticks()) {
-      const [tx] = this.morph(tick.el, [tick.x], delay, snap, mRect)
+      const grow = tick.grow ?? 1
+      if (grow < 0.02) continue
       this.pushPrim({
-        x: mRect.left + tx! - 0.5,
+        x: mRect.left + tick.x - 0.5,
         y: mRect.bottom + 2,
         w: 1,
-        h: 3,
+        h: 3 * grow,
         clip: cardClip,
-        color: withAlpha(t.dim, rowAlpha * shown * this.appear(tick.el)),
+        color: withAlpha(t.dim, rowAlpha * shown),
         kind: 1,
       })
     }
@@ -2606,30 +2605,26 @@ class GpuOverlayManager {
       this.pushRamp(sr, samples, inset, Math.min(h / 2, t.round), rowAlpha * shown, rim, body)
       const focused = this.isFocused(row.strip) || snap
       for (const hd of row.handles()) {
-        const [hx] = this.morph(hd.el, [hd.x], delay, snap, sr)
+        const grow = hd.grow ?? 1
+        if (grow < 0.02) continue
         const rgb = hd.rgb ?? [0, 0, 0]
-        const omega = snap ? SNAP_OMEGA : 30
-        const born = this.appear(hd.el)
         const scale = this.ease(
           hd.el,
           "scale",
           hd.leaving ? 0.6 : hd.selected ? (focused ? 1.12 : 1) : 0.78,
           30,
         )
-        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * born
-        // A pin: as tall as the strip inside its ring, a little under half as wide.
-        const k = scale * (0.4 + 0.6 * born)
+        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40)
+        // A pin: as tall as the strip inside its ring, a little under half as wide; budding or
+        // merging, it grows from (or shrinks to) nothing, as the DOM's scale does.
+        const k = scale * grow
         const ph = (h - 4) * k
         const pw = Math.round(h * 0.42) * k
-        const fill: Rgba = [
-          this.ease(hd.el, "r", rgb[0], omega),
-          this.ease(hd.el, "g", rgb[1], omega),
-          this.ease(hd.el, "b", rgb[2], omega),
-          rowAlpha * shown * fade,
-        ]
+        const fill: Rgba = [rgb[0], rgb[1], rgb[2], rowAlpha * shown * fade]
         if (shown * fade < 0.005) continue
         this.shape({
-          x: sr.left + hx! - pw / 2,
+          smear: this.curReduced ? [0, 0] : (hd.smear ?? [0, 0]),
+          x: sr.left + hd.x - pw / 2,
           y: sr.top + hd.y - ph / 2,
           w: pw,
           h: ph,
