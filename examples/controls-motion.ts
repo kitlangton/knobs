@@ -113,27 +113,42 @@ const io = new IntersectionObserver(
 
 let raf = 0
 let last = 0
+let inFrame = false
 function frame(now: number) {
   if (last) live.frameMs = now - last
   const dt = last ? Math.min(0.064, (now - last) / 1000) : 1 / 60
   last = now
   raf = 0
+  inFrame = true
   live.frames++
-  let any = false
   let moving = 0
   for (const s of stages) {
-    if (s.active) s.step(dt, now)
-    if (s.active) {
-      any = true
-      moving++
-    }
+    // One preview that throws must not stop the loop for the rest (or for itself, next time).
+    if (s.active)
+      try {
+        s.step(dt, now)
+      } catch (e) {
+        s.active = false
+        report(e)
+      }
+    if (s.active) moving++
   }
+  inFrame = false
   live.moving = moving
-  if (any) raf = requestAnimationFrame(frame)
+  // Exactly one next frame if anything is active, including a stage a draw kicked mid-frame.
+  let any = false
+  for (const s of stages) if (s.active) any = true
+  if (any) wake()
   else last = 0
 }
 function wake() {
-  if (!raf) raf = requestAnimationFrame(frame)
+  if (!raf && !inFrame) raf = requestAnimationFrame(frame)
+}
+let reports = 0
+function report(e: unknown) {
+  if (reports++ < 20) console.error("controls-motion: a preview failed to draw", e)
+  if (reports < 5)
+    live.log(`A preview failed to draw: ${e instanceof Error ? e.message : e}`, "error")
 }
 
 /** A preview: its animated values, its loops and how it draws them. */
@@ -175,28 +190,61 @@ export class Stage {
   private draw() {
     for (const f of this.draws) f()
   }
+  private pending = false
+  /** One draw after the current task, however many values changed in it. */
+  private drawSoon() {
+    if (this.pending) return
+    this.pending = true
+    queueMicrotask(() => {
+      this.pending = false
+      try {
+        this.draw()
+      } catch (e) {
+        report(e)
+      }
+    })
+  }
+  /**
+   * On screen right now, by layout. The IntersectionObserver reports a frame or more late (just
+   * scrolled back, a flicker at an edge); asking here keeps a change from snapping, or a swing
+   * from stopping, while the stage is in view.
+   */
+  private onScreen() {
+    const r = this.el.getBoundingClientRect()
+    return (
+      r.bottom > -80 &&
+      r.top < innerHeight + 80 &&
+      r.width > 0 &&
+      document.visibilityState === "visible"
+    )
+  }
   kick() {
+    if (!this.visible && this.onScreen()) this.visible = true
     if (!this.visible) {
-      // Nobody is watching: land at once.
+      // Nobody is watching: land at once, and draw once (not once per value: a GPU scene would
+      // queue dozens of frames).
       for (const v of this.vals) v.spring.snap(v.spring.target)
-      this.draw()
+      this.drawSoon()
       return
     }
     if (reduced()) {
       // No travel; fades still play.
       for (const v of this.vals) if (!v.fade) v.spring.snap(v.spring.target)
-      this.draw()
+      this.drawSoon()
     }
-    if (!this.active) {
-      this.active = true
-      wake()
-    }
+    this.active = true
+    // Always: if the loop ever died, the next change starts it again.
+    wake()
   }
   step(dt: number, now: number) {
-    if (!this.visible) {
+    if (!this.visible && !this.onScreen()) {
+      // Gone from view: land everything, so nothing is left frozen mid-flight for later.
+      for (const v of this.vals) v.spring.snap(v.spring.target)
       this.active = false
+      this.drawSoon()
       return
     }
+    this.visible = true
     for (const v of this.vals) v.spring.step(dt)
     for (const f of this.loops) if (!f(dt, now)) this.loops.delete(f)
     this.draw()
@@ -204,6 +252,8 @@ export class Stage {
     let moving = this.loops.size > 0
     if (!moving) for (const v of this.vals) if (!v.spring.resting) moving = true
     this.active = moving
+    // Settled: one last draw, at rest (a GPU scene draws its full-quality frame here).
+    if (!moving) this.draw()
   }
   /** Draws now (a value changed that isn't animated). */
   paint() {

@@ -5,14 +5,18 @@
 // and casts a soft shadow, with a contact occlusion where it sits. Haze in-scatters analytically
 // (the closed-form integral of 1/d² along the view ray). Linear HDR out; the post tone-maps.
 //
-// u.v[0]  light position, spot intensity
-// u.v[1]  dome axis (down, out of the opening), haze density
+// u.v[0]  cord anchor, cord length
+// u.v[1]  swing φ, aim τ (rad), and how far each travels in a shutter (Argon's 1/34 s)
 // u.v[2]  light colour (unit luminance), cos(inner)
 // u.v[3]  filament radiance (rgb), cos(outer)
 // u.v[4]  shade albedo (linear), bulb radiance
-// u.v[5]  cord end (top of the dome), theme tone (0 dark → 1 light)
-// u.v[6]  cord anchor, bounce light
+// u.v[5]  spot intensity, haze density, theme tone (0 dark → 1 light), samples
+// u.v[6]  bounce light
 // u.v[7..14]  the falloff curve, 32 samples over RANGE
+//
+// Swinging, each sample renders the lamp at its own instant across the shutter (φ and τ moved
+// along their arcs) and they're averaged under a raised-cosine window, so the dome, bulb, cord,
+// beam, pool and shadow all smear along the swing. At rest every instant is the same: crisp.
 
 const CAM = vec3f(0.0, 0.92, 3.4);
 const LOOK = vec3f(0.0, 0.92, 0.0);
@@ -23,6 +27,19 @@ const RD = 0.2;
 const RIM = -0.045;
 const RB = 0.058;
 const RANGE = 3.2;
+
+var<private> lampTop: vec3f;
+var<private> lampAxis: vec3f;
+var<private> lampPos: vec3f;
+
+/** The lamp at `tau` of the way across the shutter (−½…½). */
+fn pose(tau: f32) {
+  let phi = u.v[1].x + u.v[1].z * tau;
+  let a = phi + u.v[1].y + u.v[1].w * tau;
+  lampTop = u.v[0].xyz + u.v[0].w * vec3f(sin(phi), -cos(phi), 0.0);
+  lampAxis = vec3f(sin(a), -cos(a), 0.0);
+  lampPos = lampTop + lampAxis * (RD + 0.06);
+}
 
 struct Hit {
   t: f32,
@@ -51,7 +68,7 @@ fn sphere(ro: vec3f, rd: vec3f, c: vec3f, r: f32) -> vec2f {
 }
 
 fn domeCentre() -> vec3f {
-  return u.v[5].xyz + u.v[1].xyz * RD;
+  return lampTop + lampAxis * RD;
 }
 
 fn trace(ro: vec3f, rd: vec3f) -> Hit {
@@ -74,7 +91,7 @@ fn trace(ro: vec3f, rd: vec3f) -> Hit {
   if (tb.x > 0.0 && tb.x < hit.t) {
     hit = Hit(tb.x, normalize(ro + rd * tb.x - BALL.xyz), 2);
   }
-  let axis = u.v[1].xyz;
+  let axis = lampAxis;
   let cs = domeCentre();
   let td = sphere(ro, rd, cs, RD);
   if (td.y > 0.0) {
@@ -86,9 +103,9 @@ fn trace(ro: vec3f, rd: vec3f) -> Hit {
       hit = Hit(td.y, -normalize(p2 - cs), 4);
     }
   }
-  let tl = sphere(ro, rd, u.v[0].xyz, RB);
+  let tl = sphere(ro, rd, lampPos, RB);
   if (tl.x > 0.0 && tl.x < hit.t) {
-    hit = Hit(tl.x, normalize(ro + rd * tl.x - u.v[0].xyz), 5);
+    hit = Hit(tl.x, normalize(ro + rd * tl.x - lampPos), 5);
   }
   return hit;
 }
@@ -113,15 +130,15 @@ fn ballOcclusion(p: vec3f, n: vec3f) -> f32 {
 }
 
 fn cone(dir: vec3f) -> f32 {
-  return smoothstep(u.v[3].w, u.v[2].w, dot(dir, u.v[1].xyz));
+  return smoothstep(u.v[3].w, u.v[2].w, dot(dir, lampAxis));
 }
 
 /** Light from the bulb arriving at p (irradiance colour) and its direction. */
 fn direct(p: vec3f, n: vec3f) -> vec4f {
-  let L = u.v[0].xyz - p;
+  let L = lampPos - p;
   let d = length(L);
   let l = L / d;
-  let e = u.v[0].w * curveAt(d / RANGE) * cone(-l) * max(dot(n, l), 0.0) * ballShadow(p + n * 0.002, l, d);
+  let e = u.v[5].x * curveAt(d / RANGE) * cone(-l) * max(dot(n, l), 0.0) * ballShadow(p + n * 0.002, l, d);
   return vec4f(l, e);
 }
 
@@ -135,17 +152,17 @@ fn ggxSpec(n: vec3f, v: vec3f, l: vec3f, rough: f32) -> f32 {
 }
 
 fn shade(ro: vec3f, rd: vec3f, hit: Hit) -> vec3f {
-  let tone = u.v[5].w;
+  let tone = u.v[5].z;
   let lc = u.v[2].rgb;
-  let amb = mix(0.006, 0.3, tone) + u.v[6].w;
+  let amb = mix(0.006, 0.3, tone) + u.v[6].x;
   let fill = mix(0.02, 0.18, tone);
   let p = ro + rd * hit.t;
   let n = hit.n;
   let v = -rd;
   if (hit.kind == 5) {
     // Frosted glass, brighter where it faces you, with the filament a soft hot line inside.
-    let lp = u.v[0].xyz;
-    let axis = u.v[1].xyz;
+    let lp = lampPos;
+    let axis = lampAxis;
     let side = normalize(vec3f(-axis.y, axis.x, 0.0));
     let a = lp - side * 0.022;
     let ba = side * 0.044;
@@ -161,11 +178,11 @@ fn shade(ro: vec3f, rd: vec3f, hit: Hit) -> vec3f {
   }
   if (hit.kind == 4) {
     // The dome's white enamel inside, lit hard by the bulb an inch away.
-    let L = u.v[0].xyz - p;
+    let L = lampPos - p;
     let d2 = max(dot(L, L), 0.004);
     let inner = mix(vec3f(0.86), u.v[4].rgb, 0.25);
     let e = max(dot(n, normalize(L)), 0.0) / d2;
-    return inner * (lc * u.v[0].w * 0.035 + u.v[3].rgb * 0.004) * e + inner * amb * 0.4;
+    return inner * (lc * u.v[5].x * 0.035 + u.v[3].rgb * 0.004) * e + inner * amb * 0.4;
   }
   var albedo = vec3f(0.0);
   var rough = 0.6;
@@ -214,19 +231,19 @@ fn shade(ro: vec3f, rd: vec3f, hit: Hit) -> vec3f {
 
 /** The light the haze scatters towards you between the eye and `tMax`. */
 fn haze(ro: vec3f, rd: vec3f, tMax: f32) -> vec3f {
-  let lp = u.v[0].xyz;
+  let lp = lampPos;
   let tc = dot(lp - ro, rd);
   let closest = ro + rd * tc;
   let h = max(length(closest - lp), 0.025);
   let along = (atan((tMax - tc) / h) - atan(-tc / h)) / h;
   let dir = normalize(closest - lp + rd * 0.02);
-  return u.v[2].rgb * u.v[0].w * u.v[1].w * along * cone(dir) * (1.4 / (4.0 * PI));
+  return u.v[2].rgb * u.v[5].x * u.v[5].y * along * cone(dir) * (1.4 / (4.0 * PI));
 }
 
 /** The cord: its coverage of this ray and how far along it. */
 fn cord(ro: vec3f, rd: vec3f) -> vec2f {
-  let a = u.v[6].xyz;
-  let ba = u.v[5].xyz - a;
+  let a = u.v[0].xyz;
+  let ba = lampTop - a;
   let w0 = ro - a;
   let bb = dot(ba, ba);
   let rb = dot(rd, ba);
@@ -255,17 +272,32 @@ fn render(px: vec2f) -> vec3f {
   col += haze(CAM, rd, tMax);
   let c = cord(CAM, rd);
   if (c.y < tMax) {
-    let tone = u.v[5].w;
+    let tone = u.v[5].z;
     col = mix(col, vec3f(mix(0.012, 0.09, tone)), c.x);
   }
   return col;
 }
 
 fn scene(px: vec2f) -> vec3f {
-  // A rotated grid of four samples.
-  var c = render(px + vec2f(0.125, 0.375));
-  c += render(px + vec2f(-0.375, 0.125));
-  c += render(px + vec2f(0.375, -0.125));
-  c += render(px + vec2f(-0.125, -0.375));
-  return c * 0.25;
+  let n = max(i32(u.v[5].w), 1);
+  let moving = abs(u.v[1].z) + abs(u.v[1].w) > 0.0;
+  let j = hash12(px);
+  var c = vec3f(0.0);
+  var ws = 0.0;
+  for (var i = 0; i < n; i++) {
+    let fi = f32(i);
+    // Sub-pixel offsets on a golden-angle spiral; instants stratified across the shutter.
+    let ang = fi * 2.39996 + j * 6.2831853;
+    let off = vec2f(cos(ang), sin(ang)) * sqrt((fi + 0.5) / f32(n)) * 0.5;
+    var tau = 0.0;
+    var w = 1.0;
+    if (moving) {
+      tau = (fi + 0.5 + (hash12(px.yx + fi) - 0.5) * 0.6) / f32(n) - 0.5;
+      w = 0.64 + 0.36 * cos(tau * 6.2831853);
+    }
+    pose(tau);
+    c += w * render(px + off);
+    ws += w;
+  }
+  return c / ws;
 }

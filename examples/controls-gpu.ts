@@ -28,6 +28,25 @@ let shared: Shared | null = null
 
 export const hasGpu = () => shared !== null
 
+const views = new Set<GpuView>()
+let gpuErrors = 0
+let restores = 0
+
+/** After a lost device: a new one, and every view rebuilt on it and redrawn; else they say so. */
+async function restore() {
+  if (restores++ >= 3) {
+    for (const v of views) v.fail()
+    return
+  }
+  await initGpu()
+  const s = shared
+  for (const v of views) {
+    if (s) v.rebuild(s)
+    else v.fail()
+  }
+  if (s) live.log("WebGPU restored")
+}
+
 /** Resolves the device before the page builds, so each section picks GPU or DOM once. */
 export async function initGpu() {
   if (new URLSearchParams(location.search).has("nogpu")) return
@@ -35,11 +54,17 @@ export async function initGpu() {
     const adapter = await navigator.gpu?.requestAdapter({ powerPreference: "high-performance" })
     if (!adapter) return
     const device = await adapter.requestDevice()
-    device.addEventListener("uncapturederror", (e) =>
-      console.error("controls-gpu:", (e as GPUUncapturedErrorEvent).error.message),
-    )
+    device.addEventListener("uncapturederror", (e) => {
+      const message = (e as GPUUncapturedErrorEvent).error.message
+      if (gpuErrors++ < 20) console.error("controls-gpu: uncaptured error:", message)
+      if (gpuErrors < 5) live.log(`WebGPU error: ${message.split("\n")[0]}`, "error")
+    })
     device.lost.then((info) => {
-      if (info.reason !== "destroyed") console.warn("controls-gpu: device lost", info.message)
+      if (info.reason === "destroyed") return
+      console.error("controls-gpu: device lost:", info.reason, info.message)
+      live.log(`WebGPU device lost (${info.message || info.reason}): rebuilding`, "error")
+      if (shared?.device === device) shared = null
+      void restore()
     })
     const format = navigator.gpu.getPreferredCanvasFormat()
     const module = compile(device, postWgsl, "post")
@@ -206,33 +231,40 @@ export class GpuView {
   readonly canvas = document.createElement("canvas")
   readonly data = new Float32Array(SCENE_FLOATS)
   exposure: number
-  private readonly ctx: GPUCanvasContext
-  private readonly pipeline: GPURenderPipeline
-  private readonly sceneBuf: GPUBuffer
-  private readonly postBufs: GPUBuffer[] = []
+  private ctx!: GPUCanvasContext
+  private pipeline!: GPURenderPipeline
+  private sceneBuf!: GPUBuffer
+  private postBufs: GPUBuffer[] = []
   private targets: Targets | null = null
   private readonly t0 = performance.now()
+  private failures = 0
+  private retry = 0
   constructor(
-    private readonly s: Shared,
-    host: HTMLElement,
+    private s: Shared,
+    private readonly host: HTMLElement,
     private readonly spec: ViewSpec,
   ) {
     this.exposure = spec.exposure ?? 1
     this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block"
     this.canvas.setAttribute("aria-hidden", "true")
     host.prepend(this.canvas)
+    this.build(s)
+    views.add(this)
+  }
+  private build(s: Shared) {
+    this.s = s
     this.ctx = this.canvas.getContext("webgpu")!
     this.ctx.configure({ device: s.device, format: s.format, alphaMode: "opaque" })
-    let pipeline = s.scenes.get(spec.wgsl)
+    let pipeline = s.scenes.get(this.spec.wgsl)
     if (!pipeline) {
-      const module = compile(s.device, PRELUDE + spec.wgsl, spec.label)
+      const module = compile(s.device, PRELUDE + this.spec.wgsl, this.spec.label)
       pipeline = s.device.createRenderPipeline({
         layout: "auto",
         vertex: { module, entryPoint: "vs" },
         fragment: { module, entryPoint: "fs", targets: [{ format: HDR }] },
         primitive: { topology: "triangle-list" },
       })
-      s.scenes.set(spec.wgsl, pipeline)
+      s.scenes.set(this.spec.wgsl, pipeline)
     }
     this.pipeline = pipeline
     this.sceneBuf = s.device.createBuffer({
@@ -240,6 +272,7 @@ export class GpuView {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     // One small uniform block per pass: down × LEVELS, up × (LEVELS − 1), composite.
+    this.postBufs = []
     for (let i = 0; i < LEVELS * 2; i++)
       this.postBufs.push(
         s.device.createBuffer({
@@ -247,6 +280,23 @@ export class GpuView {
           usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         }),
       )
+    this.targets = null
+  }
+  /** On a new device: everything again, then the last frame's data drawn. */
+  rebuild(s: Shared) {
+    this.build(s)
+    this.failures = 0
+    this.render()
+  }
+  /** No device to be had: say so where the scene was. */
+  fail() {
+    if (this.host.querySelector("[data-gpu-lost]")) return
+    const note = document.createElement("div")
+    note.dataset.gpuLost = ""
+    note.style.cssText =
+      "position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);font-size:12px;background:var(--surface)"
+    note.textContent = "WebGPU stopped. Reload to draw this scene again."
+    this.host.append(note)
   }
   /** Seconds since the view was made, for scenes that shimmer. */
   get time() {
@@ -300,6 +350,19 @@ export class GpuView {
     return this.targets
   }
   render() {
+    try {
+      this.draw()
+      this.failures = 0
+    } catch (e) {
+      // A frame that fails (a context mid-loss, a canvas mid-resize) tries again next frame.
+      if (this.failures++ < 3) {
+        console.error(`controls-gpu ${this.spec.label}: frame failed`, e)
+        cancelAnimationFrame(this.retry)
+        this.retry = requestAnimationFrame(() => this.render())
+      }
+    }
+  }
+  private draw() {
     const t = this.fit()
     if (!t) return
     const { device } = this.s

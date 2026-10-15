@@ -9,15 +9,15 @@ import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
 import { live } from "./controls-live"
 import lampWgsl from "./controls-lamp.wgsl?raw"
-import { ColorVal, oklabRgb, rolling, Stage } from "./controls-motion"
+import { ColorVal, oklabRgb, reduced, rolling, SHUTTER_S, Stage } from "./controls-motion"
 
 const IGNITE = springMotion({ duration: 0.5, bounce: 0 })
 const COOL = springMotion({ duration: 1.3, bounce: 0 })
 const FLICKER = springMotion({ duration: 0.6, bounce: 0 })
-const SWAY = springMotion({ duration: 2.3, bounce: 0.68 })
 const CORD = 2.6
+/** A pendulum on that cord: ω = √(g/L) (a 3.2 s period), lightly damped by the air. */
+const SWAY = { omega: Math.sqrt(9.81 / CORD), zeta: 0.15 }
 const ANCHOR = [0, 4.2, -0.2] as const
-const DOME_R = 0.2
 const N = 32
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
@@ -75,6 +75,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     label: "lamp",
     tone: "agx",
     bloom: 0.07,
+    maxDpr: 1.5,
     vignette: 0.3,
     saturation: 1.06,
   })
@@ -96,32 +97,35 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
       return
     }
     const phi = sway.x
-    const top = [
-      ANCHOR[0] + CORD * Math.sin(phi),
-      ANCHOR[1] - CORD * Math.cos(phi),
-      ANCHOR[2],
-    ] as const
-    const a = phi + rad(tilt.x)
-    const axis = [Math.sin(a), -Math.cos(a), 0] as const
-    const drop = DOME_R + 0.06
+    live.sway = phi
+    live.swayV = sway.v
+    // The swing's travel in one shutter, and how far that moves the dome on screen (px), which
+    // sets how many instants are rendered: 4 at rest (anti-aliasing only), up to 12 when fast.
+    const blur = !reduced() && stage.active
+    let dphi = blur ? sway.v * SHUTTER_S : 0
+    let dtau = blur ? rad(tilt.v) * SHUTTER_S : 0
+    const arc = ((Math.abs(dphi) * CORD + Math.abs(dtau) * 0.3) * 1.5 * s.stage.clientHeight) / 3.6
+    if (arc < 0.25) dphi = dtau = 0
+    const samples = dphi || dtau ? Math.min(12, Math.max(4, Math.ceil(arc * 1.5))) : 4
     const v = (i: number, x: number, y: number, z: number, w: number) =>
       data.set([x, y, z, w], 4 + i * 4)
-    v(0, top[0] + axis[0] * drop, top[1] + axis[1] * drop, top[2], intensity)
-    v(1, axis[0], axis[1], 0, haze.x * 0.03)
+    v(0, ANCHOR[0], ANCHOR[1], ANCHOR[2], CORD)
+    v(1, phi, rad(tilt.x), dphi, dtau)
     v(2, lc[0], lc[1], lc[2], Math.cos(rad(Math.min(lo.x, hi.x - 0.5))))
     const fil = 30 * hot ** 1.3 * flicker * Math.min(1, 0.25 + k)
     v(3, lc[0] * fil, lc[1] * fil, lc[2] * fil, Math.cos(rad(hi.x)))
     const sc = linearRgb(oklabRgb(shade.lab))
     v(4, sc[0], sc[1], sc[2], 7 * k * hot ** 2.2 * flicker)
-    v(5, top[0], top[1], top[2], tone.x)
-    v(6, ANCHOR[0], ANCHOR[1], ANCHOR[2], intensity * 0.0032)
+    v(5, intensity, haze.x * 0.03, tone.x, samples)
+    v(6, intensity * 0.0032, 0, 0, 0)
     for (let i = 0; i < N; i++) data[4 + 7 * 4 + i] = ys[i]!.x
     view.exposure = 1.08 - 0.08 * tone.x
     view.render()
   })
   const heat = stage.val(1, 0.0005)
   const flick = stage.val(0, 0.002)
-  const sway = stage.val(0, 0.0004)
+  // Rest is within 0.001 rad: under half a pixel at the dome.
+  const sway = stage.val(0, 0.001)
   const brightness = stage.val(800, 0.5)
   const temperature = stage.val(2700, 1)
   const tilt = stage.val(0, 0.02)

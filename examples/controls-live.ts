@@ -15,8 +15,10 @@ export const live = {
   views: new Map<string, { renders: number; ms: number }>(),
   /** GPU ms finished since the readouts last looked. */
   gpuMs: 0,
-  /** The lamp's light right now, lumens. */
+  /** The lamp's light right now, lumens, and its swing (rad, rad/s). */
   lumens: 0,
+  sway: 0,
+  swayV: 0,
   events: [] as { level: LiveLevel; text: string }[],
   log(text: string, level: LiveLevel = "info") {
     this.events.push({ level, text })
