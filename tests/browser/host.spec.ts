@@ -42,10 +42,22 @@ const measure = (page: Page) =>
       return [name, ...box, ...props.map((p) => `${p}:${cs.getPropertyValue(p)}`)].join("|")
     })
   })
+/** Waits out every running transition and animation, however long a busy machine takes. */
 const settle = (page: Page) =>
-  page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
-  )
+  expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+          return document
+            .getAnimations()
+            .filter(
+              (a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity,
+            ).length
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(0)
 
 test("a host's bare element rules don't restyle panels or their menus", async ({ page }) => {
   const errors: string[] = []
@@ -56,11 +68,10 @@ test("a host's bare element rules don't restyle panels or their menus", async ({
   await page.locator('[data-field="tint"] .knobs-x-head').first().click()
   await page.getByRole("button", { name: "Scene" }).first().click()
   await expect(page.locator(".knobs-menu-search")).toBeVisible()
-  await page.waitForTimeout(400)
+  await settle(page)
   const hostile = await measure(page)
   await page.evaluate(() => (window as any).__host.hostile(false))
   await settle(page)
-  await page.waitForTimeout(300)
   const clean = await measure(page)
   expect(hostile.length).toBeGreaterThan(150)
   const differ = hostile.filter((m, i) => m !== clean[i])
