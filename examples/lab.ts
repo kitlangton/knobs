@@ -406,5 +406,21 @@ const panels = [
   }),
 ]
 Object.assign(window, {
-  __lab: { station, details, panels, settings, history, past, pins, tuning, scenes },
+  __lab: {
+    station,
+    details,
+    descriptors,
+    panels,
+    settings,
+    history,
+    past,
+    pins,
+    tuning,
+    scenes,
+    /** Draws the next roll from `seed` again (a recorded roll, replayed). */
+    reseed(seed: number) {
+      tuning.seed = seed
+      draw = seeded()
+    },
+  },
 })
