@@ -95,7 +95,8 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     const blur = !reduced() && stage.active
     let dphi = blur ? sway.v * SHUTTER_S : 0
     let dtau = blur ? rad(tilt.v) * SHUTTER_S : 0
-    const arc = ((Math.abs(dphi) * CORD + Math.abs(dtau) * 0.3) * 1.5 * s.stage.clientHeight) / 3.6
+    const hh = stage.height || s.stage.clientHeight
+    const arc = ((Math.abs(dphi) * CORD + Math.abs(dtau) * 0.3) * 1.5 * hh) / 3.6
     if (arc < 0.25) dphi = dtau = 0
     const samples = dphi || dtau ? Math.min(12, Math.max(4, Math.ceil(arc * 1.5))) : 4
     const v = (i: number, x: number, y: number, z: number, w: number) =>
@@ -131,9 +132,9 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     attributes: true,
     attributeFilter: ["data-theme"],
   })
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
 
   let lit: boolean | null = null
+  let lastFalloff: unknown = null
   on((v, how) => {
     if (how === "init") heat.snap(v.on ? 1 : 0)
     else if (v.on !== lit) {
@@ -156,13 +157,16 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     lo.go(v.beam[0], how)
     hi.go(v.beam[1], how)
     haze.go(v.haze, how, "calm")
-    ys.forEach((y, i) => {
-      y.go(
-        sampleCurve(v.falloff, i / (N - 1), { interp: store.schema.falloff.interp }),
-        how,
-        "calm",
-      )
-    })
+    if (v.falloff !== lastFalloff) {
+      lastFalloff = v.falloff
+      ys.forEach((y, i) => {
+        y.go(
+          sampleCurve(v.falloff, i / (N - 1), { interp: store.schema.falloff.interp }),
+          how,
+          "calm",
+        )
+      })
+    }
   })
   return store
 }

@@ -291,9 +291,11 @@ motionScene(kit)
   const dotStretch = (speed: number) => (reduced() ? 1 : 1 + Math.min(0.34, speed / 620))
   const stage = new Stage(s.stage, () => {
     const dpr = Math.min(2, devicePixelRatio || 1)
-    goo.fit(dpr)
-    const cx = canvas.clientWidth / 2
-    const cy = canvas.clientHeight / 2
+    const w = stage.width || canvas.clientWidth
+    const h = stage.height || canvas.clientHeight
+    goo.fit(dpr, w, h)
+    const cx = w / 2
+    const cy = h / 2
     // A hidden dot rides inside its neighbour, so it buds from wherever that one is.
     if (!reduced())
       for (let i = 1; i < MAX; i++)
@@ -401,7 +403,6 @@ motionScene(kit)
       return any
     })
   }
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
   new MutationObserver(() => {
     const t = clamp01(ink.x)
     bgFrom = bgFrom.map((c, j) => c + (bgTo[j]! - c) * t)
@@ -553,15 +554,20 @@ const SKIES = {
   const sunSmear = sun ? new Smear(sun) : null
   const markBlur = new DirBlur(mark)
   const N = 32
+  let lastBar = ""
   const stage = new Stage(s.stage, () => {
     const t = clamp01(hour.x / 24)
     const labs = samples.map((c) => c.lab)
-    bar.style.background = `linear-gradient(to right,${labs.map((l, i) => `${oklabCss(l)} ${((i / (N - 1)) * 100).toFixed(2)}%`).join(",")})`
+    const barBg = `linear-gradient(to right,${labs.map((l, i) => `${oklabCss(l)} ${((i / (N - 1)) * 100).toFixed(2)}%`).join(",")})`
+    if (barBg !== lastBar) {
+      lastBar = barBg
+      bar.style.background = barBg
+    }
     const f = t * (N - 1)
     const i0 = Math.min(N - 2, Math.floor(f))
     const u = f - i0
     const now = labs[i0]!.map((c, j) => lerp(c, labs[i0 + 1]![j]!, u))
-    const w = s.stage.clientWidth
+    const w = stage.width || s.stage.clientWidth
     const vxMark = (hour.v / 24) * (w - 24)
     const stMark = stretchFor(vxMark, 0.35)
     mark.style.transform = `translateX(${px(12 + t * (w - 24) - 1)}) scaleX(${stMark.toFixed(4)})`
@@ -586,7 +592,7 @@ const SKIES = {
       return
     }
     scene!.style.background = oklabCss(now)
-    const hh = s.stage.clientHeight
+    const hh = stage.height || s.stage.clientHeight
     const up = day < 0 || day > 1 ? -0.25 : Math.sin(Math.PI * clamp01(day))
     const sx = lerp(30, w - 30, clamp01(day))
     const sy = hh - 70 - up * (hh - 110)
@@ -603,12 +609,15 @@ const SKIES = {
     { length: N },
     (_, i) => new ColorVal(stage, sampleGradient(SKIES.Clear, i / (N - 1))),
   )
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
+  let lastSky: unknown = null
   on((v, how) => {
     // Every sample travels to its new colour, in a quick left-to-right sweep for a preset.
-    samples.forEach((c, i) => {
-      c.go(sampleGradient(v.sky, i / (N - 1)), how, "calm", i * 5)
-    })
+    if (v.sky !== lastSky) {
+      lastSky = v.sky
+      samples.forEach((c, i) => {
+        c.go(sampleGradient(v.sky, i / (N - 1)), how, "calm", i * 5)
+      })
+    }
     hour.go(v.hour, how, "calm")
     clouds.go(v.clouds, how, "calm")
     starsOn.go(v.stars ? 1 : 0, how === "init" ? "init" : "other", "calm")
@@ -924,8 +933,8 @@ let rowsSide!: HTMLElement
   })
   const blurs = cards.map((el) => new DirBlur(el))
   const stage = new Stage(s.stage, () => {
-    const cx = s.stage.clientWidth / 2
-    const cy = s.stage.clientHeight / 2 + 8
+    const cx = (stage.width || s.stage.clientWidth) / 2
+    const cy = (stage.height || s.stage.clientHeight) / 2 + 8
     cards.forEach((el, i) => {
       const c = cv[i]!
       const rad = (c.rot.x * Math.PI) / 180

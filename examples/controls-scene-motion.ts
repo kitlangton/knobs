@@ -163,9 +163,11 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
   })
 
   let T = 0.62
+  let lastSize = ""
+  let lastCurves = ""
   const stage = new Stage(s.stage, () => {
-    const w = s.stage.clientWidth
-    const hh = s.stage.clientHeight
+    const w = stage.width || s.stage.clientWidth
+    const hh = stage.height || s.stage.clientHeight
     const showGraph = w >= 460
     const G = Math.min(168, Math.round(w * 0.3))
     const gx = 34
@@ -181,35 +183,52 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     ]
     // Out at 0, back at HALF: by superposition, so a trip still moving when the next begins carries on.
     const at = (f: (t: number) => number, t: number) => f(t) - f(t - HALF)
-    graph.style.display = showGraph ? "" : "none"
+    const x0 = showGraph ? gx + G + 56 : 48
+    const x1 = w - 48
+    const sizeKey = `${w}x${hh}`
+    if (sizeKey !== lastSize) {
+      lastSize = sizeKey
+      graph.style.display = showGraph ? "" : "none"
+      if (showGraph) {
+        graph.style.left = px(gx)
+        graph.style.top = px(gy)
+        graph.setAttribute("width", String(G))
+        graph.setAttribute("height", String(G))
+        const Y = (y: number) => G - ((y + 0.2) / 1.5) * G
+        axis.setAttribute("d", `M0 ${Y(0)}H${G}M0 ${Y(1)}H${G}`)
+      }
+      rows.forEach((r, i) => {
+        const y = hh / 2 + (i - 1) * 70
+        r.track.style.transform = `translate(${px(x0)},${px(y)}) scaleX(${(x1 - x0).toFixed(2)})`
+        r.ends[0]!.style.transform = `translate(${px(x0)},${px(y)})`
+        r.ends[1]!.style.transform = `translate(${px(x1)},${px(y)})`
+        r.label.style.transform = `translate(${px(x0 - 18)},${px(y - 36)})`
+      })
+    }
     if (showGraph) {
-      graph.style.left = px(gx)
-      graph.style.top = px(gy)
-      graph.setAttribute("width", String(G))
-      graph.setAttribute("height", String(G))
       // y from −0.2 to 1.3, so overshoot has room.
       const Y = (y: number) => G - ((y + 0.2) / 1.5) * G
-      axis.setAttribute("d", `M0 ${Y(0)}H${G}M0 ${Y(1)}H${G}`)
+      const curveKey = `${G}:${bz.join(",")}:${dur}:${sd.x}:${sb.x}:${td.x}:${tb.x}`
+      if (curveKey !== lastCurves) {
+        lastCurves = curveKey
+        paths.forEach((f, i) => {
+          let d = ""
+          for (let k = 0; k <= 56; k++) {
+            const t = (k / 56) * HALF
+            d += `${k ? "L" : "M"}${((t / HALF) * G).toFixed(2)} ${Y(f(t)).toFixed(2)}`
+          }
+          curves[i]!.setAttribute("d", d)
+        })
+      }
       const run = ((T % HALF) + HALF) % HALF
+      const cx = ((run / HALF) * G).toFixed(2)
       paths.forEach((f, i) => {
-        let d = ""
-        for (let k = 0; k <= 56; k++) {
-          const t = (k / 56) * HALF
-          d += `${k ? "L" : "M"}${((t / HALF) * G).toFixed(2)} ${Y(f(t)).toFixed(2)}`
-        }
-        curves[i]!.setAttribute("d", d)
-        marks[i]!.setAttribute("cx", ((run / HALF) * G).toFixed(2))
+        marks[i]!.setAttribute("cx", cx)
         marks[i]!.setAttribute("cy", Y(f(run)).toFixed(2))
       })
     }
-    const x0 = showGraph ? gx + G + 56 : 48
-    const x1 = w - 48
     rows.forEach((r, i) => {
       const y = hh / 2 + (i - 1) * 70
-      r.track.style.transform = `translate(${px(x0)},${px(y)}) scaleX(${(x1 - x0).toFixed(2)})`
-      r.ends[0]!.style.transform = `translate(${px(x0)},${px(y)})`
-      r.ends[1]!.style.transform = `translate(${px(x1)},${px(y)})`
-      r.label.style.transform = `translate(${px(x0 - 18)},${px(y - 36)})`
       const x = x0 + at(paths[i]!, T) * (x1 - x0)
       const sp = speeds[i]!
       sp.feed(x, y)
@@ -227,7 +246,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
   const pulseVal = stage.val(0, 0.002)
   const speeds = rows.map(() => new Speed(stage))
   pulse = () => pulseVal.to(0, "playful").push(5)
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
 
   const tlBox = h("div", "ui-box")
   tlBox.style.height = "78px"
@@ -245,7 +263,7 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     label: "Motion time",
     onSeek: (t) => {
       T = t
-      stage.paint()
+      stage.kick()
     },
     onCross: (m) => {
       pulse()

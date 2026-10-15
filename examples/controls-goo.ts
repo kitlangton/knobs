@@ -142,9 +142,9 @@ export class Goo {
     return this.gl !== null
   }
   /** Sizes the drawing buffer to the canvas's box; true when it changed. */
-  fit(dpr: number) {
-    const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr))
-    const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr))
+  fit(dpr: number, cssW = this.canvas.clientWidth, cssH = this.canvas.clientHeight) {
+    const w = Math.max(1, Math.round(cssW * dpr))
+    const h = Math.max(1, Math.round(cssH * dpr))
     if (this.canvas.width === w && this.canvas.height === h) return false
     this.canvas.width = w
     this.canvas.height = h
@@ -200,7 +200,7 @@ export class GooGpu {
   constructor(private readonly view: GpuView) {
     this.canvas = view.canvas
   }
-  fit(_dpr: number) {
+  fit(_dpr: number, _cssW?: number, _cssH?: number) {
     return false
   }
   draw(
@@ -230,8 +230,7 @@ export class GooGpu {
     })
     const samples =
       maxShift < 0.15 ? 1 : Math.min(MAX_SAMPLES, Math.max(4, Math.ceil(maxShift * 1.1)))
-    const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth) || o.dpr
-    data.set([o.goo ? o.k : 0, o.goo ? 1 : 0, samples, dpr], 4 + 20 * 4)
+    data.set([o.goo ? o.k : 0, o.goo ? 1 : 0, samples, o.dpr], 4 + 20 * 4)
     // The ink as CSS would draw it: its alpha over the stage, then linear.
     const a = o.color[3] ?? 1
     const ink = [0, 1, 2].map((j) => toLinear(o.bg[j]! + (o.color[j]! - o.bg[j]!) * a))

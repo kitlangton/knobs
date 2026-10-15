@@ -137,16 +137,23 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
     attributes: true,
     attributeFilter: ["data-theme"],
   })
-  new ResizeObserver(() => stage.paint()).observe(s.stage)
 
+  let lastShape = ""
+  let lastFinish = ""
   on((v, how) => {
     // A choice is a discrete step even from the hand: the shape travels.
     const step = how === "init" ? "init" : "other"
-    SHAPES.forEach((k, i) => {
-      w[i]!.go(k === v.shape ? 1 : 0, step, "morph")
-    })
+    if (v.shape !== lastShape) {
+      lastShape = v.shape
+      SHAPES.forEach((k, i) => {
+        w[i]!.go(k === v.shape ? 1 : 0, step, "morph")
+      })
+    }
     colour.go(v.colour, how)
-    rough.go(FINISH[v.finish as keyof typeof FINISH] ?? 0.42, step, "calm")
+    if (v.finish !== lastFinish) {
+      lastFinish = v.finish
+      rough.go(FINISH[v.finish as keyof typeof FINISH] ?? 0.42, step, "calm")
+    }
     px.go(v.position.x, how)
     py.go(v.position.y, how)
     sx.go(v.scale.x, how)

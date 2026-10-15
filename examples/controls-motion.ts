@@ -110,6 +110,18 @@ const io = new IntersectionObserver(
   },
   { rootMargin: "80px 0px" },
 )
+const ro = new ResizeObserver((entries) => {
+  for (const e of entries) {
+    const stage = byEl.get(e.target)
+    if (!stage) continue
+    const w = Math.round(e.contentRect.width)
+    const h = Math.round(e.contentRect.height)
+    if (w === stage.width && h === stage.height) continue
+    stage.width = w
+    stage.height = h
+    stage.paint()
+  }
+})
 
 let raf = 0
 let last = 0
@@ -155,6 +167,8 @@ function report(e: unknown) {
 export class Stage {
   visible = false
   active = false
+  width = 0
+  height = 0
   private vals = new Set<Val>()
   private loops = new Set<(dt: number, now: number) => boolean>()
   private draws = new Set<() => void>()
@@ -162,10 +176,13 @@ export class Stage {
     readonly el: HTMLElement,
     draw?: () => void,
   ) {
+    this.width = el.clientWidth
+    this.height = el.clientHeight
     if (draw) this.draws.add(draw)
     stages.add(this)
     byEl.set(el, this)
     io.observe(el)
+    ro.observe(el)
   }
   val(x: number, eps = 0.002, fade = false) {
     const v = new Val(this, x, eps, fade)
@@ -229,8 +246,13 @@ export class Stage {
     }
     if (reduced()) {
       // No travel; fades still play.
-      for (const v of this.vals) if (!v.fade) v.spring.snap(v.spring.target)
+      let any = this.loops.size > 0
+      for (const v of this.vals) {
+        if (!v.fade) v.spring.snap(v.spring.target)
+        else if (!v.spring.resting) any = true
+      }
       this.drawSoon()
+      if (!any) return
     }
     this.active = true
     // Always: if the loop ever died, the next change starts it again.
@@ -247,13 +269,12 @@ export class Stage {
     this.visible = true
     for (const v of this.vals) v.spring.step(dt)
     for (const f of this.loops) if (!f(dt, now)) this.loops.delete(f)
-    this.draw()
-    // Drawing can feed new motion (a speed sample), so ask after it.
     let moving = this.loops.size > 0
     if (!moving) for (const v of this.vals) if (!v.spring.resting) moving = true
+    // Set `active` before drawing so a GPU scene renders its crisp at-rest frame in one pass;
+    // if drawing feeds a new speed sample, `kick()` turns `active` back on.
     this.active = moving
-    // Settled: one last draw, at rest (a GPU scene draws its full-quality frame here).
-    if (!moving) this.draw()
+    this.draw()
   }
   /** Draws now (a value changed that isn't animated). */
   paint() {
