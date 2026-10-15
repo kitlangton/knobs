@@ -440,6 +440,9 @@ const css = `
 .knobs-modified .knobs-x-label::after{opacity:.95;transform:none}
 .knobs-x-sum{display:flex;align-items:center;gap:8px;min-width:0}
 .knobs-x-read,.knobs-strip-read{color:var(--k-label);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap}
+/* A name crossfading (reel.ts fadeText): the old one fades out over the new, where it was. */
+.knobs-x-read{position:relative}
+.knobs-ghost{position:absolute;right:0;top:0;white-space:nowrap;pointer-events:none}
 .knobs-caret{width:10px;height:10px;flex:none;margin-right:-2.5px;color:var(--k-dim);transition:transform ${LEAD_T},color .15s}
 .knobs-caret path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .knobs-x-head:hover .knobs-caret{color:var(--k-label)}

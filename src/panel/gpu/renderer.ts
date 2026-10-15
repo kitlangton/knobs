@@ -18,6 +18,7 @@ import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { DigitPlace, Slider } from "../slider.js"
+import { rollingReadoutOf, type RollingReadout } from "../reel.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
 import { rangeSmear } from "../smear.js"
@@ -2049,14 +2050,139 @@ class GpuOverlayManager {
 
   /** An outline like CSS `outline: 1.5px` at `offset`, following `radius`; drawn while focus-visible. */
   private readout(el: HTMLElement, centerY: number, color: Rgba, clip?: Clip) {
-    const text = el.textContent ?? ""
-    const r = this.rectOf(el, text.length)
-    this.drawText(text, r.right, centerY, color, {
-      px: this.curTokens.valueSize,
-      weight: this.curTokens.fontWeight,
-      align: "right",
-      clip,
+    const t = this.curTokens
+    const font = { px: t.valueSize, weight: t.fontWeight, family: t.fontFamily }
+    const rolling = rollingReadoutOf(el)
+    if (rolling) return this.drawRolling(rolling, centerY, color, clip, font)
+    const text = el.dataset.text ?? el.textContent ?? ""
+    const r = this.rectOf(el, textKey(text))
+    this.fadeText(el, text, r.right, centerY, color, { ...font, align: "right", clip })
+  }
+
+  /** Each name-like readout's text and the one before it, for their crossfade (see `fadeText`). */
+  private readonly fades = new WeakMap<object, { now: string; was: string }>()
+
+  /** Text that crossfades from what it said before when its element says `data-fade`, as the DOM's. */
+  private fadeText(
+    el: HTMLElement,
+    text: string,
+    x: number,
+    centerY: number,
+    color: Rgba,
+    opts: TextOpts,
+  ) {
+    let texts = this.fades.get(el)
+    if (!texts) this.fades.set(el, (texts = { now: text, was: "" }))
+    if (texts.now !== text) {
+      texts.was = el.hasAttribute("data-fade") ? texts.now : ""
+      texts.now = text
+      this.ease(el, "fade", texts.was ? 0 : 1, SNAP_OMEGA)
+    }
+    const k = this.ease(el, "fade", 1, this.curReduced ? SNAP_OMEGA : 30)
+    if (texts.was && k < 0.995)
+      this.drawText(texts.was, x, centerY, withAlpha(color, color[3] * (1 - k)), opts)
+    return this.drawText(text, x, centerY, withAlpha(color, color[3] * k), opts)
+  }
+
+  /**
+   * A rolling readout (reel.ts), right-aligned where its element ends: each number a wheel per
+   * place, as the slider's readout draws its digits, and the text between them still. Laid out
+   * here from the glyphs' advances (tabular digits), not from the DOM's spans, which may not
+   * have caught up yet.
+   */
+  private drawRolling(
+    rolling: RollingReadout,
+    centerY: number,
+    color: Rgba,
+    clip: Clip | undefined,
+    font: { px: number; weight: number; family: string },
+  ) {
+    const clock = performance.now()
+    const r = this.rectOf(rolling.host, textKey(rolling.text))
+    let right = r.right
+    const segments = rolling.segments
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const s = segments[i]!
+      if (s.places) {
+        if (this.drawPlaces(s.places, s.text, right, centerY, color, clip, font, clock))
+          this.easeMoving = true
+        right -= this.advanceOf(s.text, font)
+      } else if (s.text) {
+        right -= this.drawText(s.text, right, centerY, color, { ...font, align: "right", clip })
+      }
+    }
+    return 0
+  }
+
+  private advanceOf(text: string, font: { px: number; weight: number; family: string }) {
+    const cell = this.getDigitCellWidth(font.px, font.family, font.weight)
+    let w = 0
+    for (const ch of text)
+      w += ch >= "0" && ch <= "9" ? cell : this.atlas.measure(ch, font.px, font.weight, font.family)
+    return w
+  }
+
+  /**
+   * A number's places, right-aligned at `right`: each digit a wheel seen through a feathered
+   * slot (faces 2.1em apart, as the DOM's reel), blurring with speed; punctuation keeps its own
+   * advance, and a place on its way out keeps its last spot. True while any place moves.
+   */
+  private drawPlaces(
+    places: readonly DigitPlace[],
+    text: string,
+    right: number,
+    centerY: number,
+    ink: Rgba,
+    clip: Clip | undefined,
+    font: { px: number; weight: number; family: string },
+    clock: number,
+  ) {
+    const t = this.curTokens
+    const faceH = font.px * 2.1
+    const slot = intersectClip(clip ?? this.curClip, [
+      right - 400,
+      centerY - faceH / 2,
+      right + 1,
+      centerY + faceH / 2,
+    ])
+    const opts = { ...font, clip: slot, feather: font.px * 0.5, align: "center" as const }
+    const maxBlur = faceH * 0.45 * t.blurStrength
+    const cell = this.getDigitCellWidth(font.px, font.family, font.weight)
+    const advance = (ch: string) =>
+      ch >= "0" && ch <= "9" ? cell : this.atlas.measure(ch, font.px, font.weight, font.family)
+    let moving = false
+    places.forEach((place, j) => {
+      const presence = clamp(place.presence.sample(clock).position, 0, 1)
+      if (!place.presence.resting(clock) || !place.wheel.resting(clock)) moving = true
+      if (presence <= 0.005) return
+      let offset = this.placeOffsets.get(place)
+      if (j < text.length) {
+        let after = 0
+        for (let k = text.length - 1; k > text.length - 1 - j; k--) after += advance(text[k]!)
+        offset = after + advance(text[text.length - 1 - j]!) / 2
+        this.placeOffsets.set(place, offset)
+      }
+      const cx = right - (offset ?? 0)
+      const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
+      const col = withAlpha(ink, ink[3] * presence)
+      if (!(place.ch >= "0" && place.ch <= "9")) {
+        this.drawText(place.ch, cx, centerY + rise, col, opts)
+        return
+      }
+      const { position, velocity } = place.wheel.sample(clock)
+      const blurY = clamp((Math.abs(velocity) - 4) / 20, 0, 1) * maxBlur
+      const [low, high] = place.wheel.span(clock)
+      for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
+        const y = centerY + rise + (k - position) * faceH
+        if (Math.abs(y - centerY) >= faceH) continue
+        this.drawText(numeral(k), cx, y, col, {
+          ...opts,
+          blurY,
+          exact: position !== k || rise !== 0,
+        })
+      }
     })
+    return moving
   }
 
   /** A disclosure head (hover, label and changed dot, caret, focus); returns the body's clip, if open. */
@@ -2859,14 +2985,15 @@ class GpuOverlayManager {
     align: "left" | "right" = "right",
   ) {
     const t = this.curTokens
-    const text = el.textContent ?? ""
-    const r = this.rectOf(el, text.length)
+    const font = { px: t.valueSize, weight: t.fontWeight, family: t.valueFamily }
+    const rolling = rollingReadoutOf(el)
+    if (rolling) return this.drawRolling(rolling, centerY, color, clip, font)
+    const text = el.dataset.text ?? el.textContent ?? ""
+    const r = this.rectOf(el, textKey(text))
     const shown = this.fit(text, r.width + 1, t.valueSize, t.fontWeight, t.valueFamily)
-    return this.drawText(shown, align === "right" ? r.right : r.left, centerY, color, {
-      px: t.valueSize,
-      weight: t.fontWeight,
+    return this.fadeText(el, shown, align === "right" ? r.right : r.left, centerY, color, {
+      ...font,
       align,
-      family: t.valueFamily,
       clip,
     })
   }

@@ -34,6 +34,7 @@ import { iconSvg } from "./icons.js"
 import { clamp, Roll, rollTarget, springEasing } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
 import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
+import { rollingReadout, rollMs, type RollingReadout } from "./reel.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
 
@@ -256,6 +257,7 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
   }
   const gpuCells: GpuCell[] = []
   const reads: HTMLElement[] = []
+  const rolls: RollingReadout[] = []
   const stops: HTMLElement[] = []
   for (const axis of axes) {
     const cell = el("span", "knobs-cell")
@@ -270,6 +272,7 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
     cell.append(letter, read)
     cells.append(cell)
     reads.push(read)
+    rolls.push(rollingReadout(read))
     stops.push(cell)
     const editor = inlineEdit(
       c.doc,
@@ -351,15 +354,17 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
       active: () => drag.scrubbing() || panAt !== undefined,
     })
   }
-  const paint = () => {
+  /** The cells' numbers roll (Random, presets, undo, keys), except under a scrub or pan. */
+  const paint = (ms = 0, delay = 0) => {
     axes.forEach((axis, i) => {
       const text = mixed ? "—" : fmt(shown[axis] ?? 0, places())
       const unit = f().unit && !mixed ? ` ${f().unit}` : ""
-      if (reads[i]!.textContent !== text) reads[i]!.textContent = text
+      rolls[i]!.show(mixed ? ["—"] : [{ value: shown[axis] ?? 0, decimals: places() }], ms, delay)
       stops[i]!.setAttribute("aria-valuetext", `${text}${unit}`)
     })
   }
   paint()
+  let placed = false
   const gpu: GpuVecRow = {
     kind: "vec",
     key: c.key,
@@ -377,12 +382,16 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
     labelEl: label,
     input: stops[0]!,
     stops: () => stops,
-    update(value: Value, _delay: number, _instant?: boolean, isMixed = false) {
+    update(value: Value, delay: number, instant?: boolean, isMixed = false) {
       shown = value as Vec
       mixed = isMixed
-      paint()
+      const hand = row.classList.contains("knobs-active")
+      paint(!placed || instant || hand ? 0 : rollMs(row), delay)
+      placed = true
     },
-    dispose() {},
+    dispose() {
+      for (const r of rolls) r.dispose()
+    },
     tracks: [],
     gpu: [gpu],
   }
@@ -481,11 +490,21 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       ? ([Math.min(q, from[1]), from[1]] as const)
       : ([from[0], Math.max(q, from[0])] as const)
   }
-  const text = () => {
-    if (mixed) return "—"
-    const u = f().unit ? ` ${f().unit}` : ""
-    return `${fmt(shown[0], places())}–${fmt(shown[1], places())}${u}`
-  }
+  const rolling = rollingReadout(read)
+  /** Its ends roll to new values (Random, presets, undo, keys); a drag or pan places them. */
+  const showText = (ms: number, delay: number) =>
+    rolling.show(
+      mixed
+        ? ["—"]
+        : [
+            { value: shown[0], decimals: places() },
+            "–",
+            { value: shown[1], decimals: places() },
+            f().unit ? ` ${f().unit}` : "",
+          ],
+      ms,
+      delay,
+    )
   const place = (instant: boolean) => {
     const [a, b] = [ratio(shown[0]), ratio(shown[1])]
     const nodes = [fill, track]
@@ -499,9 +518,8 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       for (const n of nodes) n.style.transition = ""
     }
   }
-  const paint = (instant: boolean) => {
-    const t = text()
-    if (read.textContent !== t) read.textContent = t
+  const paint = (instant: boolean, delay = 0) => {
+    showText(instant ? 0 : rollMs(row), delay)
     thumbs.forEach((th, i) => {
       th.setAttribute("aria-valuenow", String(shown[i]))
       th.setAttribute("aria-valuemin", String(i === 0 ? f().min : shown[0]))
@@ -671,11 +689,12 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     update(value: Value, delay: number, instant?: boolean, isMixed = false) {
       shown = value as readonly [number, number]
       mixed = isMixed
-      paint(first || Boolean(instant) || dragging)
+      paint(first || Boolean(instant) || dragging, delay)
       first = false
     },
     dispose() {
       cancelAnimationFrame(smearFrame)
+      rolling.dispose()
     },
     tracks: [],
     gpu: [gpu],
@@ -708,9 +727,15 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
     const q = Number((Math.round(v / step) * step).toPrecision(12))
     return f().wrap ? wrapAngle(q, f().min, f().max) : clamp(q, f().min, f().max)
   }
-  const paint = (instant: boolean) => {
+  const rolling = rollingReadout(read)
+  /** The degrees roll (Random, presets, undo, keys); under the hand they're placed. */
+  const paint = (instant: boolean, delay = 0) => {
     const t = mixed ? "—" : `${fmt(value, places())}°`
-    if (read.textContent !== t) read.textContent = t
+    rolling.show(
+      mixed ? ["—"] : [{ value, decimals: places() }, "°"],
+      instant || row.classList.contains("knobs-active") ? 0 : rollMs(row),
+      delay,
+    )
     control.setAttribute("aria-valuenow", String(value))
     control.setAttribute("aria-valuetext", t)
     if (instant || reduced(c.doc)) hand.style.transition = "none"
@@ -879,10 +904,12 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
       if (first || instant) {
         value = turn = next as number
       } else follow(next as number)
-      paint(first || Boolean(instant) || dragging)
+      paint(first || Boolean(instant) || dragging, delay)
       first = false
     },
-    dispose() {},
+    dispose() {
+      rolling.dispose()
+    },
     tracks: [],
     gpu: [gpu],
   }
@@ -892,10 +919,6 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
 
 /** How long a rolled seed's digits spin: about as long as its die tumbles. */
 const DICE_ROLL_MS = 620
-const rollMs = (el: Element) => {
-  const n = parseFloat(getComputedStyle(el).getPropertyValue("--k-roll"))
-  return Number.isFinite(n) ? Math.max(0, n) : 320
-}
 
 export function seedRow(c: RowContext<SeedField>): EditorRow {
   const { row, label, el } = shell(c, "seed")

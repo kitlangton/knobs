@@ -2446,7 +2446,8 @@ function buildPanel<S extends Schema>(
       else if (row.editor) {
         row.editor.update(value as Value, delay, instant, mixed)
         if (mixed)
-          for (const read of row.row.querySelectorAll(".knobs-x-read")) read.textContent = "—"
+          for (const read of row.row.querySelectorAll<HTMLElement>(".knobs-x-read"))
+            if ((read.dataset.text ?? read.textContent) !== "—") read.textContent = "—"
       } else if (row.field.kind === "toggle")
         row.input.setAttribute("aria-checked", mixed ? "mixed" : String(Boolean(value)))
     }

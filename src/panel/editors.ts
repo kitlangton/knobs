@@ -24,6 +24,7 @@ import type {
 } from "./gpu/renderer.js"
 import { arrowOf, bigOf } from "./prefs.js"
 import { clamp } from "./motion.js"
+import { fadeText, rollingReadout, rollMs } from "./reel.js"
 import { reveal } from "./reveal.js"
 import { createSlider, decimals, type Slider } from "./slider.js"
 import { onPan } from "./swipe.js"
@@ -699,6 +700,7 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
   })
   const strips = editor.strips
   const x = expander(c, [hex, swatch], [editor.body])
+  let placed = false
   x.head.addEventListener("keydown", (event) => {
     const dir = arrow(event)
     if (!dir || event.target !== x.head || !plainKey(event)) return
@@ -730,12 +732,15 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? strips.map((s) => s.track) : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value, _delay, _instant, mixed = false) {
+    update(value, _delay, instant = false, mixed = false) {
       const shown = parseColor(value)!
       const rgb = editor.show(shown, mixed)
       // Mixed leaves an empty well: no one colour stands for the selection.
       swatch.style.backgroundColor = mixed ? "transparent" : rgb
-      hex.textContent = mixed ? "—" : colorHex(shown).toUpperCase()
+      // A new colour crossfades its hex, except under the user's own hand.
+      const hand = x.row.querySelector(".knobs-active") !== null
+      fadeText(hex, mixed ? "—" : colorHex(shown).toUpperCase(), !hand && !instant && placed)
+      placed = true
     },
     dispose: () => editor.dispose(),
   }
@@ -759,6 +764,8 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   const puck = el("i", "knobs-pad-puck")
   pad.append(vLine, hLine, home, puck)
   const x = expander(c, [read], [pad])
+  const rolling = rollingReadout(read)
+  let placed = false
   const fmt = (v: number, step: number) => v.toFixed(decimals(step))
   const format = (p: Point) => `${fmt(p.x, f.step.x)}, ${fmt(p.y, f.step.y)}`
   let shown = f.value
@@ -921,14 +928,30 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? [pad] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value, _delay, _instant, mixed = false) {
-      const first = read.textContent === ""
+    update(value, delay, instant = false, mixed = false) {
+      const first = !placed
+      placed = true
       shown = value as Point
-      read.textContent = mixed ? "—" : format(shown)
+      // Random, presets, undo and keys roll the coordinates; a drag or pan (the hand) doesn't.
+      const ms = first || instant || pad.classList.contains("knobs-active") ? 0 : rollMs(x.row)
+      rolling.show(
+        mixed
+          ? ["—"]
+          : [
+              { value: shown.x, decimals: decimals(f.step.x) },
+              ", ",
+              { value: shown.y, decimals: decimals(f.step.y) },
+            ],
+        ms,
+        delay,
+      )
       pad.setAttribute("aria-valuetext", mixed ? "Mixed" : format(shown))
       layout(first)
     },
-    dispose: () => size.disconnect(),
+    dispose() {
+      size.disconnect()
+      rolling.dispose()
+    },
   }
 }
 
@@ -1189,12 +1212,13 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? [chips, ...handles] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value, _delay, _instant, mixed = false) {
+    update(value, _delay, instant = false, mixed = false) {
       const first = name.dataset.placed === undefined
       name.dataset.placed = ""
       shown = value as Bezier
       const match = mixed ? undefined : easingName(shown)
-      name.textContent = mixed ? "—" : (match ?? "")
+      const hand = box.classList.contains("knobs-active")
+      fadeText(name, mixed ? "—" : (match ?? ""), !first && !instant && !hand)
       for (const [i, b] of chipButtons.entries())
         b.setAttribute("aria-checked", String(names[i] === match))
       handles.forEach((h, i) =>
