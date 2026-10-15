@@ -153,6 +153,14 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly keys?: PanelKeys
   /**
+   * Hint mode's reach. `"page"` (the default): `s` labels every visible control in every panel
+   * and knobs/ui piece on the page (and the host's `data-hint` elements), so pressed here or
+   * anywhere outside a text field it jumps across all of them; with nothing else on the page it's
+   * this panel's alone, as always. `"panel"`: `s` here labels only this panel's controls, and they
+   * don't join the page's. `keys: { hint: false }` turns hint mode off here either way.
+   */
+  readonly hints?: "page" | "panel"
+  /**
    * `false` hides what says a value differs from its default: modified dots and readout marks,
    * group reset icons and the header's Reset. For panels whose values belong to someone else
    * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
