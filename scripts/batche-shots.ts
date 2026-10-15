@@ -261,6 +261,40 @@ if (before && want("panels")) {
   )
 }
 
+if (before && want("label")) {
+  const ids = ["tight-knobs-dom", "tight-lab-dom", "tight-knobs-gpu", "tight-lab-gpu"]
+  const take = async (server: string, hover: boolean) => {
+    const page = await open(`${server}/rows.html`, { width: 1440, height: 2000 })
+    await sleep(800)
+    const frames: Frame[] = []
+    for (const id of ids)
+      frames.push({
+        caption: id.replace("tight-", "").replace("-", " · "),
+        png: await shot(page, await boxOf(page, `#${id}`, 8)),
+      })
+    if (hover)
+      for (const id of ["tight-knobs-dom", "tight-knobs-gpu"]) {
+        await page.locator(`#${id} [data-field="tooLong"]`).hover()
+        await sleep(500)
+        frames.push({
+          caption: `${id.replace("tight-", "").replace("-", " · ")}, the last row hovered`,
+          png: await shot(page, await boxOf(page, `#${id}`, 8)),
+        })
+      }
+    await page.close()
+    return frames
+  }
+  await sheet(
+    "label-room-before-after",
+    "A long label beside a long menu value, in a 270px column: before and after",
+    "examples/rows.html, each row with a host's pin that only shows on hover (Weather's is pinned). Before, the label stopped at half the row and the hidden pin took width from it. After, the label keeps its words and the value truncates (its whole text is the tooltip), down to a few letters; only a label too long for any column gives way, and the pin then lies over its end, which fades from under it while the row is hovered. GPU columns match.",
+    [
+      { caption: "Before", frames: await take(before, false) },
+      { caption: "After", frames: await take(base, true) },
+    ],
+  )
+}
+
 if (before && want("readouts")) {
   const take = async (server: string, width: number) => {
     const page = await open(`${server}/lab.html?seed`, { width, height: 900 })

@@ -466,10 +466,12 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   a hosted prototype's settings sections (choices, switches, buttons, titled sections becoming
   groups) to descriptors and values, with what the prototype first reported as each default.
 - **Choices** are segmented while their labels fit with room to spare and there are at most four,
-  and a drop-down menu otherwise. The row's label keeps its words (up to half the row, as on a
-  menu row): segments that would squeeze it become a menu instead. They switch both ways as the
-  width changes; `display: "menu" | "segmented"` fixes one. On a menu row, ←/→ step through the options, and Enter or Space opens
-  the menu (↑↓, a letter, Enter, Esc).
+  and a drop-down menu otherwise. The row's label keeps its words and the control gives way: a
+  menu's value truncates (its whole text shows on hover) down to a few letters, and segments that
+  would squeeze the label become a menu. Only then does the label give way, and never below half
+  the row. They switch both ways as the width changes; `display: "menu" | "segmented"` fixes one.
+  On a menu row, ←/→ step through the options, and Enter or Space opens the menu (↑↓, a letter,
+  Enter, Esc).
 - **Keys stay scoped.** An inline panel hears keys only while focus is inside it. Keys it handles
   are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
   focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
@@ -553,9 +555,11 @@ mountPanel(station, column, {
   own seeded "Randomize <group>"): the die tumbles and knobs leaves the values alone. Return
   anything else and knobs rolls it. With `groupRandom` set, group dice stay enabled.
 - **Row accessories.** `rowAccessory(key)` puts the host's node just after each row's label (a pin,
-  a spawn-time marker); slider ticks and the label make room for it. The node stays the host's
-  (style it, listen on it, its clicks never reach the row); `panel.updateAccessories()` (or
-  `controls.refresh()`, for every panel of the store) asks again.
+  a spawn-time marker); slider ticks and the label make room for it. On a choice row it takes its
+  room from the value, never from the label: where none is left (a label too long for the
+  column) it lies over the label's end, which fades from under it while the row is hovered or
+  focused. The node stays the host's (style it, listen on it, its clicks never reach the row);
+  `panel.updateAccessories()` (or `controls.refresh()`, for every panel of the store) asks again.
   With the WebGPU renderer it stays in the DOM, above the overlay.
 - **Long menus.** A menu of more than eight options (not numbered presets) opens with a search
   field: typing filters, ↑↓ and Enter choose, Esc closes. The row's value truncates with its whole
