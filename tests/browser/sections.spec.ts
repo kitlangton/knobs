@@ -285,16 +285,18 @@ test("folds are remembered across reloads and win over sectionFolded; a highligh
   await expect(tile(root, "Timing")).toHaveAttribute("data-folded", "")
   await page.evaluate(() => (window as any).__s.page.foldSection("Layout", false))
   await expect(root.locator('[data-card="Notes"]')).toHaveAttribute("data-collapsed", "")
-  // Without storage (persist: "none"), or with session: false, nothing is remembered.
+  // With foldStorage: null, or session: false and no foldStorage, nothing is remembered.
   await page.evaluate(() => (window as any).__s.page.foldSection("Look", true))
-  root = await mount(page, { ...options, keep: true, store: { persist: "none" } })
+  const none = { mount: { sectionFolded: true, foldStorage: null }, keep: true }
+  root = await mount(page, none)
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
   await head(root, "Look").click()
-  root = await mount(page, { ...options, keep: true, store: { persist: "none" } })
+  root = await mount(page, none)
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
-  root = await mount(page, { mount: { sectionFolded: true, session: false }, keep: true })
+  const off = { mount: { sectionFolded: true, session: false }, keep: true, tabFolds: true }
+  root = await mount(page, off)
   await head(root, "Look").click()
-  root = await mount(page, { mount: { sectionFolded: true, session: false }, keep: true })
+  root = await mount(page, off)
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
 })
 
