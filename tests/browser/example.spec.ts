@@ -88,9 +88,16 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   await expect(panel.locator(".knobs-label").first()).toHaveText("seed")
   await expect(panel.locator("header strong")).toHaveText("Splat")
 
-  // Verify ? shortcuts popover in header replaces permanent footer
-  const helpBtn = panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })
-  await helpBtn.click()
+  // The shortcuts open on ?, which the title's tooltip mentions (the header has no ? button)
+  await expect(panel.getByRole("button", { name: "Keyboard shortcuts", exact: true })).toHaveCount(
+    0,
+  )
+  await expect(panel.locator("header strong")).toHaveAttribute(
+    "title",
+    "Splat\nPress ? for keyboard shortcuts",
+  )
+  await panel.locator(".knobs-track").first().focus()
+  await page.keyboard.press("?")
   await expect(panel.locator(".knobs-popover")).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(panel.locator(".knobs-popover")).toBeHidden()
@@ -240,6 +247,8 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
     JSON.parse(localStorage.getItem("knobs:splat:position:v1")!),
   )
   await panel.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
+  // Mid-morph the content is scaled a touch, so the box is read once it lands.
+  await expect(panel).not.toHaveAttribute("data-morphing")
   const restored = (await panel.boundingBox())!
   expect(restored.x).toBeCloseTo(position.x)
   expect(restored.y).toBeCloseTo(position.y)
@@ -466,10 +475,18 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const seed = panel.getByRole("slider", { name: "seed", exact: true })
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
-  // Random, Reset and Copy are Phosphor icons in the header with undo/redo, help and close
-  await expect(panel.locator("header :is(.knobs-icon, .knobs-die-icon)")).toHaveCount(7)
+  // Random, Reset and Copy are Phosphor icons in the header with undo/redo and close; undo and
+  // redo fold in once there's history
+  await expect(
+    panel.locator(
+      "header button:not([hidden]) :is(.knobs-icon, .knobs-die-icon):not(.knobs-check)",
+    ),
+  ).toHaveCount(6)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
   await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
+  const history = panel.locator(".knobs-head-history")
+  await expect(history).toHaveAttribute("data-shown", "false")
+  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBe(0)
 
   // ↑/↓ walk presets → rows, wrapping (no custom actions here)
   const grain = panel.getByRole("switch", { name: "grain" })
@@ -494,6 +511,10 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   // ⇧R resets everything; ⇧S saves a preset; ⌫ on the strip deletes it; export lives in "?"
   await seed.focus()
   await page.keyboard.press("ArrowRight")
+  await expect(history).toHaveAttribute("data-shown", "true")
+  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBeGreaterThan(40)
+  await expect(panel.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
+  await expect(panel.getByRole("button", { name: "Redo", exact: true })).toBeDisabled()
   await page.keyboard.press("Shift+R")
   await expect(strip).toHaveAttribute("data-active-preset", "p:default")
   await page.keyboard.press("ArrowRight")
@@ -1348,12 +1369,12 @@ test("group dice, mutate and hold-to-compare", async ({ page }) => {
   expect(errors).toEqual([])
 })
 
-test("a floating panel grows out of its chip and collapses back into it, interruptibly", async ({
+test("a floating panel grows out of its chip as liquid glass and collapses back into it, interruptibly", async ({
   page,
 }) => {
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
-  // Frames run on a fake clock, 16 ms apart, so the spring's path is sampled exactly.
+  // Frames run on a fake clock, 16 ms apart, so the springs' paths are sampled exactly.
   await page.clock.install()
   await page.goto("/?dom")
   await page.evaluate(() => {
@@ -1369,17 +1390,46 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   // Measured once its scale-in has finished.
   await page.waitForTimeout(400)
   const chipBox = (await chip.boundingBox())!
+  // Just the cog: a small round button, labelled for assistive tech.
+  expect(chipBox.width).toBeCloseTo(chipBox.height, 0)
+  expect(chipBox.width).toBeLessThan(30)
+  await expect(chip.locator("svg.knobs-icon")).toHaveCount(1)
+  await expect(chip).toHaveText("")
   const panel = page.getByRole("dialog", { name: "splat controls", exact: true })
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000)
-  type Box = { x: number; y: number; w: number; h: number; label: number }
+  type Box = {
+    x: number
+    y: number
+    w: number
+    h: number
+    label: number
+    chipScale: number
+    chipBlur: number
+    blur: number
+    opacity: number
+    scale: number
+  }
   const shape = () =>
     page.evaluate(() => {
       const el = document.querySelector(".knobs-morph")
       if (!el) return undefined
       const r = el.getBoundingClientRect()
-      const chip = document.querySelector('.knobs-chip[aria-label="Tune splat"]')!
-      const label = Number(getComputedStyle(chip).opacity)
-      return { x: r.x, y: r.y, w: r.width, h: r.height, label }
+      const chip = document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!
+      const root = document.querySelector<HTMLElement>('[aria-label="splat controls"]')
+      const cs = root ? getComputedStyle(root) : undefined
+      const scale = cs && cs.scale !== "none" ? Number(cs.scale) : 1
+      return {
+        x: r.x,
+        y: r.y,
+        w: r.width,
+        h: r.height,
+        label: Number(getComputedStyle(chip).opacity),
+        chipScale: chip.style.scale ? Number(chip.style.scale) : 1,
+        chipBlur: Number(chip.style.filter.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0),
+        blur: Number(cs?.filter.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0),
+        opacity: cs ? Number(cs.opacity) : 1,
+        scale,
+      }
     })
   /** Steps frames until the morph settles; `at` runs before a given frame. */
   const film = async (at: Record<number, () => Promise<unknown>> = {}) => {
@@ -1393,15 +1443,26 @@ test("a floating panel grows out of its chip and collapses back into it, interru
     }
     return boxes
   }
+  /** At rest the content is exactly as laid out: no blur, fade, scale, clip or mask. */
+  const crisp = () =>
+    panel.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return [cs.filter, cs.opacity, cs.scale, cs.clipPath, cs.maskImage].join(" | ")
+    })
 
   await chip.click()
   await expect(panel).toBeAttached()
   const opening = await film()
   const final = (await panel.boundingBox())!
+  // Anticipation: the press squeezes the chip, and the shape with it, before anything grows.
+  expect(opening[0]!.chipScale).toBeLessThan(1)
+  const squeezed = opening.slice(0, 4).filter((box) => box.w < chipBox.width - 0.5)
+  expect(squeezed.length).toBeGreaterThan(0)
+  for (const box of squeezed) expect(box.w).toBeGreaterThan(chipBox.width * 0.93)
   // Every frame's shape lies between the chip and the panel (a few px of bounce aside), it
-  // passes through sizes in between, the label fades out early, and it settles in about 0.5 s.
-  expect(opening.length).toBeGreaterThan(12)
-  expect(opening.length).toBeLessThan(45)
+  // passes through sizes in between, the cog fades out early, and it settles fast.
+  expect(opening.length).toBeGreaterThan(10)
+  expect(opening.length).toBeLessThan(26)
   const between = (v: number, a: number, z: number, slack: number) =>
     v >= Math.min(a, z) - slack && v <= Math.max(a, z) + slack
   for (const box of opening) {
@@ -1412,17 +1473,69 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   }
   expect(opening.some((box) => box.w > chipBox.width + 40 && box.w < final.width - 40)).toBe(true)
   expect(opening[0]!.label).toBeGreaterThan(0.5)
-  expect(opening[8]!.label).toBe(0)
+  expect(opening[9]!.label).toBe(0)
+  // The cog dissolves into the glass: it shrinks and blurs as it fades, rather than being covered.
+  expect(
+    opening.some(
+      (box) => box.label > 0.1 && box.label < 0.9 && box.chipBlur > 0.5 && box.chipScale < 0.92,
+    ),
+  ).toBe(true)
+  expect(Math.max(...opening.map((box) => box.chipBlur))).toBeCloseTo(4, 1)
+  // The panel opens down and to the right: the right and bottom edges lead, the left trails, so
+  // the glass stretches toward the panel on its way there.
+  const progress = (box: Box) => ({
+    left: (box.x - chipBox.x) / (final.x - chipBox.x),
+    right:
+      (box.x + box.w - chipBox.x - chipBox.width) /
+      (final.x + final.width - chipBox.x - chipBox.width),
+    bottom:
+      (box.y + box.h - chipBox.y - chipBox.height) /
+      (final.y + final.height - chipBox.y - chipBox.height),
+  })
+  expect(final.x).toBeGreaterThan(chipBox.x + chipBox.width)
+  expect(final.y + final.height).toBeGreaterThan(chipBox.y + chipBox.height + 100)
+  const mid = opening.map(progress).filter((p) => p.right > 0.3 && p.right < 0.9)
+  expect(mid.length).toBeGreaterThan(0)
+  expect(Math.max(...mid.map((p) => p.right - p.left))).toBeGreaterThan(0.1)
+  for (const p of mid) {
+    expect(p.right).toBeGreaterThan(p.left + 0.05)
+    // (The left edge sets off from the squeezed chip, a px or so ahead over its short travel.)
+    expect(p.bottom).toBeGreaterThan(p.left - 0.03)
+  }
+  // The leading edges overshoot a little, never wobbling.
+  const widest = Math.max(...opening.map((box) => box.w))
+  expect(widest).toBeGreaterThan(final.width)
+  expect(widest).toBeLessThan(final.width * 1.04)
+  // Content comes in blurred, faded and a touch small, and lands exactly crisp.
+  expect(Math.max(...opening.map((box) => box.blur))).toBeGreaterThan(3)
+  expect(opening.some((box) => box.blur > 0 && box.opacity > 0.2 && box.scale < 1)).toBe(true)
   await expect(page.locator(".knobs-morph")).toHaveCount(0)
   await expect(panel).not.toHaveAttribute("data-morphing")
+  expect(await crisp()).toBe("none | 1 | none | none | none")
   await expect(panel.getByRole("slider", { name: "seed" })).toBeFocused()
 
-  // Escape collapses it back into the chip, which gets focus back.
+  // Escape collapses it back into the chip, which gets focus back. The content blurs out and
+  // fades first, while the glass still holds the panel's size; then the glass contracts.
   await page.keyboard.press("Escape")
   const closing = await film()
-  expect(closing.length).toBeGreaterThan(12)
+  expect(closing.length).toBeGreaterThan(6)
+  expect(closing.length).toBeLessThan(18)
+  const faded = closing.findIndex((box) => box.opacity < 0.3)
+  expect(faded).toBeGreaterThanOrEqual(0)
+  expect(closing[faded]!.blur).toBeGreaterThan(4)
+  // (While it's still visible: frames land at any phase of the close, so the first faded one may
+  // already be a few ms into the glass's move.)
+  for (const box of closing.slice(0, faded)) expect(box.w).toBeGreaterThan(final.width - 6)
   expect(closing.at(-1)!.w).toBeLessThan(chipBox.width + 2)
   expect(closing.at(-1)!.label).toBeGreaterThan(0.95)
+  // …and condenses back out of it, whole and sharp just as the glass lands.
+  expect(closing.some((box) => box.label > 0.1 && box.label < 0.9 && box.chipBlur > 0.5)).toBe(true)
+  expect(closing.at(-1)!.chipBlur).toBeLessThan(0.3)
+  expect(await chip.evaluate((el) => [el.style.filter, el.style.scale, el.style.opacity])).toEqual([
+    "",
+    "",
+    "",
+  ])
   await expect(panel).toHaveCount(0)
   await expect(chip).toBeFocused()
   await expect(chip).toBeVisible()
@@ -1439,20 +1552,33 @@ test("a floating panel grows out of its chip and collapses back into it, interru
   })
   const widths = toggled.map((box) => box.w)
   const peak = widths.indexOf(Math.max(...widths))
-  expect(peak).toBeGreaterThan(6)
+  expect(peak).toBeGreaterThanOrEqual(6)
   expect(widths[peak]!).toBeGreaterThan(chipBox.width + 40)
   expect(widths[peak]!).toBeLessThan(final.width - 8)
-  const most = Math.max(...widths.slice(1).map((w, i) => Math.abs(w - widths[i]!)))
-  for (let i = 1; i < widths.length; i++)
-    expect(Math.abs(widths[i]! - widths[i - 1]!)).toBeLessThanOrEqual(most)
-  expect(most).toBeLessThan((final.width - chipBox.width) * 0.2)
+  // No frame jumps further than the open's own fastest frame.
+  const step = (ws: number[]) => Math.max(...ws.slice(1).map((w, i) => Math.abs(w - ws[i]!)))
+  expect(step(widths)).toBeLessThanOrEqual(step(opening.map((box) => box.w)) + 1)
   await expect(panel).toHaveCount(0)
   await expect(chip).toBeFocused()
 
-  // A reload reopens an open panel in place, without the morph.
+  // …and a click mid-collapse grows it straight back, carrying on to a crisp panel.
   await chip.click()
   await expect(panel).toBeAttached()
   await film()
+  await page.keyboard.press("Escape")
+  const reopened = await film({
+    5: () =>
+      page.evaluate(() =>
+        document.querySelector<HTMLElement>('.knobs-chip[aria-label="Tune splat"]')!.click(),
+      ),
+  })
+  const shrunk = Math.min(...reopened.map((box) => box.w))
+  expect(shrunk).toBeLessThan(final.width - 20)
+  expect(shrunk).toBeGreaterThan(chipBox.width + 20)
+  await expect(page.locator(".knobs-morph")).toHaveCount(0)
+  expect(await crisp()).toBe("none | 1 | none | none | none")
+
+  // A reload reopens an open panel in place, without the morph.
   await page.clock.resume()
   await page.reload()
   await expect(panel).toBeVisible()
@@ -1562,7 +1688,18 @@ test("design-system geometry contracts: left/right column alignment, concentric 
           ...Array.from(panel.querySelectorAll(".knobs-strip-read"), R),
           R(panel.querySelector(".knobs-pad")!),
           R(panel.querySelector(".knobs-ease")!),
-          R(panel.querySelector(".knobs-head-actions button:last-child .knobs-icon")!),
+          // The last header button (undo and redo are folded away, with no history yet); a close
+          // X is nudged a tenth of its size right, so its ink ends with the digits'.
+          panel.querySelector(".knobs-close")
+            ? R(panel.querySelector(".knobs-close > .knobs-icon")!) +
+              parseFloat(getComputedStyle(panel).getPropertyValue("--k-icon-size")) * 0.1
+            : R(
+                [
+                  ...panel.querySelectorAll<HTMLElement>(
+                    ".knobs-head-actions > button:not([hidden]) > .knobs-icon",
+                  ),
+                ].at(-1)!,
+              ),
           ...Array.from(
             panel.querySelectorAll(".knobs-group-head > span:last-child > button:last-child > *"),
             R,
@@ -1955,6 +2092,213 @@ test("a click focuses without a focus wash; keys quiet the hover where the point
   await page.mouse.move(box.x + box.width * 0.5 + 6, box.y + box.height / 2)
   await expect(synth).not.toHaveAttribute("data-keyboard", "")
   await expect.poll(hoverWash).not.toBe("rgba(0, 0, 0, 0)")
+  // One wash at a time: the pointer's row has it, so the keyboard focus on Drive steps aside.
+  const focusWash = () => drive.evaluate((el) => getComputedStyle(el, "::after").opacity)
+  await expect.poll(focusWash).toBe("0")
+  await page.keyboard.press("ArrowUp")
+  await page.keyboard.press("ArrowDown")
+  await expect.poll(focusWash).toBe("1")
+})
+
+test("quiet header tools, copy turns into a check, and numbers edit in place", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  for (const mode of ["dom", "gpu"] as const) {
+    await page.goto(`/?${mode}`)
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    await page.reload()
+    const panel = await openStudy(page, "halftone")
+    await expect(panel).not.toHaveAttribute("data-morphing")
+    const copy = panel.getByRole("button", { name: "Copy", exact: true })
+    if (mode === "dom") {
+      // Quiet (the unit's --k-dim) until the panel has the pointer, then as bright as a label.
+      const ink = (s: string) =>
+        panel
+          .locator(s)
+          .first()
+          .evaluate((el) => getComputedStyle(el).color)
+      const dim = await ink(".knobs-unit")
+      const label = await ink(".knobs-label")
+      await page.mouse.move(2, 2)
+      await expect.poll(() => ink(".knobs-copy")).toBe(dim)
+      await panel
+        .locator(".knobs-slider")
+        .first()
+        .hover({ position: { x: 30, y: 10 } })
+      await expect.poll(() => ink(".knobs-copy")).toBe(label)
+    }
+
+    // Copy: the glyph turns into a check for a moment, said to assistive tech, with no toast.
+    await copy.click()
+    await expect(copy).toHaveAttribute("data-copied", "")
+    await expect(panel.locator(".knobs-sr")).toHaveText("Copied")
+    await expect(panel.getByRole("status")).toBeHidden()
+    // A thin stroked check (never the polyline filled into a wedge), fully drawn mid-hold.
+    const check = () =>
+      copy.evaluate((b) => {
+        const svg = b.querySelector(".knobs-check")!
+        const path = getComputedStyle(svg.querySelector("path")!)
+        return {
+          fill: path.fill,
+          stroke: path.stroke,
+          width: path.strokeWidth,
+          cap: path.strokeLinecap,
+          drawn: parseFloat(getComputedStyle(b).getPropertyValue("--k-check")),
+          shown: parseFloat(getComputedStyle(b).getPropertyValue("--k-check-a")),
+          opacity: getComputedStyle(svg).opacity,
+        }
+      })
+    await expect
+      .poll(check)
+      .toMatchObject({ fill: "none", width: "16px", cap: "round", drawn: 1, shown: 1 })
+    expect((await check()).stroke).not.toBe("none")
+    if (mode === "dom") expect((await check()).opacity).toBe("1")
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("cells")
+    await expect(copy).not.toHaveAttribute("data-copied", "", { timeout: 3000 })
+    await expect.poll(async () => (await check()).shown).toBe(0)
+
+    // Inline edit: the readout's digits become the field where they stand, the unit after them.
+    const radius = panel.locator(".knobs-slider").nth(1)
+    const digits = radius.locator(".knobs-digits")
+    const before = (await digits.boundingBox())!
+    await radius.locator(".knobs-value").click()
+    const field = radius.locator(".knobs-number")
+    await expect(field).toBeFocused()
+    await expect(field).toHaveValue("4.0")
+    const look = await field.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const r = el.getBoundingClientRect()
+      return {
+        border: cs.borderBottomWidth,
+        bg: cs.backgroundColor,
+        selected: (el as HTMLInputElement).selectionEnd! - (el as HTMLInputElement).selectionStart!,
+        right: r.right - parseFloat(cs.paddingRight),
+      }
+    })
+    expect(look.border).toBe("0px")
+    expect(look.bg).toBe("rgba(0, 0, 0, 0)")
+    expect(look.selected).toBe(3)
+    expect(Math.abs(look.right - (before.x + before.width))).toBeLessThan(0.5)
+    await expect(radius.locator(".knobs-unit")).toBeVisible()
+    // ↑↓ step the text; Esc puts it back.
+    await page.keyboard.press("ArrowUp")
+    await expect(field).toHaveValue("4.5")
+    await page.keyboard.press("Shift+ArrowDown")
+    await expect(field).toHaveValue("1.0")
+    await page.keyboard.press("Escape")
+    await expect(field).toBeHidden()
+    const track = panel.getByRole("slider", { name: "radius" })
+    await expect(track).toHaveAttribute("aria-valuenow", "4")
+    await expect(track).toBeFocused()
+    // Enter lands on the nearest step in range, the readout rolling there from what was typed.
+    await page.keyboard.press("Enter")
+    await page.keyboard.type("123")
+    await page.keyboard.press("Enter")
+    await expect(track).toHaveAttribute("aria-valuenow", "8")
+    if (mode === "dom") await expect(digits.locator(".rn-value")).toHaveText("8.0")
+    await expect(field).toBeHidden()
+  }
+})
+
+test("Reset's ↺ turns once per reset, additively, and blinks instead with reduced motion", async ({
+  page,
+}) => {
+  for (const reduced of [false, true]) {
+    await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" })
+    await page.goto("/?dom")
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    await page.reload()
+    const panel = await openStudy(page, "halftone")
+    await expect(panel).not.toHaveAttribute("data-morphing")
+    const reset = panel.getByRole("button", { name: "Reset", exact: true })
+    const track = panel.getByRole("slider", { name: "cells" })
+    // Every frame's turn and opacity, from here on.
+    const record = () =>
+      reset.evaluate((b) => {
+        const icon = b.querySelector<SVGElement>(".knobs-icon")!
+        const seen = { min: 0, max: 0, dim: 1, frames: 0 }
+        ;(window as any).__spin = seen
+        const tick = () => {
+          const turn = parseFloat(icon.style.rotate) || 0
+          seen.min = Math.min(seen.min, turn)
+          seen.max = Math.max(seen.max, turn)
+          seen.dim = Math.min(seen.dim, Number(icon.style.opacity || 1))
+          seen.frames++
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+    const seen = () => page.evaluate(() => ({ ...(window as any).__spin }))
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await reset.click()
+    await expect(track).toHaveAttribute("aria-valuenow", "22")
+    const icon = () =>
+      reset.evaluate((b) => {
+        const s = b.querySelector<SVGElement>(".knobs-icon")!.style
+        return s.rotate + s.opacity
+      })
+    if (reduced) {
+      await expect.poll(async () => (await seen()).dim).toBeLessThan(0.7)
+      await expect.poll(icon).toBe("")
+      const one = await seen()
+      expect([one.min, one.max]).toEqual([0, 0])
+      continue
+    }
+    // One counter-clockwise turn, with no overshoot past it and no winding back.
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-300)
+    await expect.poll(icon).toBe("")
+    const one = await seen()
+    expect(one.min).toBeGreaterThanOrEqual(-361)
+    expect(one.max).toBe(0)
+    // The button stays live while it turns: a second press adds a turn from where it is.
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await reset.dblclick()
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-660)
+    await expect.poll(icon).toBe("")
+    const two = await seen()
+    expect(two.min).toBeGreaterThanOrEqual(-721)
+    expect(two.max).toBe(0)
+    await expect(reset).toBeDisabled()
+    // ⇧R turns it too.
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await page.keyboard.press("Shift+R")
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-300)
+    await expect.poll(icon).toBe("")
+    expect((await seen()).min).toBeGreaterThanOrEqual(-361)
+  }
+})
+
+test("the default notch sits at the slider's bottom edge, only while the row is in hand", async ({
+  page,
+}) => {
+  await page.goto("/?dom")
+  const panel = await openStudy(page, "halftone")
+  const radius = panel.locator(".knobs-slider").nth(1)
+  const notch = radius.locator(".knobs-notch")
+  await page.mouse.move(2, 2)
+  await expect.poll(() => notch.evaluate((el) => getComputedStyle(el).opacity)).toBe("0")
+  await radius.hover({ position: { x: 30, y: 10 } })
+  await expect.poll(() => notch.evaluate((el) => getComputedStyle(el).opacity)).not.toBe("0")
+  const [n, r] = [(await notch.boundingBox())!, (await radius.boundingBox())!]
+  expect(Math.abs(n.y + n.height - (r.y + r.height))).toBeLessThan(0.5)
+  expect(n.height).toBeLessThanOrEqual(6)
 })
 
 test.describe("haptics", () => {

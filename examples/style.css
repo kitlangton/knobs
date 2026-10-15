@@ -158,6 +158,21 @@ h1 em {
   color: var(--muted-2);
   margin: 0;
 }
+.knobs-mode-hint {
+  position: fixed;
+  left: 14px;
+  bottom: 12px;
+  margin: 0;
+  font:
+    10px / 1.5 ui-monospace,
+    monospace;
+  color: var(--muted);
+  pointer-events: none;
+}
+.knobs-mode-hint kbd {
+  font: inherit;
+  color: var(--muted-2);
+}
 footer {
   margin-top: 42px;
   padding: 20px 0 30px;

@@ -9,13 +9,21 @@ import { KnobsPanel } from "knobs/react"
 import type { CSSProperties, ReactNode } from "react"
 import { registerStore } from "../site"
 
-/** Controls for a live example: always enabled, following the site theme, and shareable. */
+/**
+ * Controls for a live example: always enabled, following the site theme, and shareable. The site
+ * is a showcase, so chips show on hover even in its production build.
+ */
 export function demoControls<const S extends Schema>(
   id: string,
   schema: S,
   options: ControlsOptions<S> = {},
 ): Controls<S> {
-  const controls = defineControls(id, schema, { enabled: true, theme: "auto", ...options })
+  const controls = defineControls(id, schema, {
+    enabled: true,
+    theme: "auto",
+    chip: { reveal: "hover" },
+    ...options,
+  })
   registerStore(controls as unknown as Controls<Schema>)
   return controls
 }

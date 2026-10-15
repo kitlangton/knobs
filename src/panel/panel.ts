@@ -50,6 +50,7 @@ import {
   vecRow,
   type ToolbarRow,
 } from "./inspector.js"
+import { spin, spinning } from "./spin.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
@@ -60,7 +61,7 @@ import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { pageHints } from "./page-hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
-import { iconSvg, type IconName } from "./icons.js"
+import { CHECK_PATH, iconSvg, type IconName } from "./icons.js"
 import { batchMeasures } from "./measure.js"
 import { Edges } from "./motion.js"
 import { morphFromChip, type PanelMorph } from "./morph.js"
@@ -123,6 +124,8 @@ export interface PanelSearch {
   readonly chips: readonly string[]
 }
 let layer = 2147480001
+/** How long Copy holds its check before turning back. */
+const COPIED_MS = 1200
 /** The tab each panel last showed, by controls id, so a panel mounted again opens on it. */
 const lastTab = new Map<string, string>()
 /** A highlight's reveal waits this long (ms) after the user last scrolled, typed or touched. */
@@ -214,6 +217,14 @@ function buildPanel<S extends Schema>(
     reveal(status, true)
     statusTimer = setTimeout(() => reveal(status, false), linger)
   }
+  // What's shown in place (the copy check) is still said to assistive tech.
+  const live = el("span")
+  live.className = "knobs-sr"
+  live.setAttribute("aria-live", "polite")
+  const announce = (message: string) => {
+    live.textContent = ""
+    queueMicrotask(() => (live.textContent = message))
+  }
   const run = (action: () => unknown) => {
     try {
       const result = action()
@@ -269,9 +280,12 @@ function buildPanel<S extends Schema>(
 
   const header = el("header")
   const headerOptions = typeof options.header === "object" ? options.header : undefined
-  /** Whether a header button shows (`header.buttons`); its key works either way. */
+  /**
+   * Whether a header button shows (`header.buttons`; all but help without a list, since `?` opens
+   * the shortcuts and the title's tooltip says so). Its key works either way.
+   */
   const shows = (button: HeaderButton) =>
-    !headerOptions?.buttons || headerOptions.buttons.includes(button)
+    headerOptions?.buttons ? headerOptions.buttons.includes(button) : button !== "help"
   const headerButtons: { button: HTMLButtonElement; icon: IconName }[] = []
   const headActions = el("div")
   headActions.className = "knobs-head-actions"
@@ -391,17 +405,58 @@ function buildPanel<S extends Schema>(
   if ((!bound("random") && !bound("mutate")) || !shows("random")) randomButton.hidden = true
   randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
-  const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), controls.reset)
+  // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
+  // stays live while it turns, so another press adds a turn; it dims once it has stopped.
+  const resetAll = () => {
+    if (!resetBtn.hidden && !resetBtn.disabled && !header.hidden)
+      spin(resetBtn, wakeGpu, () => {
+        const values = controls.get() as Record<string, unknown>
+        const base = controls.locked as Record<string, unknown>
+        resetBtn.disabled = !rows.some((r) => r.keys.some((k) => !same(values[k], base[k])))
+        wakeGpu()
+      })
+    controls.reset()
+  }
+  const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), resetAll)
   if (!bound("resetAll") || !marks || !shows("reset")) resetBtn.hidden = true
   const copyButton = command("copy", "Copy", ariaKeys(keys.copy), copyValues)
   if (!bound("copy") || !shows("copy")) copyButton.hidden = true
+  copyButton.classList.add("knobs-copy")
+  // Copying turns the glyph into a check that draws itself, held a moment (see .knobs-copied).
+  const check = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+  check.setAttribute("viewBox", "0 0 256 256")
+  check.setAttribute("aria-hidden", "true")
+  check.setAttribute("class", "knobs-icon knobs-check")
+  const checkPath = doc.createElementNS("http://www.w3.org/2000/svg", "path")
+  checkPath.setAttribute("d", CHECK_PATH)
+  checkPath.setAttribute("pathLength", "1")
+  check.append(checkPath)
+  copyButton.append(check)
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined
+  const copied = () => {
+    clearTimeout(copiedTimer)
+    copyButton.dataset.copied = ""
+    announce("Copied")
+    copiedTimer = setTimeout(() => {
+      delete copyButton.dataset.copied
+      wakeGpu()
+    }, COPIED_MS)
+  }
   const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), controls.undo)
   const redoButton = iconButton("redo", "Redo", ariaKeys(keys.redo), controls.redo)
+  // Undo and redo fold in once there's history and away again when there's none.
+  const history = el("span")
+  history.className = "knobs-head-history"
+  history.dataset.shown = "false"
   if (showHistory && (bound("undo") || bound("redo"))) {
-    place(undoButton, "undo").classList.add("knobs-head-split")
+    place(undoButton, "undo")
     place(redoButton, "redo")
+    history.append(undoButton, redoButton)
+    headActions.append(history)
     if (!bound("undo") || !shows("undo")) undoButton.hidden = true
     if (!bound("redo") || !shows("redo")) redoButton.hidden = true
+    if (undoButton.hidden && redoButton.hidden) history.hidden = true
+    else if (undoButton.hidden || redoButton.hidden) history.dataset.single = ""
   }
   if (showFooter && bound("help")) {
     helpButton = headButton("help", "Keyboard shortcuts", "?", () => togglePopover())
@@ -410,12 +465,16 @@ function buildPanel<S extends Schema>(
     if (!shows("help")) helpButton.hidden = true
   }
   const dismiss = close ? headButton("close", `Close ${controls.id}`, "", close) : undefined
-  if (dismiss && !showFooter) dismiss.classList.add("knobs-head-split")
+  dismiss?.classList.add("knobs-close")
+  if (dismiss && (!helpButton || helpButton.hidden)) dismiss.classList.add("knobs-head-split")
   if (dismiss && !shows("close")) dismiss.hidden = true
   const titleEl = el(
     "strong",
     titleText && headerOptions?.title !== false ? readableTitle(titleText) : "",
   )
+  // Without the ? button, the title's tooltip keeps the shortcuts discoverable.
+  if (helpButton?.hidden)
+    titleEl.title = `${titleEl.textContent ? `${titleEl.textContent}\n` : ""}Press ${show("help")} for keyboard shortcuts`
   const presetLabel = (id: string) =>
     options.presetLabels?.[id] ??
     (id === "default" ? options.defaultLabel : undefined) ??
@@ -721,6 +780,7 @@ function buildPanel<S extends Schema>(
     }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
+      spin(gReset, wakeGpu)
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
         rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
@@ -2175,10 +2235,12 @@ function buildPanel<S extends Schema>(
   apply.setAttribute("aria-label", "Import JSON")
   apply.hidden = true
 
-  const copy = async (value: string) => {
+  /** Copies `value`; the header's Copy turns into a check (`inPlace`, while it shows) or says so. */
+  const copy = async (value: string, inPlace = true) => {
     try {
       await doc.defaultView!.navigator.clipboard.writeText(value)
-      say("Copied.")
+      if (inPlace && !copyButton.hidden && !header.hidden) copied()
+      else say("Copied.")
     } catch {
       text.value = value
       if (page) togglePopover(true)
@@ -2208,7 +2270,7 @@ function buildPanel<S extends Schema>(
     const transfer = el("div")
     transfer.className = "knobs-transfer"
     transfer.append(
-      button("Export presets", () => void copy(controls.variants.export())),
+      button("Export presets", () => void copy(controls.variants.export(), false)),
       button("Import presets", () => {
         reveal(text, true)
         reveal(apply, true)
@@ -2224,7 +2286,7 @@ function buildPanel<S extends Schema>(
     // The shortcuts float under the header's tools; the clipboard fallback and imports open in them.
     if (panelActions.length > 0) tools.insertBefore(customActions, headActions)
     popover.append(text, apply)
-    root.append(header, body, popover, status)
+    root.append(header, body, popover, status, live)
   } else {
     root.append(header)
     if (showFooter) root.append(popover)
@@ -2232,7 +2294,7 @@ function buildPanel<S extends Schema>(
     if (search) root.append(search.element)
     root.append(presetStrip.element, body)
     if (panelActions.length > 0) root.append(customActions)
-    root.append(text, apply, status)
+    root.append(text, apply, status, live)
   }
 
   // Changes that move several rows at once (presets, reset, random, undo) ripple down the panel:
@@ -2383,7 +2445,8 @@ function buildPanel<S extends Schema>(
       }
       const totalMod =
         anyMod || rows.some((r) => !r.group && r.keys.some((k) => !same(values[k], locked[k])))
-      if (resetBtn.disabled !== !totalMod) resetBtn.disabled = !totalMod
+      const resetOff = !totalMod && !spinning(resetBtn)
+      if (resetBtn.disabled !== resetOff) resetBtn.disabled = resetOff
     }
     let unlocked = 0
     for (const row of rows) {
@@ -2405,6 +2468,8 @@ function buildPanel<S extends Schema>(
       root.toggleAttribute("data-comparing", controls.comparing)
     if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
     if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
+    const anyHistory = String(controls.canUndo || controls.canRedo)
+    if (history.dataset.shown !== anyHistory) history.dataset.shown = anyHistory
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     if (search) {
@@ -3277,7 +3342,7 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("resetAll", event)) {
       event.preventDefault()
-      run(controls.reset)
+      run(resetAll)
       return
     }
     if (pressed("random", event)) {
@@ -3382,8 +3447,7 @@ function buildPanel<S extends Schema>(
     } else if (prefs.edit && tracks.has(target) && /^[0-9.\-]$/.test(event.key)) {
       event.preventDefault()
       const { slider } = tracks.get(target)!
-      slider.edit()
-      slider.number.value = event.key
+      slider.edit(event.key)
     }
   }
 
@@ -3972,6 +4036,7 @@ function buildPanel<S extends Schema>(
       clearTimeout(nudgeEnd)
       for (const k of inHand) controls.hold(k, false)
       inHand.clear()
+      clearTimeout(copiedTimer)
       for (const t of peekTimers.values()) clearTimeout(t)
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
       for (const c of groupChips.values()) c.dispose()

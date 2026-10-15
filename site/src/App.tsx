@@ -171,7 +171,7 @@ export function App() {
           lede="Tuning controls for React, Solid and plain DOM. Give a component a few knobs, tune it in a panel, and ship the values you pick as constants."
         >
           <p>
-            Every section on this page has its own <C>⚙ knobs</C> chip; hover one to tune it.{" "}
+            Every section on this page has its own <C>⚙</C> chip; hover one to tune it.{" "}
             <strong>Tune</strong> or <kbd>T</kbd> opens the page's own tokens. Drag on the dots to
             move their origin.
           </p>

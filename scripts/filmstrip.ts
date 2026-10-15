@@ -96,9 +96,9 @@ const scenes: Scene[] = [
       await sleep(350 * k)
       await panel.getByRole("radio", { name: "heavy" }).click()
       await sleep(350 * k)
-      await panel.getByRole("button", { name: "Keyboard shortcuts" }).click()
+      await page.keyboard.press("?")
       await sleep(500 * k)
-      await panel.getByRole("button", { name: "Keyboard shortcuts" }).click()
+      await page.keyboard.press("?")
     },
     ms: 2200,
   },

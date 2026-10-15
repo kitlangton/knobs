@@ -43,6 +43,7 @@ import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
 import { computeHintPrefixes } from "../src/panel/hints.js"
 import { readableTitle } from "../src/panel/panel.js"
+import { matchShortcut } from "../src/panel/attach.js"
 import { Edges, LEAD, popScale, Spring, springEasing, TRAIL } from "../src/panel/motion.js"
 import {
   nextPresetIndex,
@@ -1726,5 +1727,40 @@ describe("inspector fields: vectors, ranges, angles, seeds, key combinations and
     expect(swift).toContain("0...2")
     expect(swift).toContain("99")
     expect(swift).toContain('"Meta+K"')
+  })
+})
+
+describe("chip", () => {
+  it("shows on hover in development, with ⌥⇧D as the knobs-mode key", () => {
+    const plain = defineControls(
+      "chip-defaults",
+      { a: knob(1, { min: 0, max: 2 }) },
+      { storage: null },
+    )
+    expect(plain.chip).toEqual({ reveal: "hover", shortcut: "Alt+Shift+D" })
+    const labelled = defineControls(
+      "chip-label",
+      { a: knob(1, { min: 0, max: 2 }) },
+      { storage: null, chip: { label: "knobs", reveal: "always" } },
+    )
+    expect(labelled.chip).toEqual({ label: "knobs", reveal: "always", shortcut: "Alt+Shift+D" })
+  })
+
+  it("matches its shortcut by key position, so ⌥ doesn't change the letter", () => {
+    const press = (init: Partial<KeyboardEvent>) =>
+      ({
+        altKey: false,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        key: "",
+        code: "",
+        ...init,
+      }) as KeyboardEvent
+    const knobsMode = matchShortcut("Alt+Shift+D")
+    expect(knobsMode(press({ altKey: true, shiftKey: true, key: "Î", code: "KeyD" }))).toBe(true)
+    expect(knobsMode(press({ altKey: true, key: "∂", code: "KeyD" }))).toBe(false)
+    expect(knobsMode(press({ shiftKey: true, key: "D", code: "KeyD" }))).toBe(false)
+    expect(matchShortcut("Ctrl+F2")(press({ ctrlKey: true, key: "F2", code: "F2" }))).toBe(true)
   })
 })
