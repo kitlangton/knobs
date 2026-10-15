@@ -74,18 +74,23 @@
       .knobs-row:hover .lab-pin, .lab-pin[aria-pressed="true"] { opacity: 1; }
       .lab-pin[aria-pressed="true"] { color: var(--blue); }
       .lab-spawn { width: 5px; height: 5px; border-radius: 50%; background: #d9a03c; }
+      .lab-menu { display: flex; flex-direction: column; min-width: 150px; }
+      .lab-menu button { text-align: left; padding: 5px 8px; color: var(--text2); border: 0; outline: none; }
+      .lab-menu button:is(:hover, :focus-visible) { background: #ffffff14; color: var(--text); }
+      .lab-menu button[aria-checked="true"] { color: var(--text); }
+      .lab-menu button[aria-checked="true"]::after { content: " ✓"; color: var(--blue); }
     </style>
   </head>
   <body>
     <div class="app">
       <div class="top">
         <b>Lab</b>
-        <div class="seg"><button class="on">Edit</button><button>▶ Play</button><button>Box</button></div>
-        <button>⟲</button><button>❚❚</button><button>1×</button>
+        <div class="seg"><button class="on" data-tip="Edit the scene">Edit</button><button data-tip="Play in the viewport">▶ Play</button><button data-tip="Show bounding boxes">Box</button></div>
+        <button id="restart" aria-label="Restart" data-tip="Restart the station">⟲</button><button id="pause" aria-label="Pause the live feed">❚❚</button><button data-tip="Playback speed">1×</button>
         <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
         <span class="spacer"></span>
-        <button>All games ▾</button>
-        <input placeholder="Search" />
+        <button data-tip="Switch game">All games ▾</button>
+        <input id="search" placeholder="Search" aria-label="Search commands" readonly />
       </div>
       <div class="main" id="workspace">
         <aside class="side" id="side">

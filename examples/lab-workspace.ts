@@ -71,15 +71,15 @@ const moves: TreeMove[] = []
 const count = (items: readonly SceneItem[]): number =>
   items.reduce((n, i) => n + (i.children ? count(i.children) : 1), 0)
 
-const workspace = document.getElementById("workspace")!
+const workspaceEl = document.getElementById("workspace")!
 const side = document.getElementById("side")!
 const viewport = document.getElementById("viewport")!
 const dock = document.getElementById("dock")!
 const column = document.getElementById("details-column")!
-workspace.replaceChildren()
+workspaceEl.replaceChildren()
 
 const look = { preset: labPreset, theme: "dark" as const }
-const main = split(workspace, {
+const main = split(workspaceEl, {
   ...look,
   id: "lab-workspace",
   direction: "row",
@@ -226,7 +226,46 @@ const expandAll = () => {
   for (const id of parents(scene)) outline.expand(id, true)
 }
 
-const liveFeed = startLive(document.getElementById("live")!, document.getElementById("diag")!)
+// ⌫ in the outliner deletes the selection, after asking (see lab-overlays.ts).
+let onDelete: (ids: readonly string[]) => void = () => {}
+rows.addEventListener("keydown", (e) => {
+  if ((e.key === "Backspace" || e.key === "Delete") && !e.metaKey && outline.selection.length) {
+    if ((e.target as HTMLElement).closest(".knobs-tree-edit")) return
+    e.preventDefault()
+    onDelete(outline.selection)
+  }
+})
+const remove = (ids: readonly string[]) => {
+  const gone = new Set(ids)
+  const prune = (items: SceneItem[]): SceneItem[] =>
+    items
+      .filter((i) => !gone.has(i.id))
+      .map((i) => (i.children ? { ...i, children: prune(i.children) } : i))
+  scene = prune(scene)
+  outline.update(scene)
+  outline.select([])
+  if (picked) picked.textContent = "Nothing selected"
+  left.pane("outliner").title("Outliner", count(scene))
+}
+
+export const liveFeed = startLive(
+  document.getElementById("live")!,
+  document.getElementById("diag")!,
+)
+export const workspace = {
+  main,
+  left,
+  center,
+  outline,
+  find,
+  names,
+  collapseAll,
+  expandAll,
+  remove,
+  set onDelete(f: (ids: readonly string[]) => void) {
+    onDelete = f
+  },
+}
 
 Object.assign(window, {
   __live: liveFeed,
@@ -235,6 +274,7 @@ Object.assign(window, {
     left,
     center,
     outline,
+    remove,
     moves,
     hidden,
     locked,
