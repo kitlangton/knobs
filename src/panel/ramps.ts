@@ -49,6 +49,7 @@ import {
   smearFilters,
   type MorphDot,
 } from "./ramp-morph.js"
+import { fadeText } from "./reel.js"
 import { onPan } from "./swipe.js"
 
 /** The custom properties a gradient strip's samples ride on (written each frame of a morph). */
@@ -1132,7 +1133,11 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       shown = value as readonly CurvePoint[]
       if (selected >= shown.length) selected = shown.length - 1
       const match = presets.findIndex(([, p]) => sameRamp(p, shown))
-      read.textContent = mixed ? "—" : (presets[match]?.[0] ?? "")
+      fadeText(
+        read,
+        mixed ? "—" : (presets[match]?.[0] ?? ""),
+        initialized && !instant && !dragging && !panAt && !x.head.hasAttribute("data-panned"),
+      )
       chips?.check(mixed ? -1 : match)
       layout(!initialized || instant || dragging || panAt !== undefined, delay)
       initialized = true

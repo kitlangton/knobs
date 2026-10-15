@@ -18,6 +18,7 @@ export {
   curve,
   toolbar,
   toolbarShortcut,
+  actionShortcut,
   watch,
   sparkline,
   graph,
@@ -88,6 +89,7 @@ export {
   type ChangeMeta,
   type GestureEvent,
   type ChangeSource,
+  type ChipOptions,
   type ControlAction,
   type Controls,
   type ControlsOptions,
@@ -108,6 +110,7 @@ export {
   type SearchOptions,
   type SyncOptions,
   type RendererMode,
+  type RevealMode,
   type SectionFolded,
   type ThemeMode,
 } from "./core/store.js"

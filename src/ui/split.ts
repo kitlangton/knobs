@@ -9,6 +9,7 @@ import {
   syncFrame,
   type UiLook,
 } from "./look.js"
+import { hints } from "../panel/page-hints.js"
 import { tooltip } from "./tooltip.js"
 import {
   collapsibleSide,
@@ -59,6 +60,11 @@ export interface SplitOptions extends UiLook {
   readonly storage?: StoragePort | null
   /** After every change of size or collapse, drag frames and springs included. */
   readonly onLayout?: (layout: SplitLayout) => void
+  /**
+   * Header actions, collapse buttons and the rails of collapsed panes take codes in the page's
+   * hint mode (`s`), on by default; a code presses its button.
+   */
+  readonly hints?: boolean
 }
 
 export interface SplitPane {
@@ -617,6 +623,19 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     }
   }
 
+  const unregisterHints =
+    options.hints === false
+      ? undefined
+      : hints.register(
+          root,
+          () =>
+            [...views.values()].flatMap((v) => [
+              ...(v.head?.querySelectorAll<HTMLElement>(":scope > .knobs-pane-btn") ?? []),
+              ...(v.rail && collapsed[v.spec.id] ? [v.rail] : []),
+            ]),
+          { listen: false, rank: 1 },
+        )
+
   const api: Split = {
     element: root,
     pane: paneApi,
@@ -639,6 +658,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     },
     reset: (id) => (id ? reset(id) : reset()),
     dispose() {
+      unregisterHints?.()
       loop.stop()
       ro.disconnect()
       root.removeEventListener("knobs-restyle", relayout)

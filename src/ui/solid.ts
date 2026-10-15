@@ -1,4 +1,5 @@
 import { children, createEffect, onCleanup, untrack, type JSX } from "solid-js"
+import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
@@ -140,5 +141,45 @@ export function Timeline(props: TimelineProps): JSX.Element {
   ] as const)
     follow(key)
   onCleanup(() => t.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type BentoProps = BentoOptions & { onReady?: (bento: BentoHandle) => void }
+
+/**
+ * `bento()` as a component. New `items` update it in place (tiles glide); `picks` follows its
+ * prop; callbacks always call the latest props.
+ */
+export function Bento(props: BentoProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const b = untrack(() =>
+    bento(host, {
+      ...props,
+      items: props.items,
+      onPick: (ids) => props.onPick?.(ids),
+      onZoom: (id) => props.onZoom?.(id),
+      onActive: (id) => props.onActive?.(id),
+    }),
+  )
+  untrack(() => props.onReady?.(b))
+  const follow = <V>(read: () => V, apply: (value: V) => void) => {
+    let first = true
+    createEffect(() => {
+      const value = read()
+      if (first) first = false
+      else untrack(() => apply(value))
+    })
+  }
+  follow(
+    () => props.items,
+    (items) => b.update(items),
+  )
+  follow(
+    () => props.picks,
+    (picks) => picks && b.pick(picks),
+  )
+  onCleanup(() => b.dispose())
   return host as unknown as JSX.Element
 }

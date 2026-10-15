@@ -83,9 +83,11 @@ export interface SpringBindingDescriptor extends DescriptorMeta {
   readonly bind: { readonly duration: string; readonly bounce: string }
   readonly default?: SpringValue
 }
-/** A button row: pressing it calls `onAction(key)`. */
+/** A button row: pressing it calls `onAction(key)`. `shortcut` takes a combination here. */
 export interface ActionDescriptor extends DescriptorMeta {
   readonly kind: "action"
+  readonly global?: boolean
+  readonly rebind?: boolean
   readonly default?: undefined
   readonly bind?: undefined
 }
@@ -303,7 +305,12 @@ const optionId = (o: string | ChoiceOption) =>
 
 export function descriptorToField(d: ControlDescriptor): Field {
   const meta = pickMeta(d)
-  if (d.kind === "action") return action(d.label, meta)
+  if (d.kind === "action")
+    return action(d.label, {
+      ...meta,
+      ...(d.global ? { global: true } : {}),
+      ...(d.rebind ? { rebind: true } : {}),
+    })
   if (readoutDescriptor(d)) return readoutField(d)
   if (d.kind === "toolbar")
     return toolbar(

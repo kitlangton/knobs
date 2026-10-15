@@ -37,7 +37,7 @@
       .head .n { color: var(--dim); font-weight: 400; }
       .head .link { color: var(--blue); font-weight: 500; }
       .stations { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 6px; padding: 0 4px; }
-      .station { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px; color: var(--label); }
+      .station { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px; color: var(--label); cursor: pointer; }
       .station i { font-style: normal; color: var(--dim); width: 12px; }
       .station .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
       .station .dot.y { background: #d9a03c; }
@@ -79,6 +79,8 @@
       .lab-menu button[aria-checked="true"]::after { content: " ✓"; color: var(--blue); }
       .top .look-switch { margin-left: 4px; }
       .top .theme { width: 26px; padding: 0; }
+      .top a.nav { color: var(--label); text-decoration: none; padding: 2px 7px; }
+      .top a.nav:hover { color: var(--text); background: #1e2024; }
       html[data-look="lab"] .top .theme { display: none; }
 
       /* knobs' own look (the default): the panels' palette, type and radii on the host's chrome.
@@ -108,6 +110,8 @@
       html[data-look="knobs"] .top b::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text); background: conic-gradient(from 210deg, var(--text) 0 4%, transparent 4%) ; }
       html[data-look="knobs"] .top > button { height: 26px; min-width: 26px; padding: 0 8px; color: var(--label); }
       html[data-look="knobs"] .top > button:hover { color: var(--text); }
+      html[data-look="knobs"] .top a.nav { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border-radius: 8px; transition: background .15s, color .15s; }
+      html[data-look="knobs"] .top a.nav:hover { background: var(--surface); color: var(--text); }
       html[data-look="knobs"] .top .seg { gap: 2px; padding: 2px; border: 0; border-radius: 9px; background: var(--field); }
       html[data-look="knobs"] .top .seg button { height: 24px; padding: 0 10px; border-radius: 7px; color: var(--label); }
       html[data-look="knobs"] .top .seg button:hover { background: transparent; color: var(--text); }
@@ -159,26 +163,27 @@
   </head>
   <body>
     <div class="app">
-      <div class="top">
+      <div class="top" data-hint-group>
         <b>Lab</b>
-        <div class="seg"><button class="on" data-tip="Edit the scene">Edit</button><button data-tip="Play in the viewport">▶ Play</button><button data-tip="Show bounding boxes">Box</button></div>
-        <button id="restart" aria-label="Restart" data-tip="Restart the station">⟲</button><button id="pause" aria-label="Pause the live feed">❚❚</button><button data-tip="Playback speed">1×</button>
+        <div class="seg"><button class="on" data-tip="Edit the scene" data-hint>Edit</button><button data-tip="Play in the viewport" data-hint="Play">▶ Play</button><button data-tip="Show bounding boxes" data-hint>Box</button></div>
+        <button id="restart" aria-label="Restart" data-tip="Restart the station" data-hint>⟲</button><button id="pause" aria-label="Pause the live feed" data-hint>❚❚</button><button data-tip="Playback speed" data-hint="Speed">1×</button>
         <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
         <span class="spacer"></span>
-        <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look">knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat">Lab</button></div>
-        <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark">☾</button>
-        <button data-tip="Switch game">All games ▾</button>
-        <input id="search" placeholder="Search" aria-label="Search commands" readonly />
+        <a class="nav" href="controls.html" data-tip="Every control, one by one" data-hint>Controls</a>
+        <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look" data-hint>knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat" data-hint>Lab</button></div>
+        <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark" data-hint>☾</button>
+        <button data-tip="Switch game" data-hint="Games">All games ▾</button>
+        <input id="search" placeholder="Search" aria-label="Search commands" readonly data-hint />
       </div>
       <div class="main" id="workspace">
         <aside class="side" id="side">
-          <div class="stations">
-            <div class="station"><i>1</i>Explosions<span class="dot"></span></div>
-            <div class="station"><i>2</i>Smoke &amp; fire<span class="dot g"></span></div>
-            <div class="station on"><i>3</i>Weather<span class="dot y"></span></div>
-            <div class="station"><i>4</i>Vegetation<span class="dot g"></span></div>
-            <div class="station"><i>5</i>Looks<span class="dot y"></span></div>
-            <div class="station"><i>6</i>Lighting<span class="dot g"></span></div>
+          <div class="stations" data-hint-group>
+            <div class="station" role="button" data-hint="Explosions"><i>1</i>Explosions<span class="dot"></span></div>
+            <div class="station" role="button" data-hint="Smoke and fire"><i>2</i>Smoke &amp; fire<span class="dot g"></span></div>
+            <div class="station on" role="button" data-hint="Weather"><i>3</i>Weather<span class="dot y"></span></div>
+            <div class="station" role="button" data-hint="Vegetation"><i>4</i>Vegetation<span class="dot g"></span></div>
+            <div class="station" role="button" data-hint="Looks"><i>5</i>Looks<span class="dot y"></span></div>
+            <div class="station" role="button" data-hint="Lighting"><i>6</i>Lighting<span class="dot g"></span></div>
           </div>
           <div class="card">
             <div class="cap">Status</div>
@@ -198,11 +203,11 @@
           <div class="dock-side">
             <div class="card">
               <div class="cap">Variants</div>
-              <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
+              <div class="chips" data-hint-group><button data-hint="Rain"><kbd>⇧1</kbd>Rain</button><button data-hint="Drizzle"><kbd>⇧2</kbd>Drizzle</button><button class="on" data-hint="Storm"><kbd>⇧3</kbd>Storm</button><button data-hint="Fog"><kbd>⇧4</kbd>Fog</button><button data-hint="Snow"><kbd>⇧5</kbd>Snow</button></div>
             </div>
             <div class="card">
               <div class="cap">Compare</div>
-              <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
+              <div class="chips" data-hint-group><button data-hint>A/B wipe</button><button data-hint="Grid">⊞ Grid</button></div>
             </div>
           </div>
           <div class="card live" id="live"></div>

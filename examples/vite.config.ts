@@ -8,18 +8,19 @@ const port = Number(process.env.PORT) || 5178
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
 export default defineConfig(({ command, mode }) => ({
   root: "examples",
-  resolve: { dedupe: ["solid-js"] },
   optimizeDeps: {
     include: ["solid-js", "solid-js/web", "solid-js/html"],
     entries: [
       "studies.html",
       "lab.html",
+      "controls.html",
       "contracts.html",
       "meta.html",
       "die.html",
       "tune.html",
       "problems.html",
       "presets-bench.html",
+      "ideas.html",
     ],
   },
   server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
@@ -31,12 +32,14 @@ export default defineConfig(({ command, mode }) => ({
         main: resolve(import.meta.dirname, "index.html"),
         studies: resolve(import.meta.dirname, "studies.html"),
         lab: resolve(import.meta.dirname, "lab.html"),
+        controls: resolve(import.meta.dirname, "controls.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
         die: resolve(import.meta.dirname, "die.html"),
         tune: resolve(import.meta.dirname, "tune.html"),
         problems: resolve(import.meta.dirname, "problems.html"),
         presetsBench: resolve(import.meta.dirname, "presets-bench.html"),
+        ideas: resolve(import.meta.dirname, "ideas.html"),
       },
     },
   },
@@ -77,5 +80,20 @@ export default defineConfig(({ command, mode }) => ({
           },
         ],
       }
-    : {}),
+    : {
+        // The production build imports the built package (dist), as an installed copy would.
+        resolve: {
+          dedupe: ["solid-js"],
+          alias: [
+            { find: /^knobs$/, replacement: resolve(rootDir, "dist/index.js") },
+            { find: /^knobs\/react$/, replacement: resolve(rootDir, "dist/react.js") },
+            { find: /^knobs\/solid$/, replacement: resolve(rootDir, "dist/solid.js") },
+            { find: /^knobs\/panel$/, replacement: resolve(rootDir, "dist/panel.js") },
+            { find: /^knobs\/themes$/, replacement: resolve(rootDir, "dist/themes.js") },
+            { find: /^knobs\/ui$/, replacement: resolve(rootDir, "dist/ui.js") },
+            { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "dist/ui-react.js") },
+            { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "dist/ui-solid.js") },
+          ],
+        },
+      }),
 }))

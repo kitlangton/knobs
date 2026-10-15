@@ -162,6 +162,8 @@ export function sectionControls<E extends Schema = {}>(
   const controls = defineControls(id, { ...sectionSchema, ...extra } as typeof sectionSchema & E, {
     enabled: true,
     theme: "auto",
+    // The site is a showcase: section chips show on hover in its production build too.
+    chip: { reveal: "hover" },
     presets: { ...sectionPresets, ...options.presets } as never,
     actions: [
       {
@@ -197,7 +199,7 @@ export function slug(text: string) {
 }
 
 /**
- * A titled, tunable section. Hovering or focusing it shows its `⚙ knobs` chip. Its direct
+ * A titled, tunable section. Hovering or focusing it shows its ⚙ chip. Its direct
  * children enter one after another when it scrolls into view.
  */
 export function Section<E extends Schema = {}>({

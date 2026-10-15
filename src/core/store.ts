@@ -1,4 +1,5 @@
 import { formatCode, type CodeFormat } from "./code.js"
+import { normalizeCombo } from "./keys.js"
 import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
 import { REFRESHES, RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
@@ -16,6 +17,7 @@ import {
   normalizeField,
   same,
   hasValue,
+  toolbarShortcut,
   type Field,
   isReadout,
   type ReadoutInput,
@@ -30,9 +32,29 @@ import { browserStorage, storageKey, type StoragePort } from "./storage.js"
 import { createVariants, type Variants } from "./variants.js"
 
 declare const __KNOBS_DEV__: boolean
+/** knobs' development build, or its source under a dev server (Vite's `import.meta.env.DEV`). */
+const devBuild = (): boolean =>
+  typeof __KNOBS_DEV__ !== "undefined"
+    ? __KNOBS_DEV__
+    : ((import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? true)
 export type ThemeMode = "dark" | "light" | "auto"
 export type DensityMode = "compact" | "default" | "comfortable"
 export type RendererMode = "gpu" | "dom" | "auto"
+/** When a store's chip shows; see `ChipOptions.reveal`. */
+export type RevealMode = "hover" | "shortcut" | "always"
+/** The floating chip `attach` puts on an element, which grows into its panel. */
+export interface ChipOptions {
+  /** Text beside the cog, e.g. `"knobs"`. Just the cog by default. */
+  readonly label?: string
+  /**
+   * When the chip shows. `"hover"`: while the element is hovered or focused. `"shortcut"`: hidden
+   * until `shortcut` turns on knobs mode (remembered for the tab), then on hover. `"always"`:
+   * whenever its panel is closed. `"hover"` in development, `"shortcut"` in production builds.
+   */
+  readonly reveal?: RevealMode
+  /** The key that toggles knobs mode for `"shortcut"` chips: `"Alt+Shift+D"` (⌥⇧D) by default. */
+  readonly shortcut?: string
+}
 export type ChangeSource =
   | "local"
   | "remote"
@@ -140,7 +162,10 @@ export type HeaderButton = "random" | "reset" | "copy" | "undo" | "redo" | "help
 export interface HeaderOptions {
   /** `false` hides the title; the buttons stay at the right. */
   readonly title?: boolean
-  /** Which buttons show, all of them (that are on) by default. */
+  /**
+   * Which buttons show (of those that are on). All but `help` by default: its `?` key opens the
+   * shortcuts either way, and the title's tooltip says so. List `"help"` to bring the button back.
+   */
   readonly buttons?: readonly HeaderButton[]
 }
 export interface MountPanelOptions extends LabelOptions {
@@ -153,6 +178,14 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly keys?: PanelKeys
   /**
+   * Hint mode's reach. `"page"` (the default): `s` labels every visible control in every panel
+   * and knobs/ui piece on the page (and the host's `data-hint` elements), so pressed here or
+   * anywhere outside a text field it jumps across all of them; with nothing else on the page it's
+   * this panel's alone, as always. `"panel"`: `s` here labels only this panel's controls, and they
+   * don't join the page's. `keys: { hint: false }` turns hint mode off here either way.
+   */
+  readonly hints?: "page" | "panel"
+  /**
    * `false` hides what says a value differs from its default: modified dots and readout marks,
    * group reset icons and the header's Reset. For panels whose values belong to someone else
    * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
@@ -163,7 +196,8 @@ export interface MountPanelOptions extends LabelOptions {
   /**
    * `false` drops the header (title and buttons) for a host that draws its own. An object keeps
    * it and chooses what shows: `{ title: false, buttons: ["random", "undo", "redo"] }`. A button
-   * left out keeps its key; a command that's off (`keys`) loses its button either way.
+   * left out keeps its key; a command that's off (`keys`) loses its button either way. Without a
+   * list, every button but `help` shows (see `HeaderOptions`).
    */
   readonly header?: boolean | HeaderOptions
   /**
@@ -280,7 +314,7 @@ export interface PanelModule {
     container: HTMLElement,
     options?: MountPanelOptions,
   ): PanelHandle
-  attach(controls: Controls<any>, element: HTMLElement): () => void
+  attach(controls: Controls<any>, element: HTMLElement, chip?: ChipOptions): () => void
 }
 export interface ControlsOptions<S extends Schema> extends LabelOptions {
   enabled?: boolean | (() => boolean)
@@ -291,6 +325,8 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    * dev-only and ship constants.
    */
   ship?: () => Promise<PanelModule>
+  /** The chip `attach` shows: its label, when it shows and the knobs-mode key (see `ChipOptions`). */
+  chip?: ChipOptions
   /**
    * The longest (ms) a key changed here outranks incoming values for it (see `sync`), so an echo
    * of an older value still in flight can't pull it back. The hold ends early once the remote
@@ -357,6 +393,8 @@ export interface Controls<S extends Schema = Schema> {
   readonly renderer: RendererMode
   readonly keys: PanelKeys | undefined
   readonly marks: boolean
+  /** The chip's options, with `reveal` and `shortcut` resolved. */
+  readonly chip: ChipOptions & { readonly reveal: RevealMode; readonly shortcut: string }
   /** How page cards show group presets (`groupPresetDisplay`, `auto` by default). */
   readonly groupPresetDisplay: GroupPresetDisplay
   /** A group's display label (`groupLabels`, else its fields' `groupLabel`), if it has one. */
@@ -435,6 +473,17 @@ export interface Controls<S extends Schema = Schema> {
   lock(keys: (keyof S & string) | readonly (keyof S & string)[], locked?: boolean): void
   isLocked(key: keyof S & string): boolean
   /**
+   * The combination that presses an action row now, or a toolbar's button (`item`, its id or
+   * label): the user's rebinding, else the declared `shortcut`; `""` when cleared, undefined
+   * when there's none.
+   */
+  shortcut(key: keyof S & string, item?: string): string | undefined
+  /**
+   * Rebinds an action row's shortcut (or a toolbar button's): a combination, `""` for none, or
+   * undefined to restore the declared one. Not undoable; saved with the values, as locks are.
+   */
+  rebind(key: keyof S & string, combo: string | undefined, item?: string): void
+  /**
    * Whether Random and Mutate may change `key`: it holds a value and isn't locked, `random:
    * false`, refused by `tunable`, disabled or read-only.
    */
@@ -473,7 +522,8 @@ export interface Controls<S extends Schema = Schema> {
   /** The group preset the current values match, or -1. */
   matchingGroupPreset(group: string): number
   code(format?: CodeFormat, values?: Values<S>): string
-  attach(element: HTMLElement): () => void
+  /** Shows the floating chip on `element`; `chip` overrides the store's chip options. */
+  attach(element: HTMLElement, chip?: ChipOptions): () => void
   mount(container: HTMLElement, options?: MountPanelOptions): () => void
 }
 /** Whether two fields draw and behave the same (a reshape keeps such a key's value). */
@@ -533,6 +583,8 @@ export function defineControls<const S extends Schema>(
   let read = false
   let error: string | null = null
   let locks = new Set<string>()
+  /** Rebound shortcuts, by action key or `key/item` for a toolbar's button (`""` cleared). */
+  let bindings = new Map<string, string>()
   /** The earlier values shown while compare is held. */
   let comparing: Values<S> | null = null
   let landing = false
@@ -645,6 +697,12 @@ export function defineControls<const S extends Schema>(
                   (k: unknown) => typeof k === "string" && Object.hasOwn(schema, k),
                 ),
               )
+            if (data.bindings && typeof data.bindings === "object")
+              bindings = new Map(
+                Object.entries(data.bindings as Record<string, unknown>).flatMap(([id, combo]) =>
+                  typeof combo === "string" && bindable(id) ? [[id, normalizeCombo(combo)]] : [],
+                ),
+              )
           }
         }
       } catch (cause) {
@@ -665,6 +723,7 @@ export function defineControls<const S extends Schema>(
           version: 1,
           values: current,
           ...(locks.size ? { locks: [...locks] } : {}),
+          ...(bindings.size ? { bindings: Object.fromEntries(bindings) } : {}),
         }),
       )
       error = null
@@ -676,6 +735,24 @@ export function defineControls<const S extends Schema>(
     current = next
     persist()
     notify()
+  }
+  /** The declared shortcut of an action (`key`) or a toolbar's button (`key/item`), if it has one. */
+  function declaredShortcut(id: string): { found: boolean; combo?: string } {
+    const slash = id.indexOf("/")
+    const key = slash < 0 ? id : id.slice(0, slash)
+    const field = Object.hasOwn(schema, key) ? (schema[key] as Field) : undefined
+    if (field?.kind === "action" && slash < 0)
+      return { found: true, ...(field.shortcut ? { combo: field.shortcut } : {}) }
+    if (field?.kind === "toolbar" && slash >= 0) {
+      const item = field.items.find((i) => (i.id ?? i.label) === id.slice(slash + 1))
+      if (!item) return { found: false }
+      const key = toolbarShortcut(item)?.key
+      return { found: true, ...(key ? { combo: normalizeCombo(key) } : {}) }
+    }
+    return { found: false }
+  }
+  function bindable(id: string) {
+    return declaredShortcut(id).found
   }
   const fieldKeys = () => valueKeys(schema)
   const valueField = (k: string) => {
@@ -997,6 +1074,11 @@ export function defineControls<const S extends Schema>(
     renderer,
     keys: options.keys,
     marks: options.marks !== false,
+    chip: Object.freeze({
+      ...options.chip,
+      reveal: options.chip?.reveal ?? (devBuild() ? "hover" : "shortcut"),
+      shortcut: options.chip?.shortcut ?? "Alt+Shift+D",
+    }),
     groupPresetDisplay: options.groupPresetDisplay ?? "auto",
     groupLabel: (group) => options.groupLabels?.[group] ?? fieldLabels().group.get(group),
     sectionLabel: (section) =>
@@ -1197,6 +1279,30 @@ export function defineControls<const S extends Schema>(
       load()
       return locks.has(key)
     },
+    shortcut(key, item) {
+      const id = item === undefined ? key : `${key}/${item}`
+      const declared = declaredShortcut(id)
+      if (!declared.found) return undefined
+      if (enabled()) load()
+      const bound = enabled() ? bindings.get(id) : undefined
+      return bound ?? declared.combo
+    },
+    rebind(key, combo, item) {
+      const id = item === undefined ? key : `${key}/${item}`
+      const declared = declaredShortcut(id)
+      if (!declared.found) throw new Error(`Not an action or toolbar button: ${id}`)
+      if (!enabled()) return
+      load()
+      const next = combo === undefined ? undefined : normalizeCombo(combo)
+      if (combo !== undefined && combo.trim() && !next)
+        throw new Error(`Not a key combination: ${combo}`)
+      const was = bindings.get(id)
+      if (next === undefined || next === (declared.combo ?? "")) bindings.delete(id)
+      else bindings.set(id, next)
+      if (bindings.get(id) === was) return
+      persist()
+      notify()
+    },
     canRoll(key) {
       if (!enabled()) return false
       load()
@@ -1264,7 +1370,7 @@ export function defineControls<const S extends Schema>(
       notify,
       enabled,
     ),
-    attach(element) {
+    attach(element, chip) {
       // A shipped store loads the host's panel module; a dev build its own lazy chunk. A
       // production build of an unshipped store has neither, so no panel code is reachable.
       const load = options.ship
@@ -1277,7 +1383,7 @@ export function defineControls<const S extends Schema>(
       let detach: (() => void) | undefined
       void load()
         .then((attach) => {
-          if (!disposed && enabled()) detach = attach(controls, element)
+          if (!disposed && enabled()) detach = attach(controls, element, chip)
         })
         .catch((cause) => {
           error = String(cause)
