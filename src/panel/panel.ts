@@ -68,6 +68,7 @@ import {
   type Page,
   type PageCardOptions,
   type PageFoldOptions,
+  type PageFoldSource,
   type PageGroupInfo,
   type PageHighlight,
   type PageLayout,
@@ -464,6 +465,22 @@ function buildPanel<S extends Schema>(
   // A page gives each group its own card (a tile) in its section's columns.
   let layout: PageLayout | undefined
   let layoutTick = 0
+  /** What folded or opened something since `onSections` listeners last heard (a user's wins). */
+  let foldSource: PageFoldSource | null = null
+  /** Set while a click or key of the user's folds or opens something. */
+  let userFolding = false
+  const noteFold = (source: PageFoldSource) => {
+    if (foldSource !== "user") foldSource = source
+  }
+  /** Runs `act` as the user's own fold. */
+  const byUser = (act: () => void) => {
+    userFolding = true
+    try {
+      act()
+    } finally {
+      userFolding = false
+    }
+  }
   const tiles = new Map<string, HTMLElement>()
   const gpuTiles: HTMLElement[] = []
   if (page) {
@@ -612,6 +629,7 @@ function buildPanel<S extends Schema>(
    */
   function fold(group: string, next = !folds.get(group), animate = true, remember = true) {
     if (!folds.has(group)) return
+    if (page && folds.get(group) !== next) noteFold(userFolding ? "user" : "code")
     if (remember) auto.groups.delete(group)
     if (folds.get(group) === next && page) return
     folds.set(group, next)
@@ -821,7 +839,7 @@ function buildPanel<S extends Schema>(
       gHead.setAttribute("aria-expanded", String(!folded))
       gHead.addEventListener("click", (event) => {
         if ((event.target as Element).closest("button")) return
-        fold(groupName)
+        byUser(() => fold(groupName))
       })
     }
     if (page) {
@@ -2419,9 +2437,13 @@ function buildPanel<S extends Schema>(
   // `/` filters a page's rows live: a group (or section) that matches keeps all its rows, cards
   // with nothing left fold away, and the columns re-balance.
   let filterReturn: HTMLElement | null = null
+  /** The query the filter last applied, so starting, changing or clearing it can be told apart. */
+  let filtered = ""
   function applyFilter() {
     if (!layout) return
     const query = filterEl.value.trim()
+    if (query !== filtered) noteFold(query ? "search" : "restore")
+    filtered = query
     root.toggleAttribute("data-filtering", Boolean(query))
     layout.change(() => {
       // Folded sections open while the filter runs, so their matches show.
@@ -2543,6 +2565,7 @@ function buildPanel<S extends Schema>(
     how: { readonly remember?: boolean; readonly animate?: boolean } = {},
   ) {
     if (!layout) return
+    if (sectionState(section) !== next) noteFold(userFolding ? "user" : "code")
     const keep = how.remember ?? true
     if (keep) auto.sections.delete(section)
     layout.foldSection(section, next, how.animate ?? true)
@@ -2565,7 +2588,7 @@ function buildPanel<S extends Schema>(
   const customFolds = new Set<CustomCardFold>()
 
   // The jump strip: a chip per section in the header, the one in view marked as the page scrolls.
-  const nav = page?.nav ? createTabStrip(doc, (id) => jumpTo(id)) : undefined
+  const nav = page?.nav ? createTabStrip(doc, (id) => byUser(() => jumpTo(id))) : undefined
   if (nav) {
     nav.element.classList.add("knobs-nav")
     nav.element.setAttribute("aria-label", "Sections")
@@ -2576,7 +2599,9 @@ function buildPanel<S extends Schema>(
   let navForced: string | undefined
   let navFrame = 0
   // What a navigation of the host's own reads: `page.sections()`, `page.activeSection()`.
-  const sectionListeners = new Set<(sections: readonly PageSectionInfo[]) => void>()
+  const sectionListeners = new Set<
+    (sections: readonly PageSectionInfo[], source: PageFoldSource | null) => void
+  >()
   const activeListeners = new Set<(section: string | undefined) => void>()
   let lastSections = ""
   let sectionsQueued = false
@@ -2625,13 +2650,21 @@ function buildPanel<S extends Schema>(
       sectionsQueued = false
       const list = describeSections()
       const key = JSON.stringify(list)
+      const source = foldSource
+      foldSource = null
       if (key === lastSections) return
       lastSections = key
-      for (const listener of [...sectionListeners]) listener(list)
+      for (const listener of [...sectionListeners]) listener(list, source)
     })
   }
   function syncNav() {
-    if (!nav || !layout) return
+    if (!layout) return
+    if (!nav) {
+      // Sections that came, went or moved: listeners of the page's own hear of it.
+      announceSections()
+      trackSection()
+      return
+    }
     const list = layout
       .sectionList()
       .filter((s) => s.label)
@@ -2870,7 +2903,7 @@ function buildPanel<S extends Schema>(
       // ⌥↑ / ⌥↓ go to the section before or after.
       if (layout && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault()
-        stepSection(event.key === "ArrowUp" ? -1 : 1)
+        byUser(() => stepSection(event.key === "ArrowUp" ? -1 : 1))
         return
       }
       // ⌥1–9 show a tab.
@@ -2991,7 +3024,7 @@ function buildPanel<S extends Schema>(
       const open = key === "ArrowRight" || (prefs.vim && key === "l")
       if (toggle || shut || open) {
         event.preventDefault()
-        foldSection(section, toggle ? !layout.isFolded(section) : shut)
+        byUser(() => foldSection(section, toggle ? !layout!.isFolded(section) : shut))
         return
       }
     }
@@ -3003,7 +3036,7 @@ function buildPanel<S extends Schema>(
       const open = key === "ArrowRight" || (prefs.vim && key === "l")
       if (toggle || shut || open) {
         event.preventDefault()
-        fold(group, toggle ? !folds.get(group) : shut)
+        byUser(() => fold(group, toggle ? !folds.get(group) : shut))
         return
       }
     }
@@ -3488,7 +3521,8 @@ function buildPanel<S extends Schema>(
         ".knobs-section-head[data-foldable]",
       )
       if (!head || !layout || (event.target as Element).closest("button,a,input")) return
-      foldSection(head.dataset.section!, !layout.isFolded(head.dataset.section!))
+      const section = head.dataset.section!
+      byUser(() => foldSection(section, !layout!.isFolded(section)))
     })
     body.addEventListener("pointerdown", claim, true)
     body.addEventListener("keydown", claim, true)
@@ -3847,14 +3881,16 @@ function buildPanel<S extends Schema>(
     activeSection() {
       return navForced ?? sectionInView()
     },
-    onSections(listener: (sections: readonly PageSectionInfo[]) => void) {
+    onSections(
+      listener: (sections: readonly PageSectionInfo[], source: PageFoldSource | null) => void,
+    ) {
       sectionListeners.add(listener)
       // The first call says what's there now; later ones, what changed.
       queueMicrotask(() => {
         if (!sectionListeners.has(listener)) return
         const list = describeSections()
         if (sectionListeners.size === 1) lastSections = JSON.stringify(list)
-        listener(list)
+        listener(list, null)
       })
       return () => void sectionListeners.delete(listener)
     },

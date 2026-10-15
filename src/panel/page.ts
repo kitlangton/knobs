@@ -211,12 +211,23 @@ export interface Page extends Panel {
   /**
    * Calls `listener` (after a microtask) whenever `sections()` would say something new: a fold,
    * a changed count, a label or description, sections and groups coming or going. Returns an
-   * unsubscribe.
+   * unsubscribe. `source` says what folded or opened something (see `PageFoldSource`); it's null
+   * for the first call and for changes that aren't folds (a value, a label).
    */
-  onSections(listener: (sections: readonly PageSectionInfo[]) => void): () => void
+  onSections(
+    listener: (sections: readonly PageSectionInfo[], source: PageFoldSource | null) => void,
+  ): () => void
   /** Calls `listener` when `activeSection()` changes. Returns an unsubscribe. */
   onActiveSection(listener: (section: string | undefined) => void): () => void
 }
+
+/**
+ * What a change `onSections` reports came from: `"user"` a click or key on a heading or card
+ * header; `"code"` the page's methods (`fold`, `foldSection`, `reveal`, `highlight`'s expand);
+ * `"search"` the filter opening matches while it runs (`folded` keeps the saved state; the list
+ * shows what the filter shows); `"restore"` the filter clearing, everything back as it was.
+ */
+export type PageFoldSource = "user" | "code" | "search" | "restore"
 
 export interface PageFoldOptions {
   /**

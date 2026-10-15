@@ -708,3 +708,34 @@ test("by default folds are kept per tab, as before; foldStorage: null keeps none
     '{"sections":{"Look":true}}',
   )
 })
+
+test("onSections says what each fold came from: user, code, search and restore; other changes say null", async ({
+  page,
+}) => {
+  const root = await mount(page, { mount: { sectionFolded: { Look: false, Layout: true } } })
+  await page.evaluate(() => {
+    const s = (window as any).__s
+    s.heard = []
+    s.page.onSections((_: unknown, source: unknown) => s.heard.push(source))
+  })
+  const heard = () => page.evaluate(() => (window as any).__s.heard)
+  await expect.poll(heard).toEqual([null])
+  await head(root, "Look").click()
+  await expect.poll(heard).toEqual([null, "user"])
+  await head(root, "Look").focus()
+  await page.keyboard.press("Enter")
+  await expect.poll(heard).toEqual([null, "user", "user"])
+  await page.evaluate(() => (window as any).__s.page.foldSection("Look", true))
+  await expect.poll(heard).toEqual([null, "user", "user", "code"])
+  await page.evaluate(() => (window as any).__s.page.reveal({ group: "Grid" }))
+  await expect.poll(async () => (await heard()).at(-1)).toBe("code")
+  await page.evaluate(() => (window as any).__s.controls.set({ hue: 70 }))
+  await expect.poll(async () => (await heard()).at(-1)).toBe(null)
+  const n = (await heard()).length
+  await page.getByRole("slider", { name: "open" }).focus()
+  await page.keyboard.press("/")
+  await page.keyboard.type("gutter")
+  await expect.poll(async () => (await heard()).slice(n)).toContain("search")
+  await page.keyboard.press("Escape")
+  await expect.poll(async () => (await heard()).at(-1)).toBe("restore")
+})

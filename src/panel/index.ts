@@ -22,6 +22,7 @@ export {
   type PageCardOptions,
   type PageControl,
   type PageFoldOptions,
+  type PageFoldSource,
   type PageGroupInfo,
   type PageHighlight,
   type PageSectionInfo,
