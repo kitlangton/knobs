@@ -215,9 +215,10 @@ export function menu(anchor: Anchor, items: readonly MenuEntry[], options: MenuO
     })
     el.style.left = `${placed.x}px`
     el.style.top = `${placed.y}px`
-    el.style.transformOrigin = point
-      ? `${box.x - placed.x}px ${box.y - placed.y}px`
-      : `${placed.origin.x}px ${placed.origin.y}px`
+    el.style.transformOrigin =
+      !parent && point
+        ? `${box.x - placed.x}px ${box.y - placed.y}px`
+        : `${placed.origin.x}px ${placed.origin.y}px`
     el.dataset.placement = placed.placement
     const side = placed.placement.split("-")[0]
     // kit-motion: snappy (.25 s, no bounce) in, softer and shorter out (blur ≤ 4px, scale .96).
@@ -256,6 +257,7 @@ export function menu(anchor: Anchor, items: readonly MenuEntry[], options: MenuO
         } else el.removeAttribute("aria-activedescendant")
       },
       openSub(i, focusFirst) {
+        clearTimeout(hoverTimer)
         const row = rows[i]
         const open = level.child
         if (open && open === level.subs.get(i)) {
@@ -347,7 +349,10 @@ export function menu(anchor: Anchor, items: readonly MenuEntry[], options: MenuO
       level.setActive(ok(i) ? i : -1, "pointer")
       clearTimeout(hoverTimer)
       if (child && !rows[i]?.item.items) {
-        hoverTimer = setTimeout(() => void level.child?.close("close"), HOVER_INTENT_MS)
+        hoverTimer = setTimeout(
+          () => void level.child?.close("close", level.child.el.contains(doc.activeElement)),
+          HOVER_INTENT_MS,
+        )
       } else if (rows[i]?.item.items && ok(i)) {
         hoverTimer = setTimeout(() => level.openSub(i, false), HOVER_INTENT_MS)
       }
@@ -475,9 +480,10 @@ export function contextMenu(
   }
   const focusedPoint = () => {
     const focus = doc.activeElement as HTMLElement | null
-    const active = focus?.getAttribute("aria-activedescendant")
-    const el = (active && doc.getElementById(active)) || (target.contains(focus) ? focus : target)
-    const r = el!.getBoundingClientRect()
+    const inTarget = focus && target.contains(focus)
+    const active = inTarget ? focus.getAttribute("aria-activedescendant") : null
+    const el = (active && doc.getElementById(active)) || (inTarget ? focus : target)
+    const r = el.getBoundingClientRect()
     return { x: r.left + Math.min(24, r.width / 2), y: r.top + Math.min(r.height, 28) }
   }
   const onContext = (e: MouseEvent) => {

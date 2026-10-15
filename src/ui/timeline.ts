@@ -152,6 +152,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   head.id = `${id}-head`
   head.setAttribute("role", "slider")
   head.setAttribute("aria-label", "Playhead")
+  head.setAttribute("aria-valuemin", "0")
+  head.setAttribute("aria-valuemax", String(duration))
   track.append(canvas, lane, hover, head)
   root.append(transport, track)
   container.append(root)
@@ -181,7 +183,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       vStart.set(target.start)
       vSpan.set(target.span)
     }
-    loop.wake()
+    if (!vStart.resting || !vSpan.resting || playing) loop.wake()
+    else render()
   }
 
   // ——— drawing ———
@@ -254,7 +257,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         markerEls.set(m.id, n)
         if (built) enter(n)
       }
-      const label = n.lastElementChild as HTMLElement
+      const label = n.querySelector<HTMLElement>(".knobs-tl-mlabel")!
       if (label.textContent !== (m.label ?? "")) label.textContent = m.label ?? ""
       label.hidden = !m.label
       n.style.setProperty("--knobs-tl-color", m.color ?? "")
@@ -584,7 +587,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       select({ kind: "range", id: rangeEl.dataset.id! })
     } else if (rangeEl && t.closest(".knobs-tl-rlabel")) {
       // A range moves by its label; its band scrubs like the rest of the track.
-      const r = ranges.find((x) => x.id === rangeEl.dataset.id)!
+      const r = ranges.find((x) => x.id === rangeEl.dataset.id)
+      if (!r) return
       drag = {
         kind: "range",
         id: r.id,
@@ -676,7 +680,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   track.addEventListener("dblclick", (e) => {
     const markerEl = (e.target as HTMLElement).closest<HTMLElement>(".knobs-tl-marker")
     if (markerEl) return rename(markerEl.dataset.id!)
-    if ((e.target as HTMLElement).closest(".knobs-tl-range")) return
+    if ((e.target as HTMLElement).closest(".knobs-tl-edge,.knobs-tl-rlabel")) return
     const m = addMarker(tOf(localX(e)))
     if (m) rename(m.id)
   })
@@ -796,7 +800,10 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         {
           label: "Go to marker",
           shortcut: "]",
-          run: () => setTime(markers.find((m) => m.id === mid)!.time, "marker"),
+          run: () => {
+            const m = markers.find((x) => x.id === mid)
+            if (m) setTime(m.time, "marker")
+          },
         },
         { label: "Rename…", shortcut: "Enter", run: () => rename(mid) },
         "-",
@@ -902,7 +909,10 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     pause,
     toggle,
     update(next) {
-      if (next.duration !== undefined) duration = Math.max(1e-3, next.duration)
+      if (next.duration !== undefined) {
+        duration = Math.max(1e-3, next.duration)
+        head.setAttribute("aria-valuemax", String(duration))
+      }
       if (next.fps !== undefined) fps = next.fps
       if (next.units !== undefined) units = next.units
       if (next.speed !== undefined) speed = next.speed
@@ -915,8 +925,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       drawn = ""
       syncMarkers()
       syncRanges()
-      retarget(target, CALM)
-      render()
+      if (next.duration !== undefined || next.fps !== undefined) retarget(target, CALM)
+      else render()
     },
     fit,
     zoom,
