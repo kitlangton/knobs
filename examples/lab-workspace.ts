@@ -4,6 +4,7 @@
 // ?rows=10000 fills the outliner with a big scene (the virtual-scroll check).
 import { labPreset } from "knobs/themes"
 import { applyMove, split, tree, type TreeAccess, type TreeMove } from "knobs/ui"
+import { startLive } from "./lab-live"
 
 interface SceneItem {
   id: string
@@ -132,9 +133,9 @@ const center = split(main.pane("center").body, {
     { id: "view", min: 160, element: viewport },
     {
       id: "dock",
-      size: 132,
+      size: 300,
       min: 72,
-      max: 320,
+      max: 560,
       collapsible: true,
       title: "Dock",
       count: "Variants · Compare · Live",
@@ -225,7 +226,10 @@ const expandAll = () => {
   for (const id of parents(scene)) outline.expand(id, true)
 }
 
+const liveFeed = startLive(document.getElementById("live")!, document.getElementById("diag")!)
+
 Object.assign(window, {
+  __live: liveFeed,
   __workspace: {
     main,
     left,

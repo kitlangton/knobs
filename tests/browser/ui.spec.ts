@@ -192,7 +192,7 @@ test("split: a column dock folds to its header, and a panel in a pane reflows wi
   expect(folded).toBe(await head.evaluate((el) => el.getBoundingClientRect().height))
   await expect(head).toBeVisible()
   await head.click()
-  expect(await settle(page, "dock")).toBe(132)
+  expect(await settle(page, "dock")).toBe(300)
   // The station panel fills the inspector column, so it widens with it.
   const panel = page.locator('[data-controls="lab-station"]')
   const before = (await panel.boundingBox())!.width

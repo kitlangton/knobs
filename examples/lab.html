@@ -52,7 +52,10 @@
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .viewport .orb { position: absolute; left: 58%; top: 26%; width: 96px; height: 96px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3c27a, #a8692c 60%, #5c3818); box-shadow: 0 0 60px #c58a3a66; }
       .viewport .rain { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 22px, #ffffff10 22px 23px); }
-      .dock { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
+      .dock { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.25fr) minmax(260px, 1.25fr); gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
+      .dock-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+      .dock .live { padding: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
+      .dock .live .knobs-panel { --k-width: 100%; }
       [data-pane="dock"] { background: var(--dock); }
       .chips { display: flex; flex-wrap: wrap; gap: 4px; }
       .chips button { border: 1px solid var(--line); color: var(--text2); }
@@ -111,18 +114,18 @@
           <span class="tag">Weather</span>
         </section>
         <div class="dock" id="dock">
-          <div class="card">
-            <div class="cap">Variants</div>
-            <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
+          <div class="dock-side">
+            <div class="card">
+              <div class="cap">Variants</div>
+              <div class="chips"><button><kbd>⇧1</kbd>Rain</button><button><kbd>⇧2</kbd>Drizzle</button><button class="on"><kbd>⇧3</kbd>Storm</button><button><kbd>⇧4</kbd>Fog</button><button><kbd>⇧5</kbd>Snow</button></div>
+            </div>
+            <div class="card">
+              <div class="cap">Compare</div>
+              <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
+            </div>
           </div>
-          <div class="card">
-            <div class="cap">Compare</div>
-            <div class="chips"><button>A/B wipe</button><button>⊞ Grid</button></div>
-          </div>
-          <div class="card">
-            <div class="cap">Live</div>
-            <p class="mono">0 fps · Weather · Rain · 1428 drops</p>
-          </div>
+          <div class="card live" id="live"></div>
+          <div class="card live" id="diag"></div>
         </div>
         <aside class="details" id="details-column">
           <div class="card controls">
