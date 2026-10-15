@@ -180,6 +180,11 @@ export interface GpuEasingRow {
   curve(): readonly number[]
   /** P0, P1, P3, P2: the two arms from the ends to their handles. */
   arms(): readonly number[]
+  /** Steps the row's morph (curve, arms, handles) to this frame; whether it still moves. */
+  advance(now: number): boolean
+  /** The line's motion blur (px), and each handle's (px across, px down): 0 at rest. */
+  blur(): number
+  smear(i: number): readonly [number, number]
   /** (0,0) and (1,1) in the box. */
   guides(): readonly number[]
   readonly handles: readonly HTMLElement[]
@@ -198,6 +203,13 @@ export interface GpuRampHandle {
   readonly selected: boolean
   /** Dragged off the strip or graph: it goes when let go. */
   readonly leaving: boolean
+  /**
+   * How grown it is (0…1), when its row's morph sizes it: budding out of the line or merging
+   * into a neighbour. Its position is then already the morph's, so it isn't eased again.
+   */
+  readonly grow?: number
+  /** Its motion blur (px along its travel, across and down), 0, 0 at rest. */
+  readonly smear?: readonly [number, number]
 }
 export interface GpuGradientRow {
   readonly kind: "gradient"
@@ -206,9 +218,11 @@ export interface GpuGradientRow {
   readonly row: HTMLElement
   readonly x: GpuExpander
   readonly read: HTMLElement
-  /** The head's swatch strip, and its stop ticks (x in the strip). */
+  /** The head's swatch strip, and its stop ticks (x in the strip; grown 0…1 as its stop is). */
   readonly mini: HTMLElement
-  ticks(): readonly { readonly el: HTMLElement; readonly x: number }[]
+  ticks(): readonly { readonly el: HTMLElement; readonly x: number; readonly grow?: number }[]
+  /** Steps the row's morph to this frame (samples, stops and ticks); whether it still moves. */
+  advance(now: number): boolean
   /** Evenly spaced samples as gamma sRGB triples, flat (see `gradientSamples`). */
   samples(): readonly number[]
   /** The editor's strip and how far in from each end its ramp starts (the handles' radius). */
@@ -235,7 +249,12 @@ export interface GpuCurveRow {
   readonly graph: HTMLElement
   /** Grid lines as x0, y0, x1, y1 quadruples in the graph. */
   grid(): readonly number[]
+  /** The line and mini curve as the row's morph shows them now (stepped to `now`, ms). */
   curve(): readonly number[]
+  /** Steps the row's morph to this frame; whether it still moves. */
+  advance(now: number): boolean
+  /** The line's motion blur (px), 0 at rest. */
+  blur(): number
   handles(): readonly GpuRampHandle[]
   /** The hover crosshair: its x, the curve's y there, and the readout's element. */
   hover(): { readonly x: number; readonly y: number; readonly read: HTMLElement } | null
@@ -1629,7 +1648,7 @@ class GpuOverlayManager {
       w: rRect.width,
       h: rRect.height,
       clip: cardClip,
-      color: withAlpha(t.surface, focus),
+      color: withAlpha(t.surfaceHi, focus),
       color2: t.accent,
       corners: this.rowCorners(el, el.getAttribute("aria-expanded") === "true"),
       glowOrBlur: t.glowStrength * 8,
@@ -2021,7 +2040,8 @@ class GpuOverlayManager {
   private curSelected = 0
 
   /** A stroke through `pts` (x,y pairs in viewport px), round-capped like SVG's. */
-  private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip) {
+  /** `blur` (px) softens it across, as a moving line's smear (the DOM's Gaussian over √12). */
+  private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip, blur = 0) {
     const n = pts.length >> 1
     if (n < 2 || this.pointCount + n > MAX_POINTS) return
     let x0 = Infinity
@@ -2045,6 +2065,7 @@ class GpuOverlayManager {
       color,
       strokeWidth: width,
       kind: 8,
+      blurX: blur,
       p0: this.pointCount,
       p1: n,
     })
@@ -2117,6 +2138,8 @@ class GpuOverlayManager {
     glow?: number
     glowColor?: Rgba
     clip?: Clip
+    /** A directional motion blur (px across, px down): the shape smeared along it. */
+    smear?: readonly [number, number]
   }) {
     this.pushPrim({
       x: o.x,
@@ -2130,6 +2153,8 @@ class GpuOverlayManager {
       strokeWidth: o.ring ?? 0,
       glowOrBlur: o.glow ?? 0,
       kind: 10,
+      blurX: o.smear?.[0] ?? 0,
+      blurY: o.smear?.[1] ?? 0,
       p0: (o.shadow?.[0] ?? 0) * this.curAlpha,
       p1: o.shadow?.[1] ?? 0,
       p2: o.shadow?.[2] ?? 0,
@@ -2273,6 +2298,21 @@ class GpuOverlayManager {
       }
     })
     return moving
+  }
+
+  /** The soft wash on the card focus is on (`data-k-scope`), as the DOM's ::after. */
+  private drawScope(card: HTMLElement, r: DOMRect, radius: number, alpha: number) {
+    const on = this.ease(card, "scope", card.hasAttribute("data-k-scope") ? 1 : 0, 26)
+    if (on < 0.005) return
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      color: withAlpha(this.curTokens.surface, on * alpha),
+      radius,
+      kind: 1,
+    })
   }
 
   /** A disclosure head (hover, label and changed dot, caret, focus); returns the body's clip, if open. */
@@ -2627,12 +2667,13 @@ class GpuOverlayManager {
       cardClip,
       rowAlpha,
     )
-    const delay = row.wave.at - clock
-    const snap = row.snap()
+    // The row's own morph moves the curve, arms and handles (see ramp-morph.ts): drawn as they
+    // stand this frame, not eased again.
+    if (row.advance(this.frameNow)) this.easeMoving = true
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
-    this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
+    this.pushLine(at(row.miniCurve(), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
@@ -2655,13 +2696,13 @@ class GpuOverlayManager {
           this.pushLine([br.left + 12, y, br.right - 12, y], line, 1, body)
         this.pushLine(g, line, 1, body)
       }
-      const arms = at(this.morph(row.handles[0]!, row.arms(), delay, snap, br), br)
+      const arms = at(row.arms(), br)
       if (arms.length === 8) {
         const dim = withAlpha(t.dim, rowAlpha * shown)
         this.pushLine(arms.slice(0, 4), dim, 1, body)
         this.pushLine(arms.slice(4), dim, 1, body)
       }
-      this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
+      this.pushLine(at(row.curve(), br), accent, 1.5, body, this.curReduced ? 0 : row.blur())
       row.handles.forEach((h, i) => {
         if (arms.length !== 8 || shown < 0.005) return
         const activeHandle = this.isFocused(h) || (this.curPanelHovered && h.matches(":active"))
@@ -2679,6 +2720,7 @@ class GpuOverlayManager {
           ringColor: accent,
           shadow: [0.3 * t.lift * shown, 3, 1],
           clip: body,
+          smear: this.curReduced ? [0, 0] : row.smear(i),
         })
       })
       this.drawChips(row.chips, body, rowAlpha)
@@ -2723,12 +2765,6 @@ class GpuOverlayManager {
     })
   }
 
-  /** How far a handle that arrived mid-life has grown in (`data-born`), like the DOM's keyframes. */
-  private appear(el: HTMLElement) {
-    if (!this.eased.get(el)?.has("in")) this.ease(el, "in", el.hasAttribute("data-born") ? 0 : 1)
-    return this.ease(el, "in", 1, 26)
-  }
-
   private drawGradient(
     row: GpuGradientRow,
     rRect: DOMRect,
@@ -2750,19 +2786,22 @@ class GpuOverlayManager {
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
-    // Both strips draw the same samples, blended on the morph spring as the DOM's transitions do.
-    const samples = this.morph(row.mini, row.samples(), delay, snap, mRect)
+    // The row's own morph moves the strips' samples, stops and ticks (one spring, the stops
+    // keeping their identity, see ramp-morph.ts): drawn as they stand this frame.
+    if (row.advance(this.frameNow)) this.easeMoving = true
+    const samples = row.samples()
     const rim = withAlpha(t.line, rowAlpha)
     this.pushRamp(mRect, samples, 0, t.radiusSm, rowAlpha * shown, rim, cardClip)
     for (const tick of row.ticks()) {
-      const [tx] = this.morph(tick.el, [tick.x], delay, snap, mRect)
+      const grow = tick.grow ?? 1
+      if (grow < 0.02) continue
       this.pushPrim({
-        x: mRect.left + tx! - 0.5,
+        x: mRect.left + tick.x - 0.5,
         y: mRect.bottom + 2,
         w: 1,
-        h: 3,
+        h: 3 * grow,
         clip: cardClip,
-        color: withAlpha(t.dim, rowAlpha * shown * this.appear(tick.el)),
+        color: withAlpha(t.dim, rowAlpha * shown),
         kind: 1,
       })
     }
@@ -2775,30 +2814,26 @@ class GpuOverlayManager {
       this.pushRamp(sr, samples, inset, Math.min(h / 2, t.round), rowAlpha * shown, rim, body)
       const focused = this.isFocused(row.strip) || snap
       for (const hd of row.handles()) {
-        const [hx] = this.morph(hd.el, [hd.x], delay, snap, sr)
+        const grow = hd.grow ?? 1
+        if (grow < 0.02) continue
         const rgb = hd.rgb ?? [0, 0, 0]
-        const omega = snap ? SNAP_OMEGA : 30
-        const born = this.appear(hd.el)
         const scale = this.ease(
           hd.el,
           "scale",
           hd.leaving ? 0.6 : hd.selected ? (focused ? 1.12 : 1) : 0.78,
           30,
         )
-        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * born
-        // A pin: as tall as the strip inside its ring, a little under half as wide.
-        const k = scale * (0.4 + 0.6 * born)
+        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40)
+        // A pin: as tall as the strip inside its ring, a little under half as wide; budding or
+        // merging, it grows from (or shrinks to) nothing, as the DOM's scale does.
+        const k = scale * grow
         const ph = (h - 4) * k
         const pw = Math.round(h * 0.42) * k
-        const fill: Rgba = [
-          this.ease(hd.el, "r", rgb[0], omega),
-          this.ease(hd.el, "g", rgb[1], omega),
-          this.ease(hd.el, "b", rgb[2], omega),
-          rowAlpha * shown * fade,
-        ]
+        const fill: Rgba = [rgb[0], rgb[1], rgb[2], rowAlpha * shown * fade]
         if (shown * fade < 0.005) continue
         this.shape({
-          x: sr.left + hx! - pw / 2,
+          smear: this.curReduced ? [0, 0] : (hd.smear ?? [0, 0]),
+          x: sr.left + hd.x - pw / 2,
           y: sr.top + hd.y - ph / 2,
           w: pw,
           h: ph,
@@ -2842,12 +2877,14 @@ class GpuOverlayManager {
       cardClip,
       rowAlpha,
     )
-    const delay = row.wave.at - clock
+    // The row's own morph moves the line and points (one spring, identity kept, see
+    // ramp-morph.ts): drawn as it stands this frame, not eased again.
+    if (row.advance(this.frameNow)) this.easeMoving = true
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
-    this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
+    this.pushLine(at(row.miniCurve(), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
@@ -2877,7 +2914,7 @@ class GpuOverlayManager {
           1,
           clip,
         )
-      this.pushLine(at(this.morph(row.graph, row.curve(), delay, snap, gr), gr), accent, 1.5, clip)
+      this.pushLine(at(row.curve(), gr), accent, 1.5, clip, this.curReduced ? 0 : row.blur())
       // The crosshair fades in and out where it last was, as the DOM's opacity does.
       const hover = row.hover()
       if (hover) this.lastHover.set(row.graph, hover)
@@ -2915,8 +2952,8 @@ class GpuOverlayManager {
       }
       const focused = this.isFocused(row.graph) || snap
       for (const hd of row.handles()) {
-        const [hx, hy] = this.morph(hd.el, [hd.x, hd.y], delay, snap, gr)
-        const born = this.appear(hd.el)
+        const grow = hd.grow ?? 1
+        if (grow < 0.02) continue
         const sel = this.ease(hd.el, "sel", hd.selected ? 1 : 0, 40)
         const scale = this.ease(
           hd.el,
@@ -2924,12 +2961,14 @@ class GpuOverlayManager {
           hd.leaving ? 0.7 : hd.selected && focused ? 1.2 : 1,
           30,
         )
-        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * born * shown
+        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * shown
         if (fade < 0.005) continue
-        const d = 10 * scale * (0.4 + 0.6 * born)
+        // A budding or merging point grows from (or shrinks to) nothing, as the DOM's scale does.
+        const d = 10 * scale * grow
+        const [bx, by] = this.curReduced ? [0, 0] : (hd.smear ?? [0, 0])
         this.shape({
-          x: gr.left + hx! - d / 2,
-          y: gr.top + hy! - d / 2,
+          x: gr.left + hd.x - d / 2,
+          y: gr.top + hd.y - d / 2,
           w: d,
           h: d,
           radius: Math.min(d / 2, t.round),
@@ -2938,6 +2977,7 @@ class GpuOverlayManager {
           ringColor: withAlpha(t.accent, rowAlpha * fade),
           shadow: [0.3 * t.lift * fade, 3, 1],
           clip,
+          smear: [bx, by],
         })
       }
       if (last && lit > 0.005) {
@@ -4259,6 +4299,7 @@ class GpuOverlayManager {
             p0: 0,
             aux2: withAlpha(tokens.rim, fade),
           })
+          this.drawScope(tile, tr, tokens.panelRadius, fade)
         }
       }
 
@@ -4468,6 +4509,7 @@ class GpuOverlayManager {
             radius: tokens.radius,
             kind: 1,
           })
+          if (bar === card) this.drawScope(card, cr, tokens.radius, 1)
         }
       }
       this.curClip = bodyClip
@@ -5049,7 +5091,38 @@ class GpuOverlayManager {
         }
       }
 
-      // 7. Hint badges
+      // 7. Hint badges, and the focused row's option digits (optkeys.ts), in the same look.
+      for (const key of panel.root.querySelectorAll<HTMLElement>(".knobs-optkeys .knobs-optkey")) {
+        const a = this.ease(key, "shown", key.hasAttribute("data-shown") ? 0.85 : 0, 28)
+        if (a < 0.005) continue
+        const kr = key.getBoundingClientRect()
+        if (kr.width <= 0 || kr.height <= 0) continue
+        this.pushPrim({
+          x: kr.left,
+          y: kr.top,
+          w: kr.width,
+          h: kr.height,
+          clip: panelClip,
+          color: withAlpha(tokens.accent, a),
+          color2: withAlpha(tokens.accent, a),
+          radius: tokens.radiusSm,
+          glowOrBlur: tokens.glowStrength * 0.5,
+          kind: 3,
+        })
+        this.drawText(
+          key.textContent ?? "",
+          kr.left + 3,
+          kr.top + kr.height * 0.5,
+          withAlpha(tokens.bg, a),
+          {
+            px: tokens.textCap * 0.85,
+            weight: 700,
+            mono: true,
+            clip: panelClip,
+            track: 0.04,
+          },
+        )
+      }
       if (hinting) {
         for (const hintEl of panel.root.querySelectorAll<HTMLElement>(
           ".knobs-hint-layer .knobs-hint:not([hidden])",

@@ -34,7 +34,6 @@ const gradStops = (at: (i: number) => string) =>
   Array.from({ length: GRAD_N }, (_, i) => `var(--kgrad-${i}) ${at(i)}`).join(",")
 const GRAD_STRIP = `linear-gradient(to right,${gradStops((i) => `calc(var(--kg-r) + (100% - var(--kg-r) * 2) * ${Number((i / (GRAD_N - 1)).toFixed(5))})`)})`
 const GRAD_MINI = `linear-gradient(to right,${gradStops((i) => `${Number(((i / (GRAD_N - 1)) * 100).toFixed(3))}%`)})`
-const GRAD_T = Array.from({ length: GRAD_N }, (_, i) => `--kgrad-${i} ${FILL_T} ${DELAY}`).join(",")
 const GRAD_PROPS = Array.from(
   { length: GRAD_N },
   (_, i) => `@property --kgrad-${i}{syntax:"<color>";inherits:false;initial-value:transparent}`,
@@ -97,6 +96,8 @@ const defaultsCss = `
 @property --k-check-a{syntax:"<number>";inherits:true;initial-value:0}
 @property --kc-value-size{syntax:"<length>";inherits:true;initial-value:11.5px}
 @property --kr-lo{syntax:"<number>";inherits:true;initial-value:0}
+@property --kpt-sel{syntax:"<number>";inherits:false;initial-value:1}
+@property --kgs-sel{syntax:"<number>";inherits:false;initial-value:1}
 @property --kr-hi{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-hi{syntax:"<number>";inherits:true;initial-value:0}
@@ -113,7 +114,7 @@ ${GRAD_PROPS}
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
 /* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
@@ -335,7 +336,12 @@ const css = `
 .knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t),opacity .2s}
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
-.knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
+.knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface-hi);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
+/* The card focus is on (a click on its empty area or heading, Esc from a row): a soft wash over all
+   of it, for R and ⇧R acting on its group. */
+:is(.knobs-card,.knobs-tile)::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .2s var(--k-ease)}
+:is(.knobs-card,.knobs-tile)[data-k-scope]::after{opacity:1}
+.knobs-panel:focus{outline:none}
 .knobs-card>:has(:focus-visible)::after{opacity:1}
 /* One wash at a time: while the pointer has a row (and keys haven't taken over since), a focus
    wash elsewhere steps aside. */
@@ -483,12 +489,12 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-sub{position:relative;transition:background var(--k-hover-t)}
 .knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover,.knobs-x-head[data-panned]{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
-:is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
+:is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface-hi);opacity:0;pointer-events:none;transition:opacity .15s}
 :is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1}
 .knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:var(--k-gap) var(--k-inset) var(--k-gap) 0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);pointer-events:none}
 .knobs-panel :is(.knobs-spring-curve,.knobs-ease)>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
-.knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1;transition:d ${FILL_T} ${DELAY}}
+.knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1}
 .knobs-curve{fill:none;stroke:var(--k-accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:d ${FILL_T} ${DELAY}}
 .knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0;scale:var(--k-curve-dot)}
 .knobs-guide-dashed{stroke:var(--k-line-hi)}
@@ -496,6 +502,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 
 .knobs-panel :is(input,textarea,[contenteditable]){-webkit-user-select:text;user-select:text}
 .knobs-x-head{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
+.knobs-x-head[data-panned]{cursor:ew-resize}
 .knobs-panel .knobs-x-head:focus-visible{outline:none;box-shadow:none}
 .knobs-x-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-weight:var(--k-label-weight)}
 .knobs-x-label::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
@@ -529,10 +536,11 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-pad.knobs-active>i{transition:scale .2s var(--k-ease)}
 .knobs-pad:is(.knobs-active,:focus-visible) .knobs-pad-puck{scale:1.2}
 .knobs-ease{height:calc(var(--k-row) * 4.5)}
-.knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));cursor:grab;touch-action:none;transition:translate ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
+.knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));cursor:grab;touch-action:none;transition:scale .2s var(--k-ease)}
 .knobs-ease-handle::before{content:"";position:absolute;inset:-8px;border-radius:50%}
-.knobs-ease.knobs-active :is(.knobs-curve,.knobs-arm){transition:none}
-.knobs-ease.knobs-active .knobs-ease-handle{transition:scale .2s var(--k-ease)}
+/* The row's morph moves the curve, arms and handles each frame (ramp-morph.ts), so they don't
+   transition. */
+:is(.knobs-ease,.knobs-ease-mini) .knobs-curve{transition:none}
 .knobs-ease-handle:active{scale:1.2;cursor:grabbing}
 .knobs-ease-handle:focus-visible{scale:1.2}
 .knobs-ease-mini{flex:none;width:30px;height:var(--k-track-h);overflow:visible}
@@ -544,18 +552,17 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 /* Gradients: a swatch strip with stop ticks in the head; a wide strip with a handle per stop (the
    selected one full size), then that stop's colour strips. The ramp runs a handle's radius in from
    each end, as the colour strips' do. */
-.knobs-grad-mini{position:relative;flex:none;width:calc(var(--k-row) * 2.5);height:var(--k-track-h);border-radius:var(--k-radius-sm);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_MINI};transition:${GRAD_T}}
-.knobs-grad-mini>i{position:absolute;top:calc(100% + 2px);left:0;width:1px;height:3px;margin-left:-.5px;background:var(--k-dim);transition:left ${FILL_T} ${DELAY},opacity .15s}
-.knobs-grad{--kg-h:calc(var(--k-row) - 6px);--kg-r:calc(var(--kg-h) / 2);--kg-pin:round(calc(var(--kg-h) * .42),1px);position:relative;height:var(--kg-h);margin:2px 0 var(--k-gap);border-radius:var(--k-round);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_STRIP};cursor:pointer;touch-action:none;user-select:none;outline:none;transition:${GRAD_T}}
-.knobs-grad-stop{position:absolute;top:50%;left:0;width:var(--kg-pin);height:calc(var(--kg-h) - 4px);margin:calc(2px - var(--kg-h) / 2) 0 0 calc(var(--kg-pin) / -2);border-radius:var(--k-round);box-shadow:0 0 0 2px var(--k-thumb),0 1px 4px rgba(0,0,0,calc(.4 * var(--k-lift)));pointer-events:none;scale:.78;
-  transition:left ${FILL_T} ${DELAY},background-color .2s ${DELAY},scale .2s var(--k-ease),opacity .15s}
-.knobs-grad-stop[data-selected]{scale:1}
-.knobs-grad:is(:focus-visible,.knobs-active) .knobs-grad-stop[data-selected]{scale:1.12}
-.knobs-grad-stop[data-leaving]{opacity:.35;scale:.6}
-.knobs-x[data-k-active] :is(.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i){transition:none}
-.knobs-x[data-k-active] .knobs-grad-stop{transition:scale .2s var(--k-ease),opacity .15s}
-:is(.knobs-grad-stop,.knobs-graph-pt)[data-born]{animation:knobs-born .24s var(--k-ease)}
-@keyframes knobs-born{from{opacity:0;scale:.4}}
+.knobs-grad-mini{position:relative;flex:none;width:calc(var(--k-row) * 2.5);height:var(--k-track-h);border-radius:var(--k-radius-sm);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_MINI}}
+.knobs-grad-mini>i{position:absolute;top:calc(100% + 2px);left:0;width:1px;height:3px;margin-left:-.5px;background:var(--k-dim);scale:1 var(--kgs-grow,1);transform-origin:top;transition:opacity .15s}
+.knobs-grad{--kg-h:calc(var(--k-row) - 6px);--kg-r:calc(var(--kg-h) / 2);--kg-pin:round(calc(var(--kg-h) * .42),1px);position:relative;height:var(--kg-h);margin:2px 0 var(--k-gap);border-radius:var(--k-round);box-shadow:inset 0 0 0 1px var(--k-line);background:${GRAD_STRIP};cursor:pointer;touch-action:none;user-select:none;outline:none}
+.knobs-grad-stop{position:absolute;top:50%;left:0;width:var(--kg-pin);height:calc(var(--kg-h) - 4px);margin:calc(2px - var(--kg-h) / 2) 0 0 calc(var(--kg-pin) / -2);border-radius:var(--k-round);box-shadow:0 0 0 2px var(--k-thumb),0 1px 4px rgba(0,0,0,calc(.4 * var(--k-lift)));pointer-events:none;
+  --kgs-sel:.78;scale:calc(var(--kgs-sel) * var(--kgs-grow,1));transition:--kgs-sel .2s var(--k-ease),opacity .15s}
+/* The row's morph moves the strip, stops and ticks each frame (ramp-morph.ts), so none transition
+   but a stop's focus scale (--kgs-sel); its growth (--kgs-grow) buds it from the strip or merges it
+   into a neighbour. */
+.knobs-grad-stop[data-selected]{--kgs-sel:1}
+.knobs-grad:is(:focus-visible,.knobs-active) .knobs-grad-stop[data-selected]{--kgs-sel:1.12}
+.knobs-grad-stop[data-leaving]{opacity:.35;--kgs-sel:.6}
 .knobs-mixed :is(.knobs-grad,.knobs-grad-mini){background:transparent}
 /* A ramp's shapes and presets share one row: each chip gives up padding before its words, and only
    a very narrow column ellipsizes them (the GPU overlay does the same). */
@@ -570,13 +577,15 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-graph{position:relative;height:calc(var(--k-row) * 4.5);border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:crosshair;touch-action:none;user-select:none;outline:none;overflow:hidden}
 .knobs-panel .knobs-graph>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .knobs-graph>i{position:absolute;left:0;top:0;pointer-events:none}
+/* The row's morph places the line and points each frame (ramp-morph.ts), so neither transitions:
+   a point's size is its focus scale (--kpt-sel, which does) times its growth (--kpt-grow, budding
+   from the line or merging into a neighbour). */
 .knobs-graph-pt{width:10px;height:10px;margin:-5px;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));
-  transition:translate ${FILL_T} ${DELAY},background-color .15s,scale .2s var(--k-ease),opacity .15s}
+  scale:calc(var(--kpt-sel) * var(--kpt-grow,1));transition:background-color .15s,--kpt-sel .2s var(--k-ease),opacity .15s}
 .knobs-graph-pt[data-selected]{background:var(--k-accent)}
-.knobs-graph:is(:focus-visible,.knobs-active) .knobs-graph-pt[data-selected]{scale:1.2}
-.knobs-graph-pt[data-leaving]{opacity:.35;scale:.7}
-.knobs-graph.knobs-active .knobs-graph-pt{transition:background-color .15s,scale .2s var(--k-ease),opacity .15s}
-.knobs-graph.knobs-active .knobs-curve,.knobs-x[data-k-active] .knobs-curve-mini .knobs-curve{transition:none}
+.knobs-graph:is(:focus-visible,.knobs-active) .knobs-graph-pt[data-selected]{--kpt-sel:1.2}
+.knobs-graph-pt[data-leaving]{opacity:.35;--kpt-sel:.7}
+.knobs-graph .knobs-curve,.knobs-curve-mini .knobs-curve{transition:none}
 .knobs-graph :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:0;transition:opacity .15s}
 .knobs-graph[data-hover] :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:1}
 .knobs-graph-v{bottom:0;width:1px;margin-left:-.5px;background:var(--k-line-hi)}
@@ -796,6 +805,13 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-hint-typed{opacity:var(--k-hint-typed-opacity)}
 .knobs-hint-rest{opacity:1}
 
+/* A focused row's options: tiny digits in hint mode's look, once focus settles (optkeys.ts). */
+.knobs-optkeys{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5}
+.knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;align-items:center;height:12px;padding:0 3px;border-radius:var(--k-radius-sm);background:var(--k-accent);color:var(--k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
+  font:700 calc(var(--k-text-cap) * .85)/1 var(--k-mono);letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .12s var(--k-ease)}
+.knobs-optkey-range{transform:translate(-100%,-50%)}
+.knobs-optkey[data-shown]{opacity:.85;transition-duration:.15s}
+
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
 .knobs-panel .knobs-custom-actions button{height:var(--k-button-h,var(--k-action-h));min-height:24px;padding:0 8px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-button-color,var(--k-label));cursor:pointer;
@@ -858,6 +874,8 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::after,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-card:not(.knobs-live *),.knobs-tile:not(.knobs-live))::after,
+.knobs-panel[data-gpu-active="true"] .knobs-optkey,
 .knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */

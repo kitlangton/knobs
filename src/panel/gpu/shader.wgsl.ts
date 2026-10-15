@@ -452,6 +452,8 @@ fn shadeDot(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 }
 
 // kind 8: Polyline stroke through pts[extra.x .. extra.x + extra.y] (viewport px), look.y wide.
+// motion.x (px) smears it across while it moves: the stroke box-blurred by that width, a
+// trapezoid that keeps its ink (the DOM blurs its path by the same spread).
 fn shadeLine(p: Prim, screen: vec2f) -> vec4f {
   let start = u32(p.extra.x);
   let count = u32(p.extra.y);
@@ -463,7 +465,15 @@ fn shadeLine(p: Prim, screen: vec2f) -> vec4f {
     let t = clamp(dot(screen - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
     d = min(d, length(screen - a - ab * t));
   }
-  let a = covSd(d - p.look.y * 0.5) * p.color.a;
+  let w = p.look.y;
+  let blur = p.motion.x;
+  if (blur < 0.25) {
+    let a = covSd(d - w * 0.5) * p.color.a;
+    return vec4f(p.color.rgb * a, a);
+  }
+  let bw = blur + 1.0 / view.dpr;
+  let lo = min(w, bw);
+  let a = (lo / bw) * clamp(((w + bw) * 0.5 - d) / lo, 0.0, 1.0) * p.color.a;
   return vec4f(p.color.rgb * a, a);
 }
 
@@ -605,6 +615,21 @@ fn shadeShape(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   return out;
 }
 
+// A shape smeared along motion.xy (px), as a moving curve point is: a box blur along its travel.
+fn shadeShapeSmeared(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
+  let blur = p.motion.xy;
+  let len = length(blur);
+  if (len < 0.25) { return shadeShape(p, local, size); }
+  let n = clamp(i32(len / 1.2) + 3, 4, 12);
+  let j = hash21(fragPos);
+  var acc = vec4f(0.0);
+  for (var k = 0; k < n; k++) {
+    let f = (f32(k) + j) / f32(n) - 0.5;
+    acc += shadeShape(p, local - blur * f, size);
+  }
+  return acc / f32(n);
+}
+
 // A prim's colour at viewport point \`at\` (frag: its device px), within its clip.
 fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
   let clipDist = min(
@@ -642,7 +667,7 @@ fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
     }
     case 8: { out = shadeLine(p, at); }
     case 9: { out = shadeStrip(p, local, size); }
-    case 10: { out = shadeShape(p, local, size); }
+    case 10: { out = shadeShapeSmeared(p, local, size, frag); }
     case 11: { out = shadeDie(p, rect, frag); }
     case 12: { out = shadeArea(p, at, rect); }
     case 13: { out = shadeRamp(p, local, size); }
