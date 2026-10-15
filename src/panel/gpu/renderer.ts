@@ -1082,7 +1082,8 @@ class GpuOverlayManager {
   ) {
     const t = this.curTokens
     // Ellipsized to the label's box, as the DOM's text-overflow does.
-    const shown = lRect.width > 0 ? this.fit(text, lRect.width + 1, t.fontSize, t.labelWeight) : text
+    const shown =
+      lRect.width > 0 ? this.fit(text, lRect.width + 1, t.fontSize, t.labelWeight) : text
     const w = this.drawText(shown, lRect.left, rowCenterY, withAlpha(t.label, rowAlpha))
     const lock = this.curLocks?.get(labelEl)
     if (lock) this.drawLock(lock, rowCenterY, rowAlpha)
@@ -2569,11 +2570,11 @@ class GpuOverlayManager {
         const bars = tokens.flat
           ? []
           : separate
-          ? [...(card.children as HTMLCollectionOf<HTMLElement>)].flatMap((c) =>
-              c.classList.contains("knobs-spring")
-                ? [...c.querySelectorAll<HTMLElement>(".knobs-sub")]
-                : [c],
-            )
+            ? [...(card.children as HTMLCollectionOf<HTMLElement>)].flatMap((c) =>
+                c.classList.contains("knobs-spring")
+                  ? [...c.querySelectorAll<HTMLElement>(".knobs-sub")]
+                  : [c],
+              )
             : [card]
         for (const bar of bars) {
           if (bar.hidden) continue

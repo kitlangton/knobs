@@ -140,7 +140,9 @@ test("disabled rows dim and take no edits; read-only rows show at full strength 
   await panel.getByRole("radio", { name: "Area" }).click()
   await expect(cone).toHaveAttribute("data-disabled", "")
   await expect(cone.locator(".knobs-track")).toHaveAttribute("aria-disabled", "true")
-  await expect.poll(() => cone.evaluate((el) => Number(getComputedStyle(el).opacity))).toBeLessThan(0.5)
+  await expect
+    .poll(() => cone.evaluate((el) => Number(getComputedStyle(el).opacity)))
+    .toBeLessThan(0.5)
   const before = (await settings(page)).cone
   // Pointer: a drag across it changes nothing, but the press focuses it, to read.
   const box = (await cone.boundingBox())!
@@ -268,8 +270,7 @@ test("row accessories sit in each row, keep across a descriptor swap, and take t
   await expect(row(panel, "size")).toHaveCount(0)
   expect(
     await page.evaluate(
-      () =>
-        (window as any).__kept === document.querySelector('[data-field="density"] .lab-pin'),
+      () => (window as any).__kept === document.querySelector('[data-field="density"] .lab-pin'),
     ),
   ).toBe(true)
 })
