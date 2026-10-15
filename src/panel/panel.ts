@@ -2070,12 +2070,31 @@ function buildPanel<S extends Schema>(
   // Keys take over from the pointer: until it moves again, the row it rests on shows no hover wash
   // (see keyboardQuietsHover in styles.ts), so the only wash is the keyboard's focus.
   let pointerAt = ""
+  const quieted: Element[] = []
+  const quiet = (from: Element | null) => {
+    // Up to the first one already quiet: its ancestors are too.
+    for (let at = from; at && root.contains(at); at = at === root ? null : at.parentElement) {
+      if (at.hasAttribute("data-k-quiet")) break
+      at.setAttribute("data-k-quiet", "")
+      quieted.push(at)
+    }
+  }
   const keyboardOn = (on: boolean) => {
     if ("keyboard" in root.dataset === on) return
-    if (on) root.dataset.keyboard = ""
-    else delete root.dataset.keyboard
+    if (on) {
+      root.dataset.keyboard = ""
+      quiet(root)
+      for (const el of root.querySelectorAll(":hover")) quiet(el)
+    } else {
+      delete root.dataset.keyboard
+      for (const el of quieted.splice(0)) el.removeAttribute("data-k-quiet")
+    }
     wakeGpu()
   }
+  // Scrolling under the still pointer moves the hover; what it reaches stays quiet too.
+  root.addEventListener("pointerover", (event) => {
+    if ("keyboard" in root.dataset) quiet(event.target as Element)
+  })
   root.addEventListener(
     "keydown",
     (event) => {

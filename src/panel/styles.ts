@@ -603,16 +603,17 @@ export function injectPreset(doc: Document, preset: TokenPreset) {
 /**
  * Keys move a panel's focus wash; the pointer resting where it last was mustn't keep a hover wash
  * of its own meanwhile. Typing marks the panel `data-keyboard` until the pointer moves again, and
- * no hover state matches inside it.
+ * the elements under the pointer `data-k-quiet`, where no hover state matches. (Only those: a rule
+ * on `[data-keyboard] *` restyled the whole panel on the first key after the pointer.)
  */
 const keyboardQuietsHover = (css: string) =>
-  css.replaceAll(":hover", ":hover:where(:not([data-keyboard] *))")
+  css.replaceAll(":hover", ":hover:where(:not([data-k-quiet]))")
 /** The rules' `:has()` as the attributes has.ts keeps (see there for why). */
 export const withoutHas = (css: string) =>
   css
     .replaceAll(
       ".knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible))",
-      '.knobs-x:is([data-k-head-hover]:where(:not([data-keyboard] *)),[data-k-fv="head"])',
+      '.knobs-x:is([data-k-head-hover]:where(:not([data-k-quiet])),[data-k-fv="head"])',
     )
     .replaceAll(":has(:focus-visible)", "[data-k-fv]")
     .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
