@@ -14,6 +14,9 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 // editor morphs, like the GPU's morph spring).
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
+// A row's --k-delay (its turn in a preset's cascade) is inherited; it stops at what never
+// transitions with it, so a new turn doesn't restyle every digit of the readout.
+const ROW_COSTS = ".knobs-panel :is(.knobs-value,.knobs-marks,.knobs-label){--k-delay:initial}"
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
 // public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
@@ -615,7 +618,8 @@ export const withoutHas = (css: string) =>
     .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
     .replaceAll(":has(.knobs-active)", "[data-k-active]")
 export function injectStyles(doc: Document) {
-  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(withoutHas(aliased(css)))
+  const content =
+    rolling + DRIVERS + defaultsCss + keyboardQuietsHover(withoutHas(aliased(css))) + ROW_COSTS
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content
