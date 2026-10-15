@@ -1,8 +1,19 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest"
 import { createRoot as createSolidRoot, type Accessor } from "solid-js"
 import {
+  angle,
   choice,
   color,
+  comboFromEvent,
+  comboLabel,
+  keybind,
+  matchesCombo,
+  normalizeCombo,
+  range,
+  seed,
+  toolbar,
+  vec2,
+  vec3,
   colorHex,
   createRemoteControls,
   defineControls,
@@ -1378,5 +1389,145 @@ describe("labels apart from ids", () => {
     expect(controls.get().a).toBe(3)
     controls.undo()
     expect(controls.get().a).toBe(1)
+  })
+})
+
+describe("inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars", () => {
+  const key = (init: KeyboardEventInit & { key: string; code?: string }) =>
+    ({
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+      code: "",
+      ...init,
+    }) as KeyboardEvent
+  it("vec2 and vec3 clamp each axis and keep the axes they have", () => {
+    const s = {
+      at: vec2({ x: 0, y: 1 }, { min: -1, max: 1, step: 0.1 }),
+      size: vec3({ x: 1, y: 1, z: 1 }, { min: 0, max: 4, linked: true }),
+    }
+    const v = normalize(s, { at: { x: 5, y: -5, z: 9 }, size: { x: 2 } })
+    expect(v.at).toEqual({ x: 1, y: -1 })
+    expect(v.size).toEqual({ x: 2, y: 1, z: 1 })
+    expect(s.size.link).toBe(true)
+    expect(() => vec2({ x: 0, y: 0 }, { min: 1, max: 0 })).toThrow()
+  })
+  it("range keeps low under high and inside its bounds", () => {
+    const s = { r: range([0.2, 0.8], { min: 0, max: 1, step: 0.01 }) }
+    expect(normalize(s, { r: [0.9, 0.1] }).r).toEqual([0.1, 0.9])
+    expect(normalize(s, { r: [-1, 2] }).r).toEqual([0, 1])
+    expect(normalize(s, { r: "nope" }).r).toEqual([0.2, 0.8])
+  })
+  it("angle wraps a full turn and clamps a bounded one", () => {
+    const s = { turn: angle(10), tilt: angle(0, { min: -90, max: 90 }) }
+    expect(s.turn.wrap).toBe(true)
+    expect(s.tilt.wrap).toBe(false)
+    expect(normalize(s, { turn: 370, tilt: 120 })).toEqual({ turn: 10, tilt: 90 })
+    expect(normalize(s, { turn: -30, tilt: -100 })).toEqual({ turn: 330, tilt: -90 })
+    expect(normalize(s, { turn: 360 }).turn).toBe(0)
+  })
+  it("seeds and key combinations stay out of Random and Mutate unless asked", () => {
+    const s = {
+      a: seed(7),
+      b: seed(7, { random: true, max: 9 }),
+      k: keybind("cmd+shift+k"),
+      n: knob(0.5, { min: 0, max: 1 }),
+    }
+    expect(s.k.value).toBe("Shift+Meta+K")
+    const c = defineControls("insp-roll", s, { enabled: true, storage: null, random: () => 0.99 })
+    c.randomize()
+    expect(c.get().a).toBe(7)
+    expect(c.get().k).toBe("Shift+Meta+K")
+    expect(c.get().b).toBe(9)
+    c.mutate()
+    expect(c.get().a).toBe(7)
+  })
+  it("Random and Mutate move vectors, ranges and angles within their bounds", () => {
+    let n = 0
+    const rand = () => ((n = (n * 9301 + 49297) % 233280), n / 233280)
+    const s = {
+      v: vec3({ x: 0, y: 0, z: 0 }, { min: -2, max: 2, step: 0.5 }),
+      r: range([1, 2], { min: 0, max: 10, step: 1 }),
+      a: angle(0, { min: -45, max: 45 }),
+    }
+    for (let i = 0; i < 20; i++) {
+      const v = randomValues(s, rand) as Values<typeof s>
+      for (const axis of ["x", "y", "z"] as const) {
+        expect(v.v[axis]).toBeGreaterThanOrEqual(-2)
+        expect(v.v[axis]).toBeLessThanOrEqual(2)
+      }
+      expect(v.r[0]).toBeLessThanOrEqual(v.r[1])
+      expect(Math.abs(v.a)).toBeLessThanOrEqual(45)
+      const m = mutateValues(s, v, undefined, rand) as unknown as Values<typeof s>
+      expect(m.r[0]).toBeLessThanOrEqual(m.r[1])
+      expect(Math.abs(m.a)).toBeLessThanOrEqual(45)
+    }
+  })
+  it("toolbars hold no value; pressing an item runs it and reports its id", () => {
+    const run = vi.fn()
+    const onAction = vi.fn()
+    const s = {
+      tools: toolbar([
+        { id: "play", label: "Play", shortcut: "Space", run },
+        { label: "Frame", disabled: true },
+      ]),
+      x: knob(1, { min: 0, max: 2 }),
+    }
+    const c = defineControls("insp-tools", s, { enabled: true, storage: null, onAction })
+    expect(Object.keys(c.get())).toEqual(["x"])
+    c.action("tools", "play")
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(onAction).toHaveBeenCalledWith("play")
+    c.action("tools", "Frame")
+    expect(onAction).toHaveBeenCalledTimes(1)
+    expect(() => c.action("tools", "missing")).toThrow()
+    expect(() => toolbar([])).toThrow()
+  })
+  it("tab and subsection travel as meta, from schema and descriptors", () => {
+    const s = fromDescriptors([
+      { key: "p", kind: "vec2", default: { x: 1, y: 2 }, min: 0, max: 4, tab: "xform" },
+      { key: "r", kind: "range", default: [1, 3], min: 0, max: 4, subsection: "Limits" },
+      { key: "a", kind: "angle", default: 45 },
+      { key: "s", kind: "seed", default: 12 },
+      { key: "k", kind: "keybind", default: "Alt+F" },
+      { key: "t", kind: "toolbar", items: [{ key: "go", label: "Go", shortcut: "G" }] },
+    ])
+    expect(s.p!.tab).toBe("xform")
+    expect(s.r!.subsection).toBe("Limits")
+    expect(s.a!.kind).toBe("angle")
+    expect(s.s!.random).toBe(false)
+    expect(s.k!.kind).toBe("keybind")
+    expect(s.t!.kind).toBe("toolbar")
+    const values = normalize(s, {})
+    expect(values).toEqual({ p: { x: 1, y: 2 }, r: [1, 3], a: 45, s: 12, k: "Alt+F" })
+  })
+  it("key combinations: one spelling, read from events by position, shown as glyphs or words", () => {
+    expect(normalizeCombo("shift+cmd+k")).toBe("Shift+Meta+K")
+    expect(normalizeCombo("⌥⇧ArrowUp".replace(/(⌥|⇧)/g, "$1+"))).toBe("Alt+Shift+ArrowUp")
+    expect(normalizeCombo("space")).toBe("Space")
+    expect(normalizeCombo("")).toBe("")
+    // ⌥ changes the character on macOS; the code says which key it was.
+    expect(comboFromEvent(key({ key: "å", code: "KeyA", altKey: true }))).toBe("Alt+A")
+    expect(comboFromEvent(key({ key: " ", code: "Space" }))).toBe("Space")
+    expect(comboFromEvent(key({ key: "Shift", shiftKey: true }))).toBe("")
+    expect(matchesCombo("shift+backspace", key({ key: "Backspace", shiftKey: true }))).toBe(true)
+    expect(matchesCombo("F", key({ key: "f", code: "KeyF", metaKey: true }))).toBe(false)
+    expect(comboLabel("Ctrl+Alt+Shift+Meta+K", true)).toBe("⌃⌥⇧⌘K")
+    expect(comboLabel("Shift+Meta+K", false)).toBe("Shift+Meta+K")
+    expect(comboLabel("Shift+Backspace", true)).toBe("⇧⌫")
+  })
+  it("remote descriptors write Swift literals for the new kinds", () => {
+    const d: ControlDescriptor[] = [
+      { key: "p", kind: "vec2", default: { x: 1, y: 2 }, min: 0, max: 4 },
+      { key: "r", kind: "range", default: [1, 3], min: 0, max: 4 },
+      { key: "s", kind: "seed", default: 12 },
+      { key: "k", kind: "keybind", default: "Alt+F" },
+    ]
+    const swift = formatSwift(d, { p: { x: 3, y: 1 }, r: [0, 2], s: 99, k: "Meta+K" })
+    expect(swift).toContain("SIMD2<Double>(3, 1)")
+    expect(swift).toContain("0...2")
+    expect(swift).toContain("99")
+    expect(swift).toContain('"Meta+K"')
   })
 })
