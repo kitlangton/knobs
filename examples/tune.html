@@ -10,6 +10,10 @@
       html:has(.knobs-page[data-theme="dark"]) { background: #101012; }
       html:has(.knobs-page[data-theme="light"]) { background: #e6e6eb; }
       body { margin: 0; }
+      .tune-pairing { display: flex; align-items: center; gap: 14px; padding: 2px 10px 0; }
+      .tune-qr { flex: none; width: 112px; height: 112px; padding: 6px; background: #fff; border-radius: 8px; }
+      .tune-qr path { fill: #111; }
+      .tune-pairing p { margin: 0; color: var(--k-label); font: 500 var(--k-text-control, 11.5px) / 1.4 var(--k-font); }
       .tune-count { color: var(--k-dim); font: 500 var(--k-text-meta, 11px) / 1 var(--k-font); font-variant-numeric: tabular-nums; padding-right: 2px; }
     </style>
   </head>

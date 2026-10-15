@@ -475,7 +475,8 @@ const css = `
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::after,
-.knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after{opacity:0!important}
+.knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
 .knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
@@ -526,7 +527,22 @@ const css = `
 .knobs-column>:not([hidden])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
 .knobs-tile{position:relative;min-width:0;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
 .knobs-tile>.knobs-card{margin:0}
-.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-section-gap);min-height:var(--k-icon-btn);color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+/* A card's header is compact: as tall as its 20px controls, then a gap and a half before its rows. */
+.knobs-tile>.knobs-group-head{position:relative;margin:0 0 var(--k-head-gap);min-height:20px;color:var(--k-text);font-size:var(--k-text-title);font-weight:600;letter-spacing:-.01em;text-transform:none}
+.knobs-panel.knobs-page{--k-head-gap:calc(var(--k-gap) * 1.5)}
+/* The title wins the header's room: what's on the right (presets, a summary) gives way first. */
+.knobs-tile>.knobs-group-head>.knobs-group-title{flex:1 1 auto}
+.knobs-tile>.knobs-group-head>span:last-child{flex:0 1000 auto;min-width:0}
+.knobs-tile>.knobs-group-head :is(.knobs-group-reset,.knobs-group-die){flex:none}
+/* A highlight (page.highlight): the rest dims under a veil of the page's colour (--k-page-dim at
+   full), and what's highlighted on its own gets a dot in the gutter by its title. The veil and
+   dot are written each frame on the panel spring (see page.ts). */
+.knobs-panel.knobs-page{--k-page-dim:.4}
+.knobs-veil{position:absolute;inset:-1px;z-index:1;border-radius:inherit;background:var(--k-page);pointer-events:none}
+.knobs-mark{position:absolute;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--k-accent);pointer-events:none}
+.knobs-tile>.knobs-mark{z-index:2;top:calc(var(--k-pad) + 10px);left:calc((var(--k-pad) + var(--k-inset) + 1px) / 2 - 1px)}
+.knobs-section-head{position:relative}
+.knobs-section-head>.knobs-mark{left:calc((var(--k-pad) + var(--k-inset) + 1px) / 2)}
 .knobs-group-title{display:grid;flex:1;min-width:0}
 .knobs-group-title>*{grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .15s}
 .knobs-peek{opacity:0;pointer-events:none}
@@ -535,6 +551,13 @@ const css = `
 .knobs-group-head .knobs-chips.knobs-seg{flex:none;height:20px;max-width:none;gap:0;margin-right:var(--k-unit)}
 .knobs-group-head .knobs-chips button{width:18px;height:100%;padding:0;font-size:var(--k-text-meta);font-weight:500;font-variant-numeric:tabular-nums;border-radius:var(--k-radius-sm);background:transparent}
 .knobs-group-head .knobs-chips button[aria-checked="true"]{color:var(--k-text)}
+/* Named presets: their names as segments beside the title, or a compact menu of them. */
+.knobs-group-presets{display:flex;align-items:center;flex:0 1 auto;min-width:0;margin-right:var(--k-unit)}
+.knobs-group-presets .knobs-seg{flex:none;height:20px;max-width:none;padding:var(--k-tray-pad)}
+.knobs-group-presets .knobs-seg button{height:100%;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;background:transparent}
+.knobs-panel .knobs-group-presets .knobs-select{height:20px;max-width:11em;gap:3px;padding:0 3px 0 7px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none}
+.knobs-group-presets .knobs-select[data-none]{color:var(--k-dim)}
+.knobs-group-presets .knobs-select .knobs-icon{width:calc(var(--k-icon-sm) - 3px);height:calc(var(--k-icon-sm) - 3px)}
 .knobs-tile-body{display:flex;flex-direction:column}
 .knobs-tile-body>.knobs-card{margin:0}
 .knobs-panel .knobs-tile-body>.knobs-custom-actions{position:relative;margin:0}
@@ -544,6 +567,21 @@ const css = `
 .knobs-item[role="button"]{cursor:pointer}
 .knobs-card>.knobs-item:focus-visible{outline:none}
 .knobs-card>.knobs-item:focus-visible::after{opacity:1}
+/* A collapsible custom card: its header toggles it, with a caret and, while folded, a summary. */
+.knobs-live[data-collapsible]>.knobs-group-head{margin-bottom:0;cursor:pointer;border-radius:var(--k-radius-sm);transition:background var(--k-hover-t)}
+.knobs-live[data-collapsible]>.knobs-group-head:focus-visible{background:var(--k-surface)}
+.knobs-live[data-collapsible]>.knobs-tile-body{margin-top:var(--k-head-gap);transition:opacity var(--k-token-t)}
+.knobs-live[data-collapsed]>.knobs-tile-body{opacity:0}
+.knobs-live>.knobs-tile-body[data-folding]{position:absolute;left:var(--k-pad);right:var(--k-pad);margin-top:0}
+.knobs-card-right{display:flex;align-items:center;gap:6px;min-width:0}
+.knobs-card-side{display:grid;justify-items:end;min-width:0}
+.knobs-card-side>*{grid-area:1/1;min-width:0;max-width:100%;transition:opacity var(--k-token-t)}
+.knobs-card-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-dim);font-size:var(--k-text-control);font-weight:500;letter-spacing:0;opacity:0;pointer-events:none}
+.knobs-live[data-collapsed] .knobs-card-summary{opacity:1;pointer-events:auto}
+.knobs-live[data-collapsed] .knobs-card-summary:not(:empty)~*{opacity:0;pointer-events:none}
+.knobs-card-right>.knobs-caret{margin-right:calc((var(--k-icon-sm) - 20px) / 2 + 5px)}
+.knobs-live>.knobs-group-head:hover .knobs-caret{color:var(--k-label)}
+.knobs-live>.knobs-group-head[aria-expanded="true"] .knobs-caret{transform:rotate(90deg)}
 .knobs-item-detail{flex:none;color:var(--k-dim);font-size:var(--k-text-control);font-variant-numeric:tabular-nums;white-space:nowrap}
 `
 /** Adds a token preset's stylesheet once per document. */

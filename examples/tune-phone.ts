@@ -44,6 +44,10 @@ export type PlaygroundStatus = {
 export type Phone = {
   device: string
   app: string
+  /** "0.142.4 (358)" */
+  version: string
+  /** Scanned the page's code and signed in (the Connection card folds away then). */
+  paired: boolean
   schema: Descriptor[]
   values: Record<string, Value>
   context: { id: string; groups: string[]; label?: string }
@@ -358,6 +362,18 @@ const presets: PresetSet[] = [
   ]),
 ]
 
+type Screen = "transcript" | "sessionList" | "composer"
+/** What's on the phone's screen for each playground, as the app reports it (`Context`). */
+const SCREENS: Record<Screen, Phone["context"]> = {
+  transcript: {
+    id: "transcriptPlayground",
+    groups: ["transcript", "session", "composer"],
+    label: "Transcript",
+  },
+  sessionList: { id: "drawer", groups: ["drawer"], label: "Session List" },
+  composer: { id: "composer", groups: ["composer"], label: "Composer" },
+}
+
 const JUMP_KINDS = ["layout jump", "opacity pop", "frame snap", "scroll lurch"]
 const JUMP_ROWS = ["toolRow", "assistantText", "userBubble", "workingRow", "divider"]
 
@@ -371,6 +387,8 @@ export function connectPhone(): FakeSocket {
   const phone: Phone = {
     device: "Kit’s iPhone",
     app: "OpenCode",
+    version: "0.142.4 (358)",
+    paired: false,
     schema,
     values: {},
     context: {
@@ -435,6 +453,7 @@ export function connectPhone(): FakeSocket {
         break
       case "playground":
         pg.active = message.playground
+        if (message.playground) phone.context = SCREENS[message.playground as Screen]
         break
       case "slowmo":
         pg.timeScale = message.scale
@@ -473,13 +492,31 @@ export function connectPhone(): FakeSocket {
     ].slice(-5)
     push()
   }
+  // The phone scans the page's code and signs in a moment after the page opens.
+  setTimeout(() => {
+    phone.paired = true
+    push()
+  }, 3200)
+  // `?still` keeps the phone to itself after it pairs (no screen changes, jumps or tuning of its
+  // own), for measurements that want the page to come to rest.
+  const still = new URLSearchParams(location.search).has("still")
+  // Kit moves around the app now and then: the page highlights what's on screen.
+  const order: Screen[] = ["transcript", "sessionList", "composer"]
+  setInterval(() => {
+    if (document.hidden || still) return
+    const at = order.indexOf(phone.playgroundStatus.active ?? "transcript")
+    const next = order[(at + 1) % order.length]!
+    phone.playgroundStatus.active = next
+    phone.context = SCREENS[next]
+    push()
+  }, 8000)
   // Now and then the phone has news of its own.
   setTimeout(noticeJump, 1500)
   setTimeout(noticeJump, 2600)
-  setInterval(noticeJump, 9000)
+  setInterval(() => !still && noticeJump(), 9000)
   setInterval(() => {
     // Tuned on the device itself: the page follows without echoing it back.
-    if (document.hidden) return
+    if (document.hidden || still) return
     const numbers = schema.filter((d) => d.kind === "number" && d.key.startsWith("transcript.row"))
     const d = numbers[Math.floor(Math.random() * numbers.length)]!
     const current = Number(phone.values[d.key] ?? d.default)

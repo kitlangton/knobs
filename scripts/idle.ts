@@ -151,8 +151,10 @@ try {
   await page.keyboard.press("Escape")
   await report("collapse")
 
-  // The full page: scrolling wakes the overlay, and it sleeps again once the page is still.
-  await page.goto(`http://127.0.0.1:${port}/tune.html?gpu`)
+  // The full page: scrolling wakes the overlay, and it sleeps again once the page is still. The
+  // phone stays on one screen (?still) unless told otherwise, so its own moves don't land in a
+  // measurement.
+  await page.goto(`http://127.0.0.1:${port}/tune.html?gpu&still`)
   await page.locator(".knobs-page .knobs-tile").first().waitFor()
   await report("page open")
   await page.mouse.move(700, 500)
@@ -175,6 +177,11 @@ try {
   await report("page card folds")
   await playground.getByRole("radio", { name: "Composer", exact: true }).click()
   await report("page card unfolds")
+  // The phone changes screen: the highlight glides there, then the overlay sleeps.
+  await page.evaluate(() =>
+    (window as any).__tune.send({ type: "playground", playground: "sessionList" }),
+  )
+  await report("page highlight")
   await page.setViewportSize({ width: 900, height: 900 })
   await report("page reflow")
   await page.setViewportSize({ width: 1280, height: 900 })

@@ -5,8 +5,15 @@ import type { SpringValue } from "./spring.js"
 export interface FieldMeta {
   readonly label?: string
   readonly group?: string
+  /**
+   * What the group's header shows when it isn't the `group` id itself (the first field that
+   * gives one wins). The id stays the group's identity: presets, resets, highlights and code.
+   */
+  readonly groupLabel?: string
   /** A page region the field's group sits in (see `mountPage`); panels ignore it. */
   readonly section?: string
+  /** What the section's heading shows (the first field that gives one wins); `section` by default. */
+  readonly sectionLabel?: string
   readonly shortcut?: string
 }
 /** Marks a knob as half of a flat spring: two number keys drawn as one spring card. */
@@ -125,7 +132,9 @@ function withMeta<T extends object>(base: T, meta?: FieldMeta): T {
     ...base,
     ...(meta?.label !== undefined ? { label: meta.label } : {}),
     ...(meta?.group !== undefined ? { group: meta.group } : {}),
+    ...(meta?.groupLabel !== undefined ? { groupLabel: meta.groupLabel } : {}),
     ...(meta?.section !== undefined ? { section: meta.section } : {}),
+    ...(meta?.sectionLabel !== undefined ? { sectionLabel: meta.sectionLabel } : {}),
     ...(meta?.shortcut !== undefined ? { shortcut: meta.shortcut } : {}),
   })
 }
@@ -211,7 +220,9 @@ export function flatSpring(
       ...base,
       ...(base.label === undefined ? { label: part === "duration" ? "Duration" : "Bounce" } : {}),
       ...(meta.group !== undefined ? { group: meta.group } : {}),
+      ...(meta.groupLabel !== undefined ? { groupLabel: meta.groupLabel } : {}),
       ...(meta.section !== undefined ? { section: meta.section } : {}),
+      ...(meta.sectionLabel !== undefined ? { sectionLabel: meta.sectionLabel } : {}),
       spring: Object.freeze({
         id,
         part,

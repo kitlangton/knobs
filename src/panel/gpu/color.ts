@@ -148,6 +148,8 @@ export interface PanelThemeTokens {
   readonly fillHover: Rgba
   /** 0 drops an inline panel's card: background, border and rim. */
   readonly chrome: number
+  /** A page's background (--k-page). */
+  readonly page: Rgba
   readonly pad: number
   readonly inset: number
   readonly row: number
@@ -297,6 +299,10 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     toggleTrack,
     toggleThumb,
     rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
+    page: parseCssColor(
+      token(style, "page"),
+      isLight ? [0.902, 0.902, 0.922, 1] : [0.063, 0.063, 0.071, 1],
+    ),
     rowHover: withAlpha(surface, 0.5),
     rowGap: numProp(style, "row-gap", 0),
     hoverIn: numProp(style, "hover-in", 150),

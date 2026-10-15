@@ -8,6 +8,7 @@ import {
   normalize,
   normalizeField,
   same,
+  type Field,
   type Schema,
   type State,
   type ValueField,
@@ -50,6 +51,25 @@ export interface GroupPreset<V = State> {
   readonly name: string
   readonly values: Partial<V>
 }
+/**
+ * How a page card shows its group presets: `names` as segments ("Native · Tight · Airy"), `menu`
+ * as a compact drop-down showing the selected one's name, `numbers` as 1, 2, 3…; `auto` (the
+ * default) shows names while they fit beside the title, else the menu.
+ */
+export type GroupPresetDisplay = "auto" | "names" | "numbers" | "menu"
+/** Display labels, kept apart from the ids that identify groups, sections and presets. */
+export interface LabelOptions {
+  /** By group id: what its header shows (verbatim). Ids stay identity everywhere else. */
+  readonly groupLabels?: Readonly<Record<string, string>>
+  /** By section id: what its heading shows. */
+  readonly sectionLabels?: Readonly<Record<string, string>>
+  /** By preset id: what the preset strip shows, e.g. `{ default: "Native" }`. */
+  readonly presetLabels?: Readonly<Record<string, string>>
+  /** Shorthand for `presetLabels.default`. */
+  readonly defaultLabel?: string
+  /** How a page card shows its group presets (see `GroupPresetDisplay`). */
+  readonly groupPresetDisplay?: GroupPresetDisplay
+}
 /** Panel commands with a key binding; see `MountPanelOptions.keys`. */
 export type PanelCommand =
   | "random"
@@ -86,7 +106,7 @@ export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
   /** `false` stops ↑/↓ at the first and last rows instead of wrapping around. */
   readonly wrap?: boolean
 }
-export interface MountPanelOptions {
+export interface MountPanelOptions extends LabelOptions {
   readonly title?: string | false
   /**
    * Key bindings. An inline panel only ever hears keys while focus is inside it; pass this to remap
@@ -151,7 +171,7 @@ export interface PanelModule {
   ): PanelHandle
   attach(controls: Controls<any>, element: HTMLElement): () => void
 }
-export interface ControlsOptions<S extends Schema> {
+export interface ControlsOptions<S extends Schema> extends LabelOptions {
   enabled?: boolean | (() => boolean)
   /**
    * Ships this store as product UI: it stays live in production builds (where stores are
@@ -202,6 +222,14 @@ export interface Controls<S extends Schema = Schema> {
   readonly renderer: RendererMode
   readonly keys: PanelKeys | undefined
   readonly marks: boolean
+  /** How page cards show group presets (`groupPresetDisplay`, `auto` by default). */
+  readonly groupPresetDisplay: GroupPresetDisplay
+  /** A group's display label (`groupLabels`, else its fields' `groupLabel`), if it has one. */
+  groupLabel(group: string): string | undefined
+  /** A section's display label (`sectionLabels`, else its fields' `sectionLabel`), if it has one. */
+  sectionLabel(section: string): string | undefined
+  /** A preset's display label (`presetLabels`, `defaultLabel`), else its id. */
+  presetLabel(id: string): string
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -256,8 +284,11 @@ export interface Controls<S extends Schema = Schema> {
   matchingPreset(): string
   /** Each group's numbered presets, complete over the keys they cover. */
   readonly groupPresets: Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
-  /** Applies a group's preset (0-based), one undo step. */
-  groupPreset(group: string, index: number): void
+  /**
+   * Applies a group's preset (0-based), one undo step; `coalesce` folds it into the previous
+   * one (a pan across a card's presets).
+   */
+  groupPreset(group: string, index: number, options?: { coalesce?: boolean }): void
   /** The group preset the current values match, or -1. */
   matchingGroupPreset(group: string): number
   code(format?: CodeFormat, values?: Values<S>): string
@@ -375,6 +406,21 @@ export function defineControls<const S extends Schema>(
       ),
     ) as Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   let groupPresets = buildGroupPresets()
+  /** Labels the fields give their groups and sections (the first one wins), per schema. */
+  let labelsOf: { schema: S; group: Map<string, string>; section: Map<string, string> } | undefined
+  const fieldLabels = () => {
+    if (labelsOf?.schema === schema) return labelsOf
+    const group = new Map<string, string>()
+    const section = new Map<string, string>()
+    for (const f of Object.values(schema) as Field[]) {
+      if (f.group !== undefined && f.groupLabel !== undefined && !group.has(f.group))
+        group.set(f.group, f.groupLabel)
+      if (f.section !== undefined && f.sectionLabel !== undefined && !section.has(f.section))
+        section.set(f.section, f.sectionLabel)
+    }
+    labelsOf = { schema, group, section }
+    return labelsOf
+  }
   /** The committed values, read from storage on first use. */
   function load() {
     if (!read) {
@@ -644,6 +690,14 @@ export function defineControls<const S extends Schema>(
     renderer,
     keys: options.keys,
     marks: options.marks !== false,
+    groupPresetDisplay: options.groupPresetDisplay ?? "auto",
+    groupLabel: (group) => options.groupLabels?.[group] ?? fieldLabels().group.get(group),
+    sectionLabel: (section) =>
+      options.sectionLabels?.[section] ?? fieldLabels().section.get(section),
+    presetLabel: (presetId) =>
+      options.presetLabels?.[presetId] ??
+      (presetId === "default" ? options.defaultLabel : undefined) ??
+      presetId,
     get,
     set,
     sync,
@@ -807,11 +861,11 @@ export function defineControls<const S extends Schema>(
     get groupPresets() {
       return groupPresets
     },
-    groupPreset(group, index) {
+    groupPreset(group, index, presetOptions) {
       const preset = groupPresets[group]?.[index]
       if (!preset) throw new Error(`Unknown preset ${index + 1} for group ${group}`)
       if (!enabled()) return
-      set(preset.values, { source: "preset", group })
+      set(preset.values, { source: "preset", group, coalesce: presetOptions?.coalesce })
       options.onPreset?.({ group, index, name: preset.name })
     },
     matchingGroupPreset(group) {
