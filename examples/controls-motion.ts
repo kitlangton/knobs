@@ -205,22 +205,48 @@ export class Stage {
 
 // ── Motion blur ──────────────────────────────────────────────────────────────────────────────
 
-/** Px of blur per px/s of speed, and its cap ("only like three or four pixels"). */
-const BLUR_K = 1 / 220
-const BLUR_MAX = 4
-const STRETCH_K = 1 / 4000
-const STRETCH_MAX = 0.26
+/**
+ * Shutter-integrated motion blur and area-preserving squash-and-stretch.
+ *
+ * Velocities are in px/s (time-based, so 60 Hz and 120 Hz produce identical shutter lengths).
+ * `blurFor` eases in from a small deadzone with a C¹ quadratic toe (no pop when the filter
+ * attaches or detaches) and saturates smoothly at `BLUR_MAX`. At rest and under reduced motion
+ * it is 0, and `DirBlur` removes the `filter` property altogether.
+ */
+export const SHUTTER_S = 1 / 34
+export const BLUR_K = 1 / 145
+export const BLUR_MAX = 5
+export const STRETCH_K = 1 / 3200
+export const STRETCH_MAX = 0.28
 
-/** A speed (px/s) as a blur's standard deviation (px): 0 at rest and under reduced motion. */
+/** A speed (px/s) as a directional blur radius (px): 0 at rest and under reduced motion. */
 export function blurFor(speed: number, max = BLUR_MAX) {
   if (reduced()) return 0
-  const b = Math.min(max, Math.abs(speed) * BLUR_K)
-  return b < 0.08 ? 0 : b
+  const v = Math.abs(speed) - 6
+  if (v <= 0) return 0
+  const raw = v * BLUR_K
+  const eased = (raw * raw) / (raw + 0.14)
+  const b = (max * eased) / Math.hypot(max, eased)
+  return b < 0.05 ? 0 : b
 }
 /** A speed (px/s) as a stretch along the motion (1 at rest). */
 export function stretchFor(speed: number, max = STRETCH_MAX) {
   if (reduced()) return 1
-  return 1 + Math.min(max, Math.abs(speed) * STRETCH_K)
+  const v = Math.max(0, Math.abs(speed) - 8)
+  const raw = v * STRETCH_K
+  return 1 + (max * raw) / Math.hypot(max, raw)
+}
+/**
+ * Velocity-aligned squash-and-stretch for an upright element (a tile, a card): stretches along
+ * `(vx, vy)` and squashes across it without rotating its content (`R(a) S R(-a)`).
+ */
+export function stretchAlong(vx: number, vy: number, max = 0.12) {
+  if (reduced()) return ""
+  const speed = Math.hypot(vx, vy)
+  const s = stretchFor(speed, max)
+  if (s <= 1.002) return ""
+  const a = ((Math.atan2(vy, vx) * 180) / Math.PI).toFixed(2)
+  return ` rotate(${a}deg) scale(${s.toFixed(4)},${(1 / Math.sqrt(s)).toFixed(4)}) rotate(${(-Number(a)).toFixed(2)}deg)`
 }
 
 let defs: SVGDefsElement | null = null
@@ -238,11 +264,19 @@ function filterDefs() {
 }
 
 /**
- * A directional blur on one element, in its own axes (a rotated element blurs along its
- * rotation). The filter is attached only while there's blur to show.
+ * A 5-tap raised-cosine shutter blur on one element along any 2D vector `(sx, sy)` in its own
+ * axes, bridged by a sub-tap Gaussian. The arithmetic composite weights sum to 1.00 (0.28 +
+ * 2×0.22 + 2×0.14), so opaque interiors never dim and diagonal motion streaks along the true
+ * velocity vector instead of an axis-aligned box. Detached completely at rest.
  */
 export class DirBlur {
   private readonly blur: SVGFEGaussianBlurElement
+  private readonly offsets: readonly [
+    SVGFEOffsetElement,
+    SVGFEOffsetElement,
+    SVGFEOffsetElement,
+    SVGFEOffsetElement,
+  ]
   private readonly id = `catalog-blur-${++filterIds}`
   private on = false
   private last = ""
@@ -250,21 +284,55 @@ export class DirBlur {
     const filter = document.createElementNS(SVG, "filter")
     filter.id = this.id
     for (const [k, v] of [
-      ["x", "-60%"],
-      ["y", "-60%"],
-      ["width", "220%"],
-      ["height", "220%"],
+      ["x", "-75%"],
+      ["y", "-75%"],
+      ["width", "250%"],
+      ["height", "250%"],
       ["color-interpolation-filters", "sRGB"],
     ])
       filter.setAttribute(k!, v!)
-    this.blur = document.createElementNS(SVG, "feGaussianBlur")
-    filter.append(this.blur)
+    const blur = document.createElementNS(SVG, "feGaussianBlur")
+    blur.setAttribute("in", "SourceGraphic")
+    blur.setAttribute("result", "b")
+    filter.append(blur)
+    this.blur = blur
+    const off = (res: string) => {
+      const o = document.createElementNS(SVG, "feOffset")
+      o.setAttribute("in", "b")
+      o.setAttribute("result", res)
+      filter.append(o)
+      return o
+    }
+    this.offsets = [off("t1"), off("t2"), off("t3"), off("t4")]
+    const add = (a: string, b: string, k2: string, k3: string, res?: string) => {
+      const c = document.createElementNS(SVG, "feComposite")
+      c.setAttribute("in", a)
+      c.setAttribute("in2", b)
+      c.setAttribute("operator", "arithmetic")
+      c.setAttribute("k1", "0")
+      c.setAttribute("k2", k2)
+      c.setAttribute("k3", k3)
+      c.setAttribute("k4", "0")
+      if (res) c.setAttribute("result", res)
+      filter.append(c)
+    }
+    add("t1", "t2", "0.22", "0.22", "p1")
+    add("t3", "t4", "0.14", "0.14", "p2")
+    add("p1", "p2", "1", "1", "p12")
+    add("b", "p12", "0.28", "1")
     filterDefs().append(filter)
   }
-  /** Standard deviations (px) along the element's x and y; both 0 takes the filter off. */
+  /** Signed blur components (px) along the element's x and y; both 0 takes the filter off. */
   set(sx: number, sy: number) {
-    const x = sx < 0.08 ? 0 : Math.round(sx * 20) / 20
-    const y = sy < 0.08 ? 0 : Math.round(sy * 20) / 20
+    if (reduced() || Math.hypot(sx, sy) < 0.05) {
+      if (this.on) {
+        this.el.style.filter = ""
+        this.on = false
+      }
+      return
+    }
+    const x = Math.abs(sx) < 0.03 ? 0 : Math.round(sx * 20) / 20
+    const y = Math.abs(sy) < 0.03 ? 0 : Math.round(sy * 20) / 20
     if (!x && !y) {
       if (this.on) {
         this.el.style.filter = ""
@@ -274,17 +342,37 @@ export class DirBlur {
     }
     const v = `${x} ${y}`
     if (v !== this.last) {
-      this.blur.setAttribute("stdDeviation", v)
       this.last = v
+      const bx = (Math.abs(x) * 0.34).toFixed(2)
+      const by = (Math.abs(y) * 0.34).toFixed(2)
+      this.blur.setAttribute("stdDeviation", `${bx} ${by}`)
+      const x1 = (x * 0.54).toFixed(2)
+      const y1 = (y * 0.54).toFixed(2)
+      const x2 = (x * 1.08).toFixed(2)
+      const y2 = (y * 1.08).toFixed(2)
+      this.offsets[0].setAttribute("dx", x1)
+      this.offsets[0].setAttribute("dy", y1)
+      this.offsets[1].setAttribute("dx", `${-Number(x1)}`)
+      this.offsets[1].setAttribute("dy", `${-Number(y1)}`)
+      this.offsets[2].setAttribute("dx", x2)
+      this.offsets[2].setAttribute("dy", y2)
+      this.offsets[3].setAttribute("dx", `${-Number(x2)}`)
+      this.offsets[3].setAttribute("dy", `${-Number(y2)}`)
     }
     if (!this.on) {
       this.el.style.filter = `url(#${this.id})`
       this.on = true
     }
   }
-  /** Blur from a velocity (px/s) in the element's axes. */
-  speed(vx: number, vy: number) {
-    this.set(blurFor(vx), blurFor(vy))
+  /** Blur from a 2D velocity vector (px/s) in the element's axes, preserving direction. */
+  speed(vx: number, vy: number, scale = 1) {
+    const v = Math.hypot(vx, vy)
+    if (v < 6) {
+      this.set(0, 0)
+      return
+    }
+    const b = blurFor(v) / Math.max(0.2, scale)
+    this.set((vx / v) * b, (vy / v) * b)
   }
 }
 
@@ -300,12 +388,15 @@ export class Smear {
     this.blur = new DirBlur(el)
   }
   /** `scale` is any scale the element already has, so the blur reads the same on screen. */
-  transform(vx: number, vy: number, scale = 1) {
+  transform(vx: number, vy: number, scale = 1, radialSpeed = 0) {
     const speed = Math.hypot(vx, vy)
     const s = stretchFor(speed)
     if (speed > 1) this.angle = (Math.atan2(vy, vx) * 180) / Math.PI
-    this.blur.set(blurFor(speed) / Math.max(0.2, scale), 0)
-    if (s === 1) return ""
+    const sc = Math.max(0.2, scale)
+    const rBlur = blurFor(radialSpeed, 2.5) / sc
+    const vBlur = blurFor(speed) / (sc * s)
+    this.blur.set(vBlur + rBlur, rBlur)
+    if (s <= 1.001 && vBlur < 0.05) return ""
     // Round, so it can stay turned: its own x is the velocity, which is where the blur goes.
     return ` rotate(${this.angle.toFixed(2)}deg) scale(${s.toFixed(4)},${(1 / Math.sqrt(s)).toFixed(4)})`
   }
@@ -313,7 +404,8 @@ export class Smear {
 
 /**
  * The speed of something positioned by other means (a scrubbed playhead, a loop): fed its
- * position, it reads the velocity and lets it settle back to 0 once the feed stops.
+ * position, it reads the velocity (refresh-rate independent) and lets it settle back to 0 on
+ * the stage's loop once the feed pauses.
  */
 export class Speed {
   readonly vx: Val
@@ -322,24 +414,37 @@ export class Speed {
   private ly = 0
   private lt = 0
   constructor(stage: Stage) {
-    this.vx = stage.val(0, 1)
-    this.vy = stage.val(0, 1)
+    this.vx = stage.val(0, 0.5)
+    this.vy = stage.val(0, 0.5)
     for (const v of [this.vx, this.vy]) {
       v.spring.omega = FEEL.snappy.omega
       v.spring.zeta = 1
     }
   }
   feed(x: number, y: number, now = performance.now()) {
-    const dt = (now - this.lt) / 1000
-    if (Number.isNaN(this.lx) || dt > 0.25) {
+    if (Number.isNaN(this.lx)) {
       this.lx = x
       this.ly = y
       this.lt = now
       return
     }
-    if (dt < 0.004) return
-    const mx = (x - this.lx) / dt
-    const my = (y - this.ly) / dt
+    const dx = x - this.lx
+    const dy = y - this.ly
+    const dt = (now - this.lt) / 1000
+    if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) {
+      // Between 30 fps timeline ticks (< 42 ms), hold the velocity so 120 Hz frames don't flicker.
+      if (dt < 0.042) {
+        this.vx.spring.v = 0
+        this.vy.spring.v = 0
+      }
+      return
+    }
+    if (dt < 0.002) return
+    // After sitting idle (> 120 ms), measure the first step over one 60 Hz frame with a soft onset.
+    const effDt = dt > 0.12 ? 1 / 45 : dt
+    const mx = dx / effDt
+    const my = dy / effDt
+    const a = dt > 0.12 ? 0.55 : 1 - Math.exp(-effDt * 42)
     this.lx = x
     this.ly = y
     this.lt = now
@@ -347,11 +452,11 @@ export class Speed {
       [this.vx, mx],
       [this.vy, my],
     ] as const) {
-      v.spring.x += (m - v.spring.x) * 0.5
+      v.spring.x += (m - v.spring.x) * a
       v.spring.v = 0
       v.spring.target = 0
+      v.to(0, "snappy")
     }
-    this.vx.to(0, "snappy")
   }
 }
 
@@ -441,7 +546,7 @@ export function rolling(el: HTMLElement, parts: readonly Part[]) {
           c = createRollingText(host, {
             text: String(v),
             transition: "direct",
-            motionBlur: true,
+            motionBlur: !reduced(),
             duration: 380,
           })
         else c.update({ text: String(v) })
@@ -457,7 +562,8 @@ export function rolling(el: HTMLElement, parts: readonly Part[]) {
       let c: ReturnType<typeof createRollingNumber> | null = null
       setters.set(part.id, (v) => {
         const value = Number(v)
-        if (!c) c = createRollingNumber(host, { value, format, duration: 420, motionBlur: true })
+        if (!c)
+          c = createRollingNumber(host, { value, format, duration: 420, motionBlur: !reduced() })
         else c.update({ value })
       })
     }
@@ -470,7 +576,7 @@ export function rolling(el: HTMLElement, parts: readonly Part[]) {
 // ── Swaps ────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Content that changes by crossing over: what leaves softens (blur 3px, scale .96) a little
+ * Content that changes by crossing over: what leaves softens (blur 3–4px, scale .96) a little
  * faster than what arrives blooms in from the same. Both stay mounted until they've finished.
  */
 export class Swap {
@@ -507,9 +613,13 @@ export class Swap {
         continue
       }
       l.el.style.opacity = o.toFixed(3)
-      const soft = !reduced() && o < 0.999
-      l.el.style.transform = soft ? `scale(${(0.96 + 0.04 * o).toFixed(4)})` : ""
-      l.el.style.filter = soft ? `blur(${((1 - o) * 3).toFixed(2)}px)` : ""
+      const soft = !reduced() && (o < 0.999 || !l.o.spring.resting)
+      const dy = (1 - o) * (l.leaving ? -4 : 4)
+      l.el.style.transform = soft
+        ? `translateY(${dy.toFixed(2)}px) scale(${(0.95 + 0.05 * o).toFixed(4)})`
+        : ""
+      const b = Math.min(4, (1 - o) * 3.2 + blurFor(Math.abs(l.o.v) * 90, 2))
+      l.el.style.filter = soft && b >= 0.05 ? `blur(${b.toFixed(2)}px)` : ""
     }
   }
 }

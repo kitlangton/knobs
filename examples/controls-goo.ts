@@ -1,11 +1,16 @@
 // Metaballs for the Sliders preview: a WebGL fragment shader that draws up to eight dots as one
 // signed-distance field, unioned with a polynomial smooth-min, so a dot leaving its neighbour
-// stretches out of it, necks and pinches off (and flows back in reverse). Each dot is an ellipse
-// stretched along its velocity, and its edge softens along the velocity in proportion to speed:
-// a motion blur that is exactly 0 at rest. With `goo` off (reduced motion) the dots are drawn
-// apart, each with its own opacity. It draws only when asked, so a still preview costs nothing.
+// stretches out of it, necks and pinches off (and flows back in reverse).
+//
+// Motion blur is a true shutter integral over coverage: across a 180° shutter window τ ∈ [-0.5, 0.5]
+// each dot travels along its own velocity vector (and radial velocity), the smooth-min union and
+// anti-aliased threshold are evaluated at each stratified shutter instant, and the thresholded
+// coverages are integrated with a raised-cosine shutter window. Blurring coverage rather than the
+// pre-threshold field keeps merges and resting neighbours razor-crisp without swelling or wobble.
+// Sample count adapts from 1 at rest up to 14 at high speed.
 
 export const MAX_DOTS = 8
+export const MAX_SAMPLES = 14
 
 export interface GooDot {
   readonly x: number
@@ -16,8 +21,10 @@ export interface GooDot {
   /** Velocity, px/s. */
   readonly vx: number
   readonly vy: number
+  /** Radial shutter travel, px (when Size is thrown or a dot collapses). */
+  readonly rBlur?: number
   readonly stretch: number
-  /** Blur along the velocity, px. */
+  /** Shutter displacement along the velocity, px. */
   readonly blur: number
   /** This dot's smooth-min radius, as a share of the field's (1 by default): lower, a shorter neck. */
   readonly goo?: number
@@ -29,44 +36,66 @@ uniform vec2 uRes;
 uniform float uDpr;
 uniform vec4 uDot[${MAX_DOTS}];
 uniform vec4 uVel[${MAX_DOTS}];
-uniform float uKi[${MAX_DOTS}];
+uniform vec2 uKi[${MAX_DOTS}];
 uniform float uK;
 uniform float uGoo;
+uniform float uSamples;
 uniform vec4 uColor;
 float smin(float a,float b,float k){
   if(k<=0.0)return min(a,b);
   float h=max(k-abs(a-b),0.0)/k;
   return min(a,b)-h*h*k*0.25;
 }
-void main(){
-  vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uDpr;
-  float aa=0.75/uDpr;
+float sampleAt(vec2 p,float tau,float invS,float aa){
   float d=1e5;
-  float blur=0.0;
+  float subE=0.0;
   float wsum=0.0;
   float apart=0.0;
   for(int i=0;i<${MAX_DOTS};i++){
     vec4 D=uDot[i];
     if(D.z<0.05)continue;
     vec4 V=uVel[i];
+    vec2 K=uKi[i];
+    float r=max(0.05,D.z+tau*K.y);
     vec2 q=p-D.xy;
     vec2 dir=V.xy;
-    vec2 lq=vec2(dot(q,dir),dot(q,vec2(-dir.y,dir.x)));
-    float a=D.z*V.z;
-    float b=D.z/sqrt(V.z);
+    vec2 lq=vec2(dot(q,dir)-tau*V.w,dot(q,vec2(-dir.y,dir.x)));
+    float a=r*V.z;
+    float b=r/sqrt(V.z);
     float di=(length(lq/vec2(a,b))-1.0)*min(a,b);
-    d=smin(d,di,uK*uKi[i]);
-    float w=exp(-max(di,0.0)*0.2);
-    float along=abs(lq.x)/max(length(lq),0.001);
-    blur+=V.w*along*w;
-    wsum+=w;
-    float e=aa+V.w*along;
-    apart=max(apart,D.w*(1.0-smoothstep(-e,e,di)));
+    d=smin(d,di,uK*K.x);
+    float stepI=(V.w+abs(K.y))*invS;
+    float wi=exp(-max(di,0.0)*0.24);
+    subE+=stepI*wi;
+    wsum+=wi;
+    float ei=aa+0.55*stepI;
+    apart=max(apart,D.w*(1.0-smoothstep(-ei,ei,di)));
   }
-  float bl=wsum>0.0?blur/wsum:0.0;
-  float e=aa+bl;
+  float e=aa+(wsum>0.0?0.55*subE/wsum:0.0);
   float goo=1.0-smoothstep(-e,e,d);
-  float cov=mix(apart,goo,uGoo);
+  return mix(apart,goo,uGoo);
+}
+void main(){
+  vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uDpr;
+  float aa=0.75/uDpr;
+  if(uSamples<=1.5){
+    float cov=sampleAt(p,0.0,0.0,aa);
+    gl_FragColor=vec4(uColor.rgb,1.0)*uColor.a*cov;
+    return;
+  }
+  float invS=1.0/uSamples;
+  float ign=fract(52.9829189*fract(0.06711056*gl_FragCoord.x+0.00583715*gl_FragCoord.y));
+  float covSum=0.0;
+  float wSum=0.0;
+  for(int s=0;s<${MAX_SAMPLES};s++){
+    if(float(s)>=uSamples)break;
+    float u=(float(s)+0.5+(ign-0.5)*0.25)*invS;
+    float tau=u-0.5;
+    float w=0.64+0.36*cos(tau*6.2831853);
+    covSum+=w*sampleAt(p,tau,invS,aa);
+    wSum+=w;
+  }
+  float cov=covSum/wSum;
   gl_FragColor=vec4(uColor.rgb,1.0)*uColor.a*cov;
 }`
 
@@ -75,7 +104,7 @@ export class Goo {
   private readonly loc: Record<string, WebGLUniformLocation | null> = {}
   private readonly dots = new Float32Array(MAX_DOTS * 4)
   private readonly vels = new Float32Array(MAX_DOTS * 4)
-  private readonly ks = new Float32Array(MAX_DOTS)
+  private readonly ks = new Float32Array(MAX_DOTS * 2)
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", {
       premultipliedAlpha: true,
@@ -104,7 +133,7 @@ export class Goo {
     const p = gl.getAttribLocation(prog, "p")
     gl.enableVertexAttribArray(p)
     gl.vertexAttribPointer(p, 2, gl.FLOAT, false, 0, 0)
-    for (const n of ["uRes", "uDpr", "uDot", "uVel", "uKi", "uK", "uGoo", "uColor"])
+    for (const n of ["uRes", "uDpr", "uDot", "uVel", "uKi", "uK", "uGoo", "uSamples", "uColor"])
       this.loc[n] = gl.getUniformLocation(prog, n)
   }
   get ok() {
@@ -127,24 +156,30 @@ export class Goo {
     if (!gl) return
     this.dots.fill(0)
     this.vels.fill(0)
-    this.ks.fill(1)
+    this.ks.fill(0)
+    let maxShift = 0
     dots.slice(0, MAX_DOTS).forEach((d, i) => {
       const speed = Math.hypot(d.vx, d.vy)
+      const rBlur = d.rBlur ?? 0
       this.dots.set([d.x, d.y, d.r, d.a], i * 4)
-      this.ks[i] = d.goo ?? 1
+      this.ks.set([d.goo ?? 1, rBlur], i * 2)
       this.vels.set(
         [speed > 0.001 ? d.vx / speed : 1, speed > 0.001 ? d.vy / speed : 0, d.stretch, d.blur],
         i * 4,
       )
+      if (d.r >= 0.05) maxShift = Math.max(maxShift, d.blur + Math.abs(rBlur))
     })
+    const samples =
+      maxShift < 0.15 ? 1 : Math.min(MAX_SAMPLES, Math.max(4, Math.ceil(maxShift * 1.1)))
     gl.viewport(0, 0, this.canvas.width, this.canvas.height)
     gl.uniform2f(this.loc.uRes!, this.canvas.width, this.canvas.height)
     gl.uniform1f(this.loc.uDpr!, o.dpr)
     gl.uniform4fv(this.loc.uDot!, this.dots)
     gl.uniform4fv(this.loc.uVel!, this.vels)
-    gl.uniform1fv(this.loc.uKi!, this.ks)
+    gl.uniform2fv(this.loc.uKi!, this.ks)
     gl.uniform1f(this.loc.uK!, o.goo ? o.k : 0)
     gl.uniform1f(this.loc.uGoo!, o.goo ? 1 : 0)
+    gl.uniform1f(this.loc.uSamples!, samples)
     gl.uniform4f(this.loc.uColor!, o.color[0]!, o.color[1]!, o.color[2]!, o.color[3]!)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
