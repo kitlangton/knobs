@@ -1,12 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { defineConfig } from "vite"
 
 const rootDir = resolve(import.meta.dirname, "..")
-const rollingCss = readFileSync(
-  resolve(rootDir, "node_modules/@kitlangton/rolling-number/dist/styles.css"),
-  "utf8",
-)
 const port = Number(process.env.PORT) || 5178
 
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
@@ -69,17 +65,6 @@ export default defineConfig(({ command, mode }) => ({
                   res.writeHead(200).end("ok")
                 })
               })
-            },
-          },
-          {
-            name: "knobs-css-text",
-            enforce: "pre",
-            resolveId(id) {
-              if (id === "@kitlangton/rolling-number/styles.css") return "\0rolling-number-css"
-            },
-            load(id) {
-              if (id === "\0rolling-number-css")
-                return `export default ${JSON.stringify(rollingCss)}`
             },
           },
         ],

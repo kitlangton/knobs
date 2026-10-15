@@ -1,4 +1,4 @@
-import rolling from "@kitlangton/rolling-number/styles.css" with { type: "text" }
+import rolling from "./rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
 import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 
