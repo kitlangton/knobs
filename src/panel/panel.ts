@@ -60,7 +60,7 @@ import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
-import { injectPreset, injectStyles } from "./styles.js"
+import { DELAYED, injectPreset, injectStyles } from "./styles.js"
 
 export interface Panel {
   element: HTMLElement
@@ -1519,6 +1519,14 @@ function buildPanel<S extends Schema>(
 
     wakeGpu()
   }
+  /** Sets a row's turn on what it times (see `DELAYED`), each only when it differs. */
+  function delayRow(row: HTMLElement, wait: string) {
+    for (const el of row.querySelectorAll<HTMLElement>(DELAYED)) {
+      if (el.style.getPropertyValue("--k-delay") === wait) continue
+      if (wait) el.style.setProperty("--k-delay", wait)
+      else el.style.removeProperty("--k-delay")
+    }
+  }
   function showValues(
     values: Record<string, unknown>,
     moving: readonly Row[],
@@ -1540,13 +1548,10 @@ function buildPanel<S extends Schema>(
         turn++
         row.wave.at = now + delay
         row.wave.until = row.wave.at + 280
-        // Only when it differs: a custom property set on the row restyles everything in it.
-        const wait = `${delay}ms`
-        if (row.row.style.getPropertyValue("--k-delay") !== wait)
-          row.row.style.setProperty("--k-delay", wait)
+        delayRow(row.row, `${delay}ms`)
       } else {
         row.wave.at = row.wave.until = 0
-        if (row.row.style.getPropertyValue("--k-delay")) row.row.style.removeProperty("--k-delay")
+        delayRow(row.row, "")
       }
       const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)

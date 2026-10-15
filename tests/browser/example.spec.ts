@@ -757,7 +757,10 @@ test("panning drags the preset and choice pills across their options, one undo e
   // moves nothing.
   expect(seen.slice(5)).toEqual(seen.slice(5).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
-  await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
+  await expect(synth.locator('[data-field="drive"] .knobs-fill')).toHaveAttribute(
+    "style",
+    /--k-delay/,
+  )
   await synth.getByRole("button", { name: "Undo" }).click()
   expect(await checked()).toBe("default")
 
@@ -825,14 +828,15 @@ test("presets ripple down the rows, reduced motion moves them together, and glas
   await page.reload()
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   const delays = () =>
-    synth
-      .locator("[data-field]")
-      .evaluateAll((rows) =>
-        rows.map((row) => [
-          (row as HTMLElement).dataset.field,
-          (row as HTMLElement).style.getPropertyValue("--k-delay"),
-        ]),
-      )
+    synth.locator("[data-field]").evaluateAll((rows) =>
+      // The row's turn is set on what it times (its fill, pill, switch…), not the row.
+      rows.map((row) => [
+        (row as HTMLElement).dataset.field,
+        row
+          .querySelector<HTMLElement>(".knobs-fill,.knobs-seg-pill,.knobs-toggle")
+          ?.style.getPropertyValue("--k-delay") ?? "",
+      ]),
+    )
 
   // default → acid changes every row but detune and voices; each changed row starts 12 ms after the
   // one above.
