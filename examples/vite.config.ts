@@ -14,6 +14,7 @@ export default defineConfig(({ command, mode }) => ({
     entries: [
       "studies.html",
       "lab.html",
+      "controls.html",
       "contracts.html",
       "meta.html",
       "die.html",
@@ -32,6 +33,7 @@ export default defineConfig(({ command, mode }) => ({
         main: resolve(import.meta.dirname, "index.html"),
         studies: resolve(import.meta.dirname, "studies.html"),
         lab: resolve(import.meta.dirname, "lab.html"),
+        controls: resolve(import.meta.dirname, "controls.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
         die: resolve(import.meta.dirname, "die.html"),
