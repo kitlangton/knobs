@@ -301,6 +301,9 @@ export function menu(anchor: Anchor, items: readonly MenuEntry[], options: MenuO
         const i = levels.indexOf(level)
         if (i >= 0) levels.splice(i, 1)
         unstack()
+        // Leaving, it's no longer a menu to anyone: it only fades.
+        el.setAttribute("aria-hidden", "true")
+        el.inert = true
         done.push(motion.hide().then(() => el.remove()))
         return Promise.all(done).then(() => {})
       },

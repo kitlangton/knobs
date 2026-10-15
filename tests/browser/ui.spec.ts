@@ -103,7 +103,7 @@ test("split: sizes persist and restore before the first paint", async ({ page })
   await divider(page, "main").focus()
   await page.keyboard.press("Shift+ArrowRight")
   expect(await settle(page, "left")).toBe(240 + 64)
-  await divider(page, "center").focus()
+  await divider(page, "center", 1).focus()
   await page.keyboard.press("Enter")
   await settle(page, "dock")
   // On reload, the first frame already has the saved layout.

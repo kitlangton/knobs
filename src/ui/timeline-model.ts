@@ -69,7 +69,8 @@ export function rulerTicks(
     minor = m
     break
   }
-  if (frame * pxPerSec >= (o.frameGap ?? 6) && (!minor || frame < minor)) minor = frame
+  // Once frames are wide enough to see, minors are frames: never finer, as nothing lies between.
+  if (frame * pxPerSec >= (o.frameGap ?? 6)) minor = Math.min(frame, step)
   const end = view.start + view.span
   const major: Tick[] = []
   const first = Math.ceil(view.start / step - 1e-9)
@@ -80,9 +81,10 @@ export function rulerTicks(
   const minors: number[] = []
   if (minor > 0) {
     const firstMinor = Math.ceil(view.start / minor - 1e-9)
-    const per = Math.round(step / minor)
-    for (let i = firstMinor; i * minor <= end + 1e-9; i++)
-      if (i % per !== 0) minors.push(round(i * minor))
+    for (let i = firstMinor; i * minor <= end + 1e-9; i++) {
+      const t = i * minor
+      if (Math.abs(t / step - Math.round(t / step)) > 1e-6) minors.push(round(t))
+    }
   }
   return { major, minor: minors, step }
 }
