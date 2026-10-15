@@ -1,6 +1,6 @@
-// The object scene: one ray-marched object that eight controls shape, place, cut, pattern and
-// light together. Drawn by WebGPU (controls-object.wgsl); without it, a plain sphere stands in.
-import { angle, choice, color, point, range, seed, springMotion, vec2, vec3 } from "knobs"
+// The object scene: one ray-marched object, centred, that seven controls shape, turn, cut,
+// pattern and light together. Drawn by WebGPU (controls-object.wgsl); without it, a plain sphere stands in.
+import { angle, choice, color, point, range, seed, springMotion, vec3 } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, linearRgb } from "./controls-gpu"
 import { ColorVal, live, oklabRgb, rad, reduced, SHUTTER_S, Stage } from "./controls-motion"
@@ -14,8 +14,8 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
   const s = section({
     id: "object",
     title: "Object",
-    sub: "One shape to morph, move, pattern, cut and light.",
-    shows: ["choice()", "color()", "vec2()", "vec3()", "angle()", "seed()", "range()", "point()"],
+    sub: "One shape to morph, turn, pattern, cut and light.",
+    shows: ["choice()", "color()", "vec3()", "angle()", "seed()", "range()", "point()"],
     stage: true,
     scene: true,
   })
@@ -27,31 +27,28 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
       display: "menu",
       group: "form",
     }),
-    position: vec2(
-      { x: 0, y: 0 },
-      {
-        min: -1,
-        max: 1,
-        step: 0.01,
-        label: "Position",
-        group: "transform",
-        groupLabel: "Transform",
-      },
-    ),
     scale: vec3(
       { x: 1, y: 1, z: 1 },
       {
-        min: 0.4,
-        max: 1.6,
+        // A narrow range, so Random (which rolls each axis) never squashes it into a sliver.
+        min: 0.75,
+        max: 1.3,
         step: 0.01,
         link: true,
         linked: true,
         label: "Scale",
         group: "transform",
+        groupLabel: "Transform",
       },
     ),
     spin: angle(35, { label: "Spin", group: "transform" }),
-    pattern: seed(1234, { label: "Pattern", group: "surface", groupLabel: "Surface" }),
+    pattern: seed(1234, {
+      label: "Pattern",
+      group: "surface",
+      groupLabel: "Surface",
+      // Seeds sit out of Random by default; here the panel's die rerolls the pattern too.
+      random: true,
+    }),
     slice: range([0, 100], {
       min: 0,
       max: 100,
@@ -88,20 +85,16 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
     if (!data || !view) {
       if (fallback) {
         fallback.style.backgroundColor = colour.css()
-        fallback.style.transform = `translate(${(px.x * 120).toFixed(1)}px,${(py.x * 60).toFixed(1)}px) scale(${sx.x.toFixed(3)},${sy.x.toFixed(3)})`
+        fallback.style.transform = `scale(${sx.x.toFixed(3)},${sy.x.toFixed(3)})`
       }
       return
     }
     const v = (i: number, a: number, b: number, c: number, d: number) =>
       data.set([a, b, c, d], 4 + i * 4)
-    const X = 1.25
-    const Y = -0.5
-    const vx = px.v * X
-    const vy = py.v * Y
     const vs = rad(spin.v)
-    const moving = !reduced() && (Math.hypot(vx, vy) > 0.03 || Math.abs(vs) > 0.08)
-    v(0, px.x * X, py.x * Y, 0, rad(spin.x))
-    v(1, vx, vy, 0, vs)
+    const moving = !reduced() && Math.abs(vs) > 0.08
+    v(0, 0, 0, 0, rad(spin.x))
+    v(1, 0, 0, 0, vs)
     v(2, sx.x, sy.x, sz.x, moving ? SHUTTER_S : 0)
     v(3, Math.max(0, w[0]!.x), Math.max(0, w[1]!.x), Math.max(0, w[2]!.x), tone.x)
     const alb = linearRgb(oklabRgb(lab))
@@ -113,8 +106,6 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
     v(7, rough.x, 1, 0, 0)
     view.render()
   })
-  const px = stage.val(0, 0.0005)
-  const py = stage.val(0, 0.0005)
   const sx = stage.val(1, 0.0005)
   const sy = stage.val(1, 0.0005)
   const sz = stage.val(1, 0.0005)
@@ -152,8 +143,6 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
       lastFinish = v.finish
       rough.go(FINISH[v.finish as keyof typeof FINISH] ?? 0.42, step, "calm")
     }
-    px.go(v.position.x, how)
-    py.go(v.position.y, how)
     sx.go(v.scale.x, how)
     sy.go(v.scale.y, how)
     sz.go(v.scale.z, how)
