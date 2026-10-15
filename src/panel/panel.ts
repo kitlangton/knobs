@@ -57,6 +57,7 @@ import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
+import { pageHints } from "./page-hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
 import { batchMeasures } from "./measure.js"
@@ -2493,6 +2494,33 @@ function buildPanel<S extends Schema>(
       }
     return targets
   }
+  // Page-wide hint mode: this panel's targets join every other panel's and piece's on the page,
+  // and draws its own badges (both renderers) with the codes the page chose.
+  const unregisterHints =
+    (options.hints ?? "page") === "page" && bound("hint")
+      ? pageHints(doc).register(
+          root,
+          () =>
+            collectHintTargets().map((t) => ({
+              el: t.el,
+              label: t.display,
+              ...(t.labelEl ? { labelEl: t.labelEl } : {}),
+              activate: t.activate,
+            })),
+          {
+            rank: 0,
+            paint: {
+              show: (spots, codes) => hintCtrl.show(spots, codes),
+              narrow: (query) => hintCtrl.narrow(query),
+              clear: () => hintCtrl.stop(),
+            },
+          },
+        )
+      : undefined
+  const stopHints = () => {
+    if (unregisterHints) pageHints(doc).stop()
+    hintCtrl.stop()
+  }
   /** A page's ↑↓ stops: every row and custom control, down each column, then the next. */
   const pageStops = () => {
     const nodes: HTMLElement[] = []
@@ -3234,7 +3262,7 @@ function buildPanel<S extends Schema>(
     if (pressed("hint", event)) {
       event.preventDefault()
       hintScrollY = win?.scrollY ?? 0
-      hintCtrl.start(collectHintTargets())
+      if (!unregisterHints || !pageHints(doc).start()) hintCtrl.start(collectHintTargets())
       return
     }
     if (pressed("resetAll", event)) {
@@ -3584,7 +3612,7 @@ function buildPanel<S extends Schema>(
     const scrolled = body.getBoundingClientRect().top < header.getBoundingClientRect().bottom - 1
     if (header.hasAttribute("data-scrolled") !== scrolled)
       header.toggleAttribute("data-scrolled", scrolled)
-    if (hintCtrl.isActive && Math.abs(win.scrollY - hintScrollY) > 24) hintCtrl.stop()
+    if (hintCtrl.isActive && Math.abs(win.scrollY - hintScrollY) > 24) stopHints()
     trackSection()
   }
   const onScrollEnd = () => (scrollGoal = undefined)
@@ -3954,6 +3982,7 @@ function buildPanel<S extends Schema>(
         doc.removeEventListener(type, endScrub, true)
       doc.defaultView?.removeEventListener("blur", endScrub)
       endScrub()
+      unregisterHints?.()
       hintCtrl.stop()
       modeObserver.disconnect()
       unregisterGpu?.()

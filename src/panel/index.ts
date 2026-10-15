@@ -10,6 +10,15 @@ export {
   type HintCandidate,
   type HintResolution,
 } from "./hints.js"
+export {
+  assignPageCodes,
+  hints,
+  pageHints,
+  type HintPainter,
+  type HintSourceOptions,
+  type PageHints,
+  type PageHintTarget,
+} from "./page-hints.js"
 export { Spring, VelocityTracker } from "./motion.js"
 export { createPanel, mountPage, mountPanel, type Panel, type PanelSearch } from "./panel.js"
 export {
