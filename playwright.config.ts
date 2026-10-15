@@ -4,6 +4,9 @@ const port = Number(process.env.PORT) || 5178
 const preview = Number(process.env.PREVIEW_PORT) || 5179
 export default defineConfig({
   testDir: "tests/browser",
+  // CI's shared runner (software WebGPU) can be several times slower than a desktop: assertions
+  // get more time to settle, and a test that fails once is retried and reported as flaky.
+  ...(process.env.CI ? { expect: { timeout: 15_000 }, timeout: 90_000, retries: 1 } : {}),
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     viewport: { width: 1440, height: 1000 },
