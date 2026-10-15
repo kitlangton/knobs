@@ -453,13 +453,15 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     const at = ends()
     const dt = (now - smearAt) / 1000
     const w = track.clientWidth
-    const speed = (i: 0 | 1) => (dt > 0 ? (Math.abs(at[i] - lastEnds[i]) * w) / dt : 0)
+    const speeds = ([0, 1] as const).map((i) =>
+      dt > 0 ? (Math.abs(at[i] - lastEnds[i]) * w) / dt : 0,
+    )
     lastEnds = at
     smearAt = now
     const gliding = !dragging && track.getAnimations().length > 0
     setSmears(
-      gliding ? rangeSmear(speed(0), smearStrength) : 0,
-      gliding ? rangeSmear(speed(1), smearStrength) : 0,
+      gliding ? rangeSmear(speeds[0]!, smearStrength) : 0,
+      gliding ? rangeSmear(speeds[1]!, smearStrength) : 0,
     )
     smearFrame = gliding ? requestAnimationFrame(runSmear) : 0
   }
