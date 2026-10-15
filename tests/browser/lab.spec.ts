@@ -787,3 +787,38 @@ test("range: a thumb that shows never sits on the label or readout; their text f
   expect(s.thumb).toBeGreaterThan(label.x)
   expect(s.thumb).toBeLessThan(label.x + label.width)
 })
+
+test("seed: its digits roll when the die rolls it", async ({ page }) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  const seed = row(panel, "seed")
+  await expect(seed.locator(".knobs-seed-digits .rn-value")).toHaveText("1234")
+  await panel.getByRole("button", { name: "Roll Seed" }).click()
+  // Mid-roll, a reel is between faces; then it lands on the new value.
+  const moving = await seed.evaluate(
+    (el) =>
+      new Promise<boolean>((done) => {
+        let frames = 0
+        const tick = () => {
+          const reels = [
+            ...el.querySelectorAll<HTMLElement>(".knobs-seed-digits [style*='translate']"),
+          ]
+          if (reels.length) return done(true)
+          if (++frames < 30) requestAnimationFrame(tick)
+          else done(false)
+        }
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(moving).toBe(true)
+  const rolled = String((await values(page)).seed)
+  await expect(seed.locator(".knobs-seed-digits .rn-value")).toHaveText(rolled)
+  // Mixed, it reads —.
+  await lab(page, (l) => l.inspector.setMixed(["seed"]))
+  expect(
+    await seed
+      .locator(".knobs-seed-read")
+      .evaluate((el) => getComputedStyle(el, "::before").content),
+  ).toBe('"—"')
+})

@@ -27,10 +27,11 @@ import type {
   GpuToolbarRow,
   GpuVecRow,
 } from "./gpu/renderer.js"
+import { createRollingNumber } from "@kitlangton/rolling-number"
 import { iconSvg } from "./icons.js"
-import { clamp } from "./motion.js"
+import { clamp, Roll, rollTarget } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
-import { decimals as stepDecimals } from "./slider.js"
+import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
 import { onPan } from "./swipe.js"
 
 const plainKey = (e: KeyboardEvent) => !e.metaKey && !e.ctrlKey && !e.isComposing
@@ -827,6 +828,13 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
 
 // ——— seed ———
 
+/** How long a rolled seed's digits spin: about as long as its die tumbles. */
+const DICE_ROLL_MS = 620
+const rollMs = (el: Element) => {
+  const n = parseFloat(getComputedStyle(el).getPropertyValue("--k-roll"))
+  return Number.isFinite(n) ? Math.max(0, n) : 320
+}
+
 export function seedRow(c: RowContext<SeedField>): EditorRow {
   const { row, label, el } = shell(c, "seed")
   const f = () => c.field
@@ -836,6 +844,57 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
   control.setAttribute("aria-label", c.display)
   const read = el("span", "knobs-seed-read")
   control.append(read)
+  // Its digits roll, upward and as long as the die tumbles when it's rolled: a reel per place in
+  // the DOM (rolling-number) and on the GPU (`places`).
+  const reel = el("span", "knobs-seed-digits")
+  read.append(reel)
+  const roller = createRollingNumber(reel, {
+    value: c.get() as number,
+    format: { useGrouping: false, maximumFractionDigits: 0 },
+    duration: 1,
+    motionBlur: true,
+  })
+  const places: DigitPlace[] = []
+  let initialized = false
+  let diced = false
+  const syncPlaces = (text: string, trend: number, ms: number) => {
+    const now = performance.now()
+    for (let j = 0; j < Math.max(text.length, places.length); j++) {
+      const ch = j < text.length ? text[text.length - 1 - j]! : undefined
+      const place = places[j]
+      if (ch === undefined) {
+        if (place && !place.exiting) {
+          place.exiting = true
+          place.presence.set(0, ms * 0.65, now)
+        }
+        continue
+      }
+      const digit = Number(ch)
+      if (!place) {
+        const presence = new Roll(ms > 0 ? 0 : 1)
+        if (ms > 0) presence.set(1, ms, now)
+        places[j] = {
+          ch,
+          wheel: new Roll(digit),
+          presence,
+          enterAt: now,
+          enterMs: ms,
+          exiting: false,
+        }
+        continue
+      }
+      if (place.exiting) {
+        place.exiting = false
+        place.presence.set(1, ms, now)
+      }
+      place.ch = ch
+      const target = rollTarget(place.wheel.target, digit, trend)
+      if (ms > 0) place.wheel.set(target, ms, now)
+      else place.wheel.snap(target)
+    }
+    while (places.length > text.length && places[places.length - 1]!.exiting && ms <= 0)
+      places.pop()
+  }
   const roll = el("button", "knobs-seed-roll")
   roll.type = "button"
   roll.tabIndex = -1
@@ -856,7 +915,9 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
     for (let i = 0; i < 8 && next === value; i++)
       next = min + Math.floor(Math.random() * (max - min + 1))
     die.roll()
+    diced = true
     set(next)
+    diced = false
   }
   roll.onclick = () => reroll()
   const editor = inlineEdit(c.doc, row, `${c.display} value`, set, () => control)
@@ -885,10 +946,22 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
       editor.start(char, false)
     }
   })
-  const paint = () => {
-    const t = mixed ? "—" : String(value)
-    if (read.textContent !== t) read.textContent = t
+  const paint = (previous: number, instant: boolean) => {
+    read.toggleAttribute("data-mixed", mixed)
     control.setAttribute("aria-valuenow", String(value))
+    const ms = !initialized || instant ? 0 : diced ? DICE_ROLL_MS : rollMs(row)
+    initialized = true
+    syncPlaces(String(value), diced ? 1 : Math.sign(value - previous), ms)
+    // The canvas draws the reel when the GPU renders; the hidden DOM one only keeps its width.
+    const dom = ms > 0 && row.closest('[data-gpu-active="true"]') === null
+    roller.update({
+      value,
+      animated: true,
+      duration: dom ? ms : 1,
+      motionBlur: dom,
+      direction: diced ? "up" : "auto",
+    })
+    if (ms > 0) c.wake()
   }
   const gpu: GpuSeedRow = {
     kind: "seed",
@@ -898,6 +971,8 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
     labelEl: label,
     control,
     read,
+    places,
+    mixed: () => mixed,
     die: { button: roll, die },
     editing: () => editor.open,
     wave: c.wave,
@@ -908,12 +983,16 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
     labelEl: label,
     input: control,
     stops: () => [control],
-    update(next: Value, _delay: number, _instant?: boolean, isMixed = false) {
+    update(next: Value, _delay: number, instant?: boolean, isMixed = false) {
+      const previous = value
       value = next as number
       mixed = isMixed
-      paint()
+      paint(previous, Boolean(instant))
     },
-    dispose: () => die.dispose(),
+    dispose: () => {
+      die.dispose()
+      roller.destroy()
+    },
     tracks: [],
     gpu: [gpu],
   }

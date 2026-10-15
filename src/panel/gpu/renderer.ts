@@ -17,7 +17,7 @@ import {
 import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
-import type { Slider } from "../slider.js"
+import type { DigitPlace, Slider } from "../slider.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
@@ -237,6 +237,9 @@ export interface GpuSeedRow {
   readonly labelEl: HTMLElement
   readonly control: HTMLElement
   readonly read: HTMLElement
+  /** The readout's reel, a place per digit, ones first. */
+  readonly places: readonly DigitPlace[]
+  mixed(): boolean
   readonly die: { readonly button: HTMLButtonElement; readonly die: HeaderDie }
   editing(): boolean
   readonly wave: RowWave
@@ -2204,6 +2207,59 @@ class GpuOverlayManager {
     })
   }
 
+  /**
+   * A whole number's reel, right-aligned at `right`: each place a wheel seen through a feathered
+   * slot, as the slider's readout draws its digits. True while any place moves.
+   */
+  private drawReel(
+    places: readonly DigitPlace[],
+    right: number,
+    centerY: number,
+    ink: Rgba,
+    clip: Clip,
+    clock: number,
+  ): boolean {
+    const t = this.curTokens
+    const px = t.valueSize
+    const faceH = px * 2.1
+    const slot = intersectClip(clip, [
+      right - 400,
+      centerY - faceH / 2,
+      right + 1,
+      centerY + faceH / 2,
+    ])
+    const cell = this.getDigitCellWidth(px, t.valueFamily, t.fontWeight)
+    const text = {
+      px,
+      weight: t.fontWeight,
+      family: t.valueFamily,
+      clip: slot,
+      feather: px * 0.5,
+      align: "center" as const,
+    }
+    let moving = false
+    places.forEach((place, j) => {
+      const presence = clamp(place.presence.sample(clock).position, 0, 1)
+      if (!place.presence.resting(clock) || !place.wheel.resting(clock)) moving = true
+      if (presence <= 0.005) return
+      const cx = right - (j + 0.5) * cell
+      const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
+      const { position, velocity } = place.wheel.sample(clock)
+      const blurY = clamp((Math.abs(velocity) - 4) / 20, 0, 1) * faceH * 0.45 * t.blurStrength
+      const [low, high] = place.wheel.span(clock)
+      for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
+        const y = centerY + rise + (k - position) * faceH
+        if (Math.abs(y - centerY) >= faceH) continue
+        this.drawText(numeral(k), cx, y, withAlpha(ink, ink[3] * presence), {
+          ...text,
+          blurY,
+          exact: position !== k || rise !== 0,
+        })
+      }
+    })
+    return moving
+  }
+
   /** A readout in the value face (--k-value-font, --k-value-size), where the DOM sets its text. */
   private valueText(
     el: HTMLElement,
@@ -3613,12 +3669,20 @@ class GpuOverlayManager {
         } else if (row.kind === "seed") {
           this.drawRowHover(row.row, rRect, hovered)
           this.drawRowLabel(row.labelEl, row.display, row.isModified(), rowCenterY, rowAlpha)
-          if (!row.editing())
-            this.valueText(
-              row.read,
-              rowCenterY,
-              withAlpha(this.hot(row.control, this.isFocused(row.control)), rowAlpha),
-            )
+          if (!row.editing()) {
+            const ink = withAlpha(this.hot(row.control, this.isFocused(row.control)), rowAlpha)
+            const rr = this.rectOf(row.read)
+            if (row.mixed())
+              this.drawText("—", rr.right, rowCenterY, ink, {
+                px: tokens.valueSize,
+                align: "right",
+                family: tokens.valueFamily,
+                weight: tokens.fontWeight,
+              })
+            else
+              anyMoving =
+                this.drawReel(row.places, rr.right, rowCenterY, ink, bodyClip, clock) || anyMoving
+          }
           const { button, die } = row.die
           const dr = this.rectOf(button)
           const on = this.isHovered(button) || this.isFocused(button)

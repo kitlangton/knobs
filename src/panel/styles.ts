@@ -564,6 +564,10 @@ const css = `
 .knobs-panel .knobs-insp[data-kind="seed"]{gap:2px}
 .knobs-seed{display:inline-flex;align-items:center;height:var(--kc-control-h);margin-left:auto;padding:0 4px;border-radius:var(--k-radius-sm);cursor:text;outline:none}
 .knobs-seed:focus-visible .knobs-seed-read{color:var(--k-text)}
+.knobs-seed-digits{display:inline-flex;align-items:center;line-height:2.1;margin-block:-.375em;--rn-edge-fade:.5em}
+.knobs-seed-read{display:inline-flex;align-items:center}
+.knobs-seed-read[data-mixed]::before{content:"—"}
+.knobs-seed-read[data-mixed]>.knobs-seed-digits{display:none}
 .knobs-panel .knobs-seed-roll{flex:none;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background .15s,color .15s}
 .knobs-panel .knobs-seed-roll:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-seed-roll .knobs-die-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
@@ -666,7 +670,7 @@ const css = `
 .knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,
   .knobs-tabs,.knobs-tab,.knobs-subhead,.knobs-subhead-label,.knobs-match,.knobs-cell,.knobs-cell-axis,.knobs-cell-read,.knobs-link,.knobs-range-read,.knobs-angle,.knobs-angle-read,.knobs-dial,
-  .knobs-seed,.knobs-seed-read,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key):not(.knobs-live,.knobs-live *){
+  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
