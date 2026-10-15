@@ -252,12 +252,15 @@ test("readouts draw on the GPU overlay as they do in the DOM", async ({ page }) 
     )
   const texts = await page.evaluate(() => (window as any).__knobsGpu.lastTexts as string[])
   expect(texts.some((t) => t.startsWith("Warm-up frame"))).toBe(true)
-  // The DOM's text and canvases stay put but don't paint under the overlay.
-  const ink = await livePanel(page)
-    .locator(".knobs-rd-num")
-    .first()
-    .evaluate((el) => getComputedStyle(el).color)
-  expect(ink).toMatch(/(,\s*|\/\s*)0\)$/)
+  // The DOM's text and canvases stay put but don't paint under the overlay (once the fade settles).
+  await expect
+    .poll(() =>
+      livePanel(page)
+        .locator(".knobs-rd-num")
+        .first()
+        .evaluate((el) => getComputedStyle(el).color),
+    )
+    .toMatch(/(,\s*|\/\s*)0\)$/)
   expect(errors).toEqual([])
 })
 
