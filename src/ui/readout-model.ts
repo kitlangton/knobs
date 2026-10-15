@@ -102,36 +102,42 @@ export function fitRange(
   return [a, b]
 }
 
-/** A scale that eases to each new range on a spring, interruptibly, instead of jumping. */
+/**
+ * A scale that eases to each new range on a spring, interruptibly, instead of jumping. The span
+ * eases in log space, so a line rescaling by 5× moves at an even pace rather than mostly at once.
+ */
 export class EasedRange {
-  private readonly lo = new Spring(0, 11, 1, 1e-4)
-  private readonly hi = new Spring(1, 11, 1, 1e-4)
+  private readonly lo = new Spring(0, 10, 1, 1e-4)
+  private readonly span = new Spring(0, 10, 1, 1e-4)
   private placed = false
+  private goal: [number, number] = [0, 1]
   /** Sets where it's headed; `snap` places it there at once (the first range, reduced motion). */
   to(lo: number, hi: number, snap = false) {
+    this.goal = [lo, hi]
     const span = Math.max(1e-9, hi - lo)
     // The springs settle to a fraction of the span, whatever its units.
-    this.lo.eps = this.hi.eps = span * 1e-4
+    this.lo.eps = span * 1e-4
     if (snap || !this.placed) {
       this.lo.snap(lo)
-      this.hi.snap(hi)
+      this.span.snap(Math.log(span))
       this.placed = true
     } else {
       this.lo.set(lo)
-      this.hi.set(hi)
+      this.span.set(Math.log(span))
     }
   }
   /** Steps both bounds; true while they're still moving. */
   step(dt: number) {
     this.lo.step(dt)
-    this.hi.step(dt)
-    return !(this.lo.resting && this.hi.resting)
+    this.span.step(dt)
+    return !(this.lo.resting && this.span.resting)
   }
   get value(): [number, number] {
-    return [this.lo.x, this.hi.x]
+    if (this.lo.resting && this.span.resting) return [this.goal[0], this.goal[1]]
+    return [this.lo.x, this.lo.x + Math.exp(this.span.x)]
   }
   get target(): [number, number] {
-    return [this.lo.target, this.hi.target]
+    return this.goal
   }
 }
 

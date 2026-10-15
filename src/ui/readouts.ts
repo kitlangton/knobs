@@ -4,7 +4,7 @@
 // otherwise. Graphics go to a 2D canvas (or, under the GPU overlay, nowhere: the overlay draws the
 // same ops); text changes at a readable rate, in boxes that only grow, so nothing reflows per update.
 import type { EntryLog, LogLevel, ReadoutState, Ring } from "../core/readout.js"
-import { pushReadout } from "../core/readout.js"
+import { pushReadout, readoutState } from "../core/readout.js"
 import type {
   GraphField,
   LogField,
@@ -15,6 +15,7 @@ import type {
   WatchField,
 } from "../core/schema.js"
 import { Spring } from "../core/spring.js"
+import { applyLook, injectUiStyles, type UiLook } from "./look.js"
 import {
   EasedRange,
   fitRange,
@@ -1411,3 +1412,42 @@ export function createReadout(env: ReadoutEnv): ReadoutView {
   return view
 }
 export type { Ring }
+
+export interface Readout {
+  readonly element: HTMLElement
+  /** A value, a sample or rows, as `controls.watch` takes them; `null` clears it. */
+  push(value: unknown): void
+  /** The latest value pushed. */
+  readonly value: unknown
+  dispose(): void
+}
+
+/**
+ * A readout on its own, outside a panel: `readout(sparkline({ unit: "ms" }))`, put its element
+ * anywhere and `push` values to it. It sleeps when nothing arrives, as it does in a panel.
+ */
+export function readout(
+  field: ReadoutField,
+  options: UiLook & { readonly doc?: Document; readonly label?: string } = {},
+): Readout {
+  const doc = options.doc ?? document
+  injectUiStyles(doc)
+  const state = readoutState(field)
+  const label = options.label ?? field.label
+  const labelEl = label
+    ? Object.assign(doc.createElement("span"), { textContent: label })
+    : undefined
+  const view = createReadout({ doc, field, state, ...(labelEl ? { label: labelEl } : {}) })
+  applyLook(view.element, options)
+  return {
+    element: view.element,
+    push(value) {
+      pushReadout(field, state, value)
+      view.notify()
+    },
+    get value() {
+      return state.value
+    },
+    dispose: () => view.dispose(),
+  }
+}
