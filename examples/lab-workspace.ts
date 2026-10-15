@@ -248,6 +248,57 @@ const remove = (ids: readonly string[]) => {
   left.pane("outliner").title("Outliner", count(scene))
 }
 
+/** Copies of the items, each just after its original, with " copy" on its label. */
+const duplicate = (ids: readonly string[]) => {
+  const want = new Set(ids)
+  const copies: string[] = []
+  const clone = (i: SceneItem): SceneItem => ({
+    ...i,
+    id: `o${++uid}`,
+    ...(i.children ? { children: i.children.map(clone) } : {}),
+  })
+  const walk = (items: SceneItem[]): SceneItem[] =>
+    items.flatMap((i) => {
+      const self = i.children ? { ...i, children: walk(i.children) } : i
+      if (!want.has(i.id)) return [self]
+      const copy = { ...clone(i), label: `${i.label} copy` }
+      copies.push(copy.id)
+      return [self, copy]
+    })
+  scene = walk(scene)
+  outline.update(scene)
+  outline.select(copies, copies[copies.length - 1])
+  left.pane("outliner").title("Outliner", count(scene))
+  return copies
+}
+/** Hides (or shows) the items, as their eye toggle does. */
+const setHidden = (ids: readonly string[], on: boolean) => {
+  for (const id of ids) on ? hidden.add(id) : hidden.delete(id)
+  outline.refresh()
+}
+/** The top-level groups, to move items into. */
+const groupsOf = () => scene.filter((i) => i.children).map((i) => ({ id: i.id, label: i.label }))
+const parentOf = (id: string): string | null => {
+  const walk = (items: readonly SceneItem[], parent: string | null): string | null | undefined => {
+    for (const i of items) {
+      if (i.id === id) return parent
+      const found = i.children && walk(i.children, i.id)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  return walk(scene, null) ?? null
+}
+const moveTo = (ids: readonly string[], parent: string) => {
+  const move = { ids, parent, index: Number.MAX_SAFE_INTEGER }
+  const target = scene.find((i) => i.id === parent)
+  move.index = target?.children?.filter((c) => !ids.includes(c.id)).length ?? 0
+  moves.push(move)
+  scene = applyMove(scene, access, move)
+  outline.update(scene)
+  outline.expand(parent, true)
+}
+
 export const liveFeed = startLive(
   document.getElementById("live")!,
   document.getElementById("diag")!,
@@ -262,6 +313,13 @@ export const workspace = {
   collapseAll,
   expandAll,
   remove,
+  duplicate,
+  setHidden,
+  hidden,
+  groupsOf,
+  parentOf,
+  moveTo,
+  rows,
   set onDelete(f: (ids: readonly string[]) => void) {
     onDelete = f
   },

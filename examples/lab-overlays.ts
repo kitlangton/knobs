@@ -7,6 +7,9 @@ import {
   commandPalette,
   commandsFrom,
   confirm,
+  contextMenu,
+  menu,
+  type MenuEntry,
   overlayLook,
   popover,
   toast,
@@ -22,6 +25,12 @@ tooltips(document)
 interface Panelish {
   tab(id?: string): string | undefined
   fold(group: string, folded?: boolean): void
+}
+
+let onSpeed: (speed: number) => void = () => {}
+/** The timeline follows the top bar's speed. */
+export const speedChanged = (f: (speed: number) => void) => {
+  onSpeed = f
 }
 
 export function startOverlays(stores: {
@@ -89,6 +98,113 @@ export function startOverlays(stores: {
     toast(ids.length === 1 ? `Deleted ${names[0]}` : `Deleted ${ids.length} objects`)
   }
   workspace.onDelete = (ids) => void deleteSelection(ids)
+
+  // The outliner's context menu: a right-click selects the row under it (keeping a selection it's
+  // part of), then offers what applies to the selection. The menu key or ⇧F10 opens it at the
+  // active row.
+  const icon = (d: string) =>
+    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`
+  const ICON = {
+    rename: icon('<path d="M10.5 3.5l2 2L6 12l-2.6.6L4 10z"/>'),
+    duplicate: icon(
+      '<rect x="5.5" y="5.5" width="7" height="7" rx="1.5"/><path d="M3.5 10V4.8c0-.7.6-1.3 1.3-1.3H10"/>',
+    ),
+    move: icon(
+      '<path d="M2.5 5.5v6c0 .6.4 1 1 1h9c.6 0 1-.4 1-1v-5c0-.6-.4-1-1-1H8L6.5 4H3.5c-.6 0-1 .4-1 1z"/>',
+    ),
+    delete: icon('<path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8"/>'),
+  }
+  const rowItems = (e: MouseEvent | KeyboardEvent | null): MenuEntry[] | null => {
+    const row = (e?.target as HTMLElement | null)?.closest<HTMLElement>(".knobs-tree-row")
+    const id = row?.dataset.id ?? outline.active
+    if (!id) return null
+    if (row && !outline.selection.includes(id)) outline.select([id], id)
+    const ids = outline.selection.length ? [...outline.selection] : [id]
+    const one = ids.length === 1
+    const hidden = ids.every((i) => workspace.hidden.has(i))
+    const parent = workspace.parentOf(id)
+    return [
+      {
+        id: "rename",
+        label: "Rename",
+        icon: ICON.rename,
+        shortcut: "Enter",
+        disabled: !one,
+        run: () => outline.rename(id),
+      },
+      {
+        id: "duplicate",
+        label: "Duplicate",
+        icon: ICON.duplicate,
+        shortcut: "Mod+D",
+        run: () => workspace.duplicate(ids),
+      },
+      {
+        id: "hide",
+        label: "Hidden",
+        checked: hidden,
+        shortcut: "H",
+        run: () => workspace.setHidden(ids, !hidden),
+      },
+      {
+        id: "move",
+        label: "Move to",
+        icon: ICON.move,
+        items: () =>
+          workspace.groupsOf().map((g) => ({
+            id: `move-${g.id}`,
+            label: g.label,
+            radio: true,
+            checked: one && parent === g.id,
+            disabled: ids.includes(g.id),
+            run: () => workspace.moveTo(ids, g.id),
+          })),
+      },
+      "-",
+      {
+        id: "delete",
+        label: one ? "Delete…" : `Delete ${ids.length} objects…`,
+        icon: ICON.delete,
+        shortcut: "Backspace",
+        destructive: true,
+        run: () => void deleteSelection(ids),
+      },
+    ]
+  }
+  const rowMenu = contextMenu(workspace.rows, rowItems, { label: "Scene object" })
+  workspace.rows.addEventListener("keydown", (e) => {
+    if ((e.target as HTMLElement).closest(".knobs-tree-edit") || !outline.selection.length) return
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+      e.preventDefault()
+      workspace.duplicate(outline.selection)
+    } else if (e.key.toLowerCase() === "h" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault()
+      const ids = outline.selection
+      workspace.setHidden(ids, !ids.every((i) => workspace.hidden.has(i)))
+    }
+  })
+
+  // The top bar's speed: a menu of radio items under its button.
+  const speed = document.querySelector<HTMLButtonElement>('[data-tip="Playback speed"]')!
+  speed.setAttribute("aria-haspopup", "menu")
+  let speedMenu: ReturnType<typeof menu> | null = null
+  const openSpeed = (keyboard: boolean) => {
+    if (speedMenu?.open) return void speedMenu.close()
+    speedMenu = menu(
+      speed,
+      ["0.25", "0.5", "1", "2", "4"].map((v) => ({
+        label: `${v}×`,
+        radio: true,
+        checked: speed.textContent === `${v}×`,
+        run: () => {
+          speed.textContent = `${v}×`
+          onSpeed(Number(v))
+        },
+      })),
+      { label: "Playback speed", keyboard },
+    )
+  }
+  speed.addEventListener("click", (e) => openSpeed(e.detail === 0))
 
   const commands = (): Command[] => [
     {
@@ -200,9 +316,9 @@ export function startOverlays(stores: {
   const games = document.querySelector<HTMLButtonElement>('[data-tip="Switch game"]')!
   games.setAttribute("aria-haspopup", "menu")
   games.setAttribute("aria-expanded", "false")
-  let menu: ReturnType<typeof popover> | null = null
+  let gamesMenu: ReturnType<typeof popover> | null = null
   games.addEventListener("click", () => {
-    if (menu?.open) return void menu.close()
+    if (gamesMenu?.open) return void gamesMenu.close()
     const list = document.createElement("div")
     list.className = "lab-menu"
     for (const name of ["All games", "Outbreak", "Getaway", "Blackout", "Survivor"]) {
@@ -213,7 +329,7 @@ export function startOverlays(stores: {
       b.textContent = name
       b.onclick = () => {
         games.textContent = `${name} ▾`
-        void menu?.close()
+        void gamesMenu?.close()
       }
       list.append(b)
     }
@@ -226,7 +342,7 @@ export function startOverlays(stores: {
       items[(i + by + items.length) % items.length]!.focus()
     })
     games.setAttribute("aria-expanded", "true")
-    menu = popover(games, list, {
+    gamesMenu = popover(games, list, {
       placement: "bottom-end",
       role: "menu",
       label: "Games",
@@ -240,5 +356,5 @@ export function startOverlays(stores: {
       togglePause()
     }
   })
-  return { palette, deleteSelection }
+  return { palette, deleteSelection, rowMenu }
 }

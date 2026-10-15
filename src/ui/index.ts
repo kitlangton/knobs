@@ -4,8 +4,12 @@ export { confirm, type ConfirmOptions } from "./confirm.js"
 export { overlayLook, type Anchor } from "./layer.js"
 export {
   fuzzy,
+  inTriangle,
   marks,
+  matchItem,
   place,
+  safeTriangle,
+  stepItem,
   rank,
   type Box,
   type FuzzyMatch,
@@ -20,6 +24,17 @@ export {
   type CommandPalette,
   type CommandPaletteOptions,
 } from "./palette.js"
+export {
+  contextMenu,
+  menu,
+  type ContextMenu,
+  type ContextMenuOptions,
+  type Menu,
+  type MenuCloseReason,
+  type MenuEntry,
+  type MenuItem,
+  type MenuOptions,
+} from "./menu.js"
 export { popover, type Popover, type PopoverCloseReason, type PopoverOptions } from "./popover.js"
 export { readout, type Readout } from "./readouts.js"
 export { toast, type Toast, type ToastOptions } from "./toast.js"
