@@ -15,6 +15,10 @@ export interface FieldMeta {
   readonly section?: string
   /** What the section's heading shows (the first field that gives one wins); `section` by default. */
   readonly sectionLabel?: string
+  /** One muted line under the group's card title on a page (the first field that gives one wins). */
+  readonly groupDescription?: string
+  /** One muted line under the section's heading on a page (the first field that gives one wins). */
+  readonly sectionDescription?: string
   readonly shortcut?: string
   /** `false` keeps the field out of Random and Mutate, as a lock does, but by declaration. */
   readonly random?: boolean
@@ -28,10 +32,16 @@ export interface FieldMeta {
   readonly readOnly?: boolean | ((values: State) => boolean)
   /**
    * The group's card starts folded (the first field of a group that says wins), and its header
-   * folds and opens it. `mountPanel` only; a page's cards don't fold yet. `groupFolded` on the
-   * mount overrides it.
+   * folds and opens it, in a panel or a page. `groupFolded` (on the mount, then the store)
+   * overrides it, and on a page what the user last chose wins over both.
    */
   readonly folded?: boolean
+  /**
+   * On a page, the field's section starts folded to its heading (the first field of a section
+   * that says wins), and the heading folds and opens it. `sectionFolded` (on the mount, then the
+   * store) overrides it, and what the user last chose wins over both.
+   */
+  readonly sectionFolded?: boolean
   /**
    * The panel tab the field sits on (`mountPanel` draws a tab strip once any field names one).
    * Fields without a tab show on every tab.
@@ -50,11 +60,14 @@ export const META_KEYS = [
   "groupLabel",
   "section",
   "sectionLabel",
+  "groupDescription",
+  "sectionDescription",
   "shortcut",
   "random",
   "disabled",
   "readOnly",
   "folded",
+  "sectionFolded",
   "tab",
   "subsection",
 ] as const satisfies readonly (keyof FieldMeta)[]

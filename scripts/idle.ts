@@ -156,8 +156,21 @@ try {
   // measurement.
   await page.goto(`http://127.0.0.1:${port}/tune.html?gpu&still`)
   await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  // The phone's first news (2.6 s) and its pairing (3.2 s) land before measuring.
+  await sleep(3000)
   await report("page open")
+  // Sections fold and open, and the jump strip glides between them.
+  await page.locator('.knobs-section-head[data-section="Session List"]').click()
+  await report("section opens")
+  await page.locator('.knobs-section-head[data-section="Transcript"]').click()
+  await report("section folds")
+  await page.locator('.knobs-nav [data-tab="Composer"]').click()
+  await report("nav jump")
   await page.mouse.move(700, 500)
+  await page.mouse.wheel(0, -1200)
   await page.mouse.wheel(0, 600)
   await report("page scroll")
   await page.getByRole("slider", { name: "Row height" }).focus()

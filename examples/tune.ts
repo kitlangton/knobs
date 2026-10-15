@@ -14,6 +14,9 @@ import { mountPage, type Page, type PageControl } from "knobs/panel"
 import { connectPhone, type Descriptor, type Phone, type Value } from "./tune-phone"
 
 const params = new URLSearchParams(location.search)
+// `?classic`: the page before sections folded (every section and card open, no jump strip, no
+// descriptions), which the older layout tests measure.
+const classic = params.has("classic")
 const ws = connectPhone()
 const send = (message: object) => ws.send(JSON.stringify(message))
 
@@ -41,6 +44,26 @@ const CARDS: Record<string, string> = {
   controls: "Controls",
   expand: "Controls",
 }
+// One muted line under a section's heading or a card's title (the `/` filter reads them too).
+const SECTION_TEXT: Record<string, string> = {
+  Connection: "Pair an iPhone by scanning the code with its camera.",
+  Playground: "What the phone shows, how fast it moves, and the jumps it notices.",
+  "Session List": "The drawer of sessions: rows, section headers and the edge under the title.",
+  Transcript: "Messages as they stream in, and the session header above them.",
+  Composer: "The bar you type and talk in: its size, level picker and buttons.",
+}
+const CARD_TEXT: Record<string, string> = {
+  Spacing: "Row height, the gaps between rows and the highlight's inset",
+  Edge: "Where the list fades and blurs under the title",
+  Springs: "Search, drawer and card motion",
+  Rhythm: "Gaps between replies, turns and sections",
+  Arrivals: "How new rows and streamed text come in",
+  Glide: "Steering, jumps and following new text",
+  "Header Style": "The session header's blur and wash",
+  Size: "The bar's height, corners and text",
+  "Level picker": "The reasoning level control and its backdrop",
+  Controls: "Send, call and mic buttons",
+}
 const title = (s: string) =>
   s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase())
 
@@ -53,6 +76,18 @@ interface Mapping {
   springs: Map<string, { duration: Descriptor; bounce: Descriptor }>
   fromPhone(values: Record<string, Value>): Record<string, KnobValue>
 }
+
+/**
+ * Every card folds (`folded: false` starts it open; the user's folds are remembered), and the
+ * phone's sections describe themselves from their descriptors.
+ */
+const card = (section: string) =>
+  classic
+    ? {}
+    : {
+        folded: false,
+        ...(SECTION_TEXT[section] ? { sectionDescription: SECTION_TEXT[section] } : {}),
+      }
 
 function mapPhone(phone: Phone): Mapping {
   const byKey = new Map(phone.schema.map((d) => [d.key, d]))
@@ -82,6 +117,7 @@ function mapPhone(phone: Phone): Mapping {
         default: { duration: Number(duration.default), bounce: Number(bounce.default) },
         group,
         section,
+        ...card(section),
       })
       continue
     }
@@ -97,6 +133,7 @@ function mapPhone(phone: Phone): Mapping {
       choices: d.choices,
       group,
       section,
+      ...card(section),
     })
   }
   const fromPhone = (values: Record<string, Value>) => {
@@ -172,6 +209,21 @@ function mount(phone: Phone) {
     title: "iPhone Tune",
     theme: (params.get("theme") as "dark" | "light" | null) ?? "auto",
     sections: ["Connection", "Playground", "Session List", "Transcript", "Composer"],
+    // The phone's sections start folded to their headings, each saying what changed in it; a
+    // strip of chips in the header jumps between them.
+    ...(classic
+      ? {}
+      : {
+          sectionFolded: { "Session List": true, Transcript: true, Composer: true },
+          // What you fold and open stays that way, across reloads and tabs.
+          foldStorage: localStorage,
+          nav: true,
+          groupDescriptions: CARD_TEXT,
+          sectionDescriptions: {
+            Connection: SECTION_TEXT.Connection!,
+            Playground: SECTION_TEXT.Playground!,
+          },
+        }),
     copy: () => remote!.swift() || "// Nothing changed",
     // The phone's own baseline, shown as such (its id stays "default").
     defaultLabel: "Native",
@@ -194,7 +246,8 @@ function highlight(phone: Phone) {
   shownContext = key
   const sections = [...new Set(phone.context.groups.map((g) => SECTIONS[g] ?? title(g)))]
   // The first one is where the page opens; later screens glide into view if they're off it.
-  page.highlight({ sections }, { reveal: !first })
+  // What's on screen opens, and folds again once the phone moves on (unless it was worked in).
+  page.highlight({ sections }, { reveal: !first, expand: !classic })
 }
 
 /** A stand-in pairing code: a QR-like grid, the same every time. */

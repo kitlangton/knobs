@@ -17,6 +17,12 @@ async function fixture(
     height?: number
     extra?: boolean
     foldable?: boolean
+    /** Keep folds in localStorage (so they outlive a reload); `keep` doesn't clear it first. */
+    local?: boolean
+    keep?: boolean
+    /** More (serializable) options for the store and the mount. */
+    store?: Record<string, unknown>
+    mount?: Record<string, unknown>
   } = {},
 ) {
   await page.setViewportSize({ width: options.width ?? 1440, height: options.height ?? 900 })
@@ -25,6 +31,7 @@ async function fixture(
   await page.evaluate((o) => {
     const { knobs: k, mountPage } = (window as any).__knobs
     ;(window as any).__tune.page.dispose()
+    if (o.local && !o.keep) localStorage.clear()
     const w = window as any
     w.__resets = []
     w.__presets = []
@@ -46,7 +53,8 @@ async function fixture(
           for (const f of ["a", "b", "c", "d"])
             schema[`${s}${g}${f}`] = n(10, `${s} ${g}`, s, { label: `${s} ${g} ${f}` })
     const controls = k.defineControls("page-fixture", schema, {
-      storage: k.memoryStorage(),
+      storage: o.local ? localStorage : k.memoryStorage(),
+      ...o.store,
       groupLabels: { "composer.spacing": "Spacing" },
       sectionLabels: { composer: "Composer" },
       defaultLabel: "Native",
@@ -74,6 +82,7 @@ async function fixture(
       theme: "dark",
       ...(o.columnWidth ? { columnWidth: o.columnWidth } : {}),
       sections: ["Transcript", "drawer", "composer", "Alpha", "Beta", "Gamma", "Delta"],
+      ...o.mount,
     })
     const card = p.card({
       title: "Pairing",

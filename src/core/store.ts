@@ -1,7 +1,7 @@
 import { formatCode, type CodeFormat } from "./code.js"
 import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
-import { RESHAPE, type Reshape } from "./internal.js"
+import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
 import type { TokenPreset } from "./theme.js"
 import {
   equal,
@@ -70,7 +70,16 @@ export interface LabelOptions {
   readonly defaultLabel?: string
   /** How a page card shows its group presets (see `GroupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
+  /** By group id: one muted line under its card's title on a page, over fields' `groupDescription`. */
+  readonly groupDescriptions?: Readonly<Record<string, string>>
+  /** By section id: one muted line under its heading on a page, over fields' `sectionDescription`. */
+  readonly sectionDescriptions?: Readonly<Record<string, string>>
 }
+/**
+ * How a page's sections start: `true` folds every section to its heading, or by section id. A
+ * section neither names keeps its fields' `sectionFolded`, else starts open.
+ */
+export type SectionFolded = boolean | Readonly<Record<string, boolean>>
 /** Panel commands with a key binding; see `MountPanelOptions.keys`. */
 export type PanelCommand =
   | "random"
@@ -300,6 +309,10 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   keys?: PanelKeys
   /** `false`: its panels show no modified marks or resets (see `MountPanelOptions.marks`). */
   marks?: boolean
+  /** How its groups start, folded or open, under the mount's `groupFolded` (see there). */
+  groupFolded?: Readonly<Record<string, boolean>>
+  /** How a page's sections start, under the mount's `sectionFolded` (see `SectionFolded`). */
+  sectionFolded?: SectionFolded
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   onReset?: (target: { key?: keyof S & string; group?: string }) => void
   /** An action row was pressed (after its own `run`), or a toolbar button (with its item's id). */
@@ -329,6 +342,14 @@ export interface Controls<S extends Schema = Schema> {
   groupLabel(group: string): string | undefined
   /** A section's display label (`sectionLabels`, else its fields' `sectionLabel`), if it has one. */
   sectionLabel(section: string): string | undefined
+  /** A group's description (`groupDescriptions`, else its fields' `groupDescription`), if any. */
+  groupDescription(group: string): string | undefined
+  /** A section's description (`sectionDescriptions`, else its fields' `sectionDescription`), if any. */
+  sectionDescription(section: string): string | undefined
+  /** How groups start (`groupFolded`), as given; panels read it under their own `groupFolded`. */
+  readonly groupFolded: Readonly<Record<string, boolean>> | undefined
+  /** How a page's sections start (`sectionFolded`), as given. */
+  readonly sectionFolded: SectionFolded | undefined
   /** A preset's display label (`presetLabels`, `defaultLabel`), else its id. */
   presetLabel(id: string): string
   readonly error: string | null
@@ -544,19 +565,32 @@ export function defineControls<const S extends Schema>(
       ),
     ) as Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   let groupPresets = buildGroupPresets()
-  /** Labels the fields give their groups and sections (the first one wins), per schema. */
-  let labelsOf: { schema: S; group: Map<string, string>; section: Map<string, string> } | undefined
+  /** Labels and descriptions the fields give their groups and sections (the first one wins). */
+  let labelsOf:
+    | {
+        schema: S
+        group: Map<string, string>
+        section: Map<string, string>
+        groupText: Map<string, string>
+        sectionText: Map<string, string>
+      }
+    | undefined
   const fieldLabels = () => {
     if (labelsOf?.schema === schema) return labelsOf
     const group = new Map<string, string>()
     const section = new Map<string, string>()
-    for (const f of Object.values(schema) as Field[]) {
-      if (f.group !== undefined && f.groupLabel !== undefined && !group.has(f.group))
-        group.set(f.group, f.groupLabel)
-      if (f.section !== undefined && f.sectionLabel !== undefined && !section.has(f.section))
-        section.set(f.section, f.sectionLabel)
+    const groupText = new Map<string, string>()
+    const sectionText = new Map<string, string>()
+    const first = (map: Map<string, string>, id: string | undefined, text: string | undefined) => {
+      if (id !== undefined && text !== undefined && !map.has(id)) map.set(id, text)
     }
-    labelsOf = { schema, group, section }
+    for (const f of Object.values(schema) as Field[]) {
+      first(group, f.group, f.groupLabel)
+      first(section, f.section, f.sectionLabel)
+      first(groupText, f.group, f.groupDescription)
+      first(sectionText, f.section, f.sectionDescription)
+    }
+    labelsOf = { schema, group, section, groupText, sectionText }
     return labelsOf
   }
   /** The committed values, read from storage on first use. */
@@ -904,6 +938,12 @@ export function defineControls<const S extends Schema>(
     groupLabel: (group) => options.groupLabels?.[group] ?? fieldLabels().group.get(group),
     sectionLabel: (section) =>
       options.sectionLabels?.[section] ?? fieldLabels().section.get(section),
+    groupDescription: (group) =>
+      options.groupDescriptions?.[group] ?? fieldLabels().groupText.get(group),
+    sectionDescription: (section) =>
+      options.sectionDescriptions?.[section] ?? fieldLabels().sectionText.get(section),
+    groupFolded: options.groupFolded,
+    sectionFolded: options.sectionFolded,
     presetLabel: (presetId) =>
       options.presetLabels?.[presetId] ??
       (presetId === "default" ? options.defaultLabel : undefined) ??
@@ -1009,7 +1049,9 @@ export function defineControls<const S extends Schema>(
       const patch: Record<string, unknown> = {}
       for (const k of keys ?? fieldKeys()) if (valueField(k) && !blocked(k)) patch[k] = locked[k]
       set(patch as Partial<Values<S>>, { source: "reset" })
-      for (const key of Object.keys(patch)) options.onReset?.({ key })
+      const resetKeys = (options as { [RESET_KEYS]?: ResetKeys })[RESET_KEYS]
+      if (resetKeys) resetKeys(Object.keys(patch))
+      else for (const key of Object.keys(patch)) options.onReset?.({ key })
     },
     resetKey(key) {
       if (!enabled()) return

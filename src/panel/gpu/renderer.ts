@@ -313,6 +313,12 @@ export interface GpuGroupBinding {
   readonly fold?: SVGElement
   /** On a page: a preset's name, shown in place of the title while its chip is hovered. */
   readonly peek?: HTMLElement
+  /** On a page: the header's controls (presets, reset, die), hidden while the card is folded. */
+  readonly controls?: HTMLElement
+  /** On a page: what a folded card's header says in place of its controls. */
+  readonly summary?: HTMLElement
+  /** On a page: the muted line under the card's title. */
+  readonly desc?: HTMLElement
   /** On a page: the group's presets, as named or numbered segments, or a compact menu. */
   readonly presets?: {
     readonly seg: HTMLElement
@@ -357,7 +363,14 @@ export interface GpuPanelBinding {
     readonly sections: () => readonly {
       readonly element: HTMLElement
       readonly head: HTMLElement | null
+      /** Its name, the summary a folded one shows, its description and its caret (one that folds). */
+      readonly name?: HTMLElement
+      readonly summary?: HTMLElement
+      readonly desc?: HTMLElement
+      readonly caret?: SVGElement
     }[]
+    /** The jump strip in the header (`nav`), drawn like the tab strip without its hairline. */
+    readonly nav?: TabStrip
     /** Changes whenever cards move, so cached rects are dropped. */
     readonly layoutKey: () => number
     /** While cards glide or ease their heights: rects are read fresh and the loop stays awake. */
@@ -1641,6 +1654,88 @@ class GpuOverlayManager {
         this.rectOf(caret),
         withAlpha(this.hot(b, on, t.dim, t.label), alpha),
       )
+  }
+
+  /**
+   * A tab strip (a panel's tabs or a page's jump strip): text, a count after it in the modified
+   * colour, and the chosen tab's underline on the lead and trail springs. Returns whether the
+   * underline is still moving.
+   */
+  private drawTabStrip(
+    tabs: TabStrip,
+    hinting: boolean,
+    reducedMotion: boolean,
+    dt: number,
+    opts: { readonly hairline: boolean; readonly dim: number },
+  ) {
+    const tokens = this.curTokens
+    let moving = false
+    const tr = this.rectOf(tabs.element)
+    const clip = opts.hairline
+      ? this.curClip
+      : intersectClip(this.curClip, [tr.left, tr.top, tr.right, tr.bottom])
+    const alpha0 = this.curAlpha
+    this.curAlpha *= this.ease(tabs.element, "dim", opts.dim, 26)
+    this.curSubHovered = this.curPanelHovered && tabs.element.matches(":hover")
+    if (opts.hairline)
+      this.pushPrim({
+        x: tr.left,
+        y: tr.bottom - 0.5,
+        w: tr.width,
+        h: 0.5,
+        color: tokens.line,
+        kind: 1,
+      })
+    const chosen = tabs.buttons.find((b) => b.getAttribute("aria-selected") === "true")
+    if (chosen) {
+      const br = this.rectOf(chosen)
+      const left = br.left - tr.left
+      const right = left + br.width
+      const e = tabs.edges
+      this.carry(e, chosen, left, right)
+      if (reducedMotion || e.end.x - e.start.x <= 1) e.snap(left, right)
+      else {
+        e.to(left, right, 0, trailScale(tokens.blurStrength)).step(dt)
+        if (!e.resting) moving = true
+      }
+      this.pushPrim({
+        x: tr.left + e.start.x,
+        y: tr.bottom - 1.5,
+        w: Math.max(2, e.end.x - e.start.x),
+        h: 1.5,
+        clip,
+        color: tokens.accent,
+        radius: 1,
+        kind: 1,
+      })
+    }
+    for (const b of tabs.buttons) {
+      const br = this.rectOf(b)
+      if (br.right < clip[0] || br.left > clip[2]) continue
+      const on =
+        b.getAttribute("aria-selected") === "true" || this.isHovered(b) || this.isFocused(b)
+      const alpha = this.missed(b, hinting)
+      const label = b.firstChild?.nodeType === 3 ? (b.firstChild.textContent ?? "") : ""
+      const count = b.querySelector<HTMLElement>(":scope > .knobs-tab-count")
+      const cy = br.top + br.height * 0.5
+      this.drawText(
+        label || (count ? "" : (b.textContent ?? "")),
+        br.left,
+        cy,
+        withAlpha(this.hot(b, on), alpha),
+        { px: tokens.textControl, weight: tokens.labelWeight, clip },
+      )
+      if (count) {
+        const cr = this.rectOf(count)
+        this.drawText(count.textContent ?? "", cr.left, cy, withAlpha(tokens.modified, alpha), {
+          px: tokens.textMeta,
+          weight: 500,
+          clip,
+        })
+      }
+    }
+    this.curAlpha = alpha0
+    return moving
   }
 
   /** A highlight's dot by a title, where (and as large) as the DOM's `.knobs-mark` is. */
@@ -2977,60 +3072,18 @@ class GpuOverlayManager {
       // 3b. Tabs: text over a hairline, the chosen one's underline on the lead and trail springs
       // (as .knobs-tabs-bar's left and right transitions). They step back while a search is on.
       const tabs = panel.tabs
-      if (tabs && !tabs.element.hidden) {
-        const tr = this.rectOf(tabs.element)
-        const alpha0 = this.curAlpha
-        this.curAlpha *= this.ease(
-          tabs.element,
-          "dim",
-          panel.root.hasAttribute("data-searching") ? 0.4 : 1,
-          26,
-        )
-        this.curSubHovered = this.curPanelHovered && tabs.element.matches(":hover")
-        this.pushPrim({
-          x: tr.left,
-          y: tr.bottom - 0.5,
-          w: tr.width,
-          h: 0.5,
-          color: tokens.line,
-          kind: 1,
-        })
-        const chosen = tabs.buttons.find((b) => b.getAttribute("aria-selected") === "true")
-        if (chosen) {
-          const br = this.rectOf(chosen)
-          const left = br.left - tr.left
-          const right = left + br.width
-          const e = tabs.edges
-          this.carry(e, chosen, left, right)
-          if (reducedMotion || e.end.x - e.start.x <= 1) e.snap(left, right)
-          else {
-            e.to(left, right, 0, trailScale(tokens.blurStrength)).step(dt)
-            if (!e.resting) anyMoving = true
-          }
-          this.pushPrim({
-            x: tr.left + e.start.x,
-            y: tr.bottom - 1.5,
-            w: Math.max(2, e.end.x - e.start.x),
-            h: 1.5,
-            color: tokens.accent,
-            radius: 1,
-            kind: 1,
-          })
-        }
-        for (const b of tabs.buttons) {
-          const br = this.rectOf(b)
-          const on =
-            b.getAttribute("aria-selected") === "true" || this.isHovered(b) || this.isFocused(b)
-          this.drawText(
-            b.textContent ?? "",
-            br.left,
-            br.top + br.height * 0.5,
-            withAlpha(this.hot(b, on), this.missed(b, hinting)),
-            { px: tokens.textControl, weight: tokens.labelWeight },
-          )
-        }
-        this.curAlpha = alpha0
-      }
+      if (tabs && !tabs.element.hidden)
+        anyMoving =
+          this.drawTabStrip(tabs, hinting, reducedMotion, dt, {
+            hairline: true,
+            dim: panel.root.hasAttribute("data-searching") ? 0.4 : 1,
+          }) || anyMoving
+      // 3c. A page's jump strip: the same, clipped to itself, without the hairline.
+      const nav = pageB?.nav
+      if (nav && !nav.element.hidden && nav.buttons.length)
+        anyMoving =
+          this.drawTabStrip(nav, hinting, reducedMotion, dt, { hairline: false, dim: 1 }) ||
+          anyMoving
 
       const tileClips = new Map<HTMLElement, Clip>()
       const clipToTile = (node: HTMLElement, clip: Clip) => {
@@ -3038,6 +3091,13 @@ class GpuOverlayManager {
         const tile = node.closest<HTMLElement>(".knobs-tile")
         const tc = tile && tileClips.get(tile)
         return tc ? intersectClip(clip, tc) : clip
+      }
+      // A card folding away fades over its last moments, with all it draws (the DOM's opacity).
+      const tileFades = new Map<HTMLElement, number>()
+      const fadeOf = (node: HTMLElement) => {
+        if (!tileFades.size) return 1
+        const tile = node.closest<HTMLElement>(".knobs-tile")
+        return (tile && tileFades.get(tile)) ?? 1
       }
       if (pageB) {
         // A page's own actions sit in its header, quiet until hovered.
@@ -3069,15 +3129,80 @@ class GpuOverlayManager {
           // A label fading in (its section just appeared) carries the DOM's opacity; one dimmed
           // by a highlight fades its text toward the page, as the DOM does.
           const lit = pageB.emphasis?.(head)
-          const shown =
-            (head.style.opacity ? Number(head.style.opacity) : 1) * (1 - (lit?.dim ?? 0))
+          const arriving = head.style.opacity ? Number(head.style.opacity) : 1
+          const shown = arriving * (1 - (lit?.dim ?? 0))
+          const caret = section.caret
+          if (caret) {
+            // A heading that folds is a stop: its focus wash, a little taller than the heading.
+            const focus = this.ease(
+              head,
+              "focus",
+              this.isFocused(head) ? 1 : 0,
+              this.hoverOmega(true),
+            )
+            if (focus > 0.005)
+              this.pushPrim({
+                x: sr.left,
+                y: sr.top - 4,
+                w: sr.width,
+                h: sr.height + 8,
+                color: withAlpha(tokens.surface, focus * arriving),
+                radius: tokens.radiusMd,
+                kind: 1,
+              })
+          }
+          const nameEl = section.name
+          const nr = nameEl ? this.rectOf(nameEl) : sr
           this.drawText(
-            this.fit(head.textContent ?? "", sr.width - indent * 2, px, tokens.titleWeight),
-            sr.left + indent,
-            sr.top + sr.height * 0.5,
+            this.fit(
+              (nameEl ?? head).textContent ?? "",
+              nameEl ? nr.width + 1 : sr.width - indent * 2,
+              px,
+              tokens.titleWeight,
+              tokens.fontFamily,
+              -0.015,
+            ),
+            nameEl ? nr.left : sr.left + indent,
+            nr.top + nr.height * 0.5,
             withAlpha(tokens.text, shown),
             { px, weight: tokens.titleWeight, track: -0.015 },
           )
+          const summary = section.summary
+          if (summary && head.hasAttribute("data-folded") && summary.getClientRects().length) {
+            const r = this.rectOf(summary)
+            const a = Number(getComputedStyle(summary).opacity) || 0
+            this.drawText(
+              this.fit(summary.textContent ?? "", r.width + 0.5, tokens.textControl, 500),
+              r.left,
+              r.top + r.height * 0.5,
+              withAlpha(tokens.dim, a * shown),
+              { px: tokens.textControl, weight: 500 },
+            )
+          }
+          const desc = section.desc
+          if (desc) {
+            const r = this.rectOf(desc)
+            this.drawText(
+              this.fit(desc.textContent ?? "", r.width + 0.5, tokens.textMeta, tokens.labelWeight),
+              r.left,
+              r.top + r.height * 0.5,
+              withAlpha(tokens.dim, shown),
+              { px: tokens.textMeta, weight: tokens.labelWeight },
+            )
+          }
+          if (caret) {
+            const hover = this.curSubHovered && head.matches(":hover")
+            const folded = head.hasAttribute("data-folded")
+            const a = this.ease(caret, "show", hover || this.isFocused(head) || folded ? 1 : 0, 30)
+            if (a > 0.005) {
+              const c = this.hot(caret, hover, tokens.dim, tokens.label)
+              this.drawCaret(
+                caret,
+                head.getAttribute("aria-expanded") === "true",
+                withAlpha(c, a * arriving),
+              )
+            }
+          }
           if (lit?.dot) this.drawMark(lit.dot, lit.mark)
         }
         for (const tile of pageB.tiles) {
@@ -3085,20 +3210,25 @@ class GpuOverlayManager {
           // A card easing its height clips what's inside it, as the DOM's overflow does.
           if (tile.style.height && tr.width > 0)
             tileClips.set(tile, intersectClip(bodyClip, [tr.left, tr.top, tr.right, tr.bottom]))
+          const fade =
+            tile.dataset.leaving !== undefined && tile.style.opacity
+              ? Number(tile.style.opacity)
+              : 1
+          if (fade < 1) tileFades.set(tile, fade)
           if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
           this.pushPrim({
             x: tr.left,
             y: tr.top,
             w: tr.width,
             h: tr.height,
-            color: tokens.bg,
-            color2: tokens.line,
+            color: withAlpha(tokens.bg, fade),
+            color2: withAlpha(tokens.line, fade),
             radius: tokens.panelRadius,
             strokeWidth: 1,
             glowOrBlur: 0,
             kind: 0,
             p0: 0,
-            aux2: tokens.rim,
+            aux2: withAlpha(tokens.rim, fade),
           })
         }
       }
@@ -3109,7 +3239,7 @@ class GpuOverlayManager {
       this.curSubHovered = bodyHovered
       const panelAlpha = this.curAlpha
       for (const g of panel.groups) {
-        this.curAlpha = panelAlpha * this.presence(g.element)
+        this.curAlpha = panelAlpha * this.presence(g.element) * fadeOf(g.element)
         const gr = this.rectOf(g.element)
         if (gr.width <= 0 || gr.bottom < bodyClip[1] || gr.top > bodyClip[3]) continue
         this.curClip = clipToTile(g.element, bodyClip)
@@ -3174,7 +3304,43 @@ class GpuOverlayManager {
             color: tokens.groupDivider,
             kind: 1,
           })
-        if (g.presets?.menu && g.presets.menuValue && g.presets.isMenu?.())
+        // A page card's description, under its title.
+        if (g.desc && !g.desc.hidden) {
+          const r = this.rectOf(g.desc)
+          const cs = getComputedStyle(g.desc)
+          const left = r.left + (parseFloat(cs.paddingLeft) || 0)
+          const w = r.width - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
+          this.drawText(
+            this.fit(g.desc.textContent ?? "", w + 0.5, tokens.textMeta, tokens.labelWeight),
+            left,
+            r.top + r.height * 0.5,
+            tokens.dim,
+            { px: tokens.textMeta, weight: tokens.labelWeight },
+          )
+        }
+        // Folded, a page card's header shows its summary in place of its controls; each fades in
+        // as it arrives (the DOM's animation, read back).
+        const fadeIn = (node: HTMLElement) =>
+          node.parentElement?.closest("[data-fold-motion]")
+            ? Number(getComputedStyle(node).opacity) || 0
+            : 1
+        if (g.summary && g.summary.getClientRects().length) {
+          const r = this.rectOf(g.summary)
+          const a = fadeIn(g.summary)
+          this.drawText(
+            this.fit(g.summary.textContent ?? "", r.width + 0.5, tokens.textControl, 500),
+            r.left,
+            r.top + r.height * 0.5,
+            withAlpha(tokens.dim, a),
+            { px: tokens.textControl, weight: 500 },
+          )
+        }
+        const ctlShown = !g.controls || g.controls.getClientRects().length > 0
+        const headAlpha = this.curAlpha
+        if (g.controls && ctlShown) this.curAlpha *= fadeIn(g.controls)
+        if (!ctlShown) {
+          // Nothing to draw: the controls wait while the card is folded.
+        } else if (g.presets?.menu && g.presets.menuValue && g.presets.isMenu?.())
           this.drawHeadMenu(g.presets.menu, g.presets.menuValue, hinting)
         else if (g.presets)
           anyMoving =
@@ -3186,7 +3352,7 @@ class GpuOverlayManager {
               minPill: 8,
               reducedMotion,
             }) || anyMoving
-        for (const gb of g.buttons) {
+        for (const gb of ctlShown ? g.buttons : []) {
           this.drawButton(
             gb,
             activeEl,
@@ -3200,7 +3366,7 @@ class GpuOverlayManager {
         const reset = g.reset
         const resetShown = this.ease(reset, "shown", reset.dataset.shown === "true" ? 1 : 0, 28)
         const alpha = resetShown * this.missed(reset, hinting)
-        if (alpha > 0.005) {
+        if (alpha > 0.005 && ctlShown) {
           const br = this.rectOf(reset)
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
@@ -3215,7 +3381,7 @@ class GpuOverlayManager {
           )
         }
         // The group's die: quiet (dim) until hovered or focused.
-        if (g.die && !g.die.button.hidden) {
+        if (g.die && !g.die.button.hidden && ctlShown) {
           const { button, die } = g.die
           const dr = this.rectOf(button)
           const on = !button.disabled && (this.isHovered(button) || this.isFocused(button))
@@ -3225,6 +3391,7 @@ class GpuOverlayManager {
           this.drawRoundWash(dr, dimmed, this.wash(button, on))
           this.drawDie(die, dr, withAlpha(this.hot(button, on, tokens.dim), dimmed))
         }
+        this.curAlpha = headAlpha
         if (g.fold) {
           const hover = this.curSubHovered && g.element.matches(":hover")
           const open = g.element.getAttribute("aria-expanded") === "true"
@@ -3241,7 +3408,7 @@ class GpuOverlayManager {
         cardRects.set(card, cr)
         if (cr.width <= 0 || cr.bottom < bodyClip[1] || cr.top > bodyClip[3]) continue
         this.curClip = clipToTile(card, bodyClip)
-        this.curAlpha = panelAlpha * this.presence(card)
+        this.curAlpha = panelAlpha * this.presence(card) * fadeOf(card)
         // The flat frame draws no card surfaces: rows sit on the panel (or the host) directly.
         const bars = tokens.flat
           ? []
@@ -3281,9 +3448,10 @@ class GpuOverlayManager {
         if (rRect.width <= 0 || rRect.bottom < bodyClip[1] || rRect.top > bodyClip[3]) continue
         // A row folding open or shut (the page's filter) fades with its DOM reveal.
         const folding = revealing && isRevealing(row.row)
-        this.curAlpha = folding
-          ? rowsAlpha * (Number(getComputedStyle(row.row).opacity) || 0)
-          : rowsAlpha
+        const rowFade = fadeOf(row.row)
+        this.curAlpha =
+          (folding ? rowsAlpha * (Number(getComputedStyle(row.row).opacity) || 0) : rowsAlpha) *
+          rowFade
         const rowAlpha = this.missed(row.row, hinting)
         const rowCenterY = rRect.top + rRect.height * 0.5
         // Disabled and read-only rows take no edits, so nothing in them answers the pointer.
@@ -3319,7 +3487,7 @@ class GpuOverlayManager {
         if (item) {
           const shown = this.presence(item) * this.presence(item.parentElement!)
           if (shown < 1) {
-            this.curAlpha = panelAlpha * shown
+            this.curAlpha = panelAlpha * shown * rowFade
             const ir = item === row.row ? rRect : this.rectOf(item)
             cardClip = intersectClip(cardClip, [ir.left, ir.top, ir.right, ir.bottom])
           }
@@ -3529,7 +3697,7 @@ class GpuOverlayManager {
               // Same reel as the DOM readout: faces 2.1em apart, seen through a 2.1em window
               // whose top and bottom 0.5em feather out (.knobs-digits line-height / --rn-edge-fade).
               const faceH = valPx * 2.1
-              const slotClip = intersectClip(bodyClip, [
+              const slotClip = intersectClip(cardClip, [
                 rRect.left,
                 rowCenterY - faceH / 2,
                 rRect.right,
@@ -3793,6 +3961,7 @@ class GpuOverlayManager {
           if (!lit) continue
           const tr = this.rectOf(tile)
           if (tr.width <= 0 || tr.bottom < bodyClip[1] || tr.top > bodyClip[3]) continue
+          this.curAlpha = panelAlpha * fadeOf(tile)
           if (lit.dim > 0.0005)
             this.pushPrim({
               x: tr.left,
@@ -3806,6 +3975,7 @@ class GpuOverlayManager {
             })
           if (lit.dot) this.drawMark(lit.dot, lit.mark, clipToTile(tile, bodyClip))
         }
+      this.curAlpha = panelAlpha
 
       // 6. Action buttons
       this.curSubHovered = this.curPanelHovered

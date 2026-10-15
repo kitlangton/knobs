@@ -14,6 +14,12 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 // editor morphs, like the GPU's morph spring).
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
+/**
+ * What DELAY times: a row's turn in a preset's cascade is set on these (see `showValues` in
+ * panel.ts) rather than on the row, where the custom property would restyle all of the row.
+ */
+export const DELAYED =
+  ".knobs-fill,.knobs-handle,.knobs-seg-pill,.knobs-toggle,.knobs-toggle i,.knobs-arm,.knobs-curve,.knobs-swatch,.knobs-strip-thumb,.knobs-pad>i,.knobs-ease-handle,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand"
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
 // public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
@@ -511,7 +517,7 @@ const css = `
 .knobs-panel .knobs-insp{gap:8px}
 .knobs-panel .knobs-insp[data-kind="vec"]>span:first-child{flex-shrink:0;max-width:34%}
 .knobs-cells{flex:0 1 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--k-tray-pad);width:calc(var(--k-row) * 5);max-width:64%}
-.knobs-cells:has(>:nth-child(3)){width:calc(var(--k-row) * 7.5);max-width:72%}
+.knobs-cells[data-wide]{width:calc(var(--k-row) * 7.5);max-width:72%}
 .knobs-cell{position:relative;display:flex;align-items:center;justify-content:space-between;gap:3px;min-width:0;height:var(--kc-control-h);padding:0 5px;border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:ew-resize;user-select:none;touch-action:none;outline:none;transition:background var(--k-hover-t)}
 .knobs-cell:hover,.knobs-cell:focus-visible{background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
 .knobs-active .knobs-cell:focus{background:var(--k-surface-hi)}
@@ -648,7 +654,7 @@ const css = `
 .knobs-menu-item>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .knobs-menu-item[hidden]{display:none}
 /* The match shows by colour, not weight, so a filtered label keeps the width the menu measured. */
-.knobs-menu-item>span:has(>mark){color:var(--k-label)}
+.knobs-menu-item>span[data-marked]{color:var(--k-label)}
 .knobs-menu-item mark{background:none;color:var(--k-text)}
 .knobs-menu .knobs-menu-search{display:block;width:100%;height:var(--kc-control-h);min-height:22px;margin:0 0 var(--k-unit);padding:0 8px;border:0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);color:var(--k-text);font:inherit;outline:none;-webkit-appearance:none;appearance:none}
 .knobs-menu .knobs-menu-search::placeholder{color:var(--k-dim)}
@@ -673,13 +679,15 @@ const css = `
 .knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,
   .knobs-tabs,.knobs-tab,.knobs-subhead,.knobs-subhead-label,.knobs-match,.knobs-cell,.knobs-cell-axis,.knobs-cell-read,.knobs-link,.knobs-range-read,.knobs-angle,.knobs-angle-read,.knobs-dial,
-  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key):not(.knobs-live,.knobs-live *){
+  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,
+  .knobs-section-name,.knobs-section-summary,.knobs-section-desc,.knobs-group-desc,.knobs-group-summary,.knobs-tab-count):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
 .knobs-panel[data-gpu-active="true"] :where(.knobs-seg-pill,.knobs-presets-pill,.knobs-fill,.knobs-notch,.knobs-handle,.knobs-marks i,.knobs-toggle,.knobs-toggle i,.knobs-hint,.knobs-icon,
   .knobs-swatch,.knobs-caret,.knobs-strip-track,.knobs-pad>i,.knobs-ease>svg,.knobs-ease-handle,.knobs-ease-mini,.knobs-spring-curve>*,
   .knobs-tabs-bar,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand):not(.knobs-live *,.knobs-search *),
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tabs,.knobs-dial)::after,
+.knobs-panel[data-gpu-active="true"] .knobs-section-head::before,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::before,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-sub,.knobs-x-head,.knobs-x-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-card:not(.knobs-live *)>::before,
@@ -718,6 +726,14 @@ const css = `
   .knobs-panel.knobs-page>header .knobs-presets{grid-area:2/1/3/3;max-width:none}
   .knobs-page>header .knobs-preset-chip{flex:1 0 var(--k-preset-min,58px)}
 }
+/* The jump strip (nav: true): a chip per section along the header's foot, the one in view
+   underlined; it scrolls sideways when the chips don't fit. */
+.knobs-page>header>.knobs-nav{grid-column:1/-1;margin:0 calc(var(--k-page-pad) * -1) calc(var(--k-unit) * -2.5);padding:0 calc(var(--k-page-pad) + var(--k-pad) + var(--k-inset) + 1px);gap:calc(var(--k-unit) * 5);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain}
+.knobs-page>header>.knobs-nav::-webkit-scrollbar{display:none}
+.knobs-page>header>.knobs-nav::after{display:none}
+.knobs-panel.knobs-page>header>.knobs-nav .knobs-tab{display:inline-flex;align-items:center;width:auto;height:calc(var(--k-row) + var(--k-unit));padding:0;border-radius:0;font-size:var(--k-text-control);line-height:1.25;color:var(--k-label);background:transparent}
+.knobs-panel.knobs-page>header>.knobs-nav .knobs-tab:is(:hover,:focus-visible,[aria-selected="true"]){color:var(--k-text);background:transparent}
+.knobs-tab-count{margin-left:5px;font-size:var(--k-text-meta);font-weight:500;font-variant-numeric:tabular-nums;color:var(--k-modified)}
 .knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions{display:flex;gap:var(--k-tray-pad);margin:0 calc(var(--k-unit) * 2) 0 0}
 .knobs-panel.knobs-page .knobs-page-tools .knobs-custom-actions button{height:var(--k-icon-btn);min-height:0;padding:0 8px;background:transparent;border-radius:var(--k-round)}
 .knobs-panel .knobs-filter{width:0;height:var(--kc-control-h);padding:0;margin:0;opacity:0;pointer-events:none;background:var(--k-seg-bg);border-radius:var(--k-radius-md);font-size:var(--k-text-control);color:var(--k-text);-webkit-appearance:none;appearance:none;
@@ -732,8 +748,30 @@ const css = `
 .knobs-sections{padding:0 var(--k-page-pad);overflow-x:clip;overflow-anchor:none}
 .knobs-columns{display:grid;grid-template-columns:repeat(var(--k-cols,1),minmax(0,1fr));gap:var(--k-page-gap);align-items:start;padding-top:calc(var(--k-unit) * 3)}
 .knobs-column{display:flex;flex-direction:column;gap:var(--k-page-gap);min-width:0}
-.knobs-section-head{margin:0 0 calc(var(--k-page-gap) * -.25);padding:0 calc(var(--k-pad) + var(--k-inset) + 1px);font:var(--k-title-weight) calc(var(--k-font-size) + 3px)/1.25 var(--k-font);letter-spacing:-.015em;color:var(--k-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.knobs-column>:not([hidden])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
+.knobs-section-head{margin:0 0 calc(var(--k-page-gap) * -.25);padding:0 calc(var(--k-pad) + var(--k-inset) + 1px);font:var(--k-title-weight) calc(var(--k-font-size) + 3px)/1.25 var(--k-font);letter-spacing:-.015em;color:var(--k-text);white-space:nowrap;
+  display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr) auto;align-items:center;column-gap:8px;isolation:isolate}
+.knobs-column>:not([hidden],[data-away])~.knobs-section-head{margin-top:calc(var(--k-page-gap) * .75)}
+.knobs-section-name{grid-area:1/1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A section that folds: its heading toggles it, its caret showing while it's hovered, focused or
+   folded. Folded, the heading says what's in it and its cards wait out of the flow. */
+.knobs-tile[data-away]{display:none}
+.knobs-section-head[data-foldable]{cursor:pointer;user-select:none}
+.knobs-section-head[data-folded]{margin-bottom:0}
+.knobs-section-head[data-foldable]::before{content:"";position:absolute;z-index:-1;inset:-4px 0;border-radius:var(--k-radius-md);background:var(--k-surface);opacity:0;transition:opacity var(--k-hover-t)}
+.knobs-section-head[data-foldable]:focus-visible{outline:none}
+.knobs-section-head[data-foldable]:focus-visible::before{opacity:1}
+.knobs-section-head>.knobs-caret{grid-area:1/3;margin:0 calc((var(--k-icon-sm) - 20px) / 2 + 5px) 0 0;opacity:0;transition:transform ${LEAD_T},opacity .15s,color .15s}
+.knobs-section-head:is(:hover,:focus-visible,[data-folded])>.knobs-caret{opacity:1}
+.knobs-section-head:hover>.knobs-caret{color:var(--k-label)}
+.knobs-section-head[aria-expanded="true"]>.knobs-caret{transform:rotate(90deg)}
+.knobs-section-summary{display:none;grid-area:1/2;justify-self:end;min-width:0;overflow:hidden;text-overflow:ellipsis;font:500 var(--k-text-control)/1.25 var(--k-font);letter-spacing:0;color:var(--k-dim);font-variant-numeric:tabular-nums}
+.knobs-section-head[data-folded]>.knobs-section-summary{display:block;animation:knobs-fade .2s var(--k-ease) both}
+.knobs-section-desc,.knobs-group-desc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--k-label-weight) var(--k-text-meta)/1.35 var(--k-font);letter-spacing:0;color:var(--k-dim);text-transform:none}
+.knobs-section-desc{grid-area:2/1/3/4;margin-top:1px}
+.knobs-group-desc{padding:0 var(--k-group-inset)}
+.knobs-tile>.knobs-group-desc{margin:calc(2px - var(--k-head-gap)) 0 var(--k-head-gap)}
+.knobs-tile:is([data-foldable],[data-collapsible])>.knobs-group-desc{margin:2px 0 0}
+@keyframes knobs-fade{from{opacity:0}}
 .knobs-tile{position:relative;min-width:0;padding:var(--k-pad);background:var(--k-bg);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:inset 0 1px 0 var(--k-rim)}
 .knobs-tile>.knobs-card{margin:0}
 .knobs-tile[data-foldable]>.knobs-group-head{margin-bottom:0}
@@ -745,6 +783,12 @@ const css = `
 .knobs-tile>.knobs-group-head>.knobs-group-title{flex:1 1 auto}
 .knobs-tile>.knobs-group-head>span:last-child{flex:0 1000 auto;min-width:0}
 .knobs-tile>.knobs-group-head :is(.knobs-group-reset,.knobs-group-die){flex:none}
+/* A folded card's header trades its controls (presets, reset, die) for a summary of the card. */
+.knobs-group-ctl{display:flex;align-items:center;gap:var(--k-tray-pad);min-width:0}
+.knobs-group-summary{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-dim);font-size:var(--k-text-control);font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums}
+.knobs-tile[data-folded]>.knobs-group-head .knobs-group-summary:not(:empty){display:block}
+.knobs-tile[data-folded]>.knobs-group-head .knobs-group-ctl{display:none}
+.knobs-tile[data-fold-motion]>.knobs-group-head :is(.knobs-group-summary,.knobs-group-ctl){animation:knobs-fade .2s var(--k-ease) both}
 /* A highlight (page.highlight): the rest dims under a veil of the page's colour (--k-page-dim at
    full), and what's highlighted on its own gets a dot in the gutter by its title. The veil and
    dot are written each frame on the panel spring (see page.ts). */
@@ -811,12 +855,23 @@ export function injectPreset(doc: Document, preset: TokenPreset) {
 /**
  * Keys move a panel's focus wash; the pointer resting where it last was mustn't keep a hover wash
  * of its own meanwhile. Typing marks the panel `data-keyboard` until the pointer moves again, and
- * no hover state matches inside it.
+ * the elements under the pointer `data-k-quiet`, where no hover state matches. (Only those: a rule
+ * on `[data-keyboard] *` restyled the whole panel on the first key after the pointer.)
  */
 const keyboardQuietsHover = (css: string) =>
-  css.replaceAll(":hover", ":hover:where(:not([data-keyboard] *))")
+  css.replaceAll(":hover", ":hover:where(:not([data-k-quiet]))")
+/** The rules' `:has()` as the attributes has.ts keeps (see there for why). */
+export const withoutHas = (css: string) =>
+  css
+    .replaceAll(
+      ".knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible))",
+      '.knobs-x:is([data-k-head-hover]:where(:not([data-k-quiet])),[data-k-fv="head"])',
+    )
+    .replaceAll(":has(:focus-visible)", "[data-k-fv]")
+    .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
+    .replaceAll(":has(.knobs-active)", "[data-k-active]")
 export function injectStyles(doc: Document) {
-  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(aliased(css))
+  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(withoutHas(aliased(css)))
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content
