@@ -47,8 +47,9 @@ import {
   tooltips,
 } from "knobs/ui"
 import dotsWgsl from "./controls-dots.wgsl?raw"
+import skyWgsl from "./controls-sky.wgsl?raw"
 import { Goo, GooGpu } from "./controls-goo"
-import { gpuView } from "./controls-gpu"
+import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
 import {
   blurFor,
   ColorVal,
@@ -56,6 +57,7 @@ import {
   FEEL,
   type How,
   oklabCss,
+  oklabRgb,
   reduced,
   rgbaOf,
   rolling,
@@ -491,10 +493,6 @@ motionScene(kit)
   })
 }
 
-// ── Ramps ────────────────────────────────────────────────────────────────────────────────────
-
-category("Gradients & curves")
-
 const sky = (stops: [number, string][]) => stops.map(([at, c]) => ({ at, color: c }))
 const SKIES = {
   Clear: sky([
@@ -526,27 +524,31 @@ const SKIES = {
 
 {
   const s = section({
-    id: "gradient",
-    title: "Gradient",
-    code: "gradient()",
-    what: "A colour ramp of draggable stops, blended in OKLab. The bar is the whole day; the hour samples it.",
+    id: "sky",
+    title: "Sky",
+    scene: true,
+    shows: ["gradient()", "knob()", "toggle()"],
+    what: "A colour ramp of draggable stops, blended in OKLab, read as the colour of the sky through a day. The bar under the hills is the whole ramp; the hour samples it, and the sun, clouds and stars follow.",
     stage: true,
     tries: [
-      "Pick a preset chip: the sky sweeps from one to the other, every colour travelling in OKLab",
-      "Throw Hour from 6 to 20: the sun rides its arc and the sky warms, then dims",
-      "Open it, click the strip to add a stop, pull a pin off to remove it",
+      "Throw Hour from 5 to 21: the sun rises over the hills, crosses, and sets in a warm glow; stars come out",
+      "Pick a preset chip: the whole day sweeps to the new ramp, every colour travelling in OKLab",
+      "Turn Clouds up at sunset: they light from the sun's side",
+      "Open the ramp, click the strip to add a stop, pull a pin off to remove it",
     ],
   })
-  const { store, on } = define("gradient", "Gradient", {
+  const { store, on } = define("sky", "Sky", {
     sky: gradient(SKIES.Clear, { label: "Sky by hour", presets: SKIES }),
-    hour: knob(18.5, { min: 0, max: 24, step: 0.25, unit: "h", label: "Hour" }),
+    hour: knob(18.25, { min: 0, max: 24, step: 0.25, unit: "h", label: "Hour" }),
+    clouds: knob(0.45, { min: 0, max: 1, step: 0.01, label: "Clouds" }),
+    stars: toggle(true, { label: "Stars" }),
   })
   mount(store, s.slot, { title: "Sky" })
   s.stage.style.display = "block"
   s.stage.innerHTML = `
-    <div data-scene style="position:absolute;inset:0"></div>
-    <div data-sun class="abs" style="width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#fff6dc;box-shadow:0 0 24px rgba(255,236,190,.8)"></div>
-    <svg viewBox="0 0 400 120" preserveAspectRatio="none" style="position:absolute;left:0;right:0;bottom:38px;width:100%;height:70px">
+    <div data-dom data-scene style="position:absolute;inset:0"></div>
+    <div data-dom data-sun class="abs" style="width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#fff6dc;box-shadow:0 0 24px rgba(255,236,190,.8)"></div>
+    <svg data-dom viewBox="0 0 400 120" preserveAspectRatio="none" style="position:absolute;left:0;right:0;bottom:38px;width:100%;height:70px">
       <path d="M0 80 C60 40 110 50 170 72 C230 94 290 40 400 58 L400 120 L0 120Z" fill="rgba(0,0,0,.32)"/>
       <path d="M0 100 C80 74 160 90 230 100 C300 110 350 86 400 92 L400 120 L0 120Z" fill="rgba(0,0,0,.45)"/>
     </svg>
@@ -554,16 +556,25 @@ const SKIES = {
     <div data-bar style="position:absolute;left:12px;right:12px;bottom:12px;height:14px;border-radius:7px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)"></div>
     <div data-mark class="abs" style="width:2px;height:20px;bottom:9px;top:auto;border-radius:1px;background:#fff"></div>
     <div data-clock class="caption right" style="color:rgba(255,255,255,.7)"></div>`
-  const scene = s.stage.querySelector<HTMLElement>("[data-scene]")!
+  const view = gpuView(s.stage, {
+    wgsl: skyWgsl,
+    label: "sky",
+    tone: "agx",
+    bloom: 0.09,
+    exposure: 1.35,
+    saturation: 1.18,
+  })
+  if (view) for (const el of s.stage.querySelectorAll<HTMLElement>("[data-dom]")) el.remove()
+  const scene = s.stage.querySelector<HTMLElement>("[data-scene]")
+  const sun = s.stage.querySelector<HTMLElement>("[data-sun]")
   const bar = s.stage.querySelector<HTMLElement>("[data-bar]")!
   const mark = s.stage.querySelector<HTMLElement>("[data-mark]")!
-  const sun = s.stage.querySelector<HTMLElement>("[data-sun]")!
   const setClock = rolling(s.stage.querySelector<HTMLElement>("[data-clock]")!, [
     { id: "h", pad: 2 },
     ":",
     { id: "m", pad: 2 },
   ])
-  const sunSmear = new Smear(sun)
+  const sunSmear = sun ? new Smear(sun) : null
   const markBlur = new DirBlur(mark)
   const N = 32
   const stage = new Stage(s.stage, () => {
@@ -573,7 +584,7 @@ const SKIES = {
     const f = t * (N - 1)
     const i0 = Math.min(N - 2, Math.floor(f))
     const u = f - i0
-    scene.style.background = oklabCss(labs[i0]!.map((c, j) => lerp(c, labs[i0 + 1]![j]!, u)))
+    const now = labs[i0]!.map((c, j) => lerp(c, labs[i0 + 1]![j]!, u))
     const w = s.stage.clientWidth
     const vxMark = (hour.v / 24) * (w - 24)
     const stMark = stretchFor(vxMark, 0.35)
@@ -581,6 +592,18 @@ const SKIES = {
     markBlur.set(blurFor(vxMark) / stMark, 0)
     // The sun rides an arc from 6h to 18h, under the hills outside it.
     const day = (hour.x - 6) / 12
+    if (view) {
+      const elev = Math.sin(Math.PI * day)
+      // Warmer and dimmer as it nears the horizon.
+      const sc = kelvinRgb(2000 + 4000 * clamp01(elev) ** 0.6)
+      const k = 3.2 * clamp01(elev * 3 + 0.4)
+      const sky = linearRgb(oklabRgb(now))
+      view.data.set([sky[0], sky[1], sky[2], day, sc[0] * k, sc[1] * k, sc[2] * k, elev], 4)
+      view.data.set([starsOn.x, clouds.x, 0, 7], 12)
+      view.render()
+      return
+    }
+    scene!.style.background = oklabCss(now)
     const hh = s.stage.clientHeight
     const up = day < 0 || day > 1 ? -0.25 : Math.sin(Math.PI * clamp01(day))
     const sx = lerp(30, w - 30, clamp01(day))
@@ -588,20 +611,25 @@ const SKIES = {
     const vxDay = day >= 0 && day <= 1 ? ((w - 60) * hour.v) / 12 : 0
     const vyDay =
       day >= 0 && day <= 1 ? (-(hh - 110) * Math.cos(Math.PI * day) * Math.PI * hour.v) / 12 : 0
-    sun.style.transform = `translate(${px(sx)},${px(sy)})${sunSmear.transform(vxDay, vyDay)}`
-    sun.style.opacity = clamp01(up * 4 + 0.6).toFixed(3)
+    sun!.style.transform = `translate(${px(sx)},${px(sy)})${sunSmear!.transform(vxDay, vyDay)}`
+    sun!.style.opacity = clamp01(up * 4 + 0.6).toFixed(3)
   })
-  const hour = stage.val(18.5, 0.002)
+  const hour = stage.val(18.25, 0.002)
+  const clouds = stage.val(0.45, 0.001)
+  const starsOn = stage.val(1, 0.002, true)
   const samples = Array.from(
     { length: N },
     (_, i) => new ColorVal(stage, sampleGradient(SKIES.Clear, i / (N - 1))),
   )
+  new ResizeObserver(() => stage.paint()).observe(s.stage)
   on((v, how) => {
     // Every sample travels to its new colour, in a quick left-to-right sweep for a preset.
     samples.forEach((c, i) => {
       c.go(sampleGradient(v.sky, i / (N - 1)), how, "calm", i * 5)
     })
     hour.go(v.hour, how, "calm")
+    clouds.go(v.clouds, how, "calm")
+    starsOn.go(v.stars ? 1 : 0, how === "init" ? "init" : "other", "calm")
     setClock({ h: Math.floor(v.hour) % 24, m: Math.round((v.hour % 1) * 60) })
   })
 }
