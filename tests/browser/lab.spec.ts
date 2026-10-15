@@ -342,4 +342,17 @@ test("the Lab draws on the GPU overlay as it does in the DOM: flat rows, mixed, 
       timeout: 10_000,
     })
     .toEqual(expect.arrayContaining(["—", "Fireball size", "Spot cone", "Test scene"]))
+  // Accessories stay DOM, above the overlay, in their own colour, and take the click.
+  const pin = row(station(page), "density").locator(".lab-pin")
+  const top = await pin.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return {
+      hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el,
+      color: getComputedStyle(el).color,
+    }
+  })
+  expect(top.hit).toBe(true)
+  expect(clear(top.color)).toBe(false)
+  await pin.click()
+  await expect(pin).toHaveAttribute("aria-pressed", "true")
 })
