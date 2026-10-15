@@ -768,7 +768,8 @@ test("range: a thumb that shows never sits on the label or readout; their text f
       const thumb = el.parentElement!.querySelector<HTMLElement>(".knobs-range-thumb")!
       const fill = el.parentElement!.querySelector<HTMLElement>(".knobs-range-fill")!
       return {
-        show: Number(cs.getPropertyValue("--kr-show")),
+        show: Number(cs.getPropertyValue("--kr-show-lo")),
+        showHi: Number(cs.getPropertyValue("--kr-show-hi")),
         mask: cs.maskImage,
         thumb: thumb.getBoundingClientRect().left,
         fill: fill.getBoundingClientRect().left,
@@ -786,6 +787,13 @@ test("range: a thumb that shows never sits on the label or readout; their text f
   const label = (await visible.locator(".knobs-label").boundingBox())!
   expect(s.thumb).toBeGreaterThan(label.x)
   expect(s.thumb).toBeLessThan(label.x + label.width)
+  // Only a thumb that shows makes a gap: with the high end focused from the keys, the low one
+  // stays hidden and the label stays whole.
+  await page.mouse.move(2, 2)
+  await expect.poll(async () => (await state()).show).toBe(0)
+  await visible.locator('.knobs-range-thumb[data-end="hi"]').focus()
+  await expect.poll(async () => (await state()).showHi).toBe(1)
+  expect((await state()).show).toBe(0)
 })
 
 test("seed: its digits roll when the die rolls it", async ({ page }) => {
