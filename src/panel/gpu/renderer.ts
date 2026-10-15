@@ -677,7 +677,6 @@ class GpuOverlayManager {
   private curFocusVisible = false
   private curPanelHovered = false
   private curSubHovered = false
-  private readonly hotRows = new Set<Element>()
   private curPanelRect: DOMRect | null = null
   private curPanelScrollTop = 0
   private curLayoutKey = 0
@@ -1515,10 +1514,6 @@ class GpuOverlayManager {
     })
   }
 
-  private isHot(row: Element) {
-    return this.hotRows.has(row)
-  }
-
   /** Square inside its card, except the card's own rounded corners on the first and last rows. */
   private rowCorners(row: HTMLElement, open = false): [number, number, number, number] {
     const r = this.curTokens.flat ? 0 : this.curTokens.radius
@@ -1559,16 +1554,12 @@ class GpuOverlayManager {
   private drawSeparator(row: HTMLElement, rRect: DOMRect, cardClip: Clip) {
     const t = this.curTokens
     if (t.rowGap > 0) return
-    // Hairlines beside a hovered, focused or dragged row fade out, as in iOS lists.
+    // Every boundary keeps its hairline, at rest, hovered, focused or in hand; only a run of
+    // selected rows joins into one wash.
     const prev = shownSibling(row, -1)
     const joined =
       row.classList.contains("knobs-selected") && prev?.classList.contains("knobs-selected")
-    const sep = this.ease(
-      row,
-      "sep",
-      prev && !joined && !this.isHot(row) && !this.isHot(prev) ? 1 : 0,
-      30,
-    )
+    const sep = this.ease(row, "sep", prev && !joined ? 1 : 0, 30)
     if (prev && sep > 0.005)
       this.pushPrim({
         x: rRect.left,
@@ -3416,7 +3407,6 @@ class GpuOverlayManager {
     this.pointCount = 0
     this.maskCount = 0
     this.curScale = scale
-    this.hotRows.clear()
     this.atlas.beginFrame()
     let anyMoving = false
     const win = this.win
@@ -4144,23 +4134,6 @@ class GpuOverlayManager {
         const blocked = row.row.closest<HTMLElement>("[data-disabled],[data-readonly]")
         const hovered = !blocked && this.isHovered(row.row)
         this.curSubHovered = hovered
-        const isX =
-          row.kind === "color" ||
-          row.kind === "point" ||
-          row.kind === "easing" ||
-          row.kind === "gradient" ||
-          row.kind === "curve"
-        const hot = isX
-          ? (hovered && row.x.head.matches(":hover")) || this.isFocused(row.x.head)
-          : hovered || row.row.classList.contains("knobs-active") || this.hasFocusVisible(row.row)
-        if (hot) {
-          this.hotRows.add(row.row)
-          const parent = row.row.parentElement
-          if (parent && !parent.classList.contains("knobs-card")) {
-            const outer = row.row.closest(".knobs-card > *")
-            if (outer) this.hotRows.add(outer)
-          }
-        }
         const parentEl = row.row.parentElement!
         const card = cardRects.get(parentEl) ?? this.rectOf(parentEl)
         // The selection wash covers the whole item (a spring's sliders and curve, an open

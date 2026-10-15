@@ -7,7 +7,6 @@
  * - `data-k-fv` on each ancestor of the focused element while it's `:focus-visible`
  *   (`:has(:focus-visible)`); `"track"` when that's a slider track, `"head"` an editor's header.
  * - `data-k-active` on each ancestor of a `.knobs-active` element (`:has(.knobs-active)`).
- * - `data-k-head-hover` on an editor row whose header is hovered (`:has(>.knobs-x-head:hover)`).
  */
 export function trackHas(root: HTMLElement): () => void {
   const doc = root.ownerDocument
@@ -61,21 +60,8 @@ export function trackHas(root: HTMLElement): () => void {
     attributeFilter: ["class"],
     attributeOldValue: true,
   })
-  let hovered: HTMLElement | null = null
-  const hover = (head: HTMLElement | null) => {
-    const row = head?.parentElement ?? null
-    if (row === hovered) return
-    hovered?.removeAttribute("data-k-head-hover")
-    hovered = row
-    row?.setAttribute("data-k-head-hover", "")
-  }
-  const over = (event: PointerEvent) =>
-    hover((event.target as Element).closest?.<HTMLElement>(".knobs-x-head") ?? null)
-  const leave = () => hover(null)
   root.addEventListener("focusin", later)
   root.addEventListener("focusout", later)
-  root.addEventListener("pointerover", over)
-  root.addEventListener("pointerleave", leave)
   for (const type of ["keydown", "pointerdown"]) doc.addEventListener(type, later, true)
   win?.addEventListener("focus", later)
   win?.addEventListener("blur", later)
@@ -85,8 +71,6 @@ export function trackHas(root: HTMLElement): () => void {
     classes.disconnect()
     root.removeEventListener("focusin", later)
     root.removeEventListener("focusout", later)
-    root.removeEventListener("pointerover", over)
-    root.removeEventListener("pointerleave", leave)
     for (const type of ["keydown", "pointerdown"]) doc.removeEventListener(type, later, true)
     win?.removeEventListener("focus", later)
     win?.removeEventListener("blur", later)
