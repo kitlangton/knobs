@@ -8,9 +8,7 @@ import {
   bezierPoint,
   easing,
   flatSpring,
-  keybind,
   knob,
-  matchesCombo,
   spring,
   springMotion,
   toolbar,
@@ -58,7 +56,7 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     id: "motion",
     title: "Motion",
     sub: "An easing, a spring and a flat spring on one timeline.",
-    tip: "Space plays, S slows it down, P pulses.",
+    tip: "Space plays, S slows it down, P pulses, ⇧K replays. Click ⇧K to rebind it.",
     shows: [
       "easing()",
       "spring()",
@@ -66,7 +64,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
       "knob()",
       "toolbar()",
       "action()",
-      "keybind()",
       "timeline()",
     ],
     stage: true,
@@ -111,8 +108,7 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
       ],
       { label: "Transport" },
     ),
-    replay: action("Replay", { run: replay }),
-    key: keybind("Shift+K", { label: "Replay key" }),
+    replay: action("Replay", { run: replay, shortcut: "Shift+K", global: true, rebind: true }),
   })
   mount(store, s.slot, { title: "Motion" })
 
@@ -278,13 +274,5 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     sb.go(v.motion.bounce, how, "calm")
     td.go(v.settleDuration, how, "calm")
     tb.go(v.settleBounce, how, "calm")
-  })
-  document.addEventListener("keydown", (e) => {
-    if (e.defaultPrevented || e.repeat) return
-    const t = e.target as HTMLElement | null
-    if (t?.closest("input,textarea,[contenteditable]")) return
-    if (!matchesCombo(store.get().key, e)) return
-    e.preventDefault()
-    replay()
   })
 }

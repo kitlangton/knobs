@@ -229,7 +229,7 @@ const css = `
 .knobs-tl-play svg{width:12px;height:12px}
 .knobs-timeline[data-playing] .knobs-tl-play{background:var(--ku-accent);color:var(--ku-bg)}
 .knobs-tl-time{display:flex;flex-direction:column;line-height:1.2;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-tl-now{font:var(--ku-font-weight) var(--ku-value-size)/1.2 var(--ku-value-font);color:var(--ku-text);white-space:nowrap}
+.knobs-tl-now{font:var(--ku-font-weight) var(--ku-value-size)/1.2 var(--ku-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";color:var(--ku-text);white-space:nowrap}
 .knobs-tl-sub{font-size:var(--ku-text-meta);color:var(--ku-dim);white-space:nowrap}
 .knobs-tl-track{position:relative;flex:1;min-width:0;overflow:hidden;border-radius:var(--ku-radius);background:var(--ku-surface);cursor:col-resize;touch-action:none;
   transition:background calc(var(--ku-hover-out) * 1ms)}

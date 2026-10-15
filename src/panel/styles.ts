@@ -240,7 +240,7 @@ const css = `
   background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:transparent;
   --k-backdrop:blur(calc(var(--k-glass) * var(--k-chrome) * 24px)) saturate(calc(1 + var(--k-glass) * var(--k-chrome) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass) * var(--k-chrome)))}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}.knobs-keys .knobs-keys-text,.knobs-number,.knobs-cell-edit{animation:none}}
 
 /* A scoped reset, (0,1,1): above a host's element rules (button{...}, button:hover{...},
    input[type=text]{...}) and below every knobs rule that styles these elements, which are all
@@ -329,19 +329,17 @@ const css = `
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background .15s,color .15s,opacity .2s,transform .12s}
 
-/* Grouped cards: rows share one surface, split by hairlines */
+/* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
 .knobs-card:last-child{margin-bottom:0}
 .knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t),opacity .2s}
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
-.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)::before,.knobs-card>:is(:hover:not(.knobs-x),.knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible)),:has(:focus-visible):not(.knobs-x),.knobs-active)+*::before{opacity:0}
 .knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
 .knobs-card>:has(:focus-visible)::after{opacity:1}
 /* One wash at a time: while the pointer has a row (and keys haven't taken over since), a focus
-   wash elsewhere steps aside, and the hairlines beside that row come back. */
+   wash elsewhere steps aside. */
 ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{opacity:0}
-${POINTER_ROW} .knobs-card>:not(:hover,.knobs-active,:hover+*,.knobs-active+*)::before{opacity:1}
 .knobs-panel .knobs-slider{height:var(--k-row);contain:layout style}
 .knobs-panel .knobs-row:where(:not(.knobs-slider,.knobs-x,.knobs-spring)){display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--k-row);padding:0 var(--k-inset);contain:layout style}
 .knobs-panel .knobs-row>span:first-child{color:var(--k-label);font-weight:var(--k-label-weight);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -449,10 +447,17 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-action-row{padding:0}
 .knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-button-color,var(--k-text));font-size:var(--k-button-font-size,calc(var(--k-text-control) + .5px));font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t),background var(--k-hover-t),box-shadow var(--k-hover-t)}
 .knobs-panel .knobs-action:is(:hover,:focus-visible){color:var(--k-accent)}
-.knobs-panel .knobs-action:active{opacity:.7}
+.knobs-panel .knobs-action:is(:active,.knobs-pressed){opacity:.7}
+.knobs-panel .knobs-action.knobs-pressed{color:var(--k-accent)}
+/* A shortcut: its key cap at the row's end, the button taking the rest. */
+.knobs-panel .knobs-action-row[data-keyed]{gap:6px}
+.knobs-panel .knobs-action-row[data-keyed]>.knobs-action{flex:1 1 0;width:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-panel .knobs-action-row>.knobs-keys{order:1;margin-right:var(--k-inset)}
 /* With a button fill or outline (--k-button-bg, --k-button-line), an action is a sized button in
    its row, and the presets strip a row of them, as toolbar buttons are. */
 .knobs-panel[data-buttons] .knobs-action-row{padding:0 var(--k-inset)}
+.knobs-panel[data-buttons] .knobs-action-row[data-keyed]>.knobs-action{flex:0 1 auto;margin-right:auto}
+.knobs-panel[data-buttons] .knobs-action-row>.knobs-keys{margin-right:0}
 .knobs-panel[data-buttons] .knobs-action{width:auto;max-width:100%;height:var(--k-button-h,var(--kc-control-h));padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   background:var(--k-button-bg,transparent);box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);border-radius:var(--k-button-radius,var(--k-radius-md))}
 .knobs-panel[data-buttons] .knobs-action:is(:hover,:focus-visible){color:var(--k-text);background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
@@ -478,7 +483,6 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-sub{position:relative;transition:background var(--k-hover-t)}
 .knobs-sub:hover,.knobs-sub.knobs-active,.knobs-x-head:hover,.knobs-x-head[data-panned]{background:var(--k-row-hover)}
 .knobs-sub+.knobs-sub::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
-.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)::before,.knobs-sub:is(:hover,:has(:focus-visible),.knobs-active)+.knobs-sub::before{opacity:0}
 :is(.knobs-sub,.knobs-x-head)::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface);opacity:0;pointer-events:none;transition:opacity .15s}
 :is(.knobs-sub:has(:focus-visible),.knobs-x-head:focus-visible)::after{opacity:1}
 .knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:var(--k-gap) var(--k-inset) var(--k-gap) 0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);pointer-events:none}
@@ -498,6 +502,9 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-modified .knobs-x-label::after{opacity:.95;transform:none}
 .knobs-x-sum{display:flex;align-items:center;gap:8px;min-width:0}
 .knobs-x-read,.knobs-strip-read{color:var(--k-label);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap}
+/* A name crossfading (reel.ts fadeText): the old one fades out over the new, where it was. */
+.knobs-x-read{position:relative}
+.knobs-ghost{position:absolute;right:0;top:0;white-space:nowrap;pointer-events:none}
 .knobs-caret{width:10px;height:10px;flex:none;margin-right:-2.5px;color:var(--k-dim);transition:transform ${LEAD_T},color .15s}
 .knobs-caret path{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .knobs-x-head:hover .knobs-caret{color:var(--k-label)}
@@ -666,9 +673,9 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-link[aria-pressed="true"]{color:var(--k-text)}
 .knobs-link .knobs-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
 /* The inline editor over a readout: above the GPU canvas, which leaves that readout to it. */
-.knobs-panel .knobs-cell-edit{position:absolute;z-index:3;right:var(--k-inset);top:50%;transform:translateY(-50%);width:7ch;height:auto;padding:1px 4px;text-align:right;background:var(--k-bg);border-radius:var(--k-radius-sm);border-bottom:1px solid var(--k-text);color:var(--k-text);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size)}
+.knobs-panel .knobs-cell-edit{position:absolute;z-index:3;right:calc(var(--k-inset) - 6px);top:50%;transform:translateY(-50%);width:calc(7ch + 12px);height:var(--kc-control-h);padding:0 6px;text-align:right;background:linear-gradient(var(--k-surface-hi),var(--k-surface-hi)),var(--k-bg);border:0;border-radius:var(--k-radius-md);outline:none;color:var(--k-text);caret-color:var(--k-accent);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-size:var(--kc-value-size);animation:knobs-fade .12s ease-out}
 .knobs-cell.knobs-editing>:not(.knobs-cell-edit){visibility:hidden}
-.knobs-panel .knobs-cell>.knobs-cell-edit{inset:0;width:auto;transform:none;padding:0 6px;border-radius:var(--k-radius-md)}
+.knobs-panel .knobs-cell>.knobs-cell-edit{inset:0;width:auto;height:auto;transform:none}
 .knobs-panel[data-gpu-active="true"] .knobs-cell-edit{z-index:2147480003}
 
 .knobs-panel .knobs-row.knobs-range{display:block;height:var(--k-row);padding:0}
@@ -682,19 +689,18 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
   background:linear-gradient(to right,transparent calc(var(--ks-a) - var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-a) + var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-b) - var(--kr-smear-hi,0) * .5px),transparent calc(var(--ks-b) + var(--kr-smear-hi,0) * .5px))}
 .knobs-range-smearing .knobs-range-smear{display:block}
 .knobs-range-smearing .knobs-range-fill{opacity:0}
-.knobs-range-thumb{position:absolute;top:0;bottom:0;left:calc(var(--kr-lo) * 100%);width:0;outline:none}
-.knobs-range-thumb[data-end="hi"]{left:calc(var(--kr-hi) * 100%)}
+/* Each thumb sits on its end, centred, held 1.5px in at the track's ends so its hairline isn't cut. */
+.knobs-range-thumb{position:absolute;top:0;bottom:0;left:clamp(1.5px,calc(var(--kr-lo) * 100%),calc(100% - 1.5px));width:0;outline:none}
+.knobs-range-thumb[data-end="hi"]{left:clamp(1.5px,calc(var(--kr-hi) * 100%),calc(100% - 1.5px))}
 /* Where a thumb shows, the label and readout fade around it (2.5px either side of its hairline). */
 .knobs-range-text{position:absolute;inset:0;pointer-events:none;transition:--kr-show-lo .15s,--kr-show-hi .15s;
-  --kg-lo:calc(var(--kr-lo) * 100% + 1.5px);--kg-hi:calc(var(--kr-hi) * 100% - 1.5px);--kg-in-lo:rgb(0 0 0/calc(1 - var(--kr-show-lo)));--kg-in-hi:rgb(0 0 0/calc(1 - var(--kr-show-hi)));
+  --kg-lo:clamp(1.5px,calc(var(--kr-lo) * 100%),calc(100% - 1.5px));--kg-hi:clamp(1.5px,calc(var(--kr-hi) * 100%),calc(100% - 1.5px));--kg-in-lo:rgb(0 0 0/calc(1 - var(--kr-show-lo)));--kg-in-hi:rgb(0 0 0/calc(1 - var(--kr-show-hi)));
   --kg-mask:linear-gradient(to right,#000 calc(var(--kg-lo) - 6.5px),var(--kg-in-lo) calc(var(--kg-lo) - 2.5px),var(--kg-in-lo) calc(var(--kg-lo) + 2.5px),#000 calc(var(--kg-lo) + 6.5px)),linear-gradient(to right,#000 calc(var(--kg-hi) - 6.5px),var(--kg-in-hi) calc(var(--kg-hi) - 2.5px),var(--kg-in-hi) calc(var(--kg-hi) + 2.5px),#000 calc(var(--kg-hi) + 6.5px));
   -webkit-mask:var(--kg-mask);mask:var(--kg-mask);-webkit-mask-composite:source-in;mask-composite:intersect}
 .knobs-range:not(.knobs-mixed):hover .knobs-range-text{--kr-show-lo:1;--kr-show-hi:1}
 .knobs-range:not(.knobs-mixed)[data-end-focus="lo"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-lo:1}
 .knobs-range:not(.knobs-mixed)[data-end-focus="hi"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-hi:1}
 .knobs-range-thumb::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:-50% 0;border-radius:var(--k-round);background:var(--k-handle);opacity:0;scale:.25 1;transition:opacity .15s,scale .22s var(--k-ease)}
-.knobs-range-thumb[data-end="lo"]::before{translate:0 0}
-.knobs-range-thumb[data-end="hi"]::before{translate:-100% 0}
 .knobs-range:hover .knobs-range-thumb::before{opacity:.5}
 .knobs-range-thumb:focus-visible::before,.knobs-range.knobs-active .knobs-range-thumb:focus::before{opacity:.95;scale:1}
 .knobs-range .knobs-label{max-width:calc(55% - var(--k-inset))}
@@ -724,23 +730,33 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-seed-roll:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-seed-roll .knobs-die-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
 
-.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;justify-content:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;overflow:hidden;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-family:inherit;font-weight:inherit;font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 .knobs-panel .knobs-keys:is(:hover,:focus-visible){background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
 .knobs-panel .knobs-keys[data-empty]{color:var(--k-dim);letter-spacing:0}
-.knobs-panel .knobs-keys[aria-pressed="true"]{background:var(--k-pill-bg);box-shadow:inset 0 0 0 1px var(--k-pill-border);color:var(--k-label);letter-spacing:.08em}
+/* Listening: a soft accent wash, no ring, and the text breathing in "Type keys…" (keyCap). */
+.knobs-panel .knobs-keys[aria-pressed="true"]{background:var(--k-pill-bg);color:var(--k-label)}
+.knobs-keys[aria-pressed="true"] .knobs-keys-text{animation:knobs-breathe 1.6s ease-in-out infinite}
+@keyframes knobs-breathe{50%{opacity:.55}}
 .knobs-keys-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.knobs-keys[data-morph] .knobs-keys-text{flex:none;overflow:visible}
+.knobs-panel .knobs-keys[data-static]{cursor:default}
+.knobs-panel .knobs-keys[hidden]{display:none}
 
-/* Toolbars: icon, label and shortcut per button; they wrap. Buttons take the button tokens. */
-.knobs-panel .knobs-row.knobs-toolbar{flex-wrap:wrap;justify-content:flex-start;gap:var(--k-tray-pad);height:auto;min-height:var(--k-row);padding:calc((var(--k-row) - var(--k-button-h,var(--kc-control-h))) / 2) var(--k-inset)}
+/* Toolbars: icon, label and shortcut per button, in equal columns balanced across their rows
+   (inspector.ts sets --k-tool-cols); one gap between them and around them. Buttons take the
+   button tokens. */
+.knobs-panel .knobs-row.knobs-toolbar{--k-tool-gap:max(4px,calc((var(--k-row) - var(--k-button-h,var(--kc-control-h))) / 2));display:grid;grid-template-columns:repeat(var(--k-tool-cols,1),minmax(0,1fr));gap:var(--k-tool-gap);height:auto;min-height:var(--k-row);padding:var(--k-tool-gap) var(--k-inset)}
 .knobs-card>.knobs-toolbar:hover{background:transparent}
 .knobs-card>.knobs-toolbar:has(:focus-visible)::after{opacity:0}
-.knobs-panel .knobs-tool{display:inline-flex;align-items:center;gap:6px;height:var(--k-button-h,var(--kc-control-h));padding:0 8px;background:var(--k-button-bg,var(--k-seg-bg));border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);
+.knobs-panel .knobs-tool{display:flex;align-items:center;gap:6px;min-width:0;height:var(--k-button-h,var(--kc-control-h));padding:0 8px;background:var(--k-button-bg,var(--k-seg-bg));border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);
   color:var(--k-button-color,var(--k-label));font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color .15s,box-shadow .15s,scale .12s var(--k-ease),opacity .15s}
 .knobs-panel .knobs-tool:is(:hover:not([disabled]),:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 .knobs-panel .knobs-tool:is(:active:not([disabled]),.knobs-pressed){scale:.96}
 .knobs-panel .knobs-tool[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
-.knobs-tool .knobs-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
-.knobs-panel .knobs-tool-key{font:inherit;font-size:var(--k-text-cap);color:var(--k-dim);letter-spacing:.06em}
+.knobs-tool .knobs-icon{flex:none;width:var(--k-icon-sm);height:var(--k-icon-sm)}
+.knobs-tool-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* The shortcut sits at the button's end, so a column of buttons lines their chips up. */
+.knobs-panel .knobs-tool-key{flex:none;margin-left:auto;padding-left:4px;font:inherit;font-size:var(--k-text-cap);font-variant-numeric:tabular-nums;color:var(--k-dim);letter-spacing:.06em}
 .knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-cell,.knobs-range-track,.knobs-angle,.knobs-dial,.knobs-seed,.knobs-keys,.knobs-tool){cursor:default}
 
 /* Row accessories (rowAccessory): the host's node, just after the label. */
@@ -750,6 +766,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-track>.knobs-accessory{position:absolute;top:0;bottom:0;left:calc(var(--k-label-right,0px) + 4px);z-index:1}
 .knobs-x-head>.knobs-accessory{margin:0 auto 0 -4px}
 .knobs-action-row>.knobs-accessory{position:absolute;top:0;bottom:0;right:var(--k-inset)}
+.knobs-action-row[data-keyed]>.knobs-accessory{position:static}
 
 /* Foldable groups (folded / groupFolded): the header toggles its card. */
 .knobs-panel .knobs-group-head[data-foldable]{cursor:pointer;user-select:none;transition:background var(--k-hover-t)}
@@ -1017,10 +1034,6 @@ const keyboardQuietsHover = (css: string) =>
 /** The rules' `:has()` as the attributes has.ts keeps (see there for why). */
 export const withoutHas = (css: string) =>
   css
-    .replaceAll(
-      ".knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible))",
-      '.knobs-x:is([data-k-head-hover]:where(:not([data-k-quiet])),[data-k-fv="head"])',
-    )
     .replaceAll(":has(:focus-visible)", "[data-k-fv]")
     .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
     .replaceAll(":has(.knobs-active)", "[data-k-active]")

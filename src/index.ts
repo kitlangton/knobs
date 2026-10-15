@@ -18,6 +18,7 @@ export {
   curve,
   toolbar,
   toolbarShortcut,
+  actionShortcut,
   watch,
   sparkline,
   graph,

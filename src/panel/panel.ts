@@ -1,7 +1,10 @@
 import {
+  actionShortcut,
   hasValue,
   isReadout,
   same,
+  toolbarShortcut,
+  type ActionField,
   type Choice,
   type Field,
   type Knob,
@@ -12,7 +15,7 @@ import {
   type Values,
 } from "../core/schema.js"
 import { REFRESHES } from "../core/internal.js"
-import { letterOf } from "../core/keys.js"
+import { comboLabel, letterOf, matchesCombo } from "../core/keys.js"
 import type { SpringValue } from "../core/spring.js"
 import type {
   ControlAction,
@@ -43,6 +46,7 @@ import {
 import { curveRow, gradientRow } from "./ramps.js"
 import {
   angleRow,
+  keyCap,
   keybindRow,
   rangeRow,
   seedRow,
@@ -94,7 +98,14 @@ import { tapTick, tick } from "./haptics.js"
 import { panSwitch } from "./thumb.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
-import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
+import {
+  arrowOf,
+  DEFAULT_PREFS,
+  type KeyPrefs,
+  keyLabel,
+  resolveKeys,
+  setKeyPrefs,
+} from "./prefs.js"
 import { DELAYED, injectPreset, injectStyles } from "./styles.js"
 
 export interface Panel {
@@ -1032,6 +1043,13 @@ function buildPanel<S extends Schema>(
   const tracks = new Map<HTMLElement, SubTrack>()
   /** Toolbar rows by key, for their shortcuts. */
   const toolbars = new Map<string, ToolbarRow>()
+  /** Action rows with a shortcut (declared, or able to take one), by key. */
+  const keyedActions = new Map<string, { row: Row; button: HTMLButtonElement }>()
+  /** Where an action's shortcut works now: the store's rebinding, else its own. */
+  const actionKey = (key: string, field: ActionField) => {
+    const combo = controls.shortcut(key as keyof S & string)
+    return combo ? { key: combo, scope: actionShortcut(field)?.scope ?? "panel" } : undefined
+  }
   /** Readout rows by key, told when the store pushes to them. */
   const readouts = new Map<string, ReadoutRow>()
   const readoutPort = (controls as unknown as { [READOUT]?: ReadoutPort })[READOUT]
@@ -1072,6 +1090,8 @@ function buildPanel<S extends Schema>(
     mixed?: boolean
     /** The sub-heading it sits under (a `subhead` id). */
     subhead?: string
+    /** Catches up with what isn't a value (a rebound shortcut), on every store change. */
+    refresh?(): void
   }
   interface RowSpec {
     id: string
@@ -1154,13 +1174,9 @@ function buildPanel<S extends Schema>(
     const f = spec.field
     const where = `${spec.group ?? ""}\u0000${page ? (spec.section ?? "") : ""}`
     if (spec.parts) return `pair\u0000${spec.keys.join("\u0000")}\u0000${where}`
-    if (
-      f.kind === "knob" ||
-      f.kind === "toggle" ||
-      f.kind === "action" ||
-      f.kind === "toolbar" ||
-      isReadout(f)
-    )
+    if (f.kind === "action")
+      return `action\u0000${f.shortcut ? 1 : 0}\u0000${f.rebind ? 1 : 0}\u0000${where}`
+    if (f.kind === "knob" || f.kind === "toggle" || f.kind === "toolbar" || isReadout(f))
       return `${f.kind}\u0000${where}`
     if (f.kind === "vec")
       return `vec\u0000${f.axes}\u0000${f.axisLabels?.join(",") ?? ""}\u0000${f.link ? 1 : 0}\u0000${where}`
@@ -1249,22 +1265,98 @@ function buildPanel<S extends Schema>(
       const press = el("button", display)
       press.type = "button"
       press.className = "knobs-action"
-      if (field.shortcut) press.setAttribute("aria-keyshortcuts", field.shortcut)
       press.onclick = () => run(() => controls.action(key as keyof S & string))
       row.append(press)
       label = (text) => (press.textContent = text)
-      return {
+      // Its shortcut sits at the row's end as a key cap, one that listens for a new combination
+      // when the field says `rebind`; ←/→ go between the button and the cap.
+      const combo = () => controls.shortcut(key as keyof S & string) ?? ""
+      let shownKey: string | undefined
+      const cap = field.rebind
+        ? keyCap({
+            doc,
+            row,
+            empty: "Add key",
+            name: () => `${display} shortcut`,
+            set: (next) => controls.rebind(key as keyof S & string, next),
+            wake: () => wakeGpu(),
+          })
+        : undefined
+      const chip = cap?.chip ?? (field.shortcut ? el("kbd", "knobs-keys") : undefined)
+      if (chip) {
+        if (!cap) chip.dataset.static = ""
+        row.dataset.keyed = ""
+        row.append(chip)
+      }
+      if (cap)
+        row.addEventListener("keydown", (event) => {
+          const dir = arrowOf(event)
+          if (!dir || event.metaKey || event.ctrlKey || cap.capturing()) return
+          const to =
+            dir > 0 && event.target === press
+              ? cap.chip
+              : dir < 0 && event.target === cap.chip
+                ? press
+                : undefined
+          if (!to) return
+          event.preventDefault()
+          event.stopPropagation()
+          to.focus()
+        })
+      const paintKey = () => {
+        const now = combo()
+        if (now === shownKey) return
+        shownKey = now
+        const where = actionKey(key, this_.field as ActionField)
+        if (where && where.scope !== "none") press.setAttribute("aria-keyshortcuts", where.key)
+        else press.removeAttribute("aria-keyshortcuts")
+        if (cap) cap.show(now)
+        else if (chip) {
+          chip.textContent = now ? comboLabel(now) : ""
+          chip.hidden = !now
+        }
+        wakeGpu()
+      }
+      const this_: Row = {
         ...base,
         row,
         labelEl: press,
         input: press,
-        gpu: [{ kind: "action", key, display, row, button: press, wave, isModified: () => false }],
+        gpu: [
+          {
+            kind: "action",
+            key,
+            display,
+            row,
+            button: press,
+            ...(chip
+              ? {
+                  keys: {
+                    chip,
+                    text: cap?.text ?? chip,
+                    capturing: cap?.capturing ?? (() => false),
+                  },
+                }
+              : {}),
+            wave,
+            isModified: () => false,
+          },
+        ],
         value: () => undefined,
         set: () => {},
         retune(next) {
           retuneBase(this, next)
+          shownKey = undefined
+          paintKey()
+        },
+        refresh: paintKey,
+        dispose: () => {
+          if (keyedActions.get(key)?.row === this_) keyedActions.delete(key)
         },
       }
+      if (field.shortcut || field.rebind) keyedActions.set(key, { row: this_, button: press })
+      paintKey()
+      return this_
     }
     if (field.kind === "toolbar") {
       const bar = toolbarRow(
@@ -1280,6 +1372,11 @@ function buildPanel<S extends Schema>(
           wake: () => wakeGpu(),
         },
         (item) => run(() => controls.action(key as keyof S & string, item.id ?? item.label)),
+        (item) => {
+          const combo = controls.shortcut(key as keyof S & string, item.id ?? item.label)
+          const scope = toolbarShortcut(item)?.scope ?? (item.global ? "page" : "panel")
+          return combo ? { key: combo, scope } : undefined
+        },
       )
       toolbars.set(key, bar)
       return {
@@ -1293,6 +1390,7 @@ function buildPanel<S extends Schema>(
         gpu: [...bar.gpu],
         value: () => undefined,
         set: () => {},
+        refresh: () => bar.refresh(),
         retune(next) {
           this.field = next.field
           this.display = next.field.label ?? key
@@ -2419,11 +2517,15 @@ function buildPanel<S extends Schema>(
       else if (row.editor) {
         row.editor.update(value as Value, delay, instant, mixed)
         if (mixed)
-          for (const read of row.row.querySelectorAll(".knobs-x-read")) read.textContent = "—"
+          for (const read of row.row.querySelectorAll<HTMLElement>(".knobs-x-read"))
+            if ((read.dataset.text ?? read.textContent) !== "—") read.textContent = "—"
       } else if (row.field.kind === "toggle")
         row.input.setAttribute("aria-checked", mixed ? "mixed" : String(Boolean(value)))
     }
-    for (const row of rows) applyState(row)
+    for (const row of rows) {
+      applyState(row)
+      row.refresh?.()
+    }
     // controls.refresh(): the accessories are asked again too.
     const refreshes = (controls as unknown as { [REFRESHES]?: number })[REFRESHES] ?? 0
     if (refreshes !== lastRefresh) {
@@ -3106,10 +3208,25 @@ function buildPanel<S extends Schema>(
       bar.press(item)
       return true
     }
+    for (const [key, { row, button }] of keyedActions) {
+      if (row.row.hasAttribute("data-disabled") || row.row.hasAttribute("data-readonly")) continue
+      const where = actionKey(key, row.field as ActionField)
+      if (!where || where.scope === "none" || (where.scope === "panel" && !inPanel)) continue
+      if (!matchesCombo(where.key, event)) continue
+      event.preventDefault()
+      if (!reducedMotion()) {
+        button.classList.add("knobs-pressed")
+        setTimeout(() => button.classList.remove("knobs-pressed"), 140)
+      }
+      run(() => controls.action(key as keyof S & string))
+      wakeGpu()
+      return true
+    }
     return false
   }
   const onGlobalKey = (event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing || !toolbars.size) return
+    if (event.defaultPrevented || event.isComposing || (!toolbars.size && !keyedActions.size))
+      return
     const target = event.target as Node | null
     if (target && root.contains(target)) return
     if (isTyping(target)) return

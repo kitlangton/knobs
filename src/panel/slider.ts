@@ -3,16 +3,8 @@ import type { Knob as KnobField } from "../core/schema.js"
 import { springMotion } from "../core/spring.js"
 import { tick } from "./haptics.js"
 import { keyPrefs } from "./prefs.js"
-import {
-  clamp,
-  FILL,
-  POP_MS,
-  popScale,
-  Roll,
-  rollTarget,
-  Spring,
-  VelocityTracker,
-} from "./motion.js"
+import { clamp, FILL, POP_MS, popScale, type Roll, Spring, VelocityTracker } from "./motion.js"
+import { syncPlaces } from "./reel.js"
 import { band, textGive, type Band } from "./give.js"
 import { onPan } from "./swipe.js"
 
@@ -282,60 +274,9 @@ export function createSlider(
   const velocity = new VelocityTracker()
   let initialized = false
 
-  // Mirrors @kitlangton/rolling-number: each place is a wheel that rolls through every face in
-  // the value's direction (98 → 108 rolls the tens 9 → 0 forwards), new places rise in after a
-  // short hold, cascading outward, and leaving places fade over ~65% of the duration.
-  function syncDigits(text: string, trend: number, ms: number, delay: number) {
-    const now = performance.now()
-    const live = digitPlaces.filter((p) => !p.exiting).length
-    const step = Math.min(ms * 0.045, (ms * 0.3) / Math.max(1, text.length - live))
-    for (let j = 0; j < Math.max(text.length, digitPlaces.length); j++) {
-      const ch = j < text.length ? text[text.length - 1 - j]! : undefined
-      const place = digitPlaces[j]
-      if (ch === undefined) {
-        if (place && !place.exiting) {
-          place.exiting = true
-          place.presence.set(0, ms * 0.65, now, delay)
-        }
-        continue
-      }
-      const digit = ch >= "0" && ch <= "9" ? Number(ch) : Number.NaN
-      if (!place) {
-        const hold = ms > 0 ? delay + Math.max(0, j - live) * step : 0
-        const presence = new Roll(ms > 0 && initialized ? 0 : 1)
-        if (ms > 0 && initialized) presence.set(1, ms, now, hold)
-        digitPlaces[j] = {
-          ch,
-          wheel: new Roll(Number.isNaN(digit) ? 0 : digit),
-          presence,
-          enterAt: now + hold,
-          enterMs: ms > 0 && initialized ? ms : 0,
-          exiting: false,
-        }
-        continue
-      }
-      if (place.exiting) {
-        place.exiting = false
-        place.presence.set(1, ms, now, delay)
-      }
-      const wasDigit = place.ch >= "0" && place.ch <= "9"
-      if (!Number.isNaN(digit)) {
-        if (!wasDigit || ms <= 0) place.wheel.snap(digit)
-        else {
-          const at = place.wheel.sample(now).position
-          if (((Math.round(at) % 10) + 10) % 10 !== digit || !place.wheel.resting(now))
-            place.wheel.set(rollTarget(at, digit, trend), ms, now, delay)
-        }
-      }
-      place.ch = ch
-    }
-    while (
-      digitPlaces.length > text.length &&
-      digitPlaces.at(-1)!.exiting &&
-      digitPlaces.at(-1)!.presence.resting(now)
-    )
-      digitPlaces.pop()
-  }
+  // Mirrors @kitlangton/rolling-number (see syncPlaces).
+  const syncDigits = (text: string, trend: number, ms: number, delay: number) =>
+    syncPlaces(digitPlaces, text, trend, ms, delay, initialized)
 
   let current = field.value
   let lastRollerLen = fmtDigits(field.value).length

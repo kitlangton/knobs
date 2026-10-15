@@ -37,6 +37,7 @@ import { band, stretched, type Band } from "./give.js"
 import { tick } from "./haptics.js"
 import { clamp } from "./motion.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { fadeText } from "./reel.js"
 import { onPan } from "./swipe.js"
 
 /** The custom properties a gradient strip's samples ride on (registered, so they transition). */
@@ -964,7 +965,11 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       cached = curveSamples(shown, f.interp)
       if (selected >= shown.length) selected = shown.length - 1
       const match = presets.findIndex(([, p]) => sameRamp(p, shown))
-      read.textContent = mixed ? "—" : (presets[match]?.[0] ?? "")
+      fadeText(
+        read,
+        mixed ? "—" : (presets[match]?.[0] ?? ""),
+        initialized && !instant && !dragging && !panAt && !x.head.hasAttribute("data-panned"),
+      )
       chips?.check(mixed ? -1 : match)
       layout(!initialized || instant || dragging || panAt !== undefined)
       initialized = true
