@@ -75,6 +75,25 @@ test("the page and the example pages load without errors, and every example moun
   expect(errors).toEqual([])
 })
 
+test("the example pages keep their chips hidden until ⌥⇧D, and say so", async ({ page }) => {
+  const errors = trackErrors(page)
+  await page.goto("/examples/studies.html")
+  await expect(page.locator(".knobs-mode-hint")).toHaveText("Press ⌥⇧D for knobs")
+  const study = page.locator('[data-study="splat"]')
+  const chip = page.locator('.knobs-chip[aria-label="Tune splat"]')
+  await expect(chip).toBeAttached()
+  const box = (await study.boundingBox())!
+  await study.hover({ position: { x: box.width - 20, y: 60 } })
+  await page.waitForTimeout(250)
+  await expect(chip).toBeHidden()
+  await page.keyboard.press("Alt+Shift+KeyD")
+  await expect(page.locator(".knobs-toast")).toHaveText("knobs on")
+  await page.mouse.move(0, 0)
+  await study.hover({ position: { x: box.width - 20, y: 60 } })
+  await expect(chip).toBeVisible()
+  expect(errors).toEqual([])
+})
+
 test("the embedded panel swaps rows in place when the app switches items", async ({ page }) => {
   const errors = trackErrors(page)
   await page.goto("/#embedding-in-an-app")
