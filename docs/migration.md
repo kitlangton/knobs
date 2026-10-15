@@ -392,3 +392,25 @@ Sample once per change, not per frame. The values only change when someone edits
 `controls.subscribe` says when. The Lab's FX tab repaints from CSS gradients on change and never
 starts a frame loop.
 
+
+### After syncing Phase B: requests 17–27
+
+What `packages/kit/lab-knobs.ts` still did itself after bc769f0 (requests 17–27 in the Lab's
+`knobs-requests.md`), and what replaces it now:
+
+| # | Lab today | Replace with |
+| --- | --- | --- |
+| 17 | The facade wraps `hold(key, on)` to close an undo entry when a drag ends, with a timer to coalesce key repeats | `onGesture({ key, phase })` on `createRemoteControls` (or `defineControls`): open an entry at `"start"`, close it at `"end"`. A press or drag ends wherever the pointer is let go; a run of `←`/`→` or Page Up/Down ends 300 ms after the keys are up. Drop the wrapper and the timer. |
+| 19 | `disabled` passed as a plain flag computed from the Lab's settings, with new descriptors each time it flips | `disabled: (values) => labSettings.x` (or `readOnly`), and call `station.refresh()` when the Lab's setting changes (and after a host undo or redo). It re-checks the flags and asks `rowAccessory` again, with no new values. |
+| 20 | Nothing (the "Key labels" row read "Key label…" at 292 px) | Nothing to do: a segmented row keeps its label's words up to half the row, and becomes a menu when the segments don't fit beside it. |
+| 22 | Nothing (rows sat 1 px in) | Nothing to do: an inline flat panel has no border, so its rows meet the column's edges, in both renderers. |
+| 23 | `vec3` with a hidden `y`, or two `number` rows, for ground-plane pairs | `vec2({ x, y }, { axes: ["x", "z"] })` (descriptors: `axes`). The cells read X and Z ("Position z" to a screen reader); the value keeps `x` and `y`. |
+| 24 | css in the `arcade` preset for `.knobs-action` and `.knobs-preset-chip`, and for toolbar labels at full strength | Drop it. With `--k-button-bg` or `--k-button-line` set, action rows are sized buttons and the presets strip a row of buttons; `--k-button-color` gives every button's label its colour at rest. |
+| 25 | Sorting rows so each sub-heading's fields sit together | Drop the sort. knobs gathers them: a group's rows without a sub-heading first, then each sub-heading's rows in the order the sub-headings first appear. |
+| 26 | The Details actions (`F`, `G`, `⌫`) in a toolbar of their own small panel, so its keys don't fight the settings panel's `f`, `g` and reset | Put the toolbar in the settings panel with `shortcut: { key: "F", scope: "none" }`: the chip shows the canvas's key and binds nothing, so the panel's own keys still work. `scope: "page"` is `global: true`; `"panel"` is the default. `toolbarShortcut(item)` reads either form. |
+| 27 | `details.filter` sets the search input's value and clicks the Modified chip | `panel.search("fog", ["modified"])`, which filters as typing and clicking would (`chips` lists exactly which are on) and returns `{ query, chips }`; `panel.search()` reads it. |
+
+The outliner's type-ahead took the canvas's single-key shortcuts while it had focus. `tree({
+typeahead: (key) => !"fgp".includes(key.toLowerCase()) })` leaves `F`, `G` and `P` to the window
+(`false` leaves every letter); a letter typed right after a jump still carries on its run, so
+"sig" still finds "Signpost". `examples/lab-workspace.ts` does this.

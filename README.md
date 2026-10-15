@@ -119,7 +119,7 @@ el.style.background = v.tint                                // OKLCH strings wor
 ```
 
 - **`spring(value?, meta?)`**: `{ duration, bounce }` like SwiftUI's `.spring(duration:bounce:)` (ω = 2π / duration; ζ = 1 − bounce, or 1 / (1 + bounce) below zero). Duration runs 0.05–2 s and bounce −0.5–1, both in 0.01 steps. The row is two slider stops beside the step response over a fixed 1.2 s window, drawn with the panel's own spring integrator; a dot runs the curve in real time after each change. `springCss(value)` gives the same motion as a CSS `linear()` easing and duration; `springMotion(value)` gives ω and ζ.
-- **`color(value, meta?)`**: takes `#rgb`, `#rrggbb`, `oklch(L C H)` or `{ l, c, h }` and stores a canonical `oklch(L C H)` string (L 0–1), so values serialise, compare and drop into CSS directly. Colours always fit sRGB: chroma is trimmed until they do, keeping lightness and hue. The chroma strip spans 0 to the sRGB gamut edge at the current hue and lightness, so scrubbing hue or lightness keeps the thumb's relative vividness while the readout shows the OKLCH chroma. `colorHex(value)` and `parseColor(value)` convert.
+- **`color(value, meta?)`**: takes `#rgb`, `#rrggbb`, `oklch(L C H)` or `{ l, c, h }` and stores a canonical `oklch(L C H)` string (L 0–1), so values serialise, compare and drop into CSS directly. Colours always fit sRGB: chroma is trimmed until they do, keeping lightness and hue. Every hex comes back exactly: `colorHex(color("#0000ff").value)` is `"#0000ff"`. The chroma strip spans 0 to the sRGB gamut edge at the current hue and lightness, so scrubbing hue or lightness keeps the thumb's relative vividness while the readout shows the OKLCH chroma. `colorHex(value)` and `parseColor(value)` convert.
 - **`point(value, { min, max, step? })`**: `{ x, y }`; bounds and step take a number or `{ x, y }`. y grows downward, as in CSS and UIKit. The pad marks the default with a ring; a drag is one undo step, and `⌥` drags at 1/10 speed.
 - **`easing(value, meta?)`**: `[x1, y1, x2, y2]` or a name: `ease`, `ease-in`/`in`, `ease-out`/`out`, `ease-in-out`/`in-out`, `linear`, `smooth`, `snappy` or `back`. x stays within 0–1 and y within −0.6–1.6. The row shows a mini curve; the editor has two handles and the named curves as chips. `bezierCss(value)` writes the CSS.
 
@@ -197,8 +197,10 @@ const node = defineControls("node", {
   tools: toolbar([
     { id: "play", label: "Play", icon: "play", shortcut: "Space" },
     { id: "retrigger", label: "Retrigger", icon: "retrigger", shortcut: "R", global: true },
+    { id: "frame", label: "Frame", icon: "frame", shortcut: { key: "F", scope: "none" } }, // a chip only
   ]),
   position: vec3({ x: 0, y: 1.2, z: -4 }, { min: -50, max: 50, step: 0.1 }), // { x, y, z }
+  ground: vec2({ x: 0, y: 0 }, { min: -50, max: 50, axes: ["x", "z"] }),     // { x, y }, shown as X and Z
   scale: vec3({ x: 1, y: 1, z: 1 }, { min: 0.01, max: 10, step: 0.01, linked: true }),
   pivot: vec2({ x: 0.5, y: 0 }, { min: 0, max: 1, step: 0.01 }),             // { x, y }
   visible: range([4, 40], { min: 0, max: 100, step: 0.5, unit: "m" }),       // [low, high]
@@ -211,7 +213,8 @@ const node = defineControls("node", {
 - **`vec2(value, { min, max, step?, unit?, decimals? })` / `vec3(…)`**: inline x, y (and z) number
   cells. Each cell is a ↑↓ stop: drag it sideways or press ←/→ to scrub (`⇧` ×10, `⌥` finest),
   Enter or a digit to type. `link: true` adds a link button; while linked (`linked: true` starts
-  that way) changing one axis scales the others with it.
+  that way) changing one axis scales the others with it. `axes: ["x", "z"]` names the cells (their
+  letters and accessible names, "Ground z") for a ground-plane pair; the value keeps its `x` and `y`.
 - **`range([low, high], { min, max, step?, unit?, decimals? })`**: one slider with two thumbs that
   can't cross. The nearer thumb follows the pointer; a press well inside the band moves the whole
   band. Each thumb is a stop: ←/→ move it, Enter types it. A thumb that shows never sits on the
@@ -230,12 +233,16 @@ const node = defineControls("node", {
   `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
   and a shortcut chip. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
   does it from code. Shortcuts work while the panel has focus, and anywhere on the page with
-  `global: true` (not while typing). A panel's shortcuts win over its own single-key commands. The
-  row holds no value; ←/→ move along it and Enter or Space presses.
+  `global: true` (not while typing). A panel's shortcuts win over its own single-key commands.
+  `shortcut: { key, scope }` says where one works: `"panel"` (the default), `"page"` (as `global`)
+  or `"none"`, a chip that only shows a key the host binds itself (a canvas's `F`), so the panel's
+  own `f` and `g` still work beside it. The row holds no value; ←/→ move along it and Enter or
+  Space presses.
 
 Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle" | "seed" |
 "keybind"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
-`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`. Each kind takes
+`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`; vectors take
+`axes`. Each kind takes
 `disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
 
 Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
@@ -273,10 +280,10 @@ live.watch("events", { level: "warn", text: "Gutter drip over budget" })
 
 - **`watch`**: a number or text, with `unit`, `decimals` or `format(n)`.
 - **`sparkline`**: a number per sample, or an array that replaces the history (`history`, 60 by default). Hovered or focused, it reads the history's min–max.
-- **`graph`**: a taller row with several series (`{ [id]: number }` per sample; a series left out breaks its line), `area` fills, `thresholds` with labels, and a crosshair that follows the pointer or `←`/`→` (`⇧` by ten). The legend reads the sample under it.
+- **`graph`**: a taller row with several series (`{ [id]: number }` per sample; a series left out breaks its line), `area` fills, `thresholds` with labels, and a crosshair that follows the pointer or `←`/`→` (`⇧` by ten). The legend reads the sample under it. The title keeps its words: in a narrow column the legend drops its units, then wraps under the title.
 - **`meter`**: a slim bar out of `max`, or `segments` cells. From `warn` it takes `--k-warn`, from `critical` `--k-critical`, and it doesn't flicker between them when the value hovers at a threshold. `null` sweeps it as indeterminate (`aria-busy`).
 - **`table`**: rows of cells, or a key-value record. Numbers sit right in tabular figures.
-- **`log`**: a string, `{ text, level?, time? }` or an array of them. Level chips (All, Warn, Error, with counts), a filter that marks its match (`f` or `Enter` from the log), follow-tail that lets go when you scroll up and offers a "3 new ↓" pill, and Copy (`⌘C`) of the lines shown. Only the lines in view are in the DOM.
+- **`log`**: a string, `{ text, level?, time? }` or an array of them. Level chips (All, Warn, Error, with counts), a filter that marks its match (`f` or `Enter` from the log), follow-tail that lets go when you scroll up and offers a "3 new ↓" pill, and Copy (`⌘C`) of the lines shown. Only the lines in view are in the DOM. Narrow, the filter shrinks and then the tools wrap under the title.
 
 `controls.watched(key)` returns the latest value; `null` clears a readout. A readout can also poll: `get: () => value` is read each frame while its row is on screen (pushing is the usual way, and lets the page sleep).
 
@@ -459,8 +466,9 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   a hosted prototype's settings sections (choices, switches, buttons, titled sections becoming
   groups) to descriptors and values, with what the prototype first reported as each default.
 - **Choices** are segmented while their labels fit with room to spare and there are at most four,
-  and a drop-down menu otherwise. They switch both ways as the width changes; `display: "menu" |
-  "segmented"` fixes one. On a menu row, ←/→ step through the options, and Enter or Space opens
+  and a drop-down menu otherwise. The row's label keeps its words (up to half the row, as on a
+  menu row): segments that would squeeze it become a menu instead. They switch both ways as the
+  width changes; `display: "menu" | "segmented"` fixes one. On a menu row, ←/→ step through the options, and Enter or Space opens
   the menu (↑↓, a letter, Enter, Esc).
 - **Keys stay scoped.** An inline panel hears keys only while focus is inside it. Keys it handles
   are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
@@ -494,6 +502,7 @@ const station = createRemoteControls("lab-station", descriptors, {
   history: editorHistory,                  // { undo, redo, canUndo, canRedo, subscribe? }
   persist: "variants",                     // keep saved variants, never the values
   onSet: (key, value, meta) => write(key, value, meta),
+  onGesture: ({ key, phase }) => (phase === "start" ? editor.begin(key) : editor.end(key)),
 })
 mountPanel(station, column, {
   preset: labPreset,
@@ -513,10 +522,18 @@ mountPanel(station, column, {
   knobs' own entries are then only for compare (hold `\`), which previews the last of them. The
   preview and its release reach `onSet` / `onChange` with `source: "compare"`: apply them, but
   don't record them as steps of the host's own history.
+- **Gestures.** `onGesture({ key, phase })` (on `defineControls` and `createRemoteControls`) says
+  when a key goes into the hand (`"start"`) and comes out (`"end"`): a press or drag on its row,
+  wherever the pointer is let go; an inline edit; a run of `←`/`→` (or Page Up/Down), until the
+  keys have been up for 300 ms. Every change between them is one gesture, so a host opens an undo
+  entry at `start` and closes it at `end` (`examples/lab.ts` does). `controls.hold(key, on)`
+  reports the same.
 - **Disabled, read-only and mixed.** A field's `disabled` dims its row and `readOnly` keeps it at
   full strength; either takes no edits from the pointer or keys, and Random, Mutate and Reset skip
   it. Each takes a boolean or `(values) => boolean`, re-checked on every change, so a row follows
-  the value it depends on. Focus still reaches a gated row (to read it). Mixed keys (a
+  the value it depends on. A function that reads state elsewhere (another store, the host's
+  settings) is read again when you call `controls.refresh()`, which re-checks the flags and asks
+  `rowAccessory` again without new values. Focus still reaches a gated row (to read it). Mixed keys (a
   multi-selection whose items differ) read "—" until edited: `sync(values, { mixed })`,
   `update(descriptors, values, { mixed })` or `controls.setMixed(keys, on?)`. The first edit of a
   mixed key reaches `onSet` even when the value doesn't change, so it applies to every selected item.
@@ -537,7 +554,8 @@ mountPanel(station, column, {
   anything else and knobs rolls it. With `groupRandom` set, group dice stay enabled.
 - **Row accessories.** `rowAccessory(key)` puts the host's node just after each row's label (a pin,
   a spawn-time marker); slider ticks and the label make room for it. The node stays the host's
-  (style it, listen on it, its clicks never reach the row); `panel.updateAccessories()` asks again.
+  (style it, listen on it, its clicks never reach the row); `panel.updateAccessories()` (or
+  `controls.refresh()`, for every panel of the store) asks again.
   With the WebGPU renderer it stays in the DOM, above the overlay.
 - **Long menus.** A menu of more than eight options (not numbered presets) opens with a search
   field: typing filters, ↑↓ and Enter choose, Esc closes. The row's value truncates with its whole
@@ -571,14 +589,18 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   cycle tabs when there's no preset strip. The tab last shown is remembered for these controls (and
   in the session).
 - **Sub-headings.** Fields with the same `subsection` in a group sit under a flat heading inside the
-  group's card, split off by a hairline (never a card inside a card). The heading is a ↑↓ stop: a
+  group's card, split off by a hairline (never a card inside a card). They're gathered: a group's
+  rows without a sub-heading come first, then each sub-heading's rows together, in the order the
+  sub-headings first appear, wherever their fields sit in the schema. The heading is a ↑↓ stop: a
   click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded; the
   session remembers the rest.
 - **Search.** `search: true` (or `{ placeholder, chips }`) puts a field under the header. Typing
   filters rows by label, key, group or sub-heading across every tab, opening folded groups and
   sub-headings while it runs; matches show in the accent colour. Chips narrow it further:
   `"modified"` keeps rows off their defaults and counts them, and a chip of your own is
-  `{ id, label, count?, test(key, controls) }`. `/` focuses the field.
+  `{ id, label, count?, test(key, controls) }`. `/` focuses the field. `panel.search(query?, chips?)`
+  searches from code, as typing and clicking would (`chips` lists exactly which are on), and
+  returns `{ query, chips }`; `panel.search()` only reads it.
 
 ### Shipping
 
@@ -641,13 +663,16 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-warn`, `--k-critical` | `#ff9f0a`, `#ff453a` (light: `#c56a00`, `#e0352b`) | Readouts' warning and critical colours (meters past `warn` / `critical`, log levels), and a destructive confirm |
 | `--k-control-h` | row − 2 × unit | Height of the controls inside a row: segments, menus, switches, number cells, key caps, toolbar buttons |
 | `--k-value-size` | font size − `.5px` | Size of every readout (sliders, cells, ranges, dials, seeds, editor summaries) |
-| `--k-button-bg`, `--k-button-line`, `--k-button-hover-bg`, `--k-button-hover-line` | each button's own | Fill and outline of custom actions, Export/Import and toolbar buttons, at rest and hovered |
+| `--k-button-bg`, `--k-button-line`, `--k-button-hover-bg`, `--k-button-hover-line` | each button's own | Fill and outline of custom actions, Export/Import, toolbar buttons, action rows and preset chips, at rest and hovered. With a fill or outline set, an action row is a sized button in its row and the presets strip a row of buttons (`data-buttons` on the panel) |
 | `--k-button-h`, `--k-button-font-size`, `--k-button-radius` | each button's own | Their height, label size and corners |
+| `--k-button-color` | each button's own | Their label colour at rest (toolbar labels at full strength, say); hovered they take `--k-text` |
 
 **Frame.** `--k-frame: flat` is for a panel set into the host's own column or card. Group cards
 lose their surface and corners, rows are split by hairlines, and groups by `--k-group-divider` over
-their heading. An inline flat panel also drops its own card (`--k-chrome: 0`) and padding, so
-nothing draws a box inside the host's box. The panel reports it as `data-frame="flat"`.
+their heading. An inline flat panel also drops its own card (`--k-chrome: 0`), its border and its
+padding, so nothing draws a box inside the host's box and its rows meet the column's edges exactly,
+in both renderers. `examples/rows.html` shows a column in knobs' look, the Lab's and the Lab's with
+button tokens, by the DOM and the GPU. The panel reports it as `data-frame="flat"`.
 
 **Presets.** `labPreset` (from `knobs/themes`) is the Arcade Lab's column: its greys and blue
 accent, 11.5px type at 26px rows, square corners, the flat frame, mono readouts, and no glass, glow
@@ -875,10 +900,11 @@ Every change of layout, drag frames and springs included, calls `onLayout(layout
 - `toggles` for row accessories such as `visible` and `locked`, which show at rest only in their unusual state
 - `filter` for a query or a test; matching rows show with their ancestors, the match marked
 - `selection`, `expanded` and `rowHeight` (`--k-row` by default)
+- `typeahead`: letters jump to a matching label (on by default). `false` leaves every letter to the page, and `(key) => boolean` decides which ones start a jump, so a host's single-key shortcuts (`F` to frame, `G` for the grid) reach the window while the outliner has focus; letters typed right after a jump carry on its run
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓`, `Home` / `End` | Move; type letters to jump to a label |
+| `↑` / `↓`, `Home` / `End` | Move; type letters to jump to a label (see `typeahead`) |
 | `←` / `→` | Close or go up / open or go down |
 | `⇧` click or `⇧↑↓`, `⌘` click, `⌘A` | Extend, toggle, select all |
 | `Space` | Select the active row (`⌘Space` toggles it) |
@@ -936,8 +962,27 @@ toast("Deleted Barrier", { action: { label: "Undo", run: undo } })
 - **`commandsFrom(controls, { title?, fields?, reveal? })`** lists a store as commands: its actions and toolbar buttons (with their shortcuts), presets and group presets (the current one marked), toggles ("Turn on …"), one command per choice option, "Reset …" for modified fields, and, with `reveal(key)`, every other field (its current value as the hint) to go to.
 - **`confirm({ title, body?, confirm?, cancel?, destructive? })`** returns `Promise<boolean>`. It's modal over a scrim, keeps Tab inside, and Esc or a click outside cancels. `destructive` puts the button in `--k-critical` and focus on Cancel; otherwise focus starts on the confirming button.
 - **`toast(message, { tone?, linger?, action?, within? })`** shows a pill at the bottom centre for 3.2s (6s for `tone: "error"`). A new message replaces the one showing, and hovering keeps it. Pages show their status (Copied, errors) this way.
+- **`menu(anchor, items, options?)`** opens a menu beside a button, a rect or a point. Items take `label`, `icon`, `shortcut` (chips only; it binds nothing), `hint`, `disabled`, `checked` (with `radio`, a dot), `destructive` (in `--k-critical`) and `items` for a submenu (or a function read when it opens); `"-"` is a separator and `null` or `false` leaves an item out. It grows from where it was asked for on a snappy spring and softens out shorter, and either can be turned back halfway. A submenu opens on a short hover and stays open while the pointer heads for it (a safe triangle). Keys: `↑`/`↓`, `Home`/`End`, a letter, `Enter` or `Space`, `→` and `←` for submenus, `Esc`. Each item's `run` and `onSelect(item)` are called; `onClose(reason)` says why it went. The handle has `element`, `open` and `close()`.
+- **`contextMenu(target, items, options?)`** opens one at the pointer on a right-click, or at the focused element on the menu key or `⇧F10`. `items` may be a function of the event, read each time (`null` leaves the browser's own menu). A right-click while one is open moves it. The handle has `open(at?)`, `current` and `dispose()`.
 
 The pure parts are exported for hosts that draw their own: `place({ anchor, size, view, placement })`, `fuzzy(query, text)` (score and matched indices), `rank(items, query)` and `marks(text, indices)`.
+
+### Timeline
+
+```ts
+import { timeline } from "knobs/ui"
+
+const clock = timeline(dock, {
+  ...look,
+  duration: 12, // seconds
+  fps: 30,
+  markers: [{ id: "boom", time: 4, label: "Boom" }],
+  onSeek: (time, source) => scene.seek(time),
+  onCross: (marker) => marker.id === "boom" && retrigger(),
+})
+```
+
+**`timeline(container, options)`** is a scrubber for time-based work. The ruler counts in seconds or frames (`units`) with ticks that thin out as it zooms (`⌘` wheel, a pinch, `+`/`-`, `0` fits) and pans with the wheel or a trackpad. The playhead follows the hand 1:1, pulls softly toward markers and lands on frames (`snap`). Markers can be added (`M`), dragged, renamed (`Enter`) and removed, and `[`/`]` jump between them; `I` and `O` set a loop range. `Space` plays on one rAF clock that sleeps when nothing moves, and `←`/`→` step a frame (`⇧` ten). A right-click on the ruler, a marker or a range opens a context menu. It reports `onSeek(time, source)` (`"scrub" | "key" | "marker" | "play" | "code"`), `onPlay`, `onMarkers`, `onRanges` and `onCross(marker)`. The handle has `time`, `playing`, `markers`, `ranges`, `view`, `seek`, `play`, `pause`, `toggle`, `update`, `fit`, `zoom`, `focus` and `dispose`. `Timeline` in `knobs/ui/react` and `knobs/ui/solid` follows its props. The Lab's scene clock and Boom retrigger run from one under the viewport.
 
 ## Theming, Density & WebGPU Renderer
 
@@ -1033,11 +1078,11 @@ The package has two core exports selected through the standard `development` con
 | `curve([{ x, y }] \| shape, { range?, interp?, shapes?, presets?, ...meta })` | A 1D curve of 2–64 points (ends pinned to x 0 and 1), `smooth` (monotone cubic), `linear` or `step`; a graph of draggable points with shape chips. |
 | `sampleGradient(stops, t, { space?, as? })` / `gradientCss(stops, { space?, direction? })` | A gradient's colour at `t` (`oklch()`, or `as: "hex" \| "rgb" \| "linear"`); a CSS `linear-gradient()`. |
 | `sampleCurve(points, x, { interp? })` / `CURVE_SHAPES` | A curve's y at `x`; the built-in shapes (`linear`, `ease-out`, `inverse²`, `smoothstep`, `bell`) over 0–1. |
-| `vec2({ x, y }, { min, max, step?, link?, linked? })` / `vec3({ x, y, z }, …)` | Inline number cells, optionally linked for uniform scaling. |
+| `vec2({ x, y }, { min, max, step?, link?, linked?, axes? })` / `vec3({ x, y, z }, …)` | Inline number cells, optionally linked for uniform scaling; `axes: ["x", "z"]` names them. |
 | `range([low, high], { min, max, step?, unit? })` | One slider with two thumbs. |
 | `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |
 | `seed(value, { min?, max? })` / `keybind(combo?)` | A whole number with a die; a captured key combination. Both stay out of Random and Mutate by default. |
-| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. |
+| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. `shortcut` is a key, or `{ key, scope: "page" \| "panel" \| "none" }`; `toolbarShortcut(item)` reads either. |
 | `watch` / `sparkline` / `graph` / `meter` / `table` / `log` (`{ label?, unit?, decimals?, format?, hz?, get?, … }`) | Readout rows that hold no value; push with `controls.watch(key, value)`. See [Readouts](#readouts-live-values-sparklines-graphs-meters-tables-and-logs). |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
@@ -1046,7 +1091,7 @@ The package has two core exports selected through the standard `development` con
 | `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)` and `panel.updateAccessories()`. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
 | `page.fold(group: string, folded?: boolean, options?: PageFoldOptions): void` / `page.foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void` / `page.sectionFolded(section: string): boolean` | Fold a group's card or a section or open it (toggles without `folded`), and ask which a section is. `PageFoldOptions` is `{ remember?: boolean, reveal?: boolean }`; `remember` defaults to `true`. |
@@ -1059,7 +1104,8 @@ The package has two core exports selected through the standard `development` con
 - `controls.get()` / `controls.getServerSnapshot()` / `controls.locked`
 - `controls.set(patch, { coalesce? })`
 - `controls.sync(values, { replace?, land?, mixed? })` — apply external state without recording undo or emitting a local change; held keys keep theirs
-- Options `random`, `tunable(key, values)`, `history` (a `HostHistory`) and `persist` (`"all" | "variants" | "none"`); see [Embedding options](#embedding-options)
+- Options `random`, `tunable(key, values)`, `history` (a `HostHistory`), `persist` (`"all" | "variants" | "none"`) and `onGesture({ key, phase: "start" | "end" })`; see [Embedding options](#embedding-options)
+- `controls.refresh()` — re-check function `disabled` / `readOnly` flags and row accessories without new values
 - `controls.canRoll(key)` / `controls.isDisabled(key)` / `controls.isReadOnly(key)` / `controls.persist`
 - `controls.setMixed(keys, on?)` / `controls.isMixed(key)`
 - `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
@@ -1086,13 +1132,15 @@ The package has two core exports selected through the standard `development` con
 | Function | Behavior |
 | --- | --- |
 | `split(container, { panes, direction?, id?, storage?, onLayout?, preset?, theme? })` | Resizable panes and docks that collapse to rails or headers; layouts saved by `id`. |
-| `tree(container, { items, onSelect?, onMove?, onRename?, toggles?, filter?, … })` | A virtualised outliner with keyboard moves, drag reorder and rename. |
+| `tree(container, { items, onSelect?, onMove?, onRename?, toggles?, filter?, typeahead?, … })` | A virtualised outliner with keyboard moves, drag reorder and rename; `typeahead: false \| (key) => boolean` leaves letters to the page. |
 | `readout(field, { preset?, theme?, label? })` | A readout on its own: `{ element, push(value), value, dispose() }`. |
 | `popover(anchor, content, { placement?, offset?, role?, label?, focus?, trap?, closeOnOutside?, onClose? })` | A floating layer that flips and shifts; `{ element, open, reposition(), close() }`. |
 | `tooltip(el, text \| { text, shortcut?, placement?, delay? })` / `tooltips(doc)` | Delayed tooltips with instant hand-off and shortcut chips; `data-tip` attributes. |
 | `commandPalette({ commands, onRun?, hotkey?, recents?, placeholder? })` / `commandsFrom(controls, options?)` | `⌘K` fuzzy command search; a store's actions, presets and fields as commands. |
 | `confirm({ title, body?, confirm?, cancel?, destructive? })` | `Promise<boolean>`, modal, focus kept inside. |
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
+| `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
+| `timeline(container, { duration, time?, fps?, units?, markers?, ranges?, snap?, onSeek?, … })` | A zoomable ruler and playhead with markers, loop ranges and playback. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
 | `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
 | `place` / `fuzzy` / `rank` / `marks` | The overlays' pure model. |
