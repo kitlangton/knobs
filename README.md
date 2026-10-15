@@ -1031,6 +1031,35 @@ const clock = timeline(dock, {
 
 **`timeline(container, options)`** is a scrubber for time-based work. The ruler counts in seconds or frames (`units`) with ticks that thin out as it zooms (`⌘` wheel, a pinch, `+`/`-`, `0` fits) and pans with the wheel or a trackpad. The playhead follows the hand 1:1, pulls softly toward markers and lands on frames (`snap`). Markers can be added (`M`), dragged, renamed (`Enter`) and removed, and `[`/`]` jump between them; `I` and `O` set a loop range. `Space` plays on one rAF clock that sleeps when nothing moves, and `←`/`→` step a frame (`⇧` ten). A right-click on the ruler, a marker or a range opens a context menu. It reports `onSeek(time, source)` (`"scrub" | "key" | "marker" | "play" | "code"`), `onPlay`, `onMarkers`, `onRanges` and `onCross(marker)`. The handle has `time`, `playing`, `markers`, `ranges`, `view`, `seek`, `play`, `pause`, `toggle`, `update`, `fit`, `zoom`, `focus` and `dispose`. `Timeline` in `knobs/ui/react` and `knobs/ui/solid` follows its props. The Lab's scene clock and Boom retrigger run from one under the viewport.
 
+### Ideas grid (bento)
+
+```ts
+import { bento } from "knobs/ui"
+
+const ideas = bento(container, {
+  items: [
+    { id: "a", src: "a.jpg", srcset: "a-640.jpg 640w, a.jpg 1600w", label: "Light table" },
+    { id: "b", aspect: 4 / 3, render: (el) => mountPrototype(el), label: "Chip → panel" },
+  ],
+  onPick: (ids) => save(ids),
+})
+```
+
+**`bento(container, options)`** lays out ideas (images, live canvases, prototypes) for someone to look at and pick from. There's no chrome: tiles sit on the page with hairline gutters (`gap`, 2px), no cards, borders or shadows, and a label shows as type on hover. Items take `id`, `src` (with `srcset` and `alt`) or `render(el)` (return a cleanup), `aspect` (width / height; images without one take their natural size, read from the smallest `srcset` candidate before the first paint), `label`, `group` and `hero`.
+
+The layout shows as much as it can without cropping. Up to 24 items lay out on one screen when every tile stays at least a sixth of the view tall: as justified rows, at the row count that covers the most, or with a hero (one tile large beside or above the rest) when an item asks for it or the first item as a hero shows 4% more. Larger sets, groups and narrow views scroll in justified rows near a third of the view tall (`rowHeight`). A row only looks at the items from its own start, so adding or removing an item never moves the rows before it. Tiles keep their own shape, except that the last row (or a block a little narrower than the view) may crop by up to `tolerance` (8%) to fill the width. Tiles that change place glide there on the calm spring (.4 s, no bounce), new ones come in, and removed ones soften out (scale .96, 3px blur) while the rest close the gap. Only the tiles near the view are in the page (about 30 of 500), and the frame loop sleeps when nothing moves.
+
+Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one continuous spring (.45 s, no bounce; .38 s back) from its place in the grid, while the grid fades under it. The tile blurs with its speed, up to `blur` (2.5px), and is sharp at rest. `Esc`, a click, `Enter` or a pinch out returns it to its exact place, scrolling the grid under it first if you moved on. While zoomed, `←`/`→` or a two-finger swipe slide to the neighbour (.3 s) and a zoomed prototype takes the pointer. `⌘`-scroll or a pinch zooms by hand: the tile follows the fingers 1:1 and settles in or out by where and how fast you let go. Under reduced motion, everything fades instead of travelling.
+
+| Key | Action |
+| --- | --- |
+| `←` `→` `↑` `↓` | Move the focus wash by geometry (zoomed: `←`/`→` go to the neighbour) |
+| `Enter` / `Esc` | Zoom in / out |
+| `Space`, `⇧`/`⌘` click | Pick or unpick (a dot in the accent); `onPick(ids)` |
+| `1`–`9`, `Home` / `End` | Jump to an item |
+
+The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
+
 ## Theming, Density & WebGPU Renderer
 
 Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
@@ -1189,6 +1218,8 @@ The package has two core exports selected through the standard `development` con
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
 | `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
 | `timeline(container, { duration, time?, fps?, units?, markers?, ranges?, snap?, onSeek?, … })` | A zoomable ruler and playhead with markers, loop ranges and playback. |
+| `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
+| `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
 | `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
 | `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
