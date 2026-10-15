@@ -110,6 +110,10 @@ export interface PanelThemeTokens {
   readonly toggleTrack: Rgba
   readonly toggleThumb: Rgba
   readonly rim: Rgba
+  /** The panel's hairline edge (--k-edge), drawn --k-rim-width wide like the rim. */
+  readonly edge: Rgba
+  /** Width (CSS px) of the edge, the rim and the selected pill's outline (--k-rim-width). */
+  readonly rimWidth: number
   readonly rowHover: Rgba
   /** Space between rows (px); above 0 each row is its own bar rather than part of one card. */
   readonly rowGap: number
@@ -296,7 +300,9 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     segActive,
     toggleTrack,
     toggleThumb,
-    rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.75] : [1, 1, 1, 0.09]),
+    rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.6] : [1, 1, 1, 0.1]),
+    edge: parseCssColor(token(style, "edge"), isLight ? [0, 0, 0, 0.07] : [1, 1, 1, 0.07]),
+    rimWidth: lengthProp(style, "rim-width", fontSize, 1),
     rowHover: withAlpha(surface, 0.5),
     rowGap: numProp(style, "row-gap", 0),
     hoverIn: numProp(style, "hover-in", 150),
@@ -319,7 +325,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     curveDashed: style.getPropertyValue("--k-curve-guide").trim() === "dashed",
     curveDot: numProp(style, "curve-dot", 1),
     pillBg: cssMix(accent, segActive, 0.18),
-    pillBorder: withAlpha(accent, 0.32),
+    pillBorder: withAlpha(accent, 0.18),
     fillRest: cssMix(accent, fillBase, numProp(style, "fill-rest-mix", 20) / 100),
     fillActive: cssMix(accent, fillBase, numProp(style, "fill-active-mix", 30) / 100),
     fillHover: cssMix(

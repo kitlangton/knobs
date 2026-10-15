@@ -845,6 +845,11 @@ class GpuOverlayManager {
     d[b + 39] = (c3 ? c3[3] : 0) * this.curAlpha
   }
 
+  /** --k-rim-width in CSS px, on whole device pixels (at least one), so hairlines stay crisp. */
+  private hairline(tokens: PanelThemeTokens) {
+    return Math.max(1, Math.round(tokens.rimWidth * this.curScale)) / this.curScale
+  }
+
   /**
    * The canvas can't sample the page, so each panel gets a backdrop-filter element just under the
    * canvas, kept on the panel's rect: the blur shows through the translucent card drawn above it.
@@ -2086,15 +2091,16 @@ class GpuOverlayManager {
           h: card.height,
           clip: outerClip,
           color: withAlpha(tokens.bg, (1 - glass * 0.2 * shown) * chrome),
-          color2: withAlpha(tokens.line, tokens.line[3] * chrome),
+          // A hairline edge outside the card and a hairline of top light inside it.
+          color2: withAlpha(tokens.edge, tokens.edge[3] * chrome),
           radius: cardRadius,
-          strokeWidth: 1,
           glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
           kind: 0,
           p0: panel.inline ? 0 : 0.35 + (shadow - 0.35) * shown,
           // The specular ring the glass wears while it deforms.
           p1: morph?.specular ?? 0,
-          aux2: withAlpha(tokens.rim, (shown < 1 ? shown : tokens.rim[3]) * chrome),
+          p2: this.hairline(tokens),
+          aux2: withAlpha(tokens.rim, tokens.rim[3] * shown * chrome),
         })
       if (morph && masked) {
         this.masks.set(
@@ -2250,6 +2256,8 @@ class GpuOverlayManager {
             clip: stripClip,
             color: withAlpha(pillFill, pillAlpha),
             color2: withAlpha(tokens.pillBorder, pillAlpha),
+            strokeWidth: this.hairline(tokens),
+            aux2: withAlpha(tokens.rim, tokens.rim[3] * pillAlpha),
             radius: tokens.radiusMd,
             glowOrBlur: tokens.glowStrength,
             kind: 3,

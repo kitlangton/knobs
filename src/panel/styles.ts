@@ -36,6 +36,7 @@ const COLOR_TOKENS = [
   "toggle-track",
   "toggle-thumb",
   "rim",
+  "edge",
   "page",
 ]
 const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "font-size"]
@@ -59,7 +60,7 @@ const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.5);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
   --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
-  --k-rim:rgba(255,255,255,.75);--k-glass-tone:1.08;--k-page:#e6e6eb;--k-group-ink:var(--k-dim);
+  --k-rim:rgba(255,255,255,.6);--k-edge:rgba(0,0,0,calc(.07 * var(--k-contrast)));--k-glass-tone:1.08;--k-page:#e6e6eb;--k-group-ink:var(--k-dim);
   color-scheme:light;`
 
 const defaultsCss = `
@@ -70,7 +71,7 @@ const defaultsCss = `
   --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
   --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-toggle-thumb:var(--k-bg);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
-  --k-rim:rgba(255,255,255,.09);--k-glass-tone:.5;--k-page:#101012;
+  --k-rim:rgba(255,255,255,.1);--k-edge:rgba(255,255,255,calc(.07 * var(--k-contrast)));--k-rim-width:1px;--k-glass-tone:.5;--k-page:#101012;
   --k-group-ink:rgba(255,255,255,.48);
   --k-unit:4px;--k-density:1;--k-width:288px;--k-row:round(calc(32px * var(--k-density)),2px);--k-pad:round(calc(10px * var(--k-density)),2px);--k-inset:var(--k-pad);--k-gap:round(calc(var(--k-unit) * var(--k-density)),1px);--k-radius:round(calc(8px * var(--k-density)),2px);--k-panel-radius:calc(var(--k-radius) + var(--k-unit));
   --k-font-size:round(calc(12px * var(--k-density)),.5px);--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
@@ -80,6 +81,10 @@ const defaultsCss = `
   --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
+/* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
+@media(min-resolution:1.5dppx){:where(:root,:host){--k-rim-width:.67px}}
+@media(min-resolution:2dppx){:where(:root,:host){--k-rim-width:.5px}}
+@media(min-resolution:3dppx){:where(:root,:host){--k-rim-width:.34px}}
 :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="light"],
 :where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast):not([data-theme="dark"]),
 :where(:root[data-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
@@ -110,7 +115,7 @@ const css = `
   --k-text-cap:calc(var(--k-font-size) - 2px);
   --k-row-hover:color-mix(in srgb,var(--k-surface) 50%,transparent);
   --k-pill-bg:color-mix(in srgb,var(--k-accent) 18%,var(--k-seg-active));
-  --k-pill-border:color-mix(in srgb,var(--k-accent) 32%,transparent);
+  --k-pill-border:color-mix(in srgb,var(--k-accent) 18%,transparent);
   --k-fill-rest:color-mix(in srgb,var(--k-accent) var(--k-fill-rest-mix),var(--k-fill-base));
   --k-fill-active:color-mix(in srgb,var(--k-accent) var(--k-fill-active-mix),var(--k-fill-base));
   --k-disabled-opacity:.32;
@@ -134,16 +139,16 @@ const css = `
 .knobs-mono{font-family:var(--k-mono);font-variant-numeric:tabular-nums}
 
 /* The chip: a round cog button, or a capsule with a label beside the cog. */
-.knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid var(--k-line);
-  color:var(--k-label);font-size:var(--k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
+.knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid transparent;
+  color:var(--k-label);font-size:var(--k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--k-edge);box-shadow:0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,.35),inset 0 var(--k-rim-width) 0 var(--k-rim);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
 .knobs-chip[data-label]{width:auto;padding:0 10px 0 7px}
 .knobs-chip .knobs-icon{display:block;flex:none;width:15px;height:15px}
-.knobs-chip:hover{color:var(--k-text);border-color:var(--k-line-hi)}
+.knobs-chip:hover{color:var(--k-text);--k-chip-edge:var(--k-line-hi)}
 .knobs-chip[data-shown="true"]{transition:color .15s,border-color .15s,opacity .16s var(--k-ease),transform .22s var(--k-ease),scale .12s var(--k-ease),visibility 0s,${TOKEN_TRANSITIONS}}
 .knobs-chip[data-shown="false"]{opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-2px) scale(.94);transition:opacity .12s ease-in,transform .12s ease-in,visibility 0s .12s,${TOKEN_TRANSITIONS}}
 /* A press squeezes it, easing in (morph.ts carries the squeeze on into the glass). */
-.knobs-chip.knobs-chip[data-pressed]{scale:.94;transition:color .15s,border-color .15s,scale 60ms cubic-bezier(.11,0,.5,0),${TOKEN_TRANSITIONS}}
-.knobs-chip:focus-visible{outline:none;color:var(--k-text);border-color:var(--k-line-hi)}
+.knobs-chip.knobs-chip[data-pressed]{scale:.94;transition:color .15s,border-color .15s,scale 50ms ease-in-out,${TOKEN_TRANSITIONS}}
+.knobs-chip:focus-visible{outline:none;color:var(--k-text);--k-chip-edge:var(--k-line-hi)}
 @media(prefers-reduced-motion:reduce){.knobs-chip.knobs-chip{scale:none;transform:none}}
 /* "knobs on" / "knobs off" after the reveal shortcut. */
 .knobs-toast{position:fixed;left:50%;bottom:24px;z-index:2147480004;translate:-50% 0;padding:6px 12px;border-radius:999px;pointer-events:none;
@@ -160,9 +165,10 @@ const css = `
 @media(prefers-reduced-motion:reduce){.knobs-chip{--k-token-t:0s}.knobs-panel.knobs-panel{transition:none}}
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
-   contrast; a 1px specular rim catches the top edge. */
+   contrast. Its edge is a hairline (--k-edge, --k-rim-width wide) and a hairline of light (--k-rim)
+   catches its top. */
 .knobs-panel{transition:${TOKEN_TRANSITIONS};position:fixed;z-index:2147480001;width:var(--k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--k-pad);
-  background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent);border:1px solid var(--k-line);border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),inset 0 1px 0 var(--k-rim);scrollbar-width:thin;
+  background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--k-panel-radius);box-shadow:var(--k-shadow),0 0 0 var(--k-rim-width) var(--k-edge),inset 0 var(--k-rim-width) 0 var(--k-rim);scrollbar-width:thin;
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
   animation:knobs-in .16s var(--k-ease);}
@@ -171,8 +177,8 @@ const css = `
    content, laid out at full size, is clipped to it and revealed top first. */
 .knobs-panel[data-morphing]{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none}
 .knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;--spec:0;
-  background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20% * var(--p)),transparent);border:1px solid var(--k-line);
-  box-shadow:inset 0 0 0 1px rgb(255 255 255/var(--spec)),inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--p) * 100%),transparent);
+  background:color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20% * var(--p)),transparent);border:1px solid transparent;
+  box-shadow:0 0 0 var(--k-rim-width) var(--k-edge),inset 0 0 0 var(--k-rim-width) rgb(255 255 255/var(--spec)),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--k-rim) calc(var(--p) * 100%),transparent);
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
 .knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}
@@ -180,9 +186,9 @@ const css = `
 .knobs-morph::after{box-shadow:var(--k-shadow);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
-.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--k-chrome) * 100%),transparent);animation:none;
+.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:0 0 0 var(--k-rim-width) color-mix(in srgb,var(--k-edge) calc(var(--k-chrome) * 100%),transparent),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--k-rim) calc(var(--k-chrome) * 100%),transparent);animation:none;
   /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column. */
-  background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:color-mix(in srgb,var(--k-line) calc(var(--k-chrome) * 100%),transparent)}
+  background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:transparent}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.knobs-panel{animation:none}.knobs-panel *{transition:none!important}}
 
@@ -216,7 +222,7 @@ const css = `
 .knobs-presets{position:relative;display:flex;align-items:flex-start;gap:var(--k-tray-pad);margin:0 0 var(--k-section-gap);padding:var(--k-tray-pad);background:var(--k-seg-bg);border-radius:var(--k-radius);user-select:none;touch-action:none}
 .knobs-presets-track{position:relative;flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--k-preset-min,58px)),1fr));align-items:stretch;gap:var(--k-tray-pad)}
 /* The selected pill is placed by its edges: the edge facing the move leads, the other trails. */
-.knobs-presets-pill{position:absolute;top:0;left:0;background:var(--k-pill-bg);border:1px solid var(--k-pill-border);border-radius:var(--k-radius-md);box-shadow:0 1px 2px rgba(0,0,0,.16),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 24%,transparent);pointer-events:none;
+.knobs-presets-pill{position:absolute;top:0;left:0;background:var(--k-pill-bg);border:0;border-radius:var(--k-radius-md);box-shadow:inset 0 0 0 var(--k-rim-width) var(--k-pill-border),inset 0 var(--k-rim-width) 0 var(--k-rim),0 1px 2px rgba(0,0,0,.16),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 24%,transparent);pointer-events:none;
   transition:left ${TRAIL_T},right ${LEAD_T},top ${LEAD_T},opacity .15s,scale .15s}
 .knobs-presets-pill[data-dir="left"]{transition:left ${LEAD_T},right ${TRAIL_T},top ${LEAD_T},opacity .15s,scale .15s}
 .knobs-preset-chip{position:relative;z-index:1;height:var(--k-control-h);min-height:20px;padding:0 6px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent!important;border-radius:var(--k-radius-md);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
