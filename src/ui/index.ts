@@ -104,3 +104,18 @@ export {
   type TreeFilter,
   type TreeMove,
 } from "./tree-model.js"
+export { bento, type Bento, type BentoItem, type BentoOptions } from "./bento.js"
+export {
+  fitRect,
+  FIT_MAX,
+  motionBlur,
+  neighbour as bentoNeighbour,
+  planBento,
+  rowTarget,
+  windowOf as bentoWindow,
+  type BentoDirection,
+  type BentoLayout,
+  type BentoMode,
+  type BentoPlan,
+  type BentoRect,
+} from "./bento-model.js"
