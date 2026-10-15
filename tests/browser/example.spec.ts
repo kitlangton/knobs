@@ -69,7 +69,7 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   await context.grantPermissions(["clipboard-read", "clipboard-write"])
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto("/")
+  await page.goto("/studies.html")
   await expect(page.locator(".knobs-chip")).toHaveCount(4)
   await expect(page.locator(".knobs-chip:visible")).toHaveCount(0)
   const rendered = (id: string) => page.locator(`[data-study="${id}"] [data-render]`)
@@ -413,7 +413,7 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
 
   // Navigate to /?gpu and verify WebGPU hardware renderer & diagnostics
   await page.setViewportSize({ width: 2048, height: 1480 })
-  await page.goto("/?gpu")
+  await page.goto("/studies.html?gpu")
   const splatDialog = await openStudy(page, "splat")
   await expect(splatDialog).toHaveAttribute("data-renderer", "gpu")
   await expect(splatDialog).toHaveAttribute("data-gpu-active", "true")
@@ -447,7 +447,7 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
     Object.defineProperty(navigator, "gpu", { value: undefined, configurable: true })
   })
   const fallbackPage = await fallbackContext.newPage()
-  await fallbackPage.goto("/?gpu")
+  await fallbackPage.goto("/studies.html?gpu")
   const fallbackRemote = fallbackPage.getByRole("region", { name: "remote-tune controls" })
   await expect(fallbackRemote).toBeVisible()
   await expect(fallbackRemote).toHaveAttribute("data-gpu-active", "false")
@@ -458,7 +458,7 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
 })
 
 test("keyboard reaches everything; drags and scrubs are single undo steps", async ({ page }) => {
-  await page.goto("/")
+  await page.goto("/studies.html")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const panel = await openStudy(page, "splat")
@@ -551,7 +551,7 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
 })
 
 test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ page }) => {
-  await page.goto("/")
+  await page.goto("/studies.html")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const panel = await openStudy(page, "splat")
@@ -1087,7 +1087,7 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   // GPU: the overlay draws the editors (more primitives once they open), shows the same swatch
   // colour, and sleeps once everything settles. (A fresh tab: open panels and editors carry over.)
   await page.evaluate(() => sessionStorage.clear())
-  await page.goto("/?gpu")
+  await page.goto("/studies.html?gpu")
   const gpuPanel = await open()
   await expect(gpuPanel).toHaveAttribute("data-gpu-active", "true")
   const settled = async () => {

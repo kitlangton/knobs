@@ -37,7 +37,7 @@ try {
     const errors: string[] = []
     page.on("pageerror", (e) => errors.push(e.message))
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()))
-    await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
+    await page.goto(`http://127.0.0.1:${port}/studies.html${mode === "gpu" ? "?gpu" : ""}`)
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     const panel = await openSplat(page)
@@ -216,7 +216,7 @@ try {
       await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
     )
     // 9. Compound editors: spring sliders, disclosure rows, strips, pad and curve handles
-    await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
+    await page.goto(`http://127.0.0.1:${port}/studies.html${mode === "gpu" ? "?gpu" : ""}`)
     const motionStudy = page.locator('[data-study="motion"]')
     const mb = (await motionStudy.boundingBox())!
     await motionStudy.hover({ position: { x: mb.width - 20, y: 60 } })
@@ -318,7 +318,7 @@ try {
     )
     await page.screenshot({ path: `test-results/audit-${mode}-page.png` })
     log("errors:", errors)
-    await page.goto(`http://127.0.0.1:${port}/${mode === "gpu" ? "?gpu" : ""}`)
+    await page.goto(`http://127.0.0.1:${port}/studies.html${mode === "gpu" ? "?gpu" : ""}`)
     const fresh = await openSplat(page)
     await sleep(400)
     await fresh.screenshot({ path: `test-results/audit-${mode}-panel.png` })

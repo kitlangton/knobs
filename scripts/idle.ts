@@ -17,7 +17,7 @@ try {
   }
   const browser = await chromium.launch({ args: ["--enable-gpu"] })
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-  await page.goto(`http://127.0.0.1:${port}/?gpu`)
+  await page.goto(`http://127.0.0.1:${port}/studies.html?gpu`)
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const study = page.locator('[data-study="splat"]')
@@ -113,7 +113,7 @@ try {
   await report("theme glide")
 
   // The compound editors: springs with their dot, disclosure rows, strips, pad and curve handles.
-  await page.goto(`http://127.0.0.1:${port}/?gpu`)
+  await page.goto(`http://127.0.0.1:${port}/studies.html?gpu`)
   const motionStudy = page.locator('[data-study="motion"]')
   const mb = (await motionStudy.boundingBox())!
   await motionStudy.hover({ position: { x: mb.width - 20, y: 60 } })

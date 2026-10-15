@@ -12,7 +12,8 @@ export default defineConfig(({ command, mode }) => ({
   optimizeDeps: {
     include: ["solid-js", "solid-js/web", "solid-js/html"],
     entries: [
-      "index.html",
+      "studies.html",
+      "lab.html",
       "contracts.html",
       "meta.html",
       "die.html",
@@ -28,6 +29,8 @@ export default defineConfig(({ command, mode }) => ({
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, "index.html"),
+        studies: resolve(import.meta.dirname, "studies.html"),
+        lab: resolve(import.meta.dirname, "lab.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
         die: resolve(import.meta.dirname, "die.html"),
