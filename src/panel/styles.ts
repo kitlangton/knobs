@@ -385,10 +385,17 @@ const css = `
 .knobs-panel .knobs-action-row{padding:0}
 .knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-button-color,var(--k-text));font-size:var(--k-button-font-size,calc(var(--k-text-control) + .5px));font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t),background var(--k-hover-t),box-shadow var(--k-hover-t)}
 .knobs-panel .knobs-action:is(:hover,:focus-visible){color:var(--k-accent)}
-.knobs-panel .knobs-action:active{opacity:.7}
+.knobs-panel .knobs-action:is(:active,.knobs-pressed){opacity:.7}
+.knobs-panel .knobs-action.knobs-pressed{color:var(--k-accent)}
+/* A shortcut: its key cap at the row's end, the button taking the rest. */
+.knobs-panel .knobs-action-row[data-keyed]{gap:6px}
+.knobs-panel .knobs-action-row[data-keyed]>.knobs-action{flex:1 1 0;width:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-panel .knobs-action-row>.knobs-keys{order:1;margin-right:var(--k-inset)}
 /* With a button fill or outline (--k-button-bg, --k-button-line), an action is a sized button in
    its row, and the presets strip a row of them, as toolbar buttons are. */
 .knobs-panel[data-buttons] .knobs-action-row{padding:0 var(--k-inset)}
+.knobs-panel[data-buttons] .knobs-action-row[data-keyed]>.knobs-action{flex:0 1 auto;margin-right:auto}
+.knobs-panel[data-buttons] .knobs-action-row>.knobs-keys{margin-right:0}
 .knobs-panel[data-buttons] .knobs-action{width:auto;max-width:100%;height:var(--k-button-h,var(--kc-control-h));padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   background:var(--k-button-bg,transparent);box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);border-radius:var(--k-button-radius,var(--k-radius-md))}
 .knobs-panel[data-buttons] .knobs-action:is(:hover,:focus-visible){color:var(--k-text);background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
@@ -695,6 +702,7 @@ const css = `
 .knobs-track>.knobs-accessory{position:absolute;top:0;bottom:0;left:calc(var(--k-label-right,0px) + 4px);z-index:1}
 .knobs-x-head>.knobs-accessory{margin:0 auto 0 -4px}
 .knobs-action-row>.knobs-accessory{position:absolute;top:0;bottom:0;right:var(--k-inset)}
+.knobs-action-row[data-keyed]>.knobs-accessory{position:static}
 
 /* Foldable groups (folded / groupFolded): the header toggles its card. */
 .knobs-panel .knobs-group-head[data-foldable]{cursor:pointer;user-select:none;transition:background var(--k-hover-t)}

@@ -191,9 +191,10 @@ points without letting them pass each other.
 ### Inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars
 
 ```ts
-import { angle, defineControls, keybind, range, seed, toolbar, vec2, vec3 } from "knobs"
+import { action, angle, defineControls, keybind, range, seed, toolbar, vec2, vec3 } from "knobs"
 
 const node = defineControls("node", {
+  replay: action("Replay", { run: replay, shortcut: "Shift+K", global: true, rebind: true }),
   tools: toolbar([
     { id: "play", label: "Play", icon: "play", shortcut: "Space" },
     { id: "retrigger", label: "Retrigger", icon: "retrigger", shortcut: "R", global: true },
@@ -231,15 +232,26 @@ const node = defineControls("node", {
   Esc cancels and ⌫ clears. Not rolled by Random or Mutate. Letters follow the user's layout
   (Dvorak's K records and matches as K), with ⌥ combinations read through the browser's layout
   map; `comboFromEvent`, `matchesCombo` and `letterOf` do the same for a host's own keys.
-- **`toolbar(items)`**: a wrapping row of buttons with an icon (`play`, `pause`, `frame`,
+- **`toolbar(items)`**: a row of buttons with an icon (`play`, `pause`, `frame`,
   `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
-  and a shortcut chip. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
+  and a shortcut chip. The buttons share equal columns, as many as fit, balanced across the rows
+  (four that don't fit in one row wrap as two and two), each chip at its button's end. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
   does it from code. Shortcuts work while the panel has focus, and anywhere on the page with
   `global: true` (not while typing). A panel's shortcuts win over its own single-key commands.
   `shortcut: { key, scope }` says where one works: `"panel"` (the default), `"page"` (as `global`)
   or `"none"`, a chip that only shows a key the host binds itself (a canvas's `F`), so the panel's
   own `f` and `g` still work beside it. The row holds no value; ←/→ move along it and Enter or
   Space presses.
+- **`action(label, { run, shortcut?, global?, rebind? })`**: a button row, whose `shortcut` (a
+  combination such as `"Shift+K"`, or `{ key, scope }`) presses it under the same rules as a
+  toolbar button's: while the panel has focus, or anywhere on the page with `global: true` (not
+  while typing). It shows as a key cap at the row's end. With `rebind: true` the user can change
+  it there: a click or Enter on the cap listens, the next combination is the new shortcut, Esc
+  cancels and ⌫ clears; →/← go between the button and the cap. A rebinding isn't a value: it
+  stays out of presets, undo and Random, and is saved with the values, as locks are.
+  `controls.shortcut(key, item?)` reads the shortcut in force and `controls.rebind(key, combo,
+  item?)` changes it from code (`""` for none, `undefined` for the declared one), a toolbar
+  button's too (by its id), which has no cap of its own to rebind it from.
 
 Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle" | "seed" |
 "keybind"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
@@ -464,7 +476,7 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   ranges and labels. `onSet` reports `"d"` and `"b"` separately; values stay flat. Locally:
   `defineControls("m", { ...flatSpring({ duration: 0.45, bounce: 0.3 }, { label: "Spring" }) })`.
 - **Actions and settings.** `{ kind: "action" }` (or `action("Replay")` locally) is a button row
-  that calls `onAction(key)`. Choices take `{ id, label }` options. `fromSettings(groups, home)` maps
+  that calls `onAction(key)`; `shortcut` (a combination), `global` and `rebind` work as `action`'s. Choices take `{ id, label }` options. `fromSettings(groups, home)` maps
   a hosted prototype's settings sections (choices, switches, buttons, titled sections becoming
   groups) to descriptors and values, with what the prototype first reported as each default.
 - **Choices** are segmented while their labels fit with room to spare and there are at most four,
@@ -1096,7 +1108,7 @@ The package has two core exports selected through the standard `development` con
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
-| `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
+| `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
 | `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
@@ -1118,6 +1130,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.setMixed(keys, on?)` / `controls.isMixed(key)`
 - `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
 - `controls.action(key, item?)` — press an action row, or a toolbar's item
+- `controls.shortcut(key, item?)` / `controls.rebind(key, combo, item?)` — an action's (or toolbar button's) shortcut in force, and a rebinding saved with the values (`""` none, `undefined` back to the declared one)
 - `controls.watch(key, value)` / `controls.watched(key)` — push to a readout row (`null` clears it); the latest value
 - `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
 - `controls.isModified(key?)` / `controls.modified()`

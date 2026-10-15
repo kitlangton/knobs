@@ -4559,8 +4559,11 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "action") {
           const b = row.button
-          const on = hovered || this.isFocused(b)
-          this.drawRowHover(row.row, rRect, hovered)
+          const on =
+            (row.keys ? this.isHovered(b) : hovered) ||
+            this.isFocused(b) ||
+            b.classList.contains("knobs-pressed")
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
           const br = this.rectOf(b)
           const rest = tokens.buttonColor ?? tokens.text
           if (tokens.boxed) this.drawButtonBox(b, br, on, rowAlpha, cardClip)
@@ -4575,6 +4578,14 @@ class GpuOverlayManager {
               clip: tokens.boxed ? this.clipTo(cardClip, br) : cardClip,
             },
           )
+          if (row.keys)
+            this.drawKeyCap(
+              row.keys,
+              rowCenterY,
+              rowAlpha,
+              cardClip,
+              !row.keys.chip.hasAttribute("data-static"),
+            )
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "spring") {
           this.drawSpring(row, rRect, cardClip, rowAlpha, clock)

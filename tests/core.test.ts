@@ -1,6 +1,8 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest"
 import { createRoot as createSolidRoot, type Accessor } from "solid-js"
 import {
+  action,
+  actionShortcut,
   angle,
   choice,
   color,
@@ -38,6 +40,7 @@ import { maxChroma, parseColor } from "../src/core/color.js"
 import { normalize } from "../src/core/schema.js"
 import { randomValues } from "../src/core/random.js"
 import { mutateValues } from "../src/core/mutate.js"
+import { toolbarColumns } from "../src/panel/toolbar-grid.js"
 import { storageKey } from "../src/core/storage.js"
 import { useControls } from "../src/react/useControls.js"
 import { useControls as useSolidControls } from "../src/solid/index.js"
@@ -1676,6 +1679,72 @@ describe("inspector fields: vectors, ranges, angles, seeds, key combinations and
     expect(onAction).toHaveBeenCalledTimes(1)
     expect(() => c.action("tools", "missing")).toThrow()
     expect(() => toolbar([])).toThrow()
+  })
+  it("action shortcuts: one spelling, scoped as a toolbar button's", () => {
+    const a = action("Replay", { shortcut: "shift+k" })
+    expect(a.shortcut).toBe("Shift+K")
+    expect(actionShortcut(a)).toEqual({ key: "Shift+K", scope: "panel" })
+    expect(actionShortcut(action("Go", { shortcut: "g", global: true }))).toEqual({
+      key: "G",
+      scope: "page",
+    })
+    expect(actionShortcut(action("Frame", { shortcut: { key: "F", scope: "none" } }))).toEqual({
+      key: "F",
+      scope: "none",
+    })
+    expect(actionShortcut(action("Plain"))).toBeUndefined()
+    expect(action("Bind", { rebind: true }).rebind).toBe(true)
+    expect(() => action("Bad", { shortcut: "Shift+" })).toThrow()
+    expect(matchesCombo(a.shortcut!, key({ key: "K", code: "KeyK", shiftKey: true }))).toBe(true)
+    expect(matchesCombo(a.shortcut!, key({ key: "k", code: "KeyK" }))).toBe(false)
+  })
+  it("rebinding an action or a toolbar button is kept with the values, not in them", () => {
+    const storage = memoryStorage()
+    const s = {
+      replay: action("Replay", { shortcut: "Shift+K", rebind: true }),
+      tools: toolbar([
+        { id: "play", label: "Play", shortcut: "Space" },
+        { id: "slow", label: "Slow" },
+      ]),
+      x: knob(1, { min: 0, max: 2 }),
+    }
+    const make = () => defineControls("insp-bind", s, { enabled: true, storage })
+    const c = make()
+    expect(c.shortcut("replay")).toBe("Shift+K")
+    expect(c.shortcut("tools", "play")).toBe("Space")
+    expect(c.shortcut("tools", "slow")).toBeUndefined()
+    expect(c.shortcut("x")).toBeUndefined()
+    const heard = vi.fn()
+    c.subscribe(heard)
+    c.rebind("replay", "alt+r")
+    expect(c.shortcut("replay")).toBe("Alt+R")
+    expect(heard).toHaveBeenCalledTimes(1)
+    c.rebind("tools", "P", "play")
+    c.rebind("tools", "S", "slow")
+    expect(c.shortcut("tools", "slow")).toBe("S")
+    expect(c.canUndo).toBe(false)
+    expect(Object.keys(c.get())).toEqual(["x"])
+    const again = make()
+    expect(again.shortcut("replay")).toBe("Alt+R")
+    expect(again.shortcut("tools", "play")).toBe("P")
+    again.rebind("replay", "")
+    expect(again.shortcut("replay")).toBe("")
+    again.rebind("replay", undefined)
+    expect(again.shortcut("replay")).toBe("Shift+K")
+    // Bound back to what it declares, nothing is kept.
+    again.rebind("tools", "Space", "play")
+    expect(make().shortcut("tools", "play")).toBe("Space")
+    expect(() => again.rebind("x", "K")).toThrow()
+    expect(() => again.rebind("replay", "Shift+")).toThrow()
+  })
+  it("toolbar columns: as many as fit, balanced across the rows", () => {
+    expect(toolbarColumns(4, 110, 276, 6)).toBe(2)
+    expect(toolbarColumns(4, 60, 276, 6)).toBe(4)
+    // Three fit, but three and one would orphan a button: two and two.
+    expect(toolbarColumns(4, 80, 276, 6)).toBe(2)
+    expect(toolbarColumns(5, 80, 276, 6)).toBe(3)
+    expect(toolbarColumns(3, 400, 276, 6)).toBe(1)
+    expect(toolbarColumns(1, 50, 276, 6)).toBe(1)
   })
   it("tab and subsection travel as meta, from schema and descriptors", () => {
     const s = fromDescriptors([
