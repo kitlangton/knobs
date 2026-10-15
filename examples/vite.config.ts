@@ -8,7 +8,6 @@ const port = Number(process.env.PORT) || 5178
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
 export default defineConfig(({ command, mode }) => ({
   root: "examples",
-  resolve: { dedupe: ["solid-js"] },
   optimizeDeps: {
     include: ["solid-js", "solid-js/web", "solid-js/html"],
     entries: [
