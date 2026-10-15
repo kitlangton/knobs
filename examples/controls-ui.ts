@@ -5,8 +5,8 @@ import {
   applyMove,
   confirm,
   contextMenu,
-  menu,
   type MenuEntry,
+  menu,
   popover,
   split,
   type TimelineMarker,
@@ -15,8 +15,18 @@ import {
   tooltip,
   tree,
 } from "knobs/ui"
-import { ColorVal, rolling, Smear, Speed, Stage } from "./controls-motion"
 import type { SectionSpec } from "./controls"
+import {
+  blurFor,
+  ColorVal,
+  DirBlur,
+  reduced,
+  rolling,
+  Smear,
+  Speed,
+  Stage,
+  stretchFor,
+} from "./controls-motion"
 
 interface Kit {
   section(spec: SectionSpec): {
@@ -241,6 +251,7 @@ export function uiSections({ section, h, theme }: Kit) {
       }
       return 0
     }
+    const shadowBlur = new DirBlur(shadow)
     const stage = new Stage(stageEl, () => {
       const w = stageEl.clientWidth
       const hh = stageEl.clientHeight
@@ -250,8 +261,12 @@ export function uiSections({ section, h, theme }: Kit) {
       const by = hh - 34 - up
       // The playhead moves it (a scrub is 1:1); its speed, read from where it goes, smears it.
       speed.feed(x, by)
-      ball.style.transform = `translate(${px(x)},${px(by)}) scale(${(1 + squash * 0.18).toFixed(4)},${(1 - squash * 0.14).toFixed(4)})${smear.transform(speed.vx.x, speed.vy.x)}`
-      shadow.style.transform = `translate(${px(x)},${px(hh - 22)}) scale(${(1 - up / (hh * 1.4)).toFixed(4)})`
+      const rSpeed = Math.abs(pulse.v) * 28
+      ball.style.transform = `translate(${px(x)},${px(by)}) scale(${(1 + squash * 0.18).toFixed(4)},${(1 - squash * 0.14).toFixed(4)})${smear.transform(speed.vx.x, speed.vy.x, 1, rSpeed)}`
+      const shSc = Math.max(0.2, 1 - up / (hh * 1.4))
+      const shSt = stretchFor(speed.vx.x, 0.2)
+      shadow.style.transform = `translate(${px(x)},${px(hh - 22)}) scale(${(shSc * shSt).toFixed(4)},${shSc.toFixed(4)})`
+      shadowBlur.set(blurFor(speed.vx.x * 0.85) / (shSc * shSt), 0)
     })
     const pulse = stage.val(0, 0.002)
     const speed = new Speed(stage)
@@ -312,14 +327,21 @@ export function uiSections({ section, h, theme }: Kit) {
       ["Tangerine", "#ff9150"],
       ["Rose", "#f2668b"],
     ]
+    const shapeBlur = new DirBlur(shape)
     const stage = new Stage(card, () => {
       shape.style.transform = `scale(${size.x.toFixed(4)})`
       const c = tint.css()
       shape.style.backgroundColor = c
       ring.style.color = c
+      const cSpeed = Math.hypot(tint.l.v, tint.a.v * 2.2, tint.b.v * 2.2) * 180
+      const sb = blurFor(Math.abs(size.v) * 95 + cSpeed * 0.4, 2.6) / Math.max(0.2, size.x)
+      shapeBlur.set(sb, sb)
       const o = Math.min(1, Math.max(0, outline.x))
       ring.style.opacity = o.toFixed(3)
       ring.style.transform = `scale(${(0.9 + 0.1 * o).toFixed(4)})`
+      const soft = !reduced() && o > 0.001 && (o < 0.999 || !outline.spring.resting)
+      const rb = (1 - o) * 2.5 + blurFor(Math.abs(outline.v) * 75, 2)
+      ring.style.filter = soft && rb >= 0.05 ? `blur(${rb.toFixed(2)}px)` : ""
     })
     const size = stage.val(1, 0.0005)
     const outline = stage.val(0, 0.002, true)

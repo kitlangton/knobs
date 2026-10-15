@@ -6,15 +6,15 @@
 import {
   action,
   angle,
-  bezierPoint,
   type Bezier,
+  bezierPoint,
   type ChangeMeta,
-  choice,
-  color,
-  comboParts,
   type ControlDescriptor,
   type Controls,
   type ControlsOptions,
+  choice,
+  color,
+  comboParts,
   createRemoteControls,
   curve,
   defineControls,
@@ -25,20 +25,20 @@ import {
   keybind,
   knob,
   log,
-  matchesCombo,
-  parseColor,
-  meter,
   type MountPanelOptions,
+  matchesCombo,
+  meter,
+  parseColor,
   point,
   range,
+  type Schema,
+  type State,
   sampleCurve,
   sampleGradient,
-  type Schema,
   seed,
   sparkline,
   spring,
   springMotion,
-  type State,
   table,
   toggle,
   toolbar,
@@ -74,8 +74,9 @@ import {
   Smear,
   Speed,
   Stage,
-  stretchFor,
   Swap,
+  stretchAlong,
+  stretchFor,
   type Val,
 } from "./controls-motion"
 import { uiSections } from "./controls-ui"
@@ -247,10 +248,10 @@ category("Basics")
   })
   mount(store, s.slot, { title: "Dots" })
   const MAX = 7
-  /** The merge: a 200 ms ease-in into the neighbour (it accelerates, then is gone). */
-  const MERGE_MS = 200
+  /** The merge: a 185 ms surface-tension collapse into the neighbour (bridges early, then snaps). */
+  const MERGE_MS = 185
   /** The bud and the row's respacing (duration / bounce). */
-  const BUD = springMotion({ duration: 0.34, bounce: 0.12 })
+  const BUD = springMotion({ duration: 0.25, bounce: 0.08 })
   s.stage.style.display = "block"
   const canvas = h("canvas")
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;color:var(--text)"
@@ -272,10 +273,18 @@ category("Basics")
     const t = clamp01(ink.x)
     return inkFrom.map((c, i) => c + (inkTo[i]! - c) * t)
   }
-  // Dots move slowly next to the other previews, so they read speed more keenly: a respace at
-  // 100 px/s smears about 1.5 px. Both are exactly nothing at rest.
-  const dotBlur = (speed: number) => (reduced() || speed < 2 ? 0 : Math.min(5, speed / 70))
-  const dotStretch = (speed: number) => (reduced() ? 1 : 1 + Math.min(0.32, speed / 700))
+  // Shutter travel (px) for the WebGL coverage integrator: C¹ toe near rest, up to 16 px on throws.
+  const dotBlur = (speed: number) => {
+    if (reduced() || speed < 4) return 0
+    const raw = (speed - 4) / 28
+    const eased = (raw * raw) / (raw + 0.32)
+    return (16 * eased) / Math.hypot(16, eased)
+  }
+  const dotRadialBlur = (vr: number) => {
+    if (reduced() || Math.abs(vr) < 3) return 0
+    return Math.sign(vr) * Math.min(8, (Math.abs(vr) - 3) / 26)
+  }
+  const dotStretch = (speed: number) => (reduced() ? 1 : 1 + Math.min(0.34, speed / 620))
   const stage = new Stage(s.stage, () => {
     const dpr = Math.min(2, devicePixelRatio || 1)
     goo.fit(dpr)
@@ -294,7 +303,22 @@ category("Basics")
         const vy = d.y.v
         const speed = Math.hypot(vx, vy)
         const m = merging[i]
-        const e = m ? clamp01((performance.now() - m.at) / MERGE_MS) ** 2 : 0
+        const t = m ? clamp01((performance.now() - m.at) / MERGE_MS) : 0
+        const e = m ? t * (0.36 + 0.64 * t * t) : 0
+        // Dynamic neck: reaches out at the start of a merge, and thins cleanly when pinching off.
+        let neck = 1
+        if (m) {
+          neck = 1.25 - 0.78 * e
+        } else if (i > 0 && shown[i]) {
+          const nb = dots[i - 1]!
+          const dist = Math.hypot(d.x.x - nb.x.x, d.y.x - nb.y.x)
+          const touch = d.r.x + nb.r.x
+          const sepVel = (d.x.x - nb.x.x) * (d.x.v - nb.x.v) + (d.y.x - nb.y.x) * (d.y.v - nb.y.v)
+          if (sepVel > 6 && dist > touch * 0.75) {
+            const pinch = clamp01((dist - touch * 0.75) / Math.max(4, k * 0.85))
+            neck = 1.15 - 0.62 * pinch
+          }
+        }
         return {
           x: cx + d.x.x,
           y: cy + d.y.x,
@@ -302,10 +326,11 @@ category("Basics")
           a: clamp01(d.a.x),
           vx,
           vy,
-          // Pouring in, it draws out into a teardrop along its path, with a shorter neck.
-          stretch: Math.max(dotStretch(speed), 1 + 0.55 * e),
+          rBlur: dotRadialBlur(d.r.v + d.r.x * d.pulse.v),
+          // Pouring in, it draws out into a teardrop along its path and snaps into the neighbour.
+          stretch: Math.max(dotStretch(speed), 1 + 0.62 * Math.sin(t * Math.PI)),
           blur: dotBlur(speed),
-          goo: m ? 0.55 : 1,
+          goo: neck,
         }
       }),
       { dpr, k, goo: !reduced(), color: inkAt() },
@@ -332,18 +357,20 @@ category("Basics")
         const d = dots[i]!
         const nb = dots[i - 1]!
         const t = clamp01((now - m.at) / MERGE_MS)
-        const e = t * t
-        const de = (2 * t) / (MERGE_MS / 1000)
+        // Immediate surface-tension pull at t=0, accelerating decisively into the neighbour.
+        const e = t * (0.36 + 0.64 * t * t)
+        const de = (0.36 + 1.92 * t * t) / (MERGE_MS / 1000)
         const dx = nb.x.x - m.x
         const dy = nb.y.x - m.y
-        // Position, radius and their velocities, so a reversal picks up exactly where it is.
+        // Position, radius and their velocities (including the moving neighbour's), so a reversal
+        // or shutter sample picks up the exact screen-space trajectory.
         d.x.spring.x = d.x.spring.target = m.x + dx * e
         d.y.spring.x = d.y.spring.target = m.y + dy * e
-        d.x.spring.v = dx * de
-        d.y.spring.v = dy * de
-        const left = 1 - e
-        d.r.spring.x = d.r.spring.target = m.r * left ** 0.6
-        d.r.spring.v = left > 0.001 ? -0.6 * m.r * left ** -0.4 * de : 0
+        d.x.spring.v = dx * de + nb.x.v * e
+        d.y.spring.v = dy * de + nb.y.v * e
+        const left = Math.max(0, 1 - e ** 1.7)
+        d.r.spring.x = d.r.spring.target = m.r * left ** 0.55
+        d.r.spring.v = left > 0.001 ? -0.935 * m.r * e ** 0.7 * left ** -0.45 * de : 0
         if (t < 1) {
           any = true
           return
@@ -352,8 +379,12 @@ category("Basics")
         d.x.spring.snap(nb.x.x)
         d.y.spring.snap(nb.y.x)
         d.r.spring.snap(0)
-        // The neighbour gulps: about 3% on a quick spring, then settles.
-        if (shown[i - 1]) nb.pulse.to(0, "snappy").push(0.03 * FEEL.snappy.omega * Math.E)
+        // The neighbour gulps (~3.8% on a snappy spring) and absorbs a touch of the droplet's momentum.
+        if (shown[i - 1]) {
+          nb.pulse.to(0, "snappy").push(0.038 * FEEL.snappy.omega * Math.E)
+          nb.x.push(dx * 0.32)
+          nb.y.push(dy * 0.32)
+        }
       })
       pouring = any
       return any
@@ -368,9 +399,9 @@ category("Basics")
   let count = 0
   on((v, how) => {
     const r0 = v.size / 2
-    k = r0 * 0.8
+    k = r0 * 0.78
     const gap = v.size * (1 + (v.spread / 100) * 1.4) + 4
-    // A count change respaces the row at once on a spring, even from the hand: that's the point.
+    // A count change respaces the row at once on a brisk spring, even from the hand: that's the point.
     const countChanged = how !== "init" && v.count !== count
     const slot = (i: number) => {
       const c = i - (v.count - 1) / 2
@@ -396,7 +427,7 @@ category("Basics")
             if (d.r.x < 0.5) {
               d.x.snap(dots[i - 1]!.x.x)
               d.y.snap(dots[i - 1]!.y.x)
-              d.r.snap(r0 * 0.3)
+              d.r.snap(r0 * 0.38)
             }
             d.a.snap(1)
             d.x.to(tx, BUD)
@@ -404,9 +435,9 @@ category("Basics")
             d.r.to(r0, BUD)
           }
         } else if (countChanged) {
-          d.x.to(tx, "default")
-          d.y.to(ty, "default")
-          d.r.go(r0, how, "default")
+          d.x.to(tx, "snappy")
+          d.y.to(ty, "snappy")
+          d.r.go(r0, how, "snappy")
         } else {
           d.x.go(tx, how, "calm")
           d.y.go(ty, how, "calm")
@@ -457,17 +488,20 @@ category("Basics")
       <div style="position:absolute;left:99px;top:0;width:2px;height:58px;background:var(--faint)"></div>
       <div data-l="glow-warm" style="position:absolute;left:30px;top:18px;width:140px;height:140px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--warm) 60%,transparent),transparent)"></div>
       <div data-l="glow-cool" style="position:absolute;left:30px;top:18px;width:140px;height:140px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--cool) 55%,transparent),transparent)"></div>
-      <div style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:var(--surface-hi);box-shadow:inset 0 0 0 1.5px var(--faint)"></div>
+      <div data-l="bulb" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:var(--surface-hi);box-shadow:inset 0 0 0 1.5px var(--faint)"></div>
       <div data-l="core-warm" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:#ffe2b8;box-shadow:0 0 18px var(--warm)"></div>
       <div data-l="core-cool" style="position:absolute;left:84px;top:56px;width:32px;height:32px;border-radius:50%;background:#e4f3ff;box-shadow:0 0 18px var(--cool)"></div>
     </div>`
   const layer = (name: string) => s.stage.querySelector<HTMLElement>(`[data-l="${name}"]`)!
   const L = Object.fromEntries(
-    ["pool-warm", "pool-cool", "glow-warm", "glow-cool", "core-warm", "core-cool"].map((n) => [
-      n,
-      layer(n),
-    ]),
+    ["pool-warm", "pool-cool", "glow-warm", "glow-cool", "core-warm", "core-cool", "bulb"].map(
+      (n) => [n, layer(n)],
+    ),
   )
+  const poolWarmBlur = new DirBlur(L["pool-warm"]!)
+  const poolCoolBlur = new DirBlur(L["pool-cool"]!)
+  const coreWarmBlur = new DirBlur(L["core-warm"]!)
+  const coreCoolBlur = new DirBlur(L["core-cool"]!)
   const stage = new Stage(s.stage, () => {
     const on = on1.x
     const w = warm.x
@@ -478,11 +512,24 @@ category("Basics")
     L["core-cool"]!.style.opacity = (on * (1 - w)).toFixed(3)
     L["pool-warm"]!.style.opacity = (on * w * p).toFixed(3)
     L["pool-cool"]!.style.opacity = (on * (1 - w) * p).toFixed(3)
-    // Glow and pool bloom open as the light comes on, and gather in as it goes.
-    const sc = 0.86 + 0.14 * on
+    // Glow and pool bloom open as the light comes on, and gather in as it goes; width leads on the floor.
+    const sc = 0.84 + 0.16 * on
+    const pxSc = 0.8 + 0.2 * on * p
+    const pySc = 0.9 + 0.1 * on * p
     L["pool-warm"]!.style.transform = L["pool-cool"]!.style.transform =
-      `scale(${(0.9 + 0.1 * on * p).toFixed(4)})`
+      `scale(${pxSc.toFixed(4)},${pySc.toFixed(4)})`
     L["glow-warm"]!.style.transform = L["glow-cool"]!.style.transform = `scale(${sc.toFixed(4)})`
+    const coreSc = 0.94 + 0.06 * on
+    L["core-warm"]!.style.transform = L["core-cool"]!.style.transform =
+      `scale(${coreSc.toFixed(4)})`
+    const poolSpeed = Math.abs(on1.v * p + on * pool.v) * 140 + Math.abs(warm.v) * 80
+    const pb = blurFor(poolSpeed, 3.5)
+    poolWarmBlur.set(pb, pb * 0.35)
+    poolCoolBlur.set(pb, pb * 0.35)
+    const coreSpeed = Math.abs(on1.v) * 110 + Math.abs(warm.v) * 75
+    const cb = blurFor(coreSpeed, 2.5)
+    coreWarmBlur.set(cb, cb)
+    coreCoolBlur.set(cb, cb)
   })
   const on1 = stage.val(1, 0.002, true)
   const warm = stage.val(1, 0.002, true)
@@ -546,6 +593,22 @@ category("Basics")
     square: { radius: 24, rot: 0, scale: 0.94 },
     diamond: { radius: 16, rot: 45, scale: 0.76 },
   } as const
+  const wrap = h("div")
+  wrap.style.cssText = "position:relative;width:112px;height:112px"
+  // Rotational arc & corner-morph shutter ghosts behind the tile, active only during motion.
+  const SHUTTER_TAPS = [
+    { tau: -0.45, w: 0.16 },
+    { tau: -0.22, w: 0.28 },
+    { tau: 0.22, w: 0.28 },
+    { tau: 0.45, w: 0.16 },
+  ] as const
+  const ghosts = SHUTTER_TAPS.map(() => {
+    const g = h("div")
+    g.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;opacity:0;will-change:transform,opacity"
+    wrap.append(g)
+    return g
+  })
   const tile = h("div")
   tile.style.cssText =
     "position:relative;width:112px;height:112px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);will-change:transform"
@@ -555,7 +618,9 @@ category("Basics")
     tile.append(t)
     return t
   })
-  s.stage.append(tile)
+  wrap.append(tile)
+  s.stage.append(wrap)
+  const tileBlur = new DirBlur(tile)
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [
@@ -566,18 +631,39 @@ category("Basics")
     { id: "shape", text: true },
   ])
   const stage = new Stage(s.stage, () => {
+    const bg = colour.css()
     tile.style.borderRadius = `${radius.x.toFixed(2)}%`
     tile.style.transform = `rotate(${rot.x.toFixed(2)}deg) scale(${scale.x.toFixed(4)})`
-    // Turning, its corners travel: a slight blur with their speed.
-    const b = blurFor(((rot.v * Math.PI) / 180) * 60, 2)
-    tile.style.filter = b ? `blur(${b.toFixed(2)}px)` : ""
-    tile.style.backgroundColor = colour.css()
+    tile.style.backgroundColor = bg
+    // Arc speed from rotation + corner morph speed from border-radius and scale.
+    const arcSpeed = Math.abs((rot.v * Math.PI) / 180) * 56
+    const morphSpeed = Math.abs(radius.v) * 1.4 + Math.abs(scale.v) * 110
+    const b = blurFor(arcSpeed + morphSpeed * 0.7, 2.4)
+    tileBlur.set(b, b * 0.65)
+    const activeArc = !reduced() && arcSpeed + morphSpeed > 12
+    const strength = activeArc ? clamp01((arcSpeed + morphSpeed - 12) / 140) : 0
+    ghosts.forEach((g, idx) => {
+      if (!activeArc) {
+        if (g.style.opacity !== "0") g.style.opacity = "0"
+        return
+      }
+      const { tau, w } = SHUTTER_TAPS[idx]!
+      const gRad = Math.max(0, Math.min(50, radius.x + tau * radius.v * 0.038))
+      const gRot = rot.x + tau * rot.v * 0.038
+      const gSc = Math.max(0.2, scale.x + tau * scale.v * 0.038)
+      g.style.borderRadius = `${gRad.toFixed(2)}%`
+      g.style.backgroundColor = bg
+      g.style.transform = `rotate(${gRot.toFixed(2)}deg) scale(${gSc.toFixed(4)})`
+      g.style.opacity = (w * strength).toFixed(3)
+    })
     tex.forEach((t, j) => {
-      const o = clamp01(fills[j]!.x)
+      const f = fills[j]!
+      const o = clamp01(f.x)
       t.style.opacity = o.toFixed(3)
-      const soft = !reduced() && o > 0.001 && o < 0.999
+      const soft = !reduced() && o > 0.001 && (o < 0.999 || !f.spring.resting)
       t.style.transform = soft ? `scale(${(1 + (1 - o) * 0.08).toFixed(4)})` : ""
-      t.style.filter = soft ? `blur(${((1 - o) * 3).toFixed(2)}px)` : ""
+      const fb = (1 - o) * 2.8 + blurFor(Math.abs(f.v) * 80, 1.8)
+      t.style.filter = soft && fb >= 0.05 ? `blur(${fb.toFixed(2)}px)` : ""
     })
   })
   const radius = stage.val(50, 0.01)
@@ -655,8 +741,15 @@ category("Basics")
     const oy = s.stage.clientHeight / 2 - (TILE * 3 + GAP * 2) / 2
     tiles.forEach((el, i) => {
       const t = tv[i]!
-      el.style.transform = `translate(${px(ox + t.x.x)},${px(oy + t.y.x)}) scale(${t.s.x.toFixed(4)})`
-      blurs[i]!.speed(t.x.v, t.y.v)
+      el.style.transform = `translate(${px(ox + t.x.x)},${px(oy + t.y.x)}) scale(${t.s.x.toFixed(4)})${stretchAlong(t.x.v, t.y.v, 0.14)}`
+      const v = Math.hypot(t.x.v, t.y.v)
+      const pulseBlur = blurFor(Math.abs(t.s.v) * 90, 2.2)
+      if (v >= 6) {
+        const b = blurFor(v) / Math.max(0.2, t.s.x)
+        blurs[i]!.set((t.x.v / v) * b, (t.y.v / v) * b)
+      } else {
+        blurs[i]!.set(pulseBlur, pulseBlur)
+      }
     })
   })
   const tv = tiles.map(() => ({
@@ -709,6 +802,7 @@ category("Colour & motion")
     </div>`
   const ball = s.stage.querySelector<HTMLElement>("[data-ball]")!
   const glowEl = s.stage.querySelector<HTMLElement>("[data-glow]")!
+  const ballBlur = new DirBlur(ball)
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [
@@ -723,6 +817,15 @@ category("Colour & motion")
   const stage = new Stage(s.stage, () => {
     ball.style.backgroundColor = tint.css()
     glowEl.style.backgroundColor = glow.css()
+    // Perceptual speed in OKLab: a fast hue scrub or Random blooms the sphere and trails the halo.
+    const cSpeed = Math.hypot(tint.l.v, tint.a.v * 2.2, tint.b.v * 2.2) * 260
+    const gSpeed = Math.hypot(glow.l.v, glow.a.v * 2.2, glow.b.v * 2.2) * 260
+    const bSc = 1 + Math.min(0.05, cSpeed / 8000)
+    const gSc = 1 + Math.min(0.1, gSpeed / 5000)
+    ball.style.transform = bSc > 1.001 ? `scale(${bSc.toFixed(4)})` : ""
+    glowEl.style.transform = gSc > 1.001 ? `scale(${gSc.toFixed(4)})` : ""
+    const bb = blurFor(cSpeed * 0.45, 2)
+    ballBlur.set(bb, bb)
   })
   const tint = new ColorVal(stage, "#ff7a45")
   const glow = new ColorVal(stage, "#ffb35c")
@@ -777,7 +880,7 @@ category("Colour & motion")
   const trailSmear = new Smear(trail)
   const stage = new Stage(s.stage, () => {
     const k = size.x / 28
-    dot.style.transform = `translate(${px(x.x * B)},${px(y.x * B)}) scale(${k.toFixed(4)})${dotSmear.transform(x.v * B, y.v * B, k)}`
+    dot.style.transform = `translate(${px(x.x * B)},${px(y.x * B)}) scale(${k.toFixed(4)})${dotSmear.transform(x.v * B, y.v * B, k, Math.abs(size.v) * 6)}`
     trail.style.transform = `translate(${px(tx.x * B)},${px(ty.x * B)})${trailSmear.transform(tx.v * B, ty.v * B)}`
   })
   const x = stage.val(0, 0.0005)
@@ -852,6 +955,8 @@ function bezierY(b: Bezier, x: number) {
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [{ id: "d", decimals: 2 }, "s"])
+  const pathBlur = new DirBlur(path)
+  const gdotBlur = new DirBlur(gdot)
   const smear = new Smear(ball)
   let duration = 0.9
   let t = 1
@@ -864,15 +969,22 @@ function bezierY(b: Bezier, x: number) {
       "d",
       `M0 ${G} C${(bz[0] * G).toFixed(2)} ${((1 - bz[1]) * G).toFixed(2)} ${(bz[2] * G).toFixed(2)} ${((1 - bz[3]) * G).toFixed(2)} ${G} 0`,
     )
+    // Bending the curve smears its stroke along the control-point motion.
+    pathBlur.speed((b[0]!.v + b[2]!.v) * G * 0.65, -(b[1]!.v + b[3]!.v) * G * 0.65)
     const y = bezierY(bz, t)
-    gdot.setAttribute("cx", (t * G).toFixed(2))
-    gdot.setAttribute("cy", ((1 - y) * G).toFixed(2))
+    const gx = t * G
+    const gy = (1 - y) * G
+    gdot.setAttribute("cx", gx.toFixed(2))
+    gdot.setAttribute("cy", gy.toFixed(2))
+    gspeed.feed(gx, gy)
+    gdotBlur.speed(gspeed.vx.x, gspeed.vy.x)
     const bx = lerp(from, to, y) * 152
     speed.feed(bx, 0)
     ball.style.transform = `translateX(${px(bx)})${smear.transform(speed.vx.x, 0)}`
   })
   const b = [0.42, 0, 0.58, 1].map((n) => stage.val(n, 0.0005))
   const speed = new Speed(stage)
+  const gspeed = new Speed(stage)
   const play = () => {
     // Runs from where the last run ended, so it never jumps back to the start.
     if (t >= 1) {
@@ -933,6 +1045,7 @@ function bezierY(b: Bezier, x: number) {
   }
   const ghost = "box-shadow:inset 0 0 0 1.5px var(--line)"
   const ends = [box(ghost), box(ghost), box(ghost), box(ghost)]
+  const endBlurs = ends.map((e) => new DirBlur(e))
   const cards = [
     box("background:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25)"),
     box("background:color-mix(in srgb,var(--text) 55%,transparent)"),
@@ -953,11 +1066,14 @@ function bezierY(b: Bezier, x: number) {
     const cx = s.stage.clientWidth / 2
     const cy = s.stage.clientHeight / 2
     const tr = travel.x
+    const endB = blurFor(travel.v * 0.5)
     ;[cy - 36, cy + 36].forEach((y, row) => {
       ends[row * 2]!.style.transform = `translate(${px(cx - tr / 2)},${px(y)})`
       ends[row * 2 + 1]!.style.transform = `translate(${px(cx + tr / 2)},${px(y)})`
+      endBlurs[row * 2]!.set(-endB, 0)
+      endBlurs[row * 2 + 1]!.set(endB, 0)
       const p = pos[row]!
-      const vx = p.v * tr
+      const vx = p.v * tr + (p.x - 0.5) * travel.v
       const st = stretchFor(vx)
       cards[row]!.style.transform =
         `translate(${px(cx + (p.x - 0.5) * tr)},${px(y)}) scale(${st.toFixed(4)},${(1 / Math.sqrt(st)).toFixed(4)})`
@@ -1016,15 +1132,26 @@ category("Inspector")
   const S = 54
   const face = (t: string, shade: number) =>
     `<div style="position:absolute;inset:0;transform:${t};background:color-mix(in srgb,var(--text) ${shade}%,var(--page));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 18%,transparent);border-radius:4px"></div>`
-  // The blur sits on a flat wrapper that holds the perspective, so the cube keeps its depth.
+  const facesHtml = `${face(`translateZ(${S / 2}px)`, 62)}${face(`rotateY(180deg) translateZ(${S / 2}px)`, 40)}${face(`rotateY(90deg) translateZ(${S / 2}px)`, 44)}${face(`rotateY(-90deg) translateZ(${S / 2}px)`, 50)}${face(`rotateX(90deg) translateZ(${S / 2}px)`, 80)}${face(`rotateX(-90deg) translateZ(${S / 2}px)`, 30)}`
+  // The blur sits on a flat wrapper that holds the perspective, while 3D shutter sub-cubes fan
+  // along the true rotateY arc and scale3d axes during 3D motion.
   s.stage.innerHTML = `<div data-view style="position:absolute;inset:0;display:grid;place-items:center;perspective:700px">
-    <div data-cube style="position:relative;width:${S}px;height:${S}px;transform-style:preserve-3d">
-    ${face(`translateZ(${S / 2}px)`, 62)}${face(`rotateY(180deg) translateZ(${S / 2}px)`, 40)}
-    ${face(`rotateY(90deg) translateZ(${S / 2}px)`, 44)}${face(`rotateY(-90deg) translateZ(${S / 2}px)`, 50)}
-    ${face(`rotateX(90deg) translateZ(${S / 2}px)`, 80)}${face(`rotateX(-90deg) translateZ(${S / 2}px)`, 30)}
-  </div></div>`
+    <div data-cube style="grid-area:1/1;position:relative;width:${S}px;height:${S}px;transform-style:preserve-3d">${facesHtml}</div>
+  </div>`
   const view = s.stage.querySelector<HTMLElement>("[data-view]")!
   const cube = s.stage.querySelector<HTMLElement>("[data-cube]")!
+  const CUBE_TAPS = [
+    { tau: -0.44, w: 0.16 },
+    { tau: -0.22, w: 0.28 },
+    { tau: 0.22, w: 0.28 },
+    { tau: 0.44, w: 0.16 },
+  ] as const
+  const ghostCubes = CUBE_TAPS.map(() => {
+    const g = h("div", "", facesHtml)
+    g.style.cssText = `grid-area:1/1;position:relative;width:${S}px;height:${S}px;transform-style:preserve-3d;pointer-events:none;display:none`
+    view.insertBefore(g, cube)
+    return g
+  })
   const blur = new DirBlur(view)
   const caption = h("div", "caption")
   s.stage.append(caption)
@@ -1040,10 +1167,42 @@ category("Inspector")
     { id: "sz", decimals: 2 },
   ])
   const stage = new Stage(s.stage, () => {
-    cube.style.transform = `translate(${px(x.x * 90)},${px(y.x * 52)}) rotateX(-24deg) rotateY(${spin.x.toFixed(2)}deg) scale3d(${sx.x.toFixed(4)},${sy.x.toFixed(4)},${sz.x.toFixed(4)})`
-    // Its corners travel with the spin too.
-    const turn = ((Math.abs(spin.v) * Math.PI) / 180) * 30
-    blur.set(blurFor(Math.abs(x.v * 90) + turn), blurFor(y.v * 52))
+    const pxX = x!.x * 90
+    const pxY = y!.x * 52
+    const vx = x!.v * 90
+    const vy = y!.v * 52
+    cube.style.transform = `translate(${px(pxX)},${px(pxY)}) rotateX(-24deg) rotateY(${spin!.x.toFixed(2)}deg) scale3d(${sx!.x.toFixed(4)},${sy!.x.toFixed(4)},${sz!.x.toFixed(4)})`
+    const spinSpeed = Math.abs((spin!.v * Math.PI) / 180) * 34
+    const scaleSpeed = Math.hypot(sx!.v, sy!.v, sz!.v) * 42
+    const motion3d = spinSpeed + scaleSpeed
+    const show3d = !reduced() && motion3d > 6
+    const blend3d = show3d ? clamp01((motion3d - 6) / 110) : 0
+    cube.style.opacity = (1 - blend3d * 0.24).toFixed(3)
+    ghostCubes.forEach((g, idx) => {
+      if (!show3d) {
+        if (g.style.display !== "none") g.style.display = "none"
+        return
+      }
+      if (g.style.display !== "block") g.style.display = "block"
+      const { tau, w } = CUBE_TAPS[idx]!
+      const dt = tau * 0.036
+      const gx = pxX + vx * dt
+      const gy = pxY + vy * dt
+      const gSpin = spin!.x + spin!.v * dt
+      const gsx = Math.max(0.15, sx!.x + sx!.v * dt)
+      const gsy = Math.max(0.15, sy!.x + sy!.v * dt)
+      const gsz = Math.max(0.15, sz!.x + sz!.v * dt)
+      g.style.transform = `translate(${px(gx)},${px(gy)}) rotateX(-24deg) rotateY(${gSpin.toFixed(2)}deg) scale3d(${gsx.toFixed(4)},${gsy.toFixed(4)},${gsz.toFixed(4)})`
+      g.style.opacity = (w * blend3d).toFixed(3)
+    })
+    // 2D translational velocity + a bridging component for 3D spin and scale.
+    const transSpeed = Math.hypot(vx, vy)
+    if (transSpeed >= 6) {
+      const b = blurFor(transSpeed + motion3d * 0.45)
+      blur.set((vx / transSpeed) * b, (vy / transSpeed) * b)
+    } else {
+      blur.set(blurFor(spinSpeed * 0.7 + scaleSpeed * 0.5, 2.2), blurFor(scaleSpeed * 0.5, 1.8))
+    }
   })
   const [x, y, sx, sy, sz, spin] = [0, 0, 1, 1, 1, -32].map((n) => stage.val(n, 0.0005))
   on((v, how) => {
@@ -1111,6 +1270,7 @@ category("Inspector")
       const at = (i + 0.5) / N
       const inside = clamp01(Math.min(at - l, r - at) * N + 0.5)
       el.style.opacity = (0.22 + 0.7 * inside).toFixed(3)
+      el.style.transform = `scaleY(${(0.92 + 0.12 * inside).toFixed(4)})`
     })
   })
   const lo = stage.val(30, 0.02)
@@ -1144,20 +1304,52 @@ category("Inspector")
     const major = i % 6 === 0
     return `<div style="position:absolute;left:${D / 2 - 1}px;top:4px;width:2px;height:${major ? 9 : 5}px;border-radius:1px;background:${major ? "var(--label)" : "var(--faint)"};transform-origin:1px ${D / 2 - 4}px;transform:rotate(${i * 15}deg)"></div>`
   }).join("")
+  const needleD = `M${D / 2} 22 L${D / 2 + 9} ${D / 2 + 4} L${D / 2} ${D / 2 - 4} L${D / 2 - 9} ${D / 2 + 4} Z`
+  const ARC_TAPS = [
+    { tau: -0.45, w: 0.14 },
+    { tau: -0.3, w: 0.24 },
+    { tau: -0.15, w: 0.42 },
+    { tau: 0, w: 0.82 },
+    { tau: 0.15, w: 0.42 },
+    { tau: 0.3, w: 0.24 },
+    { tau: 0.45, w: 0.14 },
+  ] as const
   s.stage.innerHTML = `<div style="position:relative;width:${D}px;height:${D}px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--line)">${ticks}
     <svg data-arrow width="${D}" height="${D}" viewBox="0 0 ${D} ${D}" style="position:absolute;inset:0;overflow:visible">
-      <path d="M${D / 2} 22 L${D / 2 + 9} ${D / 2 + 4} L${D / 2} ${D / 2 - 4} L${D / 2 - 9} ${D / 2 + 4} Z" style="fill:var(--text)"/>
+      <g data-fan>${ARC_TAPS.map((_, i) => `<path d="${needleD}" style="fill:var(--text);opacity:${i === 3 ? 1 : 0}"/>`).join("")}</g>
       <circle cx="${D / 2}" cy="${D / 2}" r="3" style="fill:var(--text)"/>
     </svg></div>`
   const arrow = s.stage.querySelector<SVGElement>("[data-arrow]")!
-  // The arrow turns with its element, so its own x is always along the tip's path.
-  const blur = new DirBlur(arrow)
+  const fan = s.stage.querySelector<SVGGElement>("[data-fan]")!
+  const needlePaths = [...fan.querySelectorAll("path")]
+  // Polar arc shutter blur: 7 rotated needle samples fanned around (D/2, D/2) + tangential bridge,
+  // while the center pin sits outside `fan` and stays razor-sharp at every speed.
+  const fanBlur = new DirBlur(fan)
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [{ id: "deg" }, "°"])
   const stage = new Stage(s.stage, () => {
     arrow.style.transform = `rotate(${a.x.toFixed(3)}deg)`
-    blur.set(blurFor(((a.v * Math.PI) / 180) * 30), 0)
+    const av = Math.abs(a.v)
+    if (reduced() || av < 8) {
+      fanBlur.set(0, 0)
+      needlePaths.forEach((p, i) => {
+        const want = i === 3 ? "1" : "0"
+        if (p.style.opacity !== want) p.style.opacity = want
+        if (i !== 3 && p.hasAttribute("transform")) p.removeAttribute("transform")
+      })
+      return
+    }
+    const dDeg = Math.max(-34, Math.min(34, a.v * 0.032))
+    const blend = clamp01((av - 8) / 160)
+    ARC_TAPS.forEach(({ tau, w }, i) => {
+      const p = needlePaths[i]!
+      if (i !== 3)
+        p.setAttribute("transform", `rotate(${(tau * dDeg).toFixed(2)} ${D / 2} ${D / 2})`)
+      const op = i === 3 ? 1 - blend * (1 - w) : blend * w
+      p.style.opacity = op.toFixed(3)
+    })
+    fanBlur.set(blurFor(((a.v * Math.PI) / 180) * 14, 1.8), 0)
   })
   const a = stage.val(45, 0.01)
   on((v, how) => {
@@ -1201,35 +1393,62 @@ const seeded = (n: number) => {
   const C = 7
   const R = 5
   const T = 26
+  const SEED_TAPS = [
+    { tau: -0.42, w: 0.18 },
+    { tau: -0.21, w: 0.34 },
+    { tau: 0, w: 0.76 },
+    { tau: 0.21, w: 0.34 },
+    { tau: 0.42, w: 0.18 },
+  ] as const
+  const arcD = `M0 ${T / 2} A${T / 2} ${T / 2} 0 0 0 ${T / 2} 0 M${T} ${T / 2} A${T / 2} ${T / 2} 0 0 0 ${T / 2} ${T}`
   const grid = h("div")
   grid.style.cssText = `display:grid;grid-template-columns:repeat(${C},${T}px);grid-auto-rows:${T}px`
   const tiles = Array.from({ length: C * R }, () => {
     const el = h("div")
-    el.innerHTML = `<svg width="${T}" height="${T}" viewBox="0 0 ${T} ${T}" style="display:block;overflow:visible"><path d="M0 ${T / 2} A${T / 2} ${T / 2} 0 0 0 ${T / 2} 0 M${T} ${T / 2} A${T / 2} ${T / 2} 0 0 0 ${T / 2} ${T}" stroke-width="2" stroke-linecap="round" style="fill:none;stroke:var(--text)"/></svg>`
+    el.innerHTML = `<svg width="${T}" height="${T}" viewBox="0 0 ${T} ${T}" style="display:block;overflow:visible">${SEED_TAPS.map((_, j) => `<path d="${arcD}" stroke-width="2" stroke-linecap="round" style="fill:none;stroke:var(--text);opacity:${j === 2 ? 1 : 0}"/>`).join("")}</svg>`
     grid.append(el)
     return el
   })
-  const paths = tiles.map((el) => el.querySelector("path")!)
+  const tilePaths = tiles.map((el) => [...el.querySelectorAll("path")])
+  const allPaths = tilePaths.flat()
   s.stage.append(grid)
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, ["seed ", { id: "seed" }])
-  const blurred = tiles.map(() => "")
+  const spinning = tiles.map(() => false)
   let lastWeight = ""
   const stage = new Stage(s.stage, () => {
     tiles.forEach((el, i) => {
-      el.style.transform = `rotate(${rot[i]!.x.toFixed(2)}deg)`
-      const b = blurFor(((rot[i]!.v * Math.PI) / 180) * 13, 1.6)
-      const f = b ? `blur(${b.toFixed(2)}px)` : ""
-      if (f !== blurred[i]) {
-        blurred[i] = f
-        el.style.filter = f
+      const r = rot[i]!
+      el.style.transform = `rotate(${r.x.toFixed(2)}deg)`
+      const rv = Math.abs(r.v)
+      const ps = tilePaths[i]!
+      if (reduced() || rv < 10) {
+        if (spinning[i]) {
+          spinning[i] = false
+          ps.forEach((p, j) => {
+            p.style.opacity = j === 2 ? "1" : "0"
+            if (j !== 2) p.removeAttribute("transform")
+          })
+        }
+        return
       }
+      spinning[i] = true
+      // Rotational arc shutter samples around the tile center (T/2, T/2), no CSS filter needed.
+      const dDeg = Math.max(-28, Math.min(28, r.v * 0.034))
+      const blend = clamp01((rv - 10) / 150)
+      SEED_TAPS.forEach(({ tau, w }, j) => {
+        const p = ps[j]!
+        if (j !== 2)
+          p.setAttribute("transform", `rotate(${(tau * dDeg).toFixed(2)} ${T / 2} ${T / 2})`)
+        const op = j === 2 ? 1 - blend * (1 - w) : blend * w
+        p.style.opacity = op.toFixed(3)
+      })
     })
     const w = weight.x.toFixed(2)
     if (w !== lastWeight) {
       lastWeight = w
-      for (const p of paths) p.setAttribute("stroke-width", w)
+      for (const p of allPaths) p.setAttribute("stroke-width", w)
     }
   })
   const rot = tiles.map(() => stage.val(0, 0.05))
@@ -1272,6 +1491,8 @@ const seeded = (n: number) => {
   const capsHost = h("div")
   capsHost.style.cssText = "position:absolute;inset:0"
   s.stage.append(ring, capsHost)
+  const capsBlur = new DirBlur(capsHost)
+  const ringBlur = new DirBlur(ring)
   const caption = h("div", "caption")
   s.stage.append(caption)
   const setCaption = rolling(caption, [{ id: "word", text: true }, " ", { id: "n" }, "×"])
@@ -1282,9 +1503,12 @@ const seeded = (n: number) => {
     for (const c of capEls)
       c.style.transform =
         p > 0.0005 ? `translateY(${px(p * 3)}) scale(${(1 - p * 0.04).toFixed(4)})` : ""
+    capsBlur.set(0, blurFor(press.v * 70, 2.2))
     const w = wave.x
     ring.style.opacity = (clamp01(1 - w) * 0.5 * Math.min(1, w * 6)).toFixed(3)
     ring.style.transform = `scale(${(0.5 + w * 0.7).toFixed(4)})`
+    const rb = blurFor(wave.v * 95, 2.5)
+    ringBlur.set(rb, rb)
   })
   const swap = new Swap(stage, capsHost)
   const press = stage.val(0, 0.002)
@@ -1396,26 +1620,61 @@ const seeded = (n: number) => {
     speed: knob(1.4, { min: 0.2, max: 4, step: 0.1, unit: "×", label: "Speed" }),
   })
   mount(store, s.slot, { title: "Orbit" })
-  s.stage.innerHTML = `<div style="position:relative;width:130px;height:130px">
+  s.stage.innerHTML = `<div data-orbit style="position:relative;width:130px;height:130px">
     <div data-ring style="position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--line)"></div>
     <div style="position:absolute;left:55px;top:55px;width:20px;height:20px;border-radius:50%;background:var(--surface-hi)"></div>
     <div data-sat class="abs" style="width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--text)"></div>
   </div>`
+  const orbitEl = s.stage.querySelector<HTMLElement>("[data-orbit]")!
   const sat = s.stage.querySelector<HTMLElement>("[data-sat]")!
   const ringEl = s.stage.querySelector<HTMLElement>("[data-ring]")!
+  const ORBIT_TAPS = [
+    { tau: -0.45, w: 0.18 },
+    { tau: -0.22, w: 0.34 },
+    { tau: 0.22, w: 0.34 },
+    { tau: 0.45, w: 0.18 },
+  ] as const
+  // Curved-orbit shutter sub-dots so high-speed orbital blur hugs the circular track.
+  const orbitGhosts = ORBIT_TAPS.map(() => {
+    const g = h("div", "abs")
+    g.style.cssText +=
+      "width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--text);opacity:0;pointer-events:none"
+    orbitEl.insertBefore(g, sat)
+    return g
+  })
   const status = h("div", "caption")
   s.stage.append(status)
   setStatus = rolling(status, [{ id: "s", text: true }])
   setStatus({ s: "paused" })
   const smear = new Smear(sat)
+  const ringBlur = new DirBlur(ringEl)
   const R = 65
   stage = new Stage(s.stage, () => {
     const a = phase * Math.PI * 2 * 0.25 - Math.PI / 2
-    // Velocity along the tangent, from the spin.
-    const w = spin.x * Math.PI * 2 * 0.25 * R
+    // Angular and tangential velocity along the circle of radius R.
+    const omega = spin.x * Math.PI * 2 * 0.25
+    const w = omega * R
     const k = 1 + pulseVal.x * 0.5
-    sat.style.transform = `translate(${px(65 + Math.cos(a) * R)},${px(65 + Math.sin(a) * R)}) scale(${k.toFixed(4)})${smear.transform(-Math.sin(a) * w, Math.cos(a) * w, k)}`
+    const rSpeed = Math.abs(pulseVal.v) * 65
+    sat.style.transform = `translate(${px(65 + Math.cos(a) * R)},${px(65 + Math.sin(a) * R)}) scale(${k.toFixed(4)})${smear.transform(-Math.sin(a) * w, Math.cos(a) * w, k, rSpeed)}`
+    const arcSpan = omega * 0.042
+    const showArc = !reduced() && Math.abs(w) > 35
+    const arcStrength = showArc ? clamp01((Math.abs(w) - 35) / 220) : 0
+    orbitGhosts.forEach((g, idx) => {
+      if (!showArc) {
+        if (g.style.opacity !== "0") g.style.opacity = "0"
+        return
+      }
+      const { tau, w: tw } = ORBIT_TAPS[idx]!
+      const ag = a + tau * arcSpan
+      const st = stretchFor(w * 0.7)
+      const deg = ((ag + Math.PI / 2) * 180) / Math.PI
+      g.style.transform = `translate(${px(65 + Math.cos(ag) * R)},${px(65 + Math.sin(ag) * R)}) scale(${k.toFixed(4)}) rotate(${deg.toFixed(2)}deg) scale(${st.toFixed(4)},${(1 / Math.sqrt(st)).toFixed(4)})`
+      g.style.opacity = (tw * arcStrength).toFixed(3)
+    })
     ringEl.style.transform = `scale(${(1 + pulseVal.x * 0.06).toFixed(4)})`
+    const rb = blurFor(rSpeed * 0.6, 2)
+    ringBlur.set(rb, rb)
   })
   pulseVal = stage.val(0, 0.002)
   spin = stage.val(0, 0.002)
@@ -1498,6 +1757,7 @@ const SKIES = {
     { id: "m", pad: 2 },
   ])
   const sunSmear = new Smear(sun)
+  const markBlur = new DirBlur(mark)
   const N = 32
   const stage = new Stage(s.stage, () => {
     const t = clamp01(hour.x / 24)
@@ -1508,7 +1768,10 @@ const SKIES = {
     const u = f - i0
     scene.style.background = oklabCss(labs[i0]!.map((c, j) => lerp(c, labs[i0 + 1]![j]!, u)))
     const w = s.stage.clientWidth
-    mark.style.transform = `translateX(${px(12 + t * (w - 24) - 1)})`
+    const vxMark = (hour.v / 24) * (w - 24)
+    const stMark = stretchFor(vxMark, 0.35)
+    mark.style.transform = `translateX(${px(12 + t * (w - 24) - 1)}) scaleX(${stMark.toFixed(4)})`
+    markBlur.set(blurFor(vxMark) / stMark, 0)
     // The sun rides an arc from 6h to 18h, under the hills outside it.
     const day = (hour.x - 6) / 12
     const hh = s.stage.clientHeight
@@ -1560,6 +1823,13 @@ const SKIES = {
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%"
   s.stage.append(canvas)
   const N = 33
+  const CURVE_TAPS = [
+    { tau: -0.42, w: 0.14 },
+    { tau: -0.21, w: 0.22 },
+    { tau: 0, w: 0.28 },
+    { tau: 0.21, w: 0.22 },
+    { tau: 0.42, w: 0.14 },
+  ] as const
   const stage = new Stage(s.stage, () => {
     const dpr = Math.min(2, devicePixelRatio || 1)
     const w = s.stage.clientWidth
@@ -1571,22 +1841,30 @@ const SKIES = {
     ctx.clearRect(0, 0, w, hh)
     const cx = w / 2
     const cy = hh * 0.55
-    const r = Math.max(1, radius.x)
+    const r0 = Math.max(1, radius.x)
     const [cr, cg, cb] = oklabRgb(light.lab)
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
-    for (let i = 0; i < N; i++)
-      g.addColorStop(
-        i / (N - 1),
-        `rgba(${cr},${cg},${cb},${(clamp01(ys[i]!.x) * 0.85).toFixed(3)})`,
-      )
+    // Shutter-integrate the radial pool across 5 samples when Radius or Falloff is moving fast.
+    let ySpeed = 0
+    for (let i = 0; i < N; i++) ySpeed = Math.max(ySpeed, Math.abs(ys[i]!.v))
+    const fast = !reduced() && (Math.abs(radius.v) > 8 || ySpeed > 0.15)
+    const taps = fast ? CURVE_TAPS : ([{ tau: 0, w: 1 }] as const)
     ctx.save()
     ctx.translate(0, cy)
     ctx.scale(1, 0.42)
     ctx.translate(0, -cy)
-    ctx.fillStyle = g
-    ctx.beginPath()
-    ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.fill()
+    for (const { tau, w: tw } of taps) {
+      const dt = tau * 0.036
+      const r = Math.max(2, r0 + radius.v * dt)
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+      for (let i = 0; i < N; i++) {
+        const y = clamp01(ys[i]!.x + ys[i]!.v * dt)
+        g.addColorStop(i / (N - 1), `rgba(${cr},${cg},${cb},${(y * 0.85 * tw).toFixed(3)})`)
+      }
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
     ctx.restore()
     const bulb = `rgb(${cr},${cg},${cb})`
     ctx.fillStyle = bulb
@@ -1951,10 +2229,16 @@ category("Panel structure")
     const cy = s.stage.clientHeight / 2 + 8
     cards.forEach((el, i) => {
       const c = cv[i]!
-      el.style.transform = `translate(${px(cx + c.x.x)},${px(cy + c.y.x)}) rotate(${c.rot.x.toFixed(2)}deg) scale(${c.s.x.toFixed(4)})`
-      // Turning about a point below it, its face travels too.
-      const turn = ((c.rot.v * Math.PI) / 180) * 80
-      blurs[i]!.speed(Math.abs(c.x.v) + Math.abs(turn), c.y.v)
+      const rad = (c.rot.x * Math.PI) / 180
+      const cos = Math.cos(rad)
+      const sin = Math.sin(rad)
+      // Turning about (50%, 130%) — 66 px below the card's center — sweeps the face along an arc.
+      const vTurn = ((c.rot.v * Math.PI) / 180) * 66
+      const vxLocal = c.x.v * cos + c.y.v * sin + vTurn
+      const vyLocal = -c.x.v * sin + c.y.v * cos + c.s.v * 45
+      const st = stretchFor(vxLocal, 0.1)
+      el.style.transform = `translate(${px(cx + c.x.x)},${px(cy + c.y.x)}) rotate(${c.rot.x.toFixed(2)}deg) scale(${(c.s.x * st).toFixed(4)},${(c.s.x / Math.sqrt(st)).toFixed(4)})`
+      blurs[i]!.speed(vxLocal, vyLocal, c.s.x)
     })
   })
   const cv = cards.map(() => ({
@@ -2202,9 +2486,11 @@ category("Remote")
   const LINE = 18
   const lines: { el: HTMLElement; pos: Val; o: Val; gone: boolean }[] = []
   const drawerBlur = new DirBlur(drawer)
+  drawer.style.transformOrigin = "50% 100%"
   const stage = new Stage(s.stage, () => {
-    drawer.style.transform = `translateY(${px(200 - y.x)})`
-    drawerBlur.set(0, blurFor(y.v))
+    const st = stretchFor(y.v, 0.08)
+    drawer.style.transform = `translateY(${px(200 - y.x)}) scale(${(1 / Math.sqrt(st)).toFixed(4)},${st.toFixed(4)})`
+    drawerBlur.set(0, blurFor(y.v * 1.25))
     drawer.style.backgroundColor = tint.css()
     for (const l of [...lines]) {
       const o = clamp01(l.o.x)
@@ -2217,9 +2503,10 @@ category("Remote")
       }
       const fade = clamp01(1 - l.pos.x * 0.11)
       l.el.style.opacity = (o * fade).toFixed(3)
-      const soft = !reduced() && o < 0.999
+      const soft = !reduced() && (o < 0.999 || !l.pos.spring.resting)
       l.el.style.transform = `translateY(${px(l.pos.x * LINE)})${soft ? ` scale(${(0.96 + 0.04 * o).toFixed(4)})` : ""}`
-      l.el.style.filter = soft ? `blur(${((1 - o) * 3).toFixed(2)}px)` : ""
+      const b = (1 - o) * 3 + blurFor(l.pos.v * LINE * 1.8, 2.5)
+      l.el.style.filter = soft && b >= 0.05 ? `blur(${b.toFixed(2)}px)` : ""
     }
   })
   const y = stage.val(96, 0.05)
