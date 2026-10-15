@@ -204,6 +204,7 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
   const places = () => f().decimals ?? stepDecimals(f().step)
   const axes = AXES.slice(0, c.field.axes)
   const cells = el("span", "knobs-cells")
+  if (axes.length > 2) cells.dataset.wide = ""
   let linked = Boolean(c.field.linked)
   let link: HTMLButtonElement | undefined
   if (c.field.link) {

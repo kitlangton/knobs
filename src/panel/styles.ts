@@ -14,6 +14,9 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 // editor morphs, like the GPU's morph spring).
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 const DELAY = "var(--k-delay,0ms)"
+// A row's --k-delay (its turn in a preset's cascade) is inherited; it stops at what never
+// transitions with it, so a new turn doesn't restyle every digit of the readout.
+const ROW_COSTS = ".knobs-panel :is(.knobs-value,.knobs-marks,.knobs-label){--k-delay:initial}"
 
 // Every token animates when it changes (a theme, a preset, the meta page tuning itself). Each
 // public token (--k-pad) drives a typed, non-inherited twin on the panel (--kt-pad) that the browser
@@ -507,7 +510,7 @@ const css = `
 .knobs-panel .knobs-insp{gap:8px}
 .knobs-panel .knobs-insp[data-kind="vec"]>span:first-child{flex-shrink:0;max-width:34%}
 .knobs-cells{flex:0 1 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--k-tray-pad);width:calc(var(--k-row) * 5);max-width:64%}
-.knobs-cells:has(>:nth-child(3)){width:calc(var(--k-row) * 7.5);max-width:72%}
+.knobs-cells[data-wide]{width:calc(var(--k-row) * 7.5);max-width:72%}
 .knobs-cell{position:relative;display:flex;align-items:center;justify-content:space-between;gap:3px;min-width:0;height:var(--kc-control-h);padding:0 5px;border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:ew-resize;user-select:none;touch-action:none;outline:none;transition:background var(--k-hover-t)}
 .knobs-cell:hover,.knobs-cell:focus-visible{background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
 .knobs-active .knobs-cell:focus{background:var(--k-surface-hi)}
@@ -631,7 +634,7 @@ const css = `
 .knobs-menu-item>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .knobs-menu-item[hidden]{display:none}
 /* The match shows by colour, not weight, so a filtered label keeps the width the menu measured. */
-.knobs-menu-item>span:has(>mark){color:var(--k-label)}
+.knobs-menu-item>span[data-marked]{color:var(--k-label)}
 .knobs-menu-item mark{background:none;color:var(--k-text)}
 .knobs-menu .knobs-menu-search{display:block;width:100%;height:var(--kc-control-h);min-height:22px;margin:0 0 var(--k-unit);padding:0 8px;border:0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);color:var(--k-text);font:inherit;outline:none;-webkit-appearance:none;appearance:none}
 .knobs-menu .knobs-menu-search::placeholder{color:var(--k-dim)}
@@ -794,12 +797,24 @@ export function injectPreset(doc: Document, preset: TokenPreset) {
 /**
  * Keys move a panel's focus wash; the pointer resting where it last was mustn't keep a hover wash
  * of its own meanwhile. Typing marks the panel `data-keyboard` until the pointer moves again, and
- * no hover state matches inside it.
+ * the elements under the pointer `data-k-quiet`, where no hover state matches. (Only those: a rule
+ * on `[data-keyboard] *` restyled the whole panel on the first key after the pointer.)
  */
 const keyboardQuietsHover = (css: string) =>
-  css.replaceAll(":hover", ":hover:where(:not([data-keyboard] *))")
+  css.replaceAll(":hover", ":hover:where(:not([data-k-quiet]))")
+/** The rules' `:has()` as the attributes has.ts keeps (see there for why). */
+export const withoutHas = (css: string) =>
+  css
+    .replaceAll(
+      ".knobs-x:has(>.knobs-x-head:is(:hover,:focus-visible))",
+      '.knobs-x:is([data-k-head-hover]:where(:not([data-k-quiet])),[data-k-fv="head"])',
+    )
+    .replaceAll(":has(:focus-visible)", "[data-k-fv]")
+    .replaceAll(":has(.knobs-track:focus-visible)", '[data-k-fv="track"]')
+    .replaceAll(":has(.knobs-active)", "[data-k-active]")
 export function injectStyles(doc: Document) {
-  const content = rolling + DRIVERS + defaultsCss + keyboardQuietsHover(aliased(css))
+  const content =
+    rolling + DRIVERS + defaultsCss + keyboardQuietsHover(withoutHas(aliased(css))) + ROW_COSTS
   const existing = doc.querySelector<HTMLStyleElement>("style[data-knobs-style]")
   if (existing) {
     if (existing.textContent !== content) existing.textContent = content

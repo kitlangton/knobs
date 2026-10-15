@@ -66,6 +66,8 @@ export interface EditorRow {
    * indeterminate (a multi-selection whose items differ).
    */
   update(value: Value, delay: number, instant?: boolean, mixed?: boolean): void
+  /** Reads what `update` will, ahead of a batch's writes (see `Slider.prime`). */
+  prime?(): void
   /** A flat spring's halves changed range or label (see `RowContext.parts`). */
   retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
   dispose(): void
@@ -483,6 +485,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   })
   const dragging = () => parts.some((p) => p.slider.isDragging())
   // The dot runs the curve in real time: x is time, y the spring's position.
+  let dotAnimation: Animation | undefined
   const play = (delay: number) => {
     if (!size.w || reducedMotion(c.doc)) return
     const frames = points()
@@ -497,8 +500,9 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
         offset: t,
       })
     }
-    dot.getAnimations().forEach((a) => a.cancel())
-    dot.animate(keys, { duration: ms, delay, easing: "linear" })
+    // The run it replaces, without getAnimations() (which would bring style up to date).
+    dotAnimation?.cancel()
+    dotAnimation = dot.animate(keys, { duration: ms, delay, easing: "linear" })
     c.wake()
   }
   tracksEl.addEventListener("pointerup", () => {
@@ -535,6 +539,9 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     stops: () => parts.map((p) => p.slider.track),
     tracks: parts,
     gpu: [...knobRows, gpu],
+    prime() {
+      for (const p of parts) p.slider.prime()
+    },
     retune(next) {
       parts[0]!.slider.retune(next.duration)
       parts[1]!.slider.retune(next.bounce)

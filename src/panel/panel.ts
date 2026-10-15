@@ -47,9 +47,11 @@ import {
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
+import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { createHeaderDie, GROUP_DIE, type HeaderDie } from "./die.js"
 import { iconSvg, type IconName } from "./icons.js"
+import { batchMeasures } from "./measure.js"
 import { Edges } from "./motion.js"
 import { morphFromChip, type PanelMorph } from "./morph.js"
 import { openMenu, type Menu } from "./menu.js"
@@ -148,6 +150,7 @@ function buildPanel<S extends Schema>(
       ? "knobs-panel knobs-inline"
       : "knobs-panel"
   root.dataset.controls = controls.id
+  const untrackHas = trackHas(root)
   root.dataset.theme = options.theme ?? controls.theme
   root.dataset.density = options.density ?? controls.density
   if (options.preset) {
@@ -2004,6 +2007,7 @@ function buildPanel<S extends Schema>(
       })
     })
   }
+  const isMixed = (r: Row) => r.keys.some((k) => controls.isMixed(k as keyof S & string))
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2017,33 +2021,54 @@ function buildPanel<S extends Schema>(
     }
     const values = controls.get() as Record<string, unknown>
     const before = shown as Record<string, unknown>
-    const locked = controls.locked as Record<string, unknown>
     // A row with nothing shown yet (it just arrived) places its value without motion.
     const fresh = (r: Row) => r.row.dataset.shown === undefined
-    const isMixed = (r: Row) => r.keys.some((k) => controls.isMixed(k as keyof S & string))
     const changed = (r: Row) =>
       fresh(r) || Boolean(r.mixed) !== isMixed(r) || r.keys.some((k) => !same(values[k], before[k]))
     let changedCount = 0
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
+    const moving = initialized ? rows.filter(changed) : rows
+    // Reads before writes: every row about to move reads its tokens before any row writes, and
+    // the pills measure once all of it is written (see measure.ts).
+    for (const row of moving) {
+      row.slider?.prime()
+      row.editor?.prime?.()
+    }
+    batchMeasures(() => showValues(values, moving, stagger, landing))
+    shown = values as Values<S>
+    initialized = true
+
+    wakeGpu()
+  }
+  function showValues(
+    values: Record<string, unknown>,
+    moving: readonly Row[],
+    stagger: number,
+    landing: boolean,
+  ) {
+    const locked = controls.locked as Record<string, unknown>
+    const fresh = (r: Row) => r.row.dataset.shown === undefined
     const now = performance.now()
     let turn = 0
-    for (const row of rows) {
-      if (initialized && !changed(row)) continue
+    for (const row of moving) {
       const instant = !initialized || landing || fresh(row)
       row.row.dataset.shown = ""
       const value = row.value(values)
       let delay = 0
       if (!instant) {
-        const moving = row.wave.at <= now && now < row.wave.until
-        delay = moving ? 0 : turn * stagger
+        const inMotion = row.wave.at <= now && now < row.wave.until
+        delay = inMotion ? 0 : turn * stagger
         turn++
         row.wave.at = now + delay
         row.wave.until = row.wave.at + 280
-        row.row.style.setProperty("--k-delay", `${delay}ms`)
+        // Only when it differs: a custom property set on the row restyles everything in it.
+        const wait = `${delay}ms`
+        if (row.row.style.getPropertyValue("--k-delay") !== wait)
+          row.row.style.setProperty("--k-delay", wait)
       } else {
         row.wave.at = row.wave.until = 0
-        row.row.style.removeProperty("--k-delay")
+        if (row.row.style.getPropertyValue("--k-delay")) row.row.style.removeProperty("--k-delay")
       }
       const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
       if (row.row.classList.contains("knobs-modified") !== modified)
@@ -2064,7 +2089,7 @@ function buildPanel<S extends Schema>(
         row.input.setAttribute("aria-checked", mixed ? "mixed" : String(Boolean(value)))
     }
     for (const row of rows) applyState(row)
-    if (!initialized || changedCount > 0 || landing || turn > 0 || rows.some(fresh)) {
+    if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) {
       let anyMod = false
       for (const [groupName, gReset] of groupResetButtons) {
         const groupMod = rows.some(
@@ -2112,10 +2137,6 @@ function buildPanel<S extends Schema>(
       // A chip's rows change with the values ("Modified" loses a row that's reset).
       if (search.active().size && initialized) applyVisibility("reveal")
     }
-    shown = values as Values<S>
-    initialized = true
-
-    wakeGpu()
   }
 
   const visible = (node: HTMLElement) =>
@@ -2779,12 +2800,31 @@ function buildPanel<S extends Schema>(
   // Keys take over from the pointer: until it moves again, the row it rests on shows no hover wash
   // (see keyboardQuietsHover in styles.ts), so the only wash is the keyboard's focus.
   let pointerAt = ""
+  const quieted: Element[] = []
+  const quiet = (from: Element | null) => {
+    // Up to the first one already quiet: its ancestors are too.
+    for (let at = from; at && root.contains(at); at = at === root ? null : at.parentElement) {
+      if (at.hasAttribute("data-k-quiet")) break
+      at.setAttribute("data-k-quiet", "")
+      quieted.push(at)
+    }
+  }
   const keyboardOn = (on: boolean) => {
     if ("keyboard" in root.dataset === on) return
-    if (on) root.dataset.keyboard = ""
-    else delete root.dataset.keyboard
+    if (on) {
+      root.dataset.keyboard = ""
+      quiet(root)
+      for (const el of root.querySelectorAll(":hover")) quiet(el)
+    } else {
+      delete root.dataset.keyboard
+      for (const el of quieted.splice(0)) el.removeAttribute("data-k-quiet")
+    }
     wakeGpu()
   }
+  // Scrolling under the still pointer moves the hover; what it reaches stays quiet too.
+  root.addEventListener("pointerover", (event) => {
+    if ("keyboard" in root.dataset) quiet(event.target as Element)
+  })
   root.addEventListener(
     "keydown",
     (event) => {
@@ -3227,6 +3267,7 @@ function buildPanel<S extends Schema>(
       doc.defaultView?.removeEventListener("blur", endCompare)
       controls.compare(false)
       morph?.dispose()
+      untrackHas()
       root.remove()
     },
   }

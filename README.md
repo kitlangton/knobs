@@ -278,6 +278,12 @@ ws.onmessage = (e) => {
 mountPanel(remote, document.querySelector("#groups")!, { variants: false })
 ```
 
+A change of several keys at once (a page or card preset, Native, Random, Mutate, resetting a selection, or undoing and redoing any of them) can go out as one message: give `onSetBatch` and it gets the change's entries in one call instead of an `onSet` per key. Each entry is what `onSet` would have received, with `null` again meaning back to the default. A one-key change still calls `onSet`, or `onSetBatch` with one entry when there's no `onSet`. Resetting everything or a card still reaches only `onReset`, and a card preset only `onPreset` when given. Echo holds stay per key: each key in a batch holds against stale state until the peer reports the value sent for it.
+
+```ts
+onSetBatch: (changes) => ws.send(JSON.stringify({ type: "setMany", changes })),
+```
+
 Descriptors also take `kind: "spring"` (default `{ duration, bounce }`), `"color"` (any string `color()` accepts), `"point"` (default `{ x, y }`, with `min`/`max`/`step` applying to both axes) and `"easing"` (default `[x1, y1, x2, y2]`). `onSet` then sends those values as they are (objects, strings and arrays), or `null` when a key returns to its default. `remote.swift()` emits matching Swift:
 
 ```swift
