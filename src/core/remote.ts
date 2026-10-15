@@ -36,6 +36,7 @@ import {
   watch,
   type Knob,
   type Point,
+  type ToolbarShortcut,
   type Schema,
   same,
   type State,
@@ -95,7 +96,7 @@ export interface ToolbarDescriptor extends DescriptorMeta {
     readonly key: string
     readonly label: string
     readonly icon?: string
-    readonly shortcut?: string
+    readonly shortcut?: string | ToolbarShortcut
     readonly global?: boolean
     readonly disabled?: boolean
   }[]
@@ -175,6 +176,8 @@ export interface ValueDescriptor extends DescriptorMeta {
   /** Vectors: show the link toggle for uniform scaling (`linked` starts it on). */
   readonly link?: boolean
   readonly linked?: boolean
+  /** Vectors: what the cells are called (`["x", "z"]`), their letters and accessible names. */
+  readonly axes?: readonly string[]
   /** Angles: carry past the ends a whole turn (on for a full turn by default). */
   readonly wrap?: boolean
   /** Gradients: blend in `oklab` (default) or `srgb`. */
@@ -357,6 +360,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
       ...numbers,
       ...(d.link ? { link: true } : {}),
       ...(d.linked ? { linked: true } : {}),
+      ...(d.axes ? { axes: d.axes } : {}),
       ...meta,
     }
     return d.kind === "vec3"

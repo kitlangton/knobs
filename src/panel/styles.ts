@@ -209,7 +209,9 @@ const css = `
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
 .knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--k-rim) calc(var(--k-chrome) * 100%),transparent);animation:none;
-  /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column. */
+  /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column,
+     border width too, so its rows line up with the column's edges. */
+  border-width:calc(var(--k-chrome) * 1px);
   background:color-mix(in srgb,color-mix(in srgb,var(--k-bg) calc(100% - var(--k-glass) * 20%),transparent) calc(var(--k-chrome) * 100%),transparent);border-color:color-mix(in srgb,var(--k-line) calc(var(--k-chrome) * 100%),transparent);
   --k-backdrop:blur(calc(var(--k-glass) * var(--k-chrome) * 24px)) saturate(calc(1 + var(--k-glass) * var(--k-chrome) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass) * var(--k-chrome)))}
 @keyframes knobs-in{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
@@ -251,10 +253,13 @@ const css = `
 .knobs-presets{position:relative;display:flex;align-items:flex-start;gap:var(--k-tray-pad);margin:0 0 var(--k-section-gap);padding:var(--k-tray-pad);background:var(--k-seg-bg);border-radius:var(--k-radius);user-select:none;touch-action:none}
 .knobs-presets-track{position:relative;flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--k-preset-min,58px)),1fr));align-items:stretch;gap:var(--k-tray-pad)}
 /* The selected pill is placed by its edges: the edge facing the move leads, the other trails. */
-.knobs-presets-pill{position:absolute;top:0;left:0;background:var(--k-pill-bg);border:1px solid var(--k-pill-border);border-radius:var(--k-radius-md);box-shadow:var(--k-lift-shadow),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 24%,transparent);pointer-events:none;
+.knobs-presets-pill{position:absolute;top:0;left:0;background:var(--k-pill-bg);border:1px solid var(--k-pill-border);border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:var(--k-lift-shadow),0 0 calc(var(--k-glow) * 10px) color-mix(in srgb,var(--k-accent) 24%,transparent);pointer-events:none;
   transition:left ${TRAIL_T},right ${LEAD_T},top ${LEAD_T},opacity .15s,scale .15s}
 .knobs-presets-pill[data-dir="left"]{transition:left ${LEAD_T},right ${TRAIL_T},top ${LEAD_T},opacity .15s,scale .15s}
-.knobs-panel .knobs-preset-chip{position:relative;z-index:1;height:var(--kc-control-h);min-height:20px;padding:0 6px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent!important;border-radius:var(--k-radius-md);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.knobs-panel .knobs-preset-chip{position:relative;z-index:1;height:var(--k-button-h,var(--kc-control-h));min-height:20px;padding:0 6px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);color:var(--k-button-color,var(--k-label));background:transparent!important;border-radius:var(--k-button-radius,var(--k-radius-md));cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s,background .15s,box-shadow .15s}
+.knobs-panel[data-buttons] .knobs-presets{background:transparent;padding:0}
+.knobs-panel[data-buttons] .knobs-preset-chip{background:var(--k-button-bg,transparent)!important;box-shadow:inset 0 0 0 1px var(--k-button-line,transparent)}
+.knobs-panel[data-buttons] .knobs-preset-chip:hover{background:var(--k-button-hover-bg,var(--k-surface-hi))!important;box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
 .knobs-panel .knobs-preset-chip:hover{color:var(--k-text)}
 .knobs-panel .knobs-preset-chip[aria-checked="true"]{color:var(--k-text);font-weight:var(--k-title-weight)}
 .knobs-panel .knobs-preset-save{flex:none;width:calc((var(--k-inset) - var(--k-tray-pad)) * 2 + 8px);padding:0!important;color:var(--k-dim)!important;font-weight:400!important;font-size:var(--k-text-title)!important}
@@ -377,9 +382,15 @@ const css = `
 
 /* Action rows: a button the width of the row */
 .knobs-panel .knobs-action-row{padding:0}
-.knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-text);font-size:calc(var(--k-text-control) + .5px);font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t)}
+.knobs-panel .knobs-action{width:100%;height:100%;padding:0 var(--k-inset);text-align:left;background:transparent;border-radius:0;color:var(--k-button-color,var(--k-text));font-size:var(--k-button-font-size,calc(var(--k-text-control) + .5px));font-weight:var(--k-label-weight);cursor:pointer;transition:color var(--k-hover-t),background var(--k-hover-t),box-shadow var(--k-hover-t)}
 .knobs-panel .knobs-action:is(:hover,:focus-visible){color:var(--k-accent)}
 .knobs-panel .knobs-action:active{opacity:.7}
+/* With a button fill or outline (--k-button-bg, --k-button-line), an action is a sized button in
+   its row, and the presets strip a row of them, as toolbar buttons are. */
+.knobs-panel[data-buttons] .knobs-action-row{padding:0 var(--k-inset)}
+.knobs-panel[data-buttons] .knobs-action{width:auto;max-width:100%;height:var(--k-button-h,var(--kc-control-h));padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:var(--k-button-bg,transparent);box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);border-radius:var(--k-button-radius,var(--k-radius-md))}
+.knobs-panel[data-buttons] .knobs-action:is(:hover,:focus-visible){color:var(--k-text);background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
 
 /* Switch */
 /* The thumb spans two edges: the leading one springs ahead and the other follows, so it stretches
@@ -473,8 +484,11 @@ const css = `
 :is(.knobs-grad-stop,.knobs-graph-pt)[data-born]{animation:knobs-born .24s var(--k-ease)}
 @keyframes knobs-born{from{opacity:0;scale:.4}}
 .knobs-mixed :is(.knobs-grad,.knobs-grad-mini){background:transparent}
-.knobs-panel .knobs-ramp-chips{display:flex;flex-wrap:wrap}
-.knobs-panel .knobs-ramp-chips>.knobs-ease-chip{flex:1 1 auto}
+/* A ramp's shapes and presets share one row: each chip gives up padding before its words, and only
+   a very narrow column ellipsizes them (the GPU overlay does the same). */
+.knobs-panel .knobs-ramp-chips{display:flex;flex-wrap:nowrap}
+.knobs-panel .knobs-ramp-chips>.knobs-ease-chip{flex:1 1 auto;min-width:0;padding:0 clamp(2px,1.2cqi,6px);overflow:hidden;text-overflow:ellipsis}
+.knobs-panel .knobs-ramp-chips{container-type:inline-size}
 .knobs-mixed :is(.knobs-grad-stop,.knobs-grad-mini>i){opacity:0}
 
 /* Curves: a mini curve in the head; a graph with a grid, points (the selected one filled) and a
@@ -649,7 +663,7 @@ const css = `
 .knobs-card>.knobs-toolbar:hover{background:transparent}
 .knobs-card>.knobs-toolbar:has(:focus-visible)::after{opacity:0}
 .knobs-panel .knobs-tool{display:inline-flex;align-items:center;gap:6px;height:var(--k-button-h,var(--kc-control-h));padding:0 8px;background:var(--k-button-bg,var(--k-seg-bg));border-radius:var(--k-button-radius,var(--k-radius-md));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);
-  color:var(--k-label);font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color .15s,box-shadow .15s,scale .12s var(--k-ease),opacity .15s}
+  color:var(--k-button-color,var(--k-label));font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color .15s,box-shadow .15s,scale .12s var(--k-ease),opacity .15s}
 .knobs-panel .knobs-tool:is(:hover:not([disabled]),:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 .knobs-panel .knobs-tool:is(:active:not([disabled]),.knobs-pressed){scale:.96}
 .knobs-panel .knobs-tool[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
@@ -674,7 +688,8 @@ const css = `
 
 /* A long choice's menu row: the label keeps its words (up to half the row) and the value takes
    the rest, truncating at its end; the whole value is in the menu and the button's tooltip. */
-.knobs-panel .knobs-row[data-display="menu"]>span:first-child{flex:0 0 auto;max-width:50%}
+.knobs-panel .knobs-row:is([data-display="menu"],[data-display="segmented"])>span:first-child{flex:0 0 auto;max-width:50%}
+.knobs-panel .knobs-row[data-display="segmented"]>.knobs-seg{flex:0 1 auto;min-width:0}
 .knobs-panel .knobs-row[data-display="menu"]>.knobs-select{flex:0 1 auto;max-width:none}
 
 /* A different item landing: values are placed, nothing glides. */
@@ -690,7 +705,7 @@ const css = `
 
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
-.knobs-panel .knobs-custom-actions button{height:var(--k-button-h,var(--k-action-h));min-height:24px;padding:0 8px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-label);cursor:pointer;
+.knobs-panel .knobs-custom-actions button{height:var(--k-button-h,var(--k-action-h));min-height:24px;padding:0 8px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-button-color,var(--k-label));cursor:pointer;
   background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);transition:background .15s,color .15s,opacity .15s,transform .12s,box-shadow .15s}
 .knobs-panel .knobs-custom-actions button:is(:hover:not([disabled]),:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 .knobs-panel .knobs-custom-actions button:active:not([disabled]){transform:scale(.97)}
@@ -698,7 +713,7 @@ const css = `
 
 /* Variants Disclosure Drawer */
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
-.knobs-transfer button{height:var(--k-button-h,24px);padding:0 8px;background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);font-size:var(--k-button-font-size,var(--k-text-meta));color:var(--k-label);cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-transfer button{height:var(--k-button-h,24px);padding:0 8px;background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);font-size:var(--k-button-font-size,var(--k-text-meta));color:var(--k-button-color,var(--k-label));cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
 .knobs-transfer button:is(:hover,:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 
 /* Context menu: borrows its panel's tokens (see menu.ts) and floats above everything. */

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rows in a host's column · knobs</title>
+    <style>
+      html, body { margin: 0; background: #0e0f11; color: #8b9098; font: 12px system-ui; }
+      .grid { display: grid; grid-template-columns: repeat(3, 292px); gap: 28px 36px; padding: 24px 32px; align-items: start; }
+      .grid h2 { margin: 0 0 8px; font: 600 11px system-ui; letter-spacing: .06em; text-transform: uppercase; color: #5b6068; }
+      /* The host's column: the panel should sit exactly inside these guides. */
+      .slot { position: relative; width: 292px; }
+      .slot::before { content: ""; position: absolute; inset: 0 -1px; border-inline: 1px dashed rgba(77, 141, 255, .45); pointer-events: none; }
+      .slot .knobs-panel { width: 100%; }
+      .slot[data-look="lab"], .slot[data-look="buttons"] { background: #191a1e; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module" src="./rows.ts"></script>
+  </body>
+</html>

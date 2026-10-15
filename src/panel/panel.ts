@@ -107,7 +107,17 @@ export interface Panel {
   fold(group: string, folded?: boolean): void
   /** Shows tab `id` (when given) and returns the tab shown, if the panel has tabs. */
   tab(id?: string): string | undefined
+  /**
+   * Searches for `query` (when given) with exactly `chips` on (when given), as typing and clicking
+   * would, and returns what the search holds now; undefined without `search`.
+   */
+  search(query?: string, chips?: readonly string[]): PanelSearch | undefined
   dispose(): void
+}
+/** A panel's search: the query as typed and the chips that are on. */
+export interface PanelSearch {
+  readonly query: string
+  readonly chips: readonly string[]
 }
 let layer = 2147480001
 /** The tab each panel last showed, by controls id, so a panel mounted again opens on it. */
@@ -1052,7 +1062,29 @@ function buildPanel<S extends Schema>(
         section: field.section,
       })
     }
-    return specs
+    return gatherSubsections(specs)
+  }
+  /**
+   * Within each run of a group's rows, rows without a sub-heading come first, then each
+   * sub-heading's rows together (in the order the sub-headings first appear), so a heading never
+   * splits in two.
+   */
+  const gatherSubsections = (specs: RowSpec[]): RowSpec[] => {
+    const out: RowSpec[] = []
+    for (let i = 0; i < specs.length; ) {
+      let end = i
+      while (end < specs.length && specs[end]!.group === specs[i]!.group) end++
+      const loose: RowSpec[] = []
+      const subs = new Map<string, RowSpec[]>()
+      for (const spec of specs.slice(i, end)) {
+        const name = spec.field.subsection
+        if (name === undefined) loose.push(spec)
+        else subs.set(name, [...(subs.get(name) ?? []), spec])
+      }
+      out.push(...loose, ...[...subs.values()].flat())
+      i = end
+    }
+    return out
   }
   const shapeOf = (spec: RowSpec) => {
     const f = spec.field
@@ -1066,7 +1098,8 @@ function buildPanel<S extends Schema>(
       isReadout(f)
     )
       return `${f.kind}\u0000${where}`
-    if (f.kind === "vec") return `vec\u0000${f.axes}\u0000${f.link ? 1 : 0}\u0000${where}`
+    if (f.kind === "vec")
+      return `vec\u0000${f.axes}\u0000${f.axisLabels?.join(",") ?? ""}\u0000${f.link ? 1 : 0}\u0000${where}`
     if (f.kind === "range" || f.kind === "angle" || f.kind === "seed" || f.kind === "keybind")
       return `${f.kind}\u0000${where}`
     if (f.kind === "choice")
@@ -2949,7 +2982,8 @@ function buildPanel<S extends Schema>(
       !["range", "checkbox", "radio", "button"].includes(target.type))
   /**
    * Presses the toolbar button whose shortcut this is: any of them while the panel has focus,
-   * only `global` ones from elsewhere on the page. A disabled toolbar row takes none.
+   * only page-scoped ones (`global`) from elsewhere on the page, and never a chip-only one
+   * (`scope: "none"`). A disabled toolbar row takes none.
    */
   const pressTool = (event: KeyboardEvent, inPanel: boolean) => {
     if (event.repeat) return false
@@ -3706,12 +3740,21 @@ function buildPanel<S extends Schema>(
       else delete root.dataset.frame
       wakeGpu()
     }
+    // A button fill or outline makes action rows and preset chips buttons (see [data-buttons]).
+    const boxed =
+      cs.getPropertyValue("--k-button-bg").trim() || cs.getPropertyValue("--k-button-line").trim()
+    if (root.hasAttribute("data-buttons") !== Boolean(boxed)) {
+      root.toggleAttribute("data-buttons", Boolean(boxed))
+      wakeGpu()
+    }
   }
   const rowsObserver = new MutationObserver(syncRows)
   rowsObserver.observe(root, {
     attributes: true,
     attributeFilter: ["style", "class", "data-theme", "data-preset", "data-density"],
   })
+  // The frame and button looks are known before the first row is built, so nothing glides in.
+  syncRows()
   layoutRows(false)
   const unsubscribe = controls.subscribe(update)
   const unlisten = readoutPort?.listen((key) => readouts.get(key)?.notify())
@@ -3869,6 +3912,11 @@ function buildPanel<S extends Schema>(
     tab(id) {
       if (id !== undefined) selectTab(id)
       return activeTab
+    },
+    search(query, chips) {
+      if (!search) return undefined
+      search.set(query, chips)
+      return { query: search.input.value, chips: [...search.active()] }
     },
     reopen() {
       if (!morph?.closing || !root.isConnected) return false

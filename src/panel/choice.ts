@@ -219,16 +219,19 @@ export function createChoice(
     if (o.room) return need <= o.room()
     const rowCs = getComputedStyle(row)
     const label = row.querySelector<HTMLElement>(":scope > span:first-child")
-    const labelW = label
-      ? measure(
-          label.textContent ?? "",
-          `${getComputedStyle(label).fontWeight} ${rowCs.fontSize} ${rowCs.fontFamily}`,
-        ) +
-        (parseFloat(rowCs.columnGap) || 0) +
-        10
-      : 0
     const inner =
       row.clientWidth - (parseFloat(rowCs.paddingLeft) || 0) - (parseFloat(rowCs.paddingRight) || 0)
+    // The label keeps its words, up to half the row (as a menu row's does); what's left is the
+    // segments', or the row becomes a menu.
+    const labelW = label
+      ? Math.min(
+          measure(
+            label.textContent ?? "",
+            `${getComputedStyle(label).fontWeight} ${rowCs.fontSize} ${rowCs.fontFamily}`,
+          ) + 10,
+          inner / 2,
+        ) + (parseFloat(rowCs.columnGap) || 0)
+      : 0
     // The tray's own cap (.knobs-seg's max-width) counts too.
     const cap = segCs.maxWidth.endsWith("%")
       ? (parseFloat(segCs.maxWidth) / 100) * inner

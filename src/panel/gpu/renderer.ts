@@ -1427,7 +1427,9 @@ class GpuOverlayManager {
       this.ease(btn, "dim", btn.disabled ? t.disabledOpacity : 1, 30) * this.missed(btn, hinting)
     const on = hovered || focused || expanded
     const wash = this.wash(btn, on)
-    if (alwaysBg || wash > 0.005) {
+    // In the button tokens when they're set, as the DOM draws it.
+    if (alwaysBg && t.boxed) this.drawButtonBox(btn, br, on, alpha, undefined, t.surface, radius)
+    else if (alwaysBg || wash > 0.005)
       this.pushPrim({
         x: br.left,
         y: br.top,
@@ -1441,14 +1443,46 @@ class GpuOverlayManager {
         glowOrBlur: t.glowStrength * 7,
         kind: 1,
       })
-    }
     this.drawText(
       btn.textContent ?? "",
       br.left + br.width * 0.5,
       br.top + br.height * 0.5,
-      withAlpha(this.hot(btn, on), alpha),
-      { px, align: "center" },
+      withAlpha(this.hot(btn, on, alwaysBg ? (t.buttonColor ?? t.label) : t.label), alpha),
+      { px: alwaysBg ? (t.buttonFontSize ?? px) : px, align: "center" },
     )
+  }
+
+  /**
+   * A button's box in the button tokens (--k-button-*): its fill and outline at rest, washing to
+   * their hover twins, at --k-button-radius.
+   */
+  private drawButtonBox(
+    el: Element,
+    r: DOMRect,
+    on: boolean,
+    alpha: number,
+    clip?: Clip,
+    restFill: Rgba = [0, 0, 0, 0],
+    radius = this.curTokens.radiusMd,
+  ) {
+    const t = this.curTokens
+    const wash = this.wash(el, on)
+    const bg = cssMix(t.buttonHoverBg ?? t.surfaceHi, t.buttonBg ?? restFill, wash)
+    const line = t.buttonLine
+      ? cssMix(t.buttonHoverLine ?? t.buttonLine, t.buttonLine, wash)
+      : t.buttonHoverLine
+        ? withAlpha(t.buttonHoverLine, t.buttonHoverLine[3] * wash)
+        : undefined
+    this.shape({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      radius: Math.min(r.height / 2, t.buttonRadius ?? radius),
+      fill: withAlpha(bg, alpha),
+      ...(line ? { ring: -1, ringColor: withAlpha(line, alpha) } : {}),
+      ...(clip ? { clip } : {}),
+    })
   }
 
   private isHot(row: Element) {
@@ -2705,8 +2739,13 @@ class GpuOverlayManager {
           glowOrBlur: t.glowStrength * 0.6,
           kind: 3,
         })
+      // A chip the DOM ellipsizes (a very narrow column) is ellipsized here too.
+      const text = chip.textContent ?? ""
+      const room = () => r.width - 2 * (parseFloat(getComputedStyle(chip).paddingLeft) || 0)
       this.drawText(
-        chip.textContent ?? "",
+        this.domClipped(chip, text, r.width)
+          ? this.fit(text, room(), t.textControl, t.labelWeight, t.fontFamily, 0, true)
+          : text,
         r.left + r.width / 2,
         r.top + r.height / 2,
         withAlpha(
@@ -3283,7 +3322,7 @@ class GpuOverlayManager {
         fill: withAlpha(bg, alpha),
         ...(line ? { ring: -1, ringColor: withAlpha(line, alpha) } : {}),
       })
-      const ink = withAlpha(this.hot(b, on), alpha)
+      const ink = withAlpha(this.hot(b, on, t.buttonColor ?? t.label), alpha)
       const zoom = { scale: k, origin: [cx, cy] as const }
       if (item.iconEl && item.icon)
         this.drawIcon(item.icon, t.iconSm, this.rectOf(item.iconEl as SVGElement), ink, cardClip, k)
@@ -3476,11 +3515,13 @@ class GpuOverlayManager {
         this.curMask = ++this.maskCount
       }
 
+      // Inside the 1px border, which a chromeless inline panel doesn't have.
+      const edge = chrome > 0 ? 1 : 0
       let bodyClip: [number, number, number, number] = [
-        panelClip[0] + 1,
-        panelClip[1] + 1,
-        panelClip[2] - 1,
-        panelClip[3] - 1,
+        panelClip[0] + edge,
+        panelClip[1] + edge,
+        panelClip[2] - edge,
+        panelClip[3] - edge,
       ]
       if (panel.isPopoverOpen() && !pageB) {
         const pop = panel.root.querySelector<HTMLElement>(".knobs-popover:not([hidden])")
@@ -3544,18 +3585,20 @@ class GpuOverlayManager {
         this.curSubHovered = psHovered
         const psRect = this.rectOf(ps.element)
         const trackRect = this.rectOf(ps.track)
-        this.pushPrim({
-          x: psRect.left,
-          y: psRect.top,
-          w: psRect.width,
-          h: psRect.height,
-          color: tokens.segBg,
-          color2: tokens.accent,
-          radius: tokens.radius,
-          glowOrBlur: tokens.glowStrength * 8,
-          kind: 1,
-          p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
-        })
+        // Boxed buttons (see [data-buttons]) stand on their own, with no tray behind them.
+        if (!tokens.boxed)
+          this.pushPrim({
+            x: psRect.left,
+            y: psRect.top,
+            w: psRect.width,
+            h: psRect.height,
+            color: tokens.segBg,
+            color2: tokens.accent,
+            radius: tokens.radius,
+            glowOrBlur: tokens.glowStrength * 8,
+            kind: 1,
+            p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
+          })
 
         const stripClip = intersectClip(headClip, [
           psRect.left,
@@ -3565,6 +3608,12 @@ class GpuOverlayManager {
         ])
         const activeState = ps.getActiveState()
         const chipButtons = ps.getButtons()
+        if (tokens.boxed)
+          for (const btn of chipButtons) {
+            const br = this.rectOf(btn)
+            if (br.right < stripClip[0] || br.left > stripClip[2]) continue
+            this.drawButtonBox(btn, br, this.isHovered(btn), this.missed(btn, hinting), stripClip)
+          }
         const activeBtn =
           activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
         const pe = ps.pillEdges
@@ -3609,7 +3658,7 @@ class GpuOverlayManager {
             clip: stripClip,
             color: withAlpha(pillFill, pillAlpha),
             color2: withAlpha(tokens.pillBorder, pillAlpha),
-            radius: tokens.radiusMd,
+            radius: tokens.buttonRadius ?? tokens.radiusMd,
             glowOrBlur: tokens.glowStrength,
             kind: 3,
             blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
@@ -3627,9 +3676,12 @@ class GpuOverlayManager {
             btn.textContent ?? "",
             br.left + br.width * 0.5,
             br.top + br.height * 0.5,
-            withAlpha(this.hot(btn, isActive || chipHovered), this.missed(btn, hinting)),
+            withAlpha(
+              this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
+              this.missed(btn, hinting),
+            ),
             {
-              px: tokens.textControl,
+              px: tokens.buttonFontSize ?? tokens.textControl,
               weight: isActive ? tokens.titleWeight : tokens.labelWeight,
               align: "center",
               clip: stripClip,
@@ -4424,12 +4476,18 @@ class GpuOverlayManager {
           const on = hovered || this.isFocused(b)
           this.drawRowHover(row.row, rRect, hovered)
           const br = this.rectOf(b)
+          const rest = tokens.buttonColor ?? tokens.text
+          if (tokens.boxed) this.drawButtonBox(b, br, on, rowAlpha, cardClip)
           this.drawText(
             b.textContent ?? "",
-            br.left + tokens.inset,
+            br.left + (tokens.boxed ? 10 : tokens.inset),
             rowCenterY,
-            withAlpha(this.hot(b, on, tokens.text, tokens.accent), rowAlpha),
-            { px: tokens.textControl + 0.5, weight: tokens.labelWeight, clip: cardClip },
+            withAlpha(this.hot(b, on, rest, tokens.boxed ? tokens.text : tokens.accent), rowAlpha),
+            {
+              px: tokens.buttonFontSize ?? tokens.textControl + 0.5,
+              weight: tokens.labelWeight,
+              clip: tokens.boxed ? this.clipTo(cardClip, br) : cardClip,
+            },
           )
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "spring") {
