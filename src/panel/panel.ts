@@ -1,5 +1,6 @@
 import {
   hasValue,
+  isReadout,
   same,
   type Choice,
   type Field,
@@ -46,6 +47,8 @@ import {
   type ToolbarRow,
 } from "./inspector.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
+import { READOUT, type ReadoutPort } from "../core/readout.js"
+import { readoutRow, type ReadoutRow } from "./readout-row.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
 import { createHintController, type HintTarget } from "./hints.js"
@@ -610,7 +613,11 @@ function buildPanel<S extends Schema>(
     gRandom.dataset.hint = `${title} random`
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
-    if (!bound("random") && !bound("mutate")) gRandom.hidden = true
+    // A group of readouts alone has nothing to roll.
+    const rollable = (Object.values(controls.schema) as Field[]).some(
+      (f) => f.group === groupName && hasValue(f),
+    )
+    if ((!bound("random") && !bound("mutate")) || !rollable) gRandom.hidden = true
     groupDice.set(groupName, { button: gRandom, die: gDie })
     // On a page, the group's presets sit in its header: their names as segments while they fit
     // beside the title, else a compact menu (or numbered chips, whose hovered name shows where
@@ -805,6 +812,9 @@ function buildPanel<S extends Schema>(
   const tracks = new Map<HTMLElement, SubTrack>()
   /** Toolbar rows by key, for their shortcuts. */
   const toolbars = new Map<string, ToolbarRow>()
+  /** Readout rows by key, told when the store pushes to them. */
+  const readouts = new Map<string, ReadoutRow>()
+  const readoutPort = (controls as unknown as { [READOUT]?: ReadoutPort })[READOUT]
   interface Row {
     /** The row's identity: its key, or `spring:<id>` for a flat spring's pair of keys. */
     id: string
@@ -902,7 +912,13 @@ function buildPanel<S extends Schema>(
     const f = spec.field
     const where = `${spec.group ?? ""}\u0000${page ? (spec.section ?? "") : ""}`
     if (spec.parts) return `pair\u0000${spec.keys.join("\u0000")}\u0000${where}`
-    if (f.kind === "knob" || f.kind === "toggle" || f.kind === "action" || f.kind === "toolbar")
+    if (
+      f.kind === "knob" ||
+      f.kind === "toggle" ||
+      f.kind === "action" ||
+      f.kind === "toolbar" ||
+      isReadout(f)
+    )
       return `${f.kind}\u0000${where}`
     if (f.kind === "vec") return `vec\u0000${f.axes}\u0000${f.link ? 1 : 0}\u0000${where}`
     if (f.kind === "range" || f.kind === "angle" || f.kind === "seed" || f.kind === "keybind")
@@ -1040,6 +1056,39 @@ function buildPanel<S extends Schema>(
           bar.swap(next.field as ToolbarField)
         },
         dispose: () => toolbars.delete(key),
+      }
+    }
+    if (isReadout(field)) {
+      const state = readoutPort?.state(key)
+      if (!state) throw new Error(`No readout state for ${key}.`)
+      const r = readoutRow({
+        doc,
+        key,
+        display,
+        field,
+        state,
+        wave,
+        wake: () => wakeGpu(),
+        gpu: () => root.dataset.gpuActive === "true",
+      })
+      readouts.set(key, r)
+      return {
+        ...base,
+        row: r.row,
+        labelEl: r.labelEl,
+        input: r.input,
+        editor: r,
+        gpu: [...r.gpu],
+        value: () => undefined,
+        set: () => {},
+        retune(next) {
+          this.field = next.field
+          this.display = next.field.label ?? key
+          r.swap(next.field as typeof field, this.display)
+        },
+        dispose: () => {
+          if (readouts.get(key) === r) readouts.delete(key)
+        },
       }
     }
     if (field.kind !== "choice" && field.kind !== "toggle") {
@@ -3046,6 +3095,12 @@ function buildPanel<S extends Schema>(
   })
   layoutRows(false)
   const unsubscribe = controls.subscribe(update)
+  const unlisten = readoutPort?.listen((key) => readouts.get(key)?.notify())
+  // Readout canvases stay blank while the GPU overlay draws them, and repaint when it lets go.
+  const gpuObserver = new MutationObserver(() => {
+    for (const r of readouts.values()) r.view.refresh()
+  })
+  gpuObserver.observe(root, { attributes: true, attributeFilter: ["data-gpu-active"] })
   update()
   syncRows()
   positioned =
@@ -3227,7 +3282,9 @@ function buildPanel<S extends Schema>(
       modeObserver.disconnect()
       unregisterGpu?.()
       unsubscribe()
+      unlisten?.()
       rowsObserver.disconnect()
+      gpuObserver.disconnect()
       doc.defaultView?.cancelAnimationFrame(landTimer)
       for (const k of inHand) controls.hold(k, false)
       inHand.clear()
