@@ -1567,7 +1567,10 @@ test("design-system geometry contracts: left/right column alignment, concentric 
         const rowTarget = parseFloat(getComputedStyle(panel).getPropertyValue("--kv-row"))
         const rowHeights = [
           ...Array.from(panel.querySelectorAll(".knobs-slider"), H),
-          ...Array.from(panel.querySelectorAll(".knobs-row:not(.knobs-slider, .knobs-x, .knobs-spring)"), H),
+          ...Array.from(
+            panel.querySelectorAll(".knobs-row:not(.knobs-slider, .knobs-x, .knobs-spring)"),
+            H,
+          ),
           ...Array.from(panel.querySelectorAll(".knobs-x-head"), H),
         ]
 

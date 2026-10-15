@@ -26,8 +26,9 @@ export interface FieldMeta {
   /** Shows the value at full strength but takes no edits; Random, Mutate and Reset skip it. */
   readonly readOnly?: boolean | ((values: State) => boolean)
   /**
-   * The group's card starts folded (the first field of a group that says wins). Groups fold in
-   * `mountPanel` and `mountPage` alike; `groupFolded` on the mount overrides it.
+   * The group's card starts folded (the first field of a group that says wins), and its header
+   * folds and opens it. `mountPanel` only; a page's cards don't fold yet. `groupFolded` on the
+   * mount overrides it.
    */
   readonly folded?: boolean
 }

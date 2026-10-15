@@ -1,6 +1,6 @@
 # Migrating OpenCode iOS Tune & Problems to `knobs`
 
-This document covers how the OpenCode iOS Mac tuning page (`scripts/tune-server.ts` in `opencode-ios`) and the Problems rewrite's panels (`team-board`) adopt `knobs` as one shared control surface without losing any project-specific workflow.
+This document covers how the OpenCode iOS Mac tuning page (`scripts/tune-server.ts` in `opencode-ios`), the Problems rewrite's panels (`team-board`) and Arcade's Lab adopt `knobs` as one shared control surface without losing any project-specific workflow.
 
 ---
 
@@ -302,3 +302,41 @@ const panel = useValue(dock, "panel")   // re-runs only when this key changes
 
 Without `ship`, the dock is dev-only: in a production build it's locked to its defaults, mounts
 nothing and none of the panel's code is in the bundle.
+
+---
+
+## 3. Arcade's Lab (`packages/kit/lab-knobs.ts`)
+
+Arcade draws every tuning panel with knobs (vendored at `942dff7`) and works around it in
+`packages/kit/lab-knobs.ts`. Each workaround now has an option. `examples/lab.html` is a working
+model of the Lab's column on these options, in both renderers.
+
+| `lab-knobs.ts` today | Replace with |
+| --- | --- |
+| The facade (`Object.defineProperties` over the store) whose `randomize` and `mutate` call `roll()` with `seededPatch` | Store options `random: () => draw()` (a generator seeded from `tuning.seed`) and `tunable: (key, values) => isTunable(control(key), values)`; `random: false` on the seed descriptors in `describe()`. In `onSet`, a `meta.source` of `"randomize"` or `"mutate"` records `tuning.last` and moves to the next seed (see `rolled()` in `examples/lab.ts`). |
+| The facade's `undo` / `redo`, and `history: !host.history` on the mount | Store option `history: { undo, redo, canUndo, canRedo, subscribe }` over the workbench's stack. The header's Undo and Redo stay, and follow `canUndo` / `canRedo`. Compare (hold `\`) is unchanged. |
+| `data-lab-disabled` from `decorate()`, its `opacity:.38;pointer-events:none` rule, and the `enabled() === false` revert in `onSet` and `onAction` | `disabled: () => row.control.enabled?.(nav.settings) === false` on the descriptor. knobs dims the row (`--k-disabled-opacity`, `.38` in `labPreset`), blocks pointer and key edits, keeps focus able to read it, and Random, Mutate and Reset skip it. Function fields don't change a descriptor's shape, so a new closure on each `refreshShape` swaps nothing. |
+| `onReset` filtering out what it can't reset | Reset skips disabled and read-only keys itself; when it skips any, `onReset` reports the rest key by key instead of `{}`. |
+| `variantStorage()`, a port that lets only `:variants:v1` keys through | `storage: localStorage, persist: "variants"` (or `storage: null` without `variantsId`). |
+| `sessionStorage.removeItem("knobs:<id>:session:v1")` before mounting | `session: false` on the mount. |
+| `orderRows` putting `folded` groups last | `folded: row.control.folded` on the descriptors (or `groupFolded` from `nav.folded`). Those groups fold in place, start folded, and open from their header; `panel.fold(group, folded?)` follows `nav.fold()`. |
+| The pin button appended in `decorate()` (with `stopPropagation` and absolute positioning) and the spawn-time `::after` dot and `title` | `rowAccessory: (key) => node` returning the pin and the dot; call `panel.updateAccessories()` after `pin.toggle`. The slot sits after the label and its clicks never reach the row. Keep the `.lab-knobs-pin` colours; drop its positioning. |
+| `ensureLabKnobsStyles()`'s `(0,0,2)` reset and `letter-spacing:normal` on the panel | Nothing: panels reset a host's element rules themselves (`button`, `input`, `span`, `*:focus`). |
+| `:is(.knobs-row,.knobs-slider)[data-field="…"]` in `rowElement` | `.knobs-row[data-field="…"]`: every row carries `knobs-row`. |
+| `arcadePreset` | `labPreset` from `knobs/themes`, square and flat. Spread it to keep the width rule: `{ ...labPreset, css: "&{--k-width:100%}&[data-lab-floating]{--k-width:300px}" }`. |
+| `packages/knobs/scripts/sync.ts` rewriting rolling-number's text import | Nothing: `src/panel/rolling-css.ts` ships the stylesheet as a module. Drop the rewrite from the sync script. |
+
+A few things to watch:
+
+- **Seeds.** knobs draws a field's value its own way, so a seed recorded under `seededPatch` gives
+  different values after the switch. Seeds recorded afterwards reproduce: a roll draws only for the
+  keys it changes, in schema order.
+- **Multi-selection.** When the Lab edits several items at once, pass the keys whose values differ
+  as `sync(values, { mixed })` (or `update(…, { mixed })`). Those rows read "—", and the first edit
+  of one reaches `onSet` even when the value is unchanged, so it applies to every item.
+- **Long choices.** Menus with more than eight options open with a search field, values truncate
+  with a tooltip, and labels keep their words up to half the row. The Lab's own label-column sizing
+  can go.
+- **What stays in Arcade.** A group with its own "Randomize <group>" action still needs the facade
+  for that group's Random (knobs has no hook to hand a group's roll to an action), and the
+  `data-lab-flash` highlight is the Lab's own.

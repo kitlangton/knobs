@@ -313,6 +313,63 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
 - **Reading values.** `useValue(controls, key)` and `useModified(controls, key?)` change only when
   their answer does; a panel update touches only the rows that changed.
 
+### Embedding options
+
+An editor that already has its own state, undo stack and chrome (the Arcade Lab is the model:
+`examples/lab.html`) hands the panel those instead of working around it:
+
+```ts
+const station = createRemoteControls("lab-station", descriptors, {
+  values: settings,
+  nullDefaults: false,
+  echo: 0,                                 // local state: no late echoes to wait out
+  random: seeded(tuning.seed),             // Random and Mutate draw from this, not Math.random
+  tunable: (key) => !key.endsWith("Seed"), // beside locks and each field's `random: false`
+  history: editorHistory,                  // { undo, redo, canUndo, canRedo, subscribe? }
+  persist: "variants",                     // keep saved variants, never the values
+  onSet: (key, value, meta) => write(key, value, meta),
+})
+mountPanel(station, column, {
+  preset: labPreset,
+  header: { title: false, buttons: ["random", "reset", "undo", "redo", "help"] },
+  session: false,
+  groupFolded: { fireball: true },
+  rowAccessory: (key) => pinButton(key),
+})
+```
+
+- **Seeded Random.** `random` is the `[0, 1)` source Random and Mutate draw from. A roll draws
+  only for the keys it may change, in schema order, so the same seed and the same rows give the same
+  values. `tunable(key, values)` and a field's `random: false` keep keys out as a lock does (seeds,
+  structural pickers); `controls.canRoll(key)` says whether a key is in.
+- **Host history.** With `history`, the panel's Undo and Redo buttons and keys call the host's
+  stack, and the buttons follow its `canUndo()` and `canRedo()` (re-read when `subscribe` fires).
+  knobs' own entries are then only for compare (hold `\`), which previews the last of them.
+- **Disabled, read-only and mixed.** A field's `disabled` dims its row and `readOnly` keeps it at
+  full strength; either takes no edits from the pointer or keys, and Random, Mutate and Reset skip
+  it. Each takes a boolean or `(values) => boolean`, re-checked on every change, so a row follows
+  the value it depends on. Focus still reaches a gated row (to read it). Mixed keys (a
+  multi-selection whose items differ) read "—" until edited: `sync(values, { mixed })`,
+  `update(descriptors, values, { mixed })` or `controls.setMixed(keys, on?)`. The first edit of a
+  mixed key reaches `onSet` even when the value doesn't change, so it applies to every selected item.
+- **Persistence.** `persist: "all"` (the default) keeps values, locks, saved variants and a floating
+  panel's position; `"variants"` keeps only saved variants, for values the host owns; `"none"`
+  keeps nothing. `session: false` on the mount stops the per-tab session too, so a rebuilt panel
+  doesn't take focus back to its last row or reopen editors and groups (on while there's storage).
+- **Header.** `header: false` drops it; `{ title?: false, buttons?: [...] }` keeps it and picks what
+  shows. A hidden button keeps its key; a command that's off (`keys`) loses both.
+- **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
+  foldable in `mountPanel`, starting folded. Its header folds and opens it with a click, Enter or
+  Space; it's a ↑↓ stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from
+  code.
+- **Row accessories.** `rowAccessory(key)` puts the host's node just after each row's label (a pin,
+  a spawn-time marker); slider ticks and the label make room for it. The node stays the host's
+  (style it, listen on it, its clicks never reach the row); `panel.updateAccessories()` asks again.
+  With the WebGPU renderer it stays in the DOM, above the overlay.
+- **Long menus.** A menu of more than eight options (not numbered presets) opens with a search
+  field: typing filters, ↑↓ and Enter choose, Esc closes. The row's value truncates with its whole
+  text as a tooltip, and the label keeps its words.
+
 ### Shipping
 
 Stores are dev tools by default: a production build (the package's default export condition)
@@ -351,9 +408,47 @@ Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a prese
 | `--k-curve-inset`, `--k-curve-guide`, `--k-curve-dot` | `6px`, `solid`, `1` | The spring curve's side inset; `dashed` draws one dashed line at rest instead of two; `0` hides the running dot |
 
 Stable class hooks: `.knobs-panel` (with `data-preset`, `data-theme`, `data-density`,
-`data-rows`, `data-landing`), `.knobs-card`, `.knobs-group-head`, `.knobs-row`, `.knobs-slider`,
-`.knobs-spring`, `.knobs-seg`, `.knobs-select`, `.knobs-action`, `.knobs-modified`, and
-`[data-field="<key>"]` on every row. Both renderers draw every token above.
+`data-rows`, `data-landing`, `data-frame`), `.knobs-card`, `.knobs-group-head`, `.knobs-row`
+and `[data-field="<key>"]` on every row (sliders, springs and editors too), `.knobs-slider`,
+`.knobs-spring`, `.knobs-seg`, `.knobs-select`, `.knobs-action`, `.knobs-modified`,
+`.knobs-mixed`, `[data-disabled]` and `[data-readonly]`. Both renderers draw every token above.
+
+### Matching your app
+
+A panel inside an app should look like the app's own controls. Four things get it there.
+
+**Tokens.** Beside colours and sizes, these carry a host's type and shapes:
+
+| Token | Default | What it does |
+| --- | --- | --- |
+| `--k-font`, `--k-mono`, `--k-font-size` | system, mono, `12px` by density | Faces and size; `--k-value-font: var(--k-mono)` puts readouts in mono |
+| `--k-font-weight`, `--k-label-weight`, `--k-title-weight` | `400`, `500`, `600` | Body, row labels, and titles, group headings and the chosen chip |
+| `--k-radius`, `--k-panel-radius` | `8px` by density, radius + `4px` | Corners. `0` squares everything, the pill shapes (switches, handles, dots) included |
+| `--k-thumb` | `#fff` | Switch thumbs and strip handles |
+| `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
+| `--k-frame` | `card` | `flat`: no card inside the host's own card (see below) |
+| `--k-disabled-opacity` | `.32` | How far a disabled row dims |
+
+**Frame.** `--k-frame: flat` is for a panel set into the host's own column or card. Group cards
+lose their surface and corners, rows are split by hairlines, and groups by `--k-group-divider` over
+their heading. An inline flat panel also drops its own card (`--k-chrome: 0`) and padding, so
+nothing draws a box inside the host's box. The panel reports it as `data-frame="flat"`.
+
+**Presets.** `labPreset` (from `knobs/themes`) is the Arcade Lab's column: its greys and blue
+accent, 11.5px type at 26px rows, square corners, the flat frame, mono readouts, and no glass, glow
+or lift. Start from it, or spread it and change a few tokens:
+
+```ts
+import { labPreset } from "knobs/themes"
+mountPanel(controls, column, { preset: { ...labPreset, dark: { ...labPreset.dark, accent: "#e0a030" } } })
+```
+
+**Reset.** A host's element rules (`button { padding }`, `span { letter-spacing }`,
+`*:focus { outline }`) don't reach panels or their menus. A scoped reset sits above element rules
+and below every knobs rule, so there's nothing to undo in your stylesheet, and focus never draws an
+outline. Your `rowAccessory` nodes are exempt and keep your styles. `examples/host.html` mounts
+panels under a deliberately hostile stylesheet; the browser suite checks that nothing moves when it
+turns off.
 
 ## Full page
 
@@ -552,13 +647,18 @@ The package has two core exports selected through the standard `development` con
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `action(label, { run })` / `flatSpring({ duration, bounce }, meta)` | A button row; two flat number fields drawn as one spring card. |
+| Field meta `random?`, `disabled?`, `readOnly?`, `folded?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)` and `panel.updateAccessories()`. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title, section, element, collapsed?, summary? })` adds custom cards (`card.collapse(bool)`, `card.collapsed`, `card.summary(text)`), and `page.highlight({ groups?, sections? } \| null, { reveal? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel` and `groupPresetDisplay` over the store's. |
 
 ### Store (`Controls<S>`)
 
 - `controls.get()` / `controls.getServerSnapshot()` / `controls.locked`
 - `controls.set(patch, { coalesce? })`
-- `controls.sync(values, { replace?, land? })` — apply external state without recording undo or emitting a local change; held keys keep theirs
+- `controls.sync(values, { replace?, land?, mixed? })` — apply external state without recording undo or emitting a local change; held keys keep theirs
+- Options `random`, `tunable(key, values)`, `history` (a `HostHistory`) and `persist` (`"all" | "variants" | "none"`); see [Embedding options](#embedding-options)
+- `controls.canRoll(key)` / `controls.isDisabled(key)` / `controls.isReadOnly(key)` / `controls.persist`
+- `controls.setMixed(keys, on?)` / `controls.isMixed(key)`
 - `controls.hold(key, on?)` / `controls.isHeld(key)` / `controls.landing`
 - `controls.action(key)` — press an action row
 - `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
