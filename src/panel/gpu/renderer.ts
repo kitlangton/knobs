@@ -475,6 +475,13 @@ interface TextOpts {
   origin?: readonly [number, number]
 }
 
+/** A cache key for an element whose box follows its text: equal-length texts differ too. */
+const textKey = (text: string) => {
+  let h = 5381
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0
+  return h
+}
+
 class GpuOverlayManager {
   private readonly panels = new Set<GpuPanelBinding>()
   private canvas: HTMLCanvasElement | null = null
@@ -1197,9 +1204,11 @@ class GpuOverlayManager {
     lRect = this.rectOf(labelEl),
   ) {
     const t = this.curTokens
-    // Ellipsized to the label's box, as the DOM's text-overflow does.
+    // Ellipsized exactly when the DOM's text-overflow ellipsizes it, to the label's box.
     const shown =
-      lRect.width > 0 ? this.fit(text, lRect.width + 1, t.fontSize, t.labelWeight) : text
+      lRect.width > 0 && this.domClipped(labelEl, text, lRect.width)
+        ? this.fit(text, lRect.width + 0.5, t.fontSize, t.labelWeight, undefined, 0, true)
+        : text
     // A search's match shows in the label by colour alone (see mark.knobs-match).
     const mark = labelEl.querySelector?.(":scope > mark.knobs-match")
     const at = mark ? text.indexOf(mark.textContent ?? "\u0000") : -1
@@ -1606,13 +1615,25 @@ class GpuOverlayManager {
     weight: number,
     family = this.curTokens.fontFamily,
     track = 0,
+    force = false,
   ): string {
     const m = (t: string) => this.atlas.measure(t, px, weight, family) + t.length * track * px
-    if (m(text) <= maxW + 0.5) return text
+    if (!force && m(text) <= maxW + 0.5) return text
     // Like the DOM's text-overflow: the longest prefix that fits with "…", a trailing space kept.
     let n = text.length
     while (n > 0 && m(`${text.slice(0, n)}…`) > maxW) n--
     return n > 0 ? `${text.slice(0, n)}…` : ""
+  }
+
+  private clipCache = new WeakMap<HTMLElement, { key: number; text: string; clipped: boolean }>()
+  /** Whether the DOM lays `el`'s text out wider than its box (so text-overflow shows "…"). */
+  private domClipped(el: HTMLElement, text: string, width: number) {
+    const key = this.curLayoutKey
+    const hit = this.clipCache.get(el)
+    if (hit && hit.key === key && hit.text === text) return hit.clipped
+    const clipped = width > 0 && el.scrollWidth > el.clientWidth
+    this.clipCache.set(el, { key, text, clipped })
+    return clipped
   }
 
   private curReduced = false
@@ -2193,12 +2214,12 @@ class GpuOverlayManager {
   }
 
   /** A number cell's tray: the field colour, lifting toward surface-hi on hover, focus and drag. */
-  private cellTray(el: HTMLElement, level: number, alpha: number, radius: number) {
+  private cellTray(el: HTMLElement, level: number, alpha: number, radius: number, subKey = 0) {
     const t = this.curTokens
     const mid = cssMix(t.surfaceHi, t.segBg, 0.7)
     const w = this.ease(el, "wash", level, this.hoverOmega(level > 0))
     const color = w <= 1 ? cssMix(mid, t.segBg, w) : cssMix(t.surfaceHi, mid, w - 1)
-    const r = this.rectOf(el)
+    const r = this.rectOf(el, subKey)
     this.pushPrim({
       x: r.left,
       y: r.top,
@@ -2402,7 +2423,10 @@ class GpuOverlayManager {
     const capturing = row.capturing()
     const on = this.isHovered(row.chip) || this.isFocused(row.chip)
     const cap = this.ease(row.chip, "capture", capturing ? 1 : 0, 30)
-    const cr = this.cellTray(row.chip, on ? 1 : 0, rowAlpha * (1 - cap), t.radiusMd)
+    // The chip's width follows its text ("Type keys…" while capturing).
+    const text = row.text.textContent ?? ""
+    const key = textKey(text)
+    const cr = this.cellTray(row.chip, on ? 1 : 0, rowAlpha * (1 - cap), t.radiusMd, key)
     if (cap > 0.005)
       this.shape({
         x: cr.left,
@@ -2415,18 +2439,11 @@ class GpuOverlayManager {
         ringColor: withAlpha(t.pillBorder, rowAlpha * cap),
       })
     const empty = row.chip.hasAttribute("data-empty")
-    const tr = this.rectOf(row.text, (row.text.textContent ?? "").length)
+    const tr = this.rectOf(row.text, key)
     const color = empty ? t.dim : capturing ? t.label : t.text
     const track = empty ? 0 : 0.08
     this.drawText(
-      this.fit(
-        row.text.textContent ?? "",
-        tr.width + 1,
-        t.valueSize,
-        t.fontWeight,
-        undefined,
-        track,
-      ),
+      this.fit(text, tr.width + 1, t.valueSize, t.fontWeight, undefined, track),
       tr.left,
       centerY,
       withAlpha(color, rowAlpha),

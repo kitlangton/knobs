@@ -505,6 +505,7 @@ const css = `
 
 /* Inspector rows: number cells, ranges, dials, seeds and key combinations. */
 .knobs-panel .knobs-insp{gap:8px}
+.knobs-panel .knobs-insp[data-kind="vec"]>span:first-child{flex-shrink:0;max-width:34%}
 .knobs-cells{flex:0 1 auto;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--k-tray-pad);width:calc(var(--k-row) * 5);max-width:64%}
 .knobs-cells:has(>:nth-child(3)){width:calc(var(--k-row) * 7.5);max-width:72%}
 .knobs-cell{position:relative;display:flex;align-items:center;justify-content:space-between;gap:3px;min-width:0;height:var(--kc-control-h);padding:0 5px;border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:ew-resize;user-select:none;touch-action:none;outline:none;transition:background var(--k-hover-t)}
