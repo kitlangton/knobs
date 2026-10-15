@@ -304,7 +304,7 @@ export interface PageLayout {
    * Applies a structural change (the filter, cards shown or hidden) and animates the result:
    * `rows` whose `hidden` changed fold open or shut, cards glide to their new places.
    */
-  change(mutate: () => void, rows?: readonly HTMLElement[]): void
+  change(mutate: () => void, rows?: readonly HTMLElement[], instant?: boolean): void
   /** Steps the motion now, at the start of the overlay's frame (`now` from requestAnimationFrame). */
   frame(now: number): void
   /** A card's content changed at once (it was drawn `from` px tall): its height eases there. */
@@ -1236,8 +1236,8 @@ export function createPageLayout(
       run()
     },
     pack,
-    change(mutate, rows) {
-      relayout(mutate, rows)
+    change(mutate, rows, instant) {
+      relayout(mutate, rows, instant)
     },
     foldSection(name, folded, animate = true) {
       const s = sections.find((x) => x.name === name)

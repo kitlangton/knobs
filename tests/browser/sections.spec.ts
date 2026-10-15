@@ -828,3 +828,95 @@ test("onSections says what each fold came from: user, code, search and restore; 
   await page.keyboard.press("Escape")
   await expect.poll(async () => (await heard()).at(-1)).toBe("restore")
 })
+
+test("remote.update removing a whole section drops it from sections(), onSections and activeSection; re-adding brings it back in order", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 520, height: 700 })
+  await page.goto("/tune.html?classic&dom")
+  await page.waitForFunction(() => (window as any).__knobs)
+  await page.evaluate(() => {
+    const { knobs: k, mountPage } = (window as any).__knobs
+    ;(window as any).__tune.page.dispose()
+    localStorage.clear()
+    const d = (key: string, group: string, section: string, extra = {}) => ({
+      key,
+      label: key,
+      kind: "number",
+      default: 10,
+      min: 0,
+      max: 100,
+      step: 1,
+      group,
+      section,
+      ...extra,
+    })
+    const all = [
+      d("rowHeight", "Rows", "Drawer"),
+      d("rowGap", "Rows", "Drawer"),
+      d("edge", "Edge", "Drawer", { folded: true }),
+      d("fade", "Arrivals", "Transcript"),
+      d("rise", "Arrivals", "Transcript"),
+      d("barHeight", "Size", "Composer", { sectionFolded: true }),
+    ]
+    const remote = k.createRemoteControls("section-probe", all, { storage: null })
+    const app = document.querySelector<HTMLElement>("#app")!
+    app.replaceChildren()
+    const page = mountPage(remote, app, {
+      title: "Probe",
+      sections: ["Drawer", "Transcript", "Composer"],
+    })
+    const s = { remote, page, all, heard: [] as string[][], active: [] as unknown[] }
+    page.onSections((list: { id: string }[]) => s.heard.push(list.map((x) => x.id)))
+    page.onActiveSection((id: unknown) => s.active.push(id))
+    ;(window as any).__p = s
+  })
+  const ids = () =>
+    page.evaluate(() => (window as any).__p.page.sections().map((x: { id: string }) => x.id))
+  const last = () => page.evaluate(() => (window as any).__p.heard.at(-1))
+  await expect.poll(ids).toEqual(["Drawer", "Transcript", "Composer"])
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__p.page.activeSection()))
+    .toBe("Drawer")
+
+  // The phone hides the drawer: every descriptor in Drawer goes.
+  await page.evaluate(() => {
+    const p = (window as any).__p
+    p.remote.update(
+      p.all.filter((x: { section: string }) => x.section !== "Drawer"),
+      {},
+    )
+  })
+  await expect.poll(ids).toEqual(["Transcript", "Composer"])
+  await expect.poll(last).toEqual(["Transcript", "Composer"])
+  await expect(page.locator('.knobs-section-head[data-section="Drawer"]')).toBeHidden()
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__p.page.activeSection()))
+    .toBe("Transcript")
+  await expect.poll(() => page.evaluate(() => (window as any).__p.active.at(-1))).toBe("Transcript")
+  // A folded section goes the same way.
+  await page.evaluate(() => {
+    const p = (window as any).__p
+    p.remote.update(
+      p.all.filter((x: { section: string }) => x.section === "Transcript"),
+      {},
+    )
+  })
+  await expect.poll(ids).toEqual(["Transcript"])
+  await expect.poll(last).toEqual(["Transcript"])
+
+  // Back again, in their order, the folded one still folded.
+  await page.evaluate(() => {
+    const p = (window as any).__p
+    p.remote.update(p.all, {})
+  })
+  await expect.poll(ids).toEqual(["Drawer", "Transcript", "Composer"])
+  await expect.poll(last).toEqual(["Drawer", "Transcript", "Composer"])
+  const list = await page.evaluate(() => (window as any).__p.page.sections())
+  expect(list[0].groups.map((g: { id: string; folded: boolean }) => [g.id, g.folded])).toEqual([
+    ["Rows", false],
+    ["Edge", true],
+  ])
+  expect(list[2].folded).toBe(true)
+  await expect(page.locator('.knobs-section-head[data-section="Drawer"]')).toBeVisible()
+})

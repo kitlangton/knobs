@@ -481,6 +481,8 @@ function buildPanel<S extends Schema>(
       userFolding = false
     }
   }
+  /** Set once the page is built: its motion settling then tells `onSections` listeners. */
+  let built = false
   const tiles = new Map<string, HTMLElement>()
   const gpuTiles: HTMLElement[] = []
   if (page) {
@@ -505,6 +507,9 @@ function buildPanel<S extends Schema>(
       wake: () => {
         layoutTick++
         wakeGpu()
+        // Cards that finished folding away take their section with them; ones arriving bring it
+        // back.
+        if (built) announceSections()
       },
     })
   }
@@ -1420,6 +1425,8 @@ function buildPanel<S extends Schema>(
         delete node.dataset.presence
         after?.()
         wakeGpu()
+        // A card the store dropped has folded away (or one is back): its section goes with it.
+        if (page && built) announceSections()
       },
       delay,
     )
@@ -1514,18 +1521,29 @@ function buildPanel<S extends Schema>(
         else done()
       }
       // A card whose rows all left folds away with them; one that gets rows again opens.
+      // The page lays them out: a section left with no cards goes (its heading too) and the
+      // columns re-balance, gliding; one that gets cards back returns in its place.
       const occupied = new Set(next.map((r) => tileFor(r.group, r.section)))
+      const toggled: [HTMLElement, boolean][] = []
       for (const inner of tiles.values()) {
         const tile = inner.parentElement!
         const empty = !occupied.has(inner)
-        if (empty === (tile.hidden || tile.dataset.presence === "out")) continue
-        if (animate) motion.push({ node: tile, show: !empty })
-        else tile.hidden = empty
+        // A card still folding away counts as gone: getting rows back brings it back.
+        const gone = tile.hidden || tile.dataset.leaving !== undefined
+        if (empty !== gone) toggled.push([tile, empty])
       }
       // A descriptor swap may bring other descriptions and labels.
       for (const group of groupDescs.keys()) describeGroup(group)
       layout?.relabel()
-      layout?.pack(true)
+      if (toggled.length && layout)
+        layout.change(
+          () => {
+            for (const [tile, empty] of toggled) tile.hidden = empty
+          },
+          [],
+          !animate,
+        )
+      else layout?.pack(true)
     } else {
       // Runs of rows sharing a group make blocks; a run reuses its group's block if there is one.
       const runs: { group: string | undefined; rows: Row[] }[] = []
@@ -3773,6 +3791,7 @@ function buildPanel<S extends Schema>(
   }
   if (!layout) return panel
   const pageLayout = layout
+  built = true
   const pageApi: Page = Object.assign(panel, {
     card(cardOptions: PageCardOptions) {
       const section = cardOptions.section ?? ""
