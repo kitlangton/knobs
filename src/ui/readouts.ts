@@ -679,9 +679,10 @@ function createGraph(env: ReadoutEnv): ReadoutView {
       hoverX = -1
     } else {
       const dx = field.history > 1 ? canvas.w / (field.history - 1) : 0
-      const cur = hoverAt >= 0 ? hoverAt : length - 1
+      // From the crosshair as last placed (keys can outrun frames), or the newest sample.
+      const cur = hoverX >= 0 ? sampleAt(hoverX, canvas.w, field.history, length) : -1
       const step = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1)
-      const next = Math.max(0, Math.min(length - 1, cur + (hoverAt >= 0 ? step : 0)))
+      const next = cur < 0 ? length - 1 : Math.max(0, Math.min(length - 1, cur + step))
       hoverX = canvas.w - (length - 1 - next) * dx
     }
     e.preventDefault()
@@ -1235,6 +1236,7 @@ function createLog(env: ReadoutEnv): ReadoutView {
     follow = true
     unseen = 0
     toBottom()
+    place()
     scroller.focus({ preventScroll: true })
     rt.request()
   }

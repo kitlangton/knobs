@@ -185,6 +185,8 @@ export function startLive(liveHost: HTMLElement, diagHost: HTMLElement) {
   else step(0)
   return {
     panels,
+    live,
+    diag,
     get running() {
       return running
     },
