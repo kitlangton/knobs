@@ -37,14 +37,9 @@ export function uiSections({ section, h, theme }: Kit) {
     const s = section({
       id: "split",
       title: "Split",
-      code: "split()",
-      what: "Resizable panes that collapse to a rail. Each slows softly into its min and max instead of stopping dead.",
+      sub: "Resizable panes that collapse to a rail.",
+      shows: ["split()"],
       wide: true,
-      tries: [
-        "Drag a gap between panes; double-click it to reset",
-        "Drag Files 40px past its minimum and it collapses; click the rail to open it",
-        "Focus a divider: <kbd>←</kbd> <kbd>→</kbd> resize, <kbd>Enter</kbd> collapses",
-      ],
     })
     const box = h("div", "ui-box")
     box.style.height = "220px"
@@ -103,13 +98,8 @@ export function uiSections({ section, h, theme }: Kit) {
     const s = section({
       id: "tree",
       title: "Tree",
-      code: "tree()",
-      what: "A virtualised outliner. Branches slide open like a drawer; rows that move glide to their new places.",
-      tries: [
-        "Drag a row onto Props, or between rows",
-        "<kbd>⌥↑</kbd> <kbd>⌥↓</kbd> move the selection; <kbd>Enter</kbd> renames",
-        "Hover a row for its eye; hidden rows dim",
-      ],
+      sub: "An outliner whose rows glide when they move.",
+      shows: ["tree()"],
     })
     interface Node {
       id: string
@@ -194,14 +184,10 @@ export function uiSections({ section, h, theme }: Kit) {
   {
     const s = section({
       id: "menus",
-      title: "Menu & context menu",
-      code: "menu() · contextMenu()",
-      what: "Menus with icons, shortcut chips, checks, radios and submenus. They grow from where they're asked for and can be turned back halfway.",
-      tries: [
-        "Right-click the card, or focus it and press <kbd>⇧F10</kbd>",
-        "Hover Colour: the submenu stays open while you head for it",
-        "Letters jump to an item; <kbd>Esc</kbd> closes",
-      ],
+      title: "Menus",
+      sub: "Menus and a context menu, with submenus.",
+      tip: "Right-click the card.",
+      shows: ["menu()", "contextMenu()"],
     })
     const card = h("div", "stage")
     card.tabIndex = 0
@@ -320,13 +306,9 @@ export function uiSections({ section, h, theme }: Kit) {
   {
     const s = section({
       id: "popover",
-      title: "Popover & tooltip",
-      code: "popover() · tooltip()",
-      what: "A popover flips and shifts to stay in view and follows its anchor. Tooltips wait half a second, then hand off at once to a neighbour.",
-      tries: [
-        "Rest on a chip, then slide along the row: the next tip shows with no wait",
-        "Open Share and press <kbd>Esc</kbd>: focus comes back to the button",
-      ],
+      title: "Popover",
+      sub: "A popover that stays in view, and tooltips.",
+      shows: ["popover()", "tooltip()"],
     })
     const wrap = h("div")
     wrap.style.cssText = "display:flex;flex-direction:column;gap:14px;padding:4px 0"
@@ -376,13 +358,9 @@ export function uiSections({ section, h, theme }: Kit) {
     const s = section({
       id: "palette-section",
       title: "Command palette",
-      code: "commandPalette() · commandsFrom()",
-      what: "⌘K on this page lists its sections, then every store's actions, presets and fields through commandsFrom. Matches light up as you type.",
-      tries: [
-        "Type “spr” to jump to the Spring card",
-        "Type “tidy” to apply a preset from here",
-        "Recent commands come first next time",
-      ],
+      sub: "Every section and control on this page.",
+      tip: "Press ⌘K anywhere.",
+      shows: ["commandPalette()", "commandsFrom()"],
     })
     const open = h("button", "chip")
     open.innerHTML = "Open the palette <kbd>⌘K</kbd>"
@@ -397,12 +375,8 @@ export function uiSections({ section, h, theme }: Kit) {
     const s = section({
       id: "confirm",
       title: "Confirm & toast",
-      code: "confirm() · toast()",
-      what: "A modal question that keeps focus inside, and a status pill at the bottom. A new toast replaces the one showing.",
-      tries: [
-        "Delete asks first, with focus on Cancel; then Undo from the toast",
-        "Hover a toast to keep it",
-      ],
+      sub: "A modal question and a status pill.",
+      shows: ["confirm()", "toast()"],
     })
     const row = h("div", "chips")
     const btn = (label: string, cls: string, run: () => void) => {

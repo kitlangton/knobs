@@ -4,7 +4,7 @@ import { angle, choice, color, point, range, seed, springMotion, vec2, vec3 } fr
 import type { SceneKit } from "./controls"
 import { gpuView, linearRgb } from "./controls-gpu"
 import { live } from "./controls-live"
-import { ColorVal, oklabRgb, reduced, rolling, SHUTTER_S, Stage } from "./controls-motion"
+import { ColorVal, oklabRgb, reduced, SHUTTER_S, Stage } from "./controls-motion"
 import objectWgsl from "./controls-object.wgsl?raw"
 
 const SHAPES = ["sphere", "cube", "torus"] as const
@@ -16,16 +16,10 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
   const s = section({
     id: "object",
     title: "Object",
-    scene: true,
+    sub: "One shape to morph, move, pattern, cut and light.",
     shows: ["choice()", "color()", "vec2()", "vec3()", "angle()", "seed()", "range()", "point()"],
-    what: "One object, ray-marched on a studio floor. Shape morphs it, Transform places and turns it, Pattern inlays a Truchet tiling from a seed, Slice cuts it between two heights, and the Light pad moves the key light and its shadow.",
     stage: true,
-    tries: [
-      "Step Shape with <kbd>←</kbd> <kbd>→</kbd>: sphere, cube and torus are one surface bending from one into the next",
-      "Throw Position or Spin: it blurs across a real shutter, and is crisp the moment it stops",
-      "Click Pattern's die: each tile turns a quarter to the new tiling, in a sweep",
-      "Pull Slice's top end down to cut it open; drag the Light pad and the shadow swings round",
-    ],
+    scene: true,
   })
   const { store, on } = define("object", "Object", {
     shape: choice("sphere", SHAPES, { label: "Shape", group: "form", groupLabel: "Form" }),
@@ -75,9 +69,6 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
   })
   mount(store, s.slot, { title: "Object" })
   s.stage.style.display = "block"
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [{ id: "shape", text: true }, " · seed ", { id: "seed" }])
 
   const view = gpuView(s.stage, {
     wgsl: objectWgsl,
@@ -176,6 +167,5 @@ export function objectScene({ section, define, mount, h }: SceneKit) {
       seedTo = v.pattern
       turn.snap(0).to(1, TURN)
     }
-    setCaption({ shape: v.shape, seed: v.pattern })
   })
 }

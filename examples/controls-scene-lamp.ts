@@ -9,7 +9,7 @@ import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
 import { live } from "./controls-live"
 import lampWgsl from "./controls-lamp.wgsl?raw"
-import { ColorVal, oklabRgb, reduced, rolling, SHUTTER_S, Stage } from "./controls-motion"
+import { ColorVal, oklabRgb, reduced, SHUTTER_S, Stage } from "./controls-motion"
 
 const IGNITE = springMotion({ duration: 0.5, bounce: 0 })
 const COOL = springMotion({ duration: 1.3, bounce: 0 })
@@ -29,16 +29,10 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   const s = section({
     id: "lamp",
     title: "Lamp",
-    scene: true,
+    sub: "A pendant light, ray-traced on the GPU.",
     shows: ["toggle()", "knob()", "color()", "angle()", "range()", "curve()"],
-    what: "A pendant over a floor and a wall, lit for real: a frosted bulb in an enamel dome throws its light through the beam, falling off with distance by the curve, through a little haze. Every row of the panel is a different kind of control.",
     stage: true,
-    tries: [
-      "Switch Light off: the filament cools to an ember and fades. On again: it strikes with a flicker and warms up",
-      "Drag Temperature from 1800 K to 6500 K: candlelight to daylight",
-      "Turn Aim: the dome tilts, the beam slides across the wall and the cord sways",
-      "Pull Beam's ends apart for a soft edge; tap Falloff's chips, Bell makes a ring",
-    ],
+    scene: true,
   })
   const { store, on } = define("lamp", "Lamp", {
     on: toggle(true, { label: "Light", group: "bulb", groupLabel: "Bulb" }),
@@ -66,9 +60,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   })
   mount(store, s.slot, { title: "Lamp" })
   s.stage.style.display = "block"
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [{ id: "lm" }, " lm · ", { id: "k" }, " K"])
 
   const view = gpuView(s.stage, {
     wgsl: lampWgsl,
@@ -172,7 +163,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
         "calm",
       )
     })
-    setCaption({ lm: v.on ? v.brightness : 0, k: v.temperature })
   })
   return store
 }

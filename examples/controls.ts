@@ -61,7 +61,6 @@ import {
   oklabRgb,
   reduced,
   rgbaOf,
-  rolling,
   Smear,
   Stage,
   stretchFor,
@@ -115,20 +114,19 @@ export function category(title: string) {
 
 export interface SectionSpec {
   readonly id: string
+  /** One to three words. */
   readonly title: string
-  /** The API it shows, beside the title. */
-  readonly code?: string
-  readonly tag?: string
-  readonly what: string
-  /** Things to try, as HTML. */
-  readonly tries?: readonly string[]
-  /** A preview stage on the right (else the tries sit there). */
+  /** One short line under the title. */
+  readonly sub?: string
+  /** A hint, as the title's tooltip. */
+  readonly tip?: string
+  /** The kinds of control it shows, as tiny chips under the subtitle. */
+  readonly shows?: readonly string[]
+  /** A visual on the right (else the slot spans the row). */
   readonly stage?: boolean
   readonly wide?: boolean
-  /** A scene: a big stage that several kinds of control drive together. */
+  /** A scene: a big visual that a panel of several kinds of control drives. */
   readonly scene?: boolean
-  /** The kinds of control it shows, as chips under the title. */
-  readonly shows?: readonly string[]
 }
 export function section(spec: SectionSpec) {
   const el = h("section", `demo${spec.wide ? " wide" : ""}${spec.scene ? " scene" : ""}`)
@@ -136,10 +134,9 @@ export function section(spec: SectionSpec) {
   const head = h("header")
   const title = h("h2")
   title.textContent = spec.title
-  if (spec.code) title.append(Object.assign(h("code"), { textContent: spec.code }))
-  if (spec.tag) title.append(Object.assign(h("span", "tag"), { textContent: spec.tag }))
-  const what = h("p", "", spec.what)
-  head.append(title, what)
+  if (spec.tip) title.dataset.tip = spec.tip
+  head.append(title)
+  if (spec.sub) head.append(Object.assign(h("p"), { textContent: spec.sub }))
   if (spec.shows?.length) {
     const shows = h("div", "shows")
     for (const k of spec.shows) shows.append(Object.assign(h("code"), { textContent: k }))
@@ -152,11 +149,6 @@ export function section(spec: SectionSpec) {
   if (spec.stage) {
     stage = h("div", "stage")
     side.append(stage)
-  }
-  if (spec.tries?.length) {
-    const list = h("ul", "try")
-    for (const t of spec.tries) list.append(h("li", "", t))
-    side.append(list)
   }
   main.append(el)
   sections.push({ id: spec.id, cat: currentCat, title: spec.title, el })
@@ -234,16 +226,10 @@ motionScene(kit)
   const s = section({
     id: "dots",
     title: "Dots",
-    scene: true,
+    sub: "Four sliders and a row of metaballs.",
     shows: ["knob()"],
-    what: "Four sliders, with units, steps and a default notch; ten steps or fewer become stops that resist, then snap. The dots are metaballs, one lit field, so a new dot buds out of its neighbour and a leaving one is swallowed by it.",
     stage: true,
-    tries: [
-      "Step Count down: the end dot pours into its neighbour as a teardrop in a fifth of a second, which gives a small gulp, while the rest respace at once",
-      "Step Count up: a new dot stretches out of its neighbour, necks and pinches off",
-      "Scrub Count fast both ways: buds and merges turn back mid-way, never snapping",
-      "Throw Size, Spread or Arc: every moving dot stretches and smears along its path, crisp again at rest",
-    ],
+    scene: true,
   })
   const { store, on } = define("dots", "Dots", {
     size: knob(22, { min: 8, max: 44, step: 1, unit: "px", label: "Size" }),
@@ -278,9 +264,6 @@ motionScene(kit)
   }
   let bgFrom = stageColor()
   let bgTo = bgFrom
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [{ id: "n" }, " × ", { id: "size" }, "px"])
   let inkFrom = rgbaOf(getComputedStyle(canvas).color)
   let inkTo = inkFrom
   let k = 8
@@ -494,7 +477,6 @@ motionScene(kit)
     }
     if (how !== "init" && v.count !== count) live.log(`Dots ${count} → ${v.count}`, "debug")
     count = v.count
-    setCaption({ n: v.count, size: v.size })
   })
 }
 
@@ -531,16 +513,10 @@ const SKIES = {
   const s = section({
     id: "sky",
     title: "Sky",
-    scene: true,
+    sub: "A gradient, read as the sky through a day.",
     shows: ["gradient()", "knob()", "toggle()"],
-    what: "A colour ramp of draggable stops, blended in OKLab, read as the colour of the sky through a day. The bar under the hills is the whole ramp; the hour samples it, and the sun, clouds and stars follow.",
     stage: true,
-    tries: [
-      "Throw Hour from 5 to 21: the sun rises over the hills, crosses, and sets in a warm glow; stars come out",
-      "Pick a preset chip: the whole day sweeps to the new ramp, every colour travelling in OKLab",
-      "Turn Clouds up at sunset: they light from the sun's side",
-      "Open the ramp, click the strip to add a stop, pull a pin off to remove it",
-    ],
+    scene: true,
   })
   const { store, on } = define("sky", "Sky", {
     sky: gradient(SKIES.Clear, { label: "Sky by hour", presets: SKIES }),
@@ -560,7 +536,7 @@ const SKIES = {
     <div style="position:absolute;left:0;right:0;bottom:0;height:38px;background:rgba(0,0,0,.45)"></div>
     <div data-bar style="position:absolute;left:12px;right:12px;bottom:12px;height:14px;border-radius:7px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)"></div>
     <div data-mark class="abs" style="width:2px;height:20px;bottom:9px;top:auto;border-radius:1px;background:#fff"></div>
-    <div data-clock class="caption right" style="color:rgba(255,255,255,.7)"></div>`
+`
   const view = gpuView(s.stage, {
     wgsl: skyWgsl,
     label: "sky",
@@ -574,11 +550,6 @@ const SKIES = {
   const sun = s.stage.querySelector<HTMLElement>("[data-sun]")
   const bar = s.stage.querySelector<HTMLElement>("[data-bar]")!
   const mark = s.stage.querySelector<HTMLElement>("[data-mark]")!
-  const setClock = rolling(s.stage.querySelector<HTMLElement>("[data-clock]")!, [
-    { id: "h", pad: 2 },
-    ":",
-    { id: "m", pad: 2 },
-  ])
   const sunSmear = sun ? new Smear(sun) : null
   const markBlur = new DirBlur(mark)
   const N = 32
@@ -641,7 +612,6 @@ const SKIES = {
     hour.go(v.hour, how, "calm")
     clouds.go(v.clouds, how, "calm")
     starsOn.go(v.stars ? 1 : 0, how === "init" ? "init" : "other", "calm")
-    setClock({ h: Math.floor(v.hour) % 24, m: Math.round((v.hour % 1) * 60) })
   })
 }
 
@@ -649,14 +619,8 @@ const SKIES = {
   const s = section({
     id: "readouts",
     title: "Readouts",
+    sub: "This page's frames, GPU time and lamp output, live.",
     shows: ["watch()", "sparkline()", "graph()", "meter()", "table()", "log()", "readout()"],
-    what: "Rows that show what a running thing is doing; here, this page. The shared animation loop's frames, the WebGPU views' work, the lamp's light and what just happened in the scenes above. They hold no value, and sleep when the feed pauses: leave the page still and the graph stops, because nothing is drawing.",
-    tries: [
-      "Press Flick lamp: frames appear while it strikes, the output climbs through its flicker, then everything sleeps",
-      "Scroll up and throw a slider, then come back: the log says what happened",
-      "Set the lamp's Brightness past 1200 lm: Lamp output turns amber, then red",
-      "Hover the graph for a crosshair; in the log, level chips and <kbd>f</kbd> to filter",
-    ],
   })
   const { store: feed, on } = define("feed", "Feed", {
     running: toggle(true, { label: "Running" }),
@@ -699,7 +663,7 @@ const SKIES = {
   const solo = readout(sparkline({ label: "FPS", decimals: 0, min: 0 }), { theme })
   const soloRow = h("div")
   soloRow.style.cssText = "display:flex;flex-direction:column;gap:6px"
-  const soloNote = h("div", "", "On its own, outside a panel: <code>readout(sparkline())</code>")
+  const soloNote = h("div", "", "<code>readout()</code>, outside a panel")
   soloNote.style.cssText = "color:var(--dim);font-size:12px"
   solo.element.style.cssText += ";max-width:300px"
   soloRow.append(soloNote, solo.element)
@@ -761,14 +725,10 @@ let rowsSide!: HTMLElement
 {
   const s = section({
     id: "structure",
-    title: "Tabs, sub-headings & folds",
-    code: "tab · subsection · folded",
-    what: "Fields name a tab, a group and a sub-heading. Rows cross as tabs change; sub-headings fold inside their card; a group with a folded field folds to its header, and each card has a reset and a die of its own.",
-    tries: [
-      "<kbd>⌥1</kbd> <kbd>⌥2</kbd> <kbd>⌥3</kbd> pick a tab; click Forces to fold it",
-      "On the right, click Shadow's header to open it",
-      "<kbd>g</kbd> randomizes the focused row's group; <kbd>⌥G</kbd> mutates it",
-    ],
+    title: "Structure",
+    sub: "Tabs, sub-headings and folding groups.",
+    tip: "⌥1, ⌥2 and ⌥3 switch tabs.",
+    shows: ["tab", "subsection", "folded"],
   })
   structureSide = s.side
   const { store } = define("tabs", "Tabs", {
@@ -861,14 +821,10 @@ let rowsSide!: HTMLElement
 {
   const s = section({
     id: "search",
-    title: "Search & chips",
-    code: "search: { chips }",
-    what: "Filters rows by label, key, group or sub-heading across every tab. Chips narrow it further.",
-    tries: [
-      "Press <kbd>/</kbd> inside the panel and type “sh”",
-      "Change a value, then tap Modified",
-      "Colours is a chip of our own with a count",
-    ],
+    title: "Search",
+    sub: "Filter rows by name, then by chip.",
+    tip: "Press / inside the panel.",
+    shows: ["search: { chips }"],
   })
   const { store } = define("search", "Search", {
     font: choice("Inter", ["Inter", "SF Pro", "Söhne", "Graphik"], {
@@ -911,14 +867,10 @@ let rowsSide!: HTMLElement
   const s = section({
     id: "presets",
     title: "Presets",
-    code: "presets · groupPresets",
-    what: "A strip of presets above the rows and named presets in a card's header. Switching ripples the rows top to bottom, and the cards follow one after another.",
+    sub: "Presets for the whole panel and for one group.",
+    tip: "[ and ] step through them.",
+    shows: ["presets", "groupPresets"],
     stage: true,
-    tries: [
-      "Press <kbd>]</kbd> repeatedly: the hand re-deals card by card, each smearing with its speed, and turns mid-flight",
-      "<kbd>+</kbd> or <kbd>⇧S</kbd> saves the current values as a chip",
-      "Fan's own presets sit in its header",
-    ],
   })
   const { store, on } = define(
     "presets",
@@ -1011,14 +963,9 @@ let rowsSide!: HTMLElement
 {
   const s = section({
     id: "rows",
-    title: "Row states & accessories",
-    code: "disabled · readOnly · setMixed · rowAccessory",
-    what: "A disabled row dims; a read-only one keeps full strength. Mixed rows read “—” until edited, as for a multi-selection. And on the right, your own node just after a row's label: a pin, a marker, yours to style and listen on.",
-    tries: [
-      "Turn on Lock size: Size and Corner become read-only; Shadow colour is disabled while Shadow is off",
-      "Edit Opacity once and it stops being mixed; the action mixes it again",
-      "On the right, hover a row to see its pin; the amber dot marks values that only apply at spawn",
-    ],
+    title: "Row states",
+    sub: "Disabled, read-only and mixed rows, and accessories of your own.",
+    shows: ["disabled", "readOnly", "setMixed", "rowAccessory"],
   })
   rowsSide = s.side
   const { store } = define("gates", "Gates", {
@@ -1132,16 +1079,10 @@ let rowsSide!: HTMLElement
 {
   const s = section({
     id: "remote",
-    title: "Remote controls",
-    code: "createRemoteControls(descriptors)",
-    tag: "descriptors",
-    what: "A store built from runtime descriptors, for values that live elsewhere: a phone over a socket. This one talks to a pretend device with 120 ms of latency.",
+    title: "Remote",
+    sub: "A store built from descriptors, talking to a pretend phone.",
+    shows: ["createRemoteControls()"],
     stage: true,
-    tries: [
-      "Drag Height: each change goes out as a message that slides into the log; the drawer answers on the spring you sent",
-      "Turn Open off and on with a bouncy Spring: the drawer smears as it drops and rises",
-      "Nudge from the device: the value lands in the panel without echoing back",
-    ],
   })
   const descriptors: ControlDescriptor[] = [
     { key: "drawer.open", kind: "toggle", label: "Open", default: true, group: "Drawer" },
@@ -1300,14 +1241,10 @@ category("Matching your app")
 {
   const s = section({
     id: "looks",
-    title: "Matching your app",
-    code: "preset · --k-frame: flat",
-    what: "One store, three panels: knobs' own look, the Arcade Lab's labPreset (square, flat, mono readouts), and knobs' look set flat into a host's card. Change one and the others follow.",
+    title: "Looks",
+    sub: "One store in three looks: default, labPreset and flat.",
+    shows: ["labPreset", "--k-frame: flat"],
     wide: true,
-    tries: [
-      "Drag Exposure in any of the three",
-      "The light toggle in the top bar restyles the first and third; labPreset stays dark",
-    ],
   })
   const { store } = define("looks", "Looks", {
     tools: toolbar(
@@ -1394,10 +1331,6 @@ function syncRendererLinks() {
   gpuLink.setAttribute("aria-checked", String(gpu))
 }
 syncRendererLinks()
-if (gpu)
-  document.getElementById("renderer-note")!.textContent = !("gpu" in navigator)
-    ? "WebGPU isn't available in this browser, so the panels fall back to the DOM renderer, which looks the same."
-    : "Panels are drawn by the WebGPU renderer, on one canvas over the page."
 
 // The side index and the narrow strip, following the scroll.
 const index = document.getElementById("index")!

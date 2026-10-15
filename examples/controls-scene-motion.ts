@@ -18,7 +18,7 @@ import {
 import { timeline } from "knobs/ui"
 import type { SceneKit } from "./controls"
 import { live } from "./controls-live"
-import { DirBlur, rolling, Speed, Stage, stretchAlong } from "./controls-motion"
+import { DirBlur, Speed, Stage, stretchAlong } from "./controls-motion"
 
 /** The timeline: out at 0, back at HALF, four seconds round. */
 const D = 4
@@ -59,7 +59,8 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
   const s = section({
     id: "motion",
     title: "Motion",
-    scene: true,
+    sub: "An easing, a spring and a flat spring on one timeline.",
+    tip: "Space plays, S slows it down, P pulses.",
     shows: [
       "easing()",
       "spring()",
@@ -70,14 +71,8 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
       "keybind()",
       "timeline()",
     ],
-    what: "One trip, three ways to make it: an easing curve over a duration, a spring, and a flat spring kept as two plain numbers. The timeline under the stage is the clock: play it, scrub it, slow it down. The graph is each one's path over time.",
     stage: true,
-    tries: [
-      "Press Play (<kbd>Space</kbd> with the panel focused) and watch the three arrive differently; each smears with its speed",
-      "Scrub the timeline slowly: every puck, springs too, sits exactly where it would be",
-      "Set Spring's bounce to 0.6: its curve and puck overshoot, live, even while paused",
-      "<kbd>S</kbd> toggles slow motion; <kbd>P</kbd> pulses from anywhere; your Replay key restarts it from anywhere",
-    ],
+    scene: true,
   })
   let tl!: ReturnType<typeof timeline>
   let slow = false
@@ -104,7 +99,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
           run: () => {
             slow = !slow
             tl.update({ speed: slow ? 0.25 : 1 })
-            setCaption({ speed: slow ? "¼×" : "1×" })
           },
         },
         {
@@ -167,13 +161,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     s.stage.append(track, ...ends, label, puck)
     return { track, ends, label, puck, blur: new DirBlur(puck) }
   })
-  const caption = h("div", "caption")
-  s.stage.append(caption)
-  const setCaption = rolling(caption, [
-    { id: "t", decimals: 2 },
-    " s · ",
-    { id: "speed", text: true },
-  ])
 
   let T = 0.62
   const stage = new Stage(s.stage, () => {
@@ -258,7 +245,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
     label: "Motion time",
     onSeek: (t) => {
       T = t
-      setCaption({ t })
       stage.paint()
     },
     onCross: (m) => {
@@ -266,7 +252,6 @@ export function motionScene({ section, define, mount, h, theme }: SceneKit) {
       live.log(`Motion: ${m.label ?? m.id}`, "debug")
     },
   })
-  setCaption({ t: T, speed: "1×" })
 
   on((v, how) => {
     v.curve.forEach((n, i) => {
