@@ -1,6 +1,6 @@
 import { colorHex, oklchToRgb, parseColor } from "./color.js"
 import type { Bezier } from "./easing.js"
-import { RESHAPE, type Reshape } from "./internal.js"
+import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
 import {
   action,
   choice,
@@ -134,6 +134,17 @@ export interface RemoteControlsOptions {
   /** `false`: its panels show no modified marks or resets (see `MountPanelOptions.marks`). */
   readonly marks?: boolean
   readonly onSet?: (key: string, value: Value | null, meta: ChangeMeta) => void
+  /**
+   * A change of several keys at once (a preset, Random, Mutate, resetting a selection, undoing or
+   * redoing any of them), in one call instead of an `onSet` per key. The entries are what `onSet`
+   * would have received, `null` again meaning back to the default. A change of one key still goes
+   * to `onSet`, or here as a single entry when there's no `onSet`. Resetting everything or a
+   * group stays `onReset`'s, as with `onSet`.
+   */
+  readonly onSetBatch?: (
+    changes: Array<{ key: string; value: Value | null }>,
+    meta: ChangeMeta,
+  ) => void
   /** A key, a group, or (`{}`) everything was reset. */
   readonly onReset?: (target: { key?: string; group?: string }) => void
   /** An action row was pressed. */
@@ -368,6 +379,27 @@ export function createRemoteControls(
   let frozenDescriptors = Object.freeze([...descriptors])
   let given = descriptors
   const nullDefaults = options.nullDefaults !== false
+  type Change = { key: string; value: Value | null }
+  const send = (changes: Change[], meta: ChangeMeta) => {
+    if (changes.length === 0) return
+    if (options.onSetBatch && (changes.length > 1 || !options.onSet))
+      return options.onSetBatch(changes, meta)
+    for (const { key, value } of changes) options.onSet?.(key, value, meta)
+  }
+  const onReset = (target: { key?: string; group?: string }) => {
+    if (target.key && nullDefaults)
+      send([{ key: target.key, value: null }], { source: "reset", key: target.key })
+    options.onReset?.(target)
+  }
+  // Resetting several keys: with `onSetBatch`, their nulls go in one batch after an `onReset` each.
+  const resetKeys: ResetKeys = (keys) => {
+    if (!options.onSetBatch || !nullDefaults) return keys.forEach((key) => onReset({ key }))
+    for (const key of keys) options.onReset?.({ key })
+    send(
+      keys.map((key) => ({ key, value: null })),
+      { source: "reset" },
+    )
+  }
   const controls = defineControls(id, fromDescriptors(frozenDescriptors), {
     enabled: options.enabled ?? true,
     ship: options.ship,
@@ -390,18 +422,15 @@ export function createRemoteControls(
     onChange(patch, _values, meta) {
       if (meta.source === "remote" || meta.source === "reset") return
       if (meta.source === "preset" && meta.group !== undefined && options.onPreset) return
+      const changes: Change[] = []
       for (const [key, val] of Object.entries(patch)) {
         if (val === undefined) continue
-        const next = nullDefaults && same(val, controls.locked[key]) ? null : val
-        options.onSet?.(key, next, meta)
+        changes.push({ key, value: nullDefaults && same(val, controls.locked[key]) ? null : val })
       }
+      send(changes, meta)
     },
-    onReset(target) {
-      if (target.key && nullDefaults) {
-        options.onSet?.(target.key, null, { source: "reset", key: target.key })
-      }
-      options.onReset?.(target)
-    },
+    onReset,
+    ...{ [RESET_KEYS]: resetKeys },
     onAction: (key) => options.onAction?.(key),
   })
   if (options.values) {

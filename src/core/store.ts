@@ -1,7 +1,7 @@
 import { formatCode, type CodeFormat } from "./code.js"
 import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
-import { RESHAPE, type Reshape } from "./internal.js"
+import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
 import type { TokenPreset } from "./theme.js"
 import {
   equal,
@@ -800,7 +800,9 @@ export function defineControls<const S extends Schema>(
       const patch: Record<string, unknown> = {}
       for (const k of keys) if (valueField(k)) patch[k] = locked[k]
       set(patch as Partial<Values<S>>, { source: "reset" })
-      for (const key of Object.keys(patch)) options.onReset?.({ key })
+      const resetKeys = (options as { [RESET_KEYS]?: ResetKeys })[RESET_KEYS]
+      if (resetKeys) resetKeys(Object.keys(patch))
+      else for (const key of Object.keys(patch)) options.onReset?.({ key })
     },
     resetKey(key) {
       if (!enabled()) return

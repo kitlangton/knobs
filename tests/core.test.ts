@@ -1151,6 +1151,173 @@ describe("sections and group presets", () => {
   })
 })
 
+describe("remote batches", () => {
+  const descriptors: ControlDescriptor[] = [
+    { key: "a", kind: "number", default: 1, min: 0, max: 10, step: 0.1, group: "G" },
+    { key: "b", kind: "number", default: 2, min: 0, max: 10, step: 0.1, group: "G" },
+    { key: "c", kind: "choice", default: "x", choices: ["x", "y"], group: "H" },
+    { key: "d", kind: "toggle", default: false, group: "H" },
+  ]
+  const make = (options: Parameters<typeof createRemoteControls>[2] = {}) => {
+    const batches: { changes: { key: string; value: unknown }[]; source: string }[] = []
+    const sets: [string, unknown][] = []
+    const resets: unknown[] = []
+    const remote = createRemoteControls("batch", descriptors, {
+      presets: { lively: { a: 5, b: 6, c: "y", d: true } },
+      groupPresets: { G: [{ name: "Wide", values: { a: 9, b: 9 } }] },
+      onSet: (key, value) => sets.push([key, value]),
+      onSetBatch: (changes, meta) => batches.push({ changes, source: meta.source }),
+      onReset: (target) => resets.push(target),
+      ...options,
+    })
+    return { remote, batches, sets, resets }
+  }
+
+  it("sends a preset as one batch and one undo step, and its undo and redo as one batch each", () => {
+    const { remote, batches, sets } = make()
+    remote.preset("lively")
+    expect(sets).toEqual([])
+    expect(batches).toEqual([
+      {
+        source: "preset",
+        changes: [
+          { key: "a", value: 5 },
+          { key: "b", value: 6 },
+          { key: "c", value: "y" },
+          { key: "d", value: true },
+        ],
+      },
+    ])
+    expect(remote.canUndo).toBe(true)
+    remote.undo()
+    expect(remote.canUndo).toBe(false)
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches.at(-1)).toEqual({
+      source: "undo",
+      changes: [
+        { key: "a", value: null },
+        { key: "b", value: null },
+        { key: "c", value: null },
+        { key: "d", value: null },
+      ],
+    })
+    remote.redo()
+    expect(batches).toHaveLength(3)
+    expect(batches.at(-1)?.source).toBe("redo")
+    expect(batches.at(-1)?.changes).toHaveLength(4)
+    expect(sets).toEqual([])
+  })
+
+  it("lands Native exactly, as nulls in one batch", () => {
+    const { remote, batches } = make()
+    remote.set({ a: 3.3, c: "y" })
+    remote.preset("default")
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches.at(-1)).toEqual({
+      source: "preset",
+      changes: [
+        { key: "a", value: null },
+        { key: "c", value: null },
+      ],
+    })
+    // Only what changed goes out: from Native, Native sends nothing.
+    remote.preset("default")
+    expect(batches).toHaveLength(2)
+  })
+
+  it("batches group presets (without onPreset), Random, Mutate and a selection's reset", () => {
+    const { remote, batches, sets, resets } = make()
+    remote.groupPreset("G", 0)
+    expect(batches.at(-1)).toEqual({
+      source: "preset",
+      changes: [
+        { key: "a", value: 9 },
+        { key: "b", value: 9 },
+      ],
+    })
+    remote.randomize()
+    expect(batches.at(-1)?.source).toBe("randomize")
+    remote.mutate()
+    expect(batches.at(-1)?.source).toBe("mutate")
+    const before = batches.length
+    remote.reset(["a", "b"])
+    expect(batches).toHaveLength(before + 1)
+    expect(batches.at(-1)).toEqual({
+      source: "reset",
+      changes: [
+        { key: "a", value: null },
+        { key: "b", value: null },
+      ],
+    })
+    expect(resets.slice(-2)).toEqual([{ key: "a" }, { key: "b" }])
+    expect(sets).toEqual([])
+    // Each was one store change: four undo steps back to the start, one batch each.
+    const sent = batches.length
+    for (let i = 0; i < 4; i++) remote.undo()
+    expect(remote.canUndo).toBe(false)
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches).toHaveLength(sent + 4)
+  })
+
+  it("keeps onSet for one key, and sends it as a one-entry batch without onSet", () => {
+    const { remote, batches, sets } = make()
+    remote.set({ a: 4 })
+    remote.resetKey("a")
+    remote.groupPreset("G", 0)
+    remote.reset(["b"])
+    expect(sets).toEqual([
+      ["a", 4],
+      ["a", null],
+      ["b", null],
+    ])
+    expect(batches).toHaveLength(1)
+
+    const only = make({ onSet: undefined })
+    only.remote.set({ a: 4 })
+    only.remote.resetKey("a")
+    expect(only.batches).toEqual([
+      { source: "local", changes: [{ key: "a", value: 4 }] },
+      { source: "reset", changes: [{ key: "a", value: null }] },
+    ])
+  })
+
+  it("leaves resetting everything or a group to onReset, and peer presets to onPreset", () => {
+    const presets: unknown[] = []
+    const { remote, batches, resets } = make({ onPreset: (target) => presets.push(target) })
+    remote.preset("lively")
+    remote.reset()
+    expect(resets.at(-1)).toEqual({})
+    remote.preset("lively")
+    remote.resetGroup("G")
+    expect(resets.at(-1)).toEqual({ group: "G" })
+    remote.groupPreset("G", 0)
+    expect(presets).toEqual([{ group: "G", index: 0, name: "Wide" }])
+    expect(batches.map((b) => b.source)).toEqual(["preset", "preset"])
+    // Undoing the peer's preset is ours to send.
+    remote.undo()
+    expect(batches.at(-1)?.source).toBe("undo")
+  })
+
+  it("holds each batched key against a stale echo until the peer acknowledges it", () => {
+    vi.useFakeTimers()
+    try {
+      const { remote } = make()
+      remote.preset("lively")
+      // A state from before the preset crosses in flight: every key holds.
+      remote.sync({ a: 1, b: 2, c: "x", d: false }, { replace: true })
+      expect(remote.get()).toEqual({ a: 5, b: 6, c: "y", d: true })
+      // The peer acknowledges a and c; b and d still hold against a stale value.
+      remote.sync({ a: 5, b: 2, c: "y", d: false }, { replace: true })
+      remote.sync({ a: 7, b: 2, c: "x", d: false }, { replace: true })
+      expect(remote.get()).toEqual({ a: 7, b: 6, c: "x", d: true })
+      vi.advanceTimersByTime(700)
+      expect(remote.get()).toEqual({ a: 7, b: 2, c: "x", d: false })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe("page layout", () => {
   it("splits cards into balanced runs that keep their order down each column", async () => {
     const { balancedRuns } = await import("../src/panel/page.js")

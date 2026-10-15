@@ -216,6 +216,7 @@ const remote = createRemoteControls("preset-bench", descriptors, {
   presetLabels: { lively: "Lively", compact: "Compact" },
   groupPresetDisplay: "auto",
   onSet: (key) => sent.push({ type: "set", keys: [key] }),
+  onSetBatch: (changes) => sent.push({ type: "batch", keys: changes.map((c) => c.key) }),
   onReset: ({ key, group }) => {
     if (!key) sent.push({ type: "reset", keys: group ? [group] : [] })
   },
