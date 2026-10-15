@@ -16,6 +16,7 @@ import {
   defineControls,
   gradient,
   graph,
+  keybind,
   knob,
   log,
   type MountPanelOptions,
@@ -829,7 +830,7 @@ let rowsSide!: HTMLElement
     title: "Structure",
     sub: "Tabs, sub-headings and folding groups.",
     tip: "⌥1, ⌥2 and ⌥3 switch tabs.",
-    shows: ["tab", "subsection", "folded"],
+    shows: ["tab", "subsection", "folded", "keybind()"],
   })
   structureSide = s.side
   const { store } = define("tabs", "Tabs", {
@@ -887,6 +888,7 @@ let rowsSide!: HTMLElement
       group: "emitter",
       subsection: "Forces",
     }),
+    burst: keybind("Shift+B", { label: "Burst key", group: "emitter" }),
     tint: color("#9ad1ff", { label: "Tint", group: "look", tab: "look" }),
     blend: choice("add", ["add", "alpha", "screen"], { label: "Blend", group: "look" }),
   })
