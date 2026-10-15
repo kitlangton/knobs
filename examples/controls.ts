@@ -159,6 +159,49 @@ export function section(spec: SectionSpec) {
 
 const stores: { store: AnyControls; title: string }[] = []
 const panels = new Map<string, Panel>()
+const EAGER_STORES = new Set(["catalog-lamp", "catalog-object"])
+const RESERVED_HEIGHT: Record<string, number> = {
+  "catalog-motion": 308,
+  "catalog-dots": 180,
+  "catalog-sky": 180,
+  "catalog-readouts": 520,
+  "catalog-feed": 120,
+  "catalog-tabs": 264,
+  "catalog-folds": 234,
+  "catalog-search": 498,
+  "catalog-presets": 291,
+  "catalog-gates": 438,
+  "catalog-accessories": 236,
+  "catalog-remote": 272,
+  "catalog-looks": 384,
+}
+const pendingBySection = new Map<HTMLElement, (() => void)[]>()
+const pendingByStore = new Map<string, () => void>()
+const mountIo = new IntersectionObserver(
+  (entries) => {
+    for (const e of entries) if (e.isIntersecting) mountSection(e.target as HTMLElement)
+  },
+  { root: scroller, rootMargin: "600px 0px" },
+)
+
+function mountSection(sec: HTMLElement) {
+  const fns = pendingBySection.get(sec)
+  if (!fns) return
+  pendingBySection.delete(sec)
+  mountIo.unobserve(sec)
+  for (const fn of fns) fn()
+}
+
+function mountUpTo(target: HTMLElement) {
+  const sec =
+    target.closest<HTMLElement>("section.demo") ??
+    (target.nextElementSibling?.closest<HTMLElement>("section.demo") || target)
+  for (const info of sections) {
+    mountSection(info.el)
+    if (info.el === sec) break
+  }
+  mountSection(sec)
+}
 
 /** A store that's on over the tailnet too, keeps nothing, and reports who changed it. */
 export function define<S extends Schema>(
@@ -196,9 +239,41 @@ export const panelOptions = (): MountPanelOptions => ({
 })
 
 export function mount(store: AnyControls, slot: HTMLElement, options: MountPanelOptions = {}) {
-  const panel = mountPanel(store, slot, { ...panelOptions(), ...options })
-  if (!panels.has(store.id)) panels.set(store.id, panel)
-  return panel
+  const run = () => {
+    slot.style.minHeight = ""
+    const panel = mountPanel(store, slot, { ...panelOptions(), ...options })
+    if (!panels.has(store.id)) panels.set(store.id, panel)
+  }
+  const sec = slot.closest<HTMLElement>("section.demo")
+  if (!sec || EAGER_STORES.has(store.id)) {
+    run()
+    return
+  }
+  const minH = RESERVED_HEIGHT[store.id]
+  if (minH) slot.style.minHeight = `${minH}px`
+  let list = pendingBySection.get(sec)
+  if (!list) {
+    list = []
+    pendingBySection.set(sec, list)
+    mountIo.observe(sec)
+  }
+  let done = false
+  const once = () => {
+    if (done) return
+    done = true
+    run()
+  }
+  list.push(once)
+  const prev = pendingByStore.get(store.id)
+  pendingByStore.set(
+    store.id,
+    prev
+      ? () => {
+          prev()
+          once()
+        }
+      : once,
+  )
 }
 
 const px = (n: number) => `${Math.round(n * 100) / 100}px`
@@ -1348,6 +1423,7 @@ const links = new Map<string, HTMLAnchorElement>()
 const catLinks = new Map<string, HTMLAnchorElement>()
 const jump = (el: HTMLElement) => (e: Event) => {
   e.preventDefault()
+  mountUpTo(el)
   el.scrollIntoView({
     behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     block: "start",
@@ -1397,11 +1473,19 @@ const seen = new Map<string, boolean>()
   )
   for (const sec of sections) io.observe(sec.el)
 }
-if (location.hash)
-  document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: "start" })
+if (location.hash) {
+  const target = document.getElementById(location.hash.slice(1))
+  if (target) {
+    mountUpTo(target)
+    target.scrollIntoView({ block: "start" })
+  }
+}
 
 // ⌘K: the page's sections, then every store's actions, presets and fields.
 const reveal = (store: AnyControls) => (key: string) => {
+  pendingByStore.get(store.id)?.()
+  const panelEl = document.querySelector<HTMLElement>(`[data-controls="${store.id}"]`)
+  if (panelEl) mountUpTo(panelEl)
   const field = store.schema[key] as { tab?: string; group?: string } | undefined
   const panel = panels.get(store.id)
   if (field?.tab) panel?.tab(field.tab)
