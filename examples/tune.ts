@@ -215,6 +215,8 @@ function mount(phone: Phone) {
       ? {}
       : {
           sectionFolded: { "Session List": true, Transcript: true, Composer: true },
+          // What you fold and open stays that way, across reloads and tabs.
+          foldStorage: localStorage,
           nav: true,
           groupDescriptions: CARD_TEXT,
           sectionDescriptions: {

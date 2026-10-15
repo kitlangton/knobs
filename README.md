@@ -615,7 +615,7 @@ watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `
 speed.set("0.25") // the phone changed it
 ```
 
-**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. `description` puts one muted line under the title. What the user last chose comes back after a reload, and in a new tab, over `collapsed` (see [Folding sections](#folding-sections-summaries-and-the-jump-strip)).
+**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. `description` puts one muted line under the title. What the user last chose comes back after a reload (per tab by default; see `foldStorage` under [Folding sections](#folding-sections-summaries-and-the-jump-strip)), over `collapsed`.
 
 ```ts
 const connection = page.card({ title: "Connection", section: "Connection", collapsed: false, summary: "Waiting for iPhone…" })
@@ -645,19 +645,45 @@ With `{ expand: true }`, the highlight also opens the folded sections and cards 
 
 #### Folding sections, summaries and the jump strip
 
-A page with many sections reads better folded. `sectionFolded` starts sections folded to their headings: `true` for all of them, or by section id (`{ Transcript: true }`). It's taken from the mount, then the store or remote options, then a field's `sectionFolded: true` (the first field of a section that says wins). A section that says either way can fold, and its heading toggles it by a click, or `Enter` / `Space` where it's focused. Its cards fold away where they are and the columns re-balance with a folded section counted as its heading alone; everything glides and can be interrupted. `page.foldSection(section, folded?)` does it from code (it toggles without `folded`), and `page.sectionFolded(section)` says which. The filter opens folded sections and cards while it runs.
+A page with many sections reads better folded. `sectionFolded` starts sections folded to their headings: `true` for all of them, or by section id (`{ Transcript: true }`). It's taken from the mount, then the store or remote options, then a field's `sectionFolded: true` (the first field of a section that says wins). A section that says either way can fold, and its heading toggles it by a click, or `Enter` / `Space` where it's focused. Its cards fold away where they are and the columns re-balance with a folded section counted as its heading alone; everything glides and can be interrupted. `page.foldSection(section, folded?, { remember?, reveal? })` and `page.fold(group, folded?, { remember?, reveal? })` do it from code (they toggle without `folded`), and `page.sectionFolded(section)` says which. While the filter (`/`) runs, it opens the folded sections and cards it matches without touching their folds; when it clears, everything is back as it was folded.
 
-Folded things say what's in them. A folded group card trades its presets, reset and die for "Compact · 7 changed" (the matching group preset, or "Custom", then its changed rows; each part only when it applies). A folded section's heading reads "2 changed · 3 cards". `groupSummary(group, info)` and `sectionSummary(section, info)` on the mount replace either (`info` is a `FoldSummaryInfo`: `{ preset, changed, keys }`; return `null` for nothing). Group cards fold as in a panel, by a field's `folded` or `groupFolded` on the mount or store.
+Folded things say what's in them. A folded group card trades its presets, reset and die for "Compact · 7 changed" (the matching group preset, or "Custom", then its changed rows; each part only when it applies). A folded section's heading reads "2 changed · 3 cards". `groupSummary(group, info)` and `sectionSummary(section, info)` on the mount replace either (`info` is a `FoldSummaryInfo`: `{ preset, changed, keys }`; return `null` for nothing). Group cards fold as in a panel, by a field's or descriptor's `folded`, or `groupFolded` on the mount, `defineControls` or `createRemoteControls` (both take `sectionFolded` too).
 
 Descriptions add one muted line under a title: `groupDescriptions` and `sectionDescriptions` by id (on the store, remote options or the mount), or `groupDescription` / `sectionDescription` on any field or descriptor (the first that gives one wins). `page.card({ description })` does the same for a custom card. The filter matches descriptions too.
 
-What the user folds and opens is remembered in the store's storage under its id, so it comes back after a reload and in a new tab, and wins over `sectionFolded`, `groupFolded` and `collapsed`. Nothing is remembered with `session: false` on the mount or `persist: "none"`. Remote controls have no storage unless you pass one.
+What the user folds and opens is remembered under `knobs:<id>:folds:v1` and wins over `sectionFolded`, `groupFolded` and `collapsed`. By default it's kept per tab (sessionStorage, with the rest of the panel's session), so a reload brings it back; nothing is kept with `session: false`, or for a store without storage (remote controls, unless you pass one). `foldStorage` on the mount chooses: `localStorage` (or any `StoragePort`) keeps folds across tabs too, `null` keeps none.
+
+Code chooses what counts as the user's:
+
+| Call | Remembered |
+| --- | --- |
+| `page.fold(group, folded?)`, `page.foldSection(section, folded?)` | Yes: they act for the user (a button of yours). Pass `{ remember: false }` for context. |
+| `page.reveal({ section } \| { group })` | No: it's for context (what's on the phone's screen). It opens the section (and the group's card), glides it under the header, and `activeSection()` reports it until the user scrolls. Pass `{ remember: true }` for a jump the user asked for, such as a click in your own navigation. |
+| `page.highlight(target, { expand: true })` | No, and it folds again once the context moves on (see above). |
+| A click or key on a heading or card header, a jump-strip chip, `⌥↑` / `⌥↓` | Yes. |
+
+`{ reveal: true }` on `fold` and `foldSection` glides the card or heading into view as well.
+
+**Your own navigation.** A sidebar of your own reads the page instead of drawing a strip in its header:
+
+```ts
+page.sections()
+// [{ id: "Transcript", label: "Transcript", description?: "…", folded: true, changed: 8,
+//    groups: [{ id: "transcript.arrivals", label: "Arrivals", folded: false, changed: 1, preset: "Custom" }, …] }, …]
+const stop = page.onSections((sections) => renderSidebar(sections)) // now, then after each change
+page.onActiveSection((id) => markActive(id)) // as the page scrolls
+page.activeSection() // "Transcript"
+sidebarLink.onclick = () => page.reveal({ section: "Transcript" }, { remember: true })
+```
+
+`sections()` lists the sections showing, in reading order (a running filter leaves out those with nothing matching), each with its group cards; custom cards aren't listed. `folded` is the section's or card's own state, which the filter's opening doesn't change. `changed` counts rows that differ from their defaults, and `preset` is the matching group preset's name, "Custom" when none matches, or `null` without presets. `onSections` calls its listener once with the current list, then after anything it reports changes (a fold, a value, a label), at most once per microtask, and returns an unsubscribe. `activeSection()` is the section filling most of the window below the header (after a `reveal` or a jump, that section until the user scrolls); `onActiveSection` calls its listener when it changes.
 
 `nav: true` adds a strip of section chips to the sticky header. The chip for the section that fills most of the screen is underlined as you scroll, and each chip counts its section's changed rows. A chip glides the page to its section and opens it if it's folded (that's remembered); `⌥↑` / `⌥↓` do the same for the section before or after. Hint mode reaches the chips and the folding headings.
 
 ```ts
 const page = mountPage(tune, app, {
   sectionFolded: { "Session List": true, Transcript: true, Composer: true },
+  foldStorage: localStorage, // folds outlive the tab
   nav: true,
   sectionDescriptions: { Playground: "What the phone shows, how fast it moves" },
   groupSummary: (group, { preset, changed }) => (changed ? `${changed} changed` : preset),
@@ -784,8 +810,11 @@ The package has two core exports selected through the standard `development` con
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
 | `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)` and `panel.updateAccessories()`. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
-| `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
-| `page.foldSection(section: string, folded?: boolean): void` / `page.sectionFolded(section: string): boolean` | Fold a section to its heading or open it (toggles without `folded`; remembered as the user's), and ask which it is. |
+| `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
+| `page.fold(group: string, folded?: boolean, options?: PageFoldOptions): void` / `page.foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void` / `page.sectionFolded(section: string): boolean` | Fold a group's card or a section or open it (toggles without `folded`), and ask which a section is. `PageFoldOptions` is `{ remember?: boolean, reveal?: boolean }`; `remember` defaults to `true`. |
+| `page.reveal(target: { section: string } \| { group: string }, options?: { remember?: boolean }): void` | Open a section (or a group's card and its section) and glide it into view; `remember` defaults to `false`. |
+| `page.sections(): readonly PageSectionInfo[]` / `page.onSections(listener: (sections: readonly PageSectionInfo[]) => void): () => void` | `PageSectionInfo` is `{ id, label, description?, folded, changed, groups: PageGroupInfo[] }`; `PageGroupInfo` is `{ id, label, folded, changed, preset: string \| null }`. |
+| `page.activeSection(): string \| undefined` / `page.onActiveSection(listener: (section: string \| undefined) => void): () => void` | The section in view as the page scrolls. |
 
 ### Store (`Controls<S>`)
 

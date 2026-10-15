@@ -14,6 +14,8 @@ type Options = {
   mount?: Record<string, unknown>
   /** Install groupSummary / sectionSummary overrides. */
   summaries?: boolean
+  /** Leave foldStorage at its default (the tab's sessionStorage) instead of localStorage. */
+  tabFolds?: boolean
 }
 
 /**
@@ -64,6 +66,7 @@ async function mount(page: Page, o: Options = {}) {
       sections: ["Look", "Motion", "Layout"],
       groupDescriptions: { Grid: "Columns and gutters" },
       sectionDescriptions: { Motion: "Springs and timing for every move" },
+      ...(o.tabFolds ? {} : { foldStorage: localStorage }),
       ...(o.summaries
         ? {
             groupSummary: (group: string, info: any) =>
@@ -677,4 +680,29 @@ test("the filter opens matching folded sections and cards for a while, and leave
   await expect(tile(root, "Grid")).toBeHidden()
   await expect(tile(root, "Timing").locator(".knobs-card")).toBeHidden()
   expect(await saved()).toBe(kept)
+})
+
+test("by default folds are kept per tab, as before; foldStorage: null keeps none", async ({
+  page,
+}) => {
+  const root = await mount(page, { tabFolds: true, mount: { sectionFolded: { Look: false } } })
+  await head(root, "Look").click()
+  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
+  expect(
+    await page.evaluate(() => [
+      sessionStorage.getItem("knobs:sections-fixture:folds:v1"),
+      localStorage.getItem("knobs:sections-fixture:folds:v1"),
+    ]),
+  ).toEqual(['{"sections":{"Look":true}}', null])
+  // A reload in the tab brings it back.
+  await mount(page, { tabFolds: true, keep: true, mount: { sectionFolded: { Look: false } } })
+  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
+  // With foldStorage: null nothing is read or written.
+  await mount(page, { keep: true, mount: { sectionFolded: { Look: false }, foldStorage: null } })
+  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "true")
+  await head(root, "Look").click()
+  await head(root, "Look").click()
+  expect(await page.evaluate(() => sessionStorage.getItem("knobs:sections-fixture:folds:v1"))).toBe(
+    '{"sections":{"Look":true}}',
+  )
 })

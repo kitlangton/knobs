@@ -10,8 +10,8 @@ export interface FoldMemory {
 }
 
 /**
- * A page's folds, kept in the store's storage by its id, so they come back after a reload and in
- * a new tab. `null` storage remembers nothing.
+ * A page's folds, kept by the store's id in `storage` (the tab's sessionStorage by default, or the
+ * page's `foldStorage`). `null` storage remembers nothing.
  */
 export function foldMemory(id: string, storage: () => StoragePort | null): FoldMemory {
   const key = storageKey(id, "folds")

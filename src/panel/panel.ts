@@ -81,7 +81,7 @@ import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
-import { readSession, writeSession } from "./session.js"
+import { readSession, tabStorage, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
 import { DELAYED, injectPreset, injectStyles } from "./styles.js"
 
@@ -901,13 +901,13 @@ function buildPanel<S extends Schema>(
   const sessionKept = remember
   const session = remember ? readSession(controls.id) : {}
   /**
-   * A page's folds (sections, group cards, custom cards) are remembered across reloads and tabs
-   * in the store's storage; nothing is with `session: false` or `persist: "none"`.
+   * A page's folds (sections, group cards, custom cards): in `foldStorage` when given, else per
+   * tab with the rest of the session.
    */
+  const foldPort =
+    page?.foldStorage !== undefined ? page.foldStorage : remember ? tabStorage() : null
   const foldsKept: FoldMemory | null =
-    page && remember && controls.persist !== "none"
-      ? foldMemory(controls.id, () => controls.storage)
-      : null
+    page && foldPort ? foldMemory(controls.id, () => foldPort) : null
 
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()

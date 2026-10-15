@@ -1,5 +1,6 @@
 import { Spring, springMotion } from "../core/spring.js"
 import { arrowOf } from "./prefs.js"
+import type { StoragePort } from "../core/storage.js"
 import type { MountPanelOptions, SectionFolded } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { isRevealingIn, resize, reveal } from "./reveal.js"
@@ -26,9 +27,16 @@ export interface MountPageOptions extends MountPanelOptions {
    * Sections that start folded to their heading: `true` for all of them, or by section id (over
    * the store's `sectionFolded` and fields' `sectionFolded`). A section that says either way
    * folds: its heading toggles it (a click, or Enter where it's focused). What the user last
-   * chose is remembered (the store's storage, by its id) and wins over this.
+   * chose is remembered (see `foldStorage`) and wins over this.
    */
   readonly sectionFolded?: SectionFolded
+  /**
+   * Where the page keeps what the user folds and opens (sections, group cards, custom cards),
+   * under `knobs:<id>:folds:v1`. By default the tab's sessionStorage, so a reload brings it back
+   * (nothing with `session: false`, or for stores without storage, such as remote controls by
+   * default); `localStorage` keeps it across tabs too; `null` keeps nothing.
+   */
+  readonly foldStorage?: StoragePort | null
   /**
    * A strip of section chips in the sticky header: the section in view is marked as the page
    * scrolls, each chip counts its changed rows, and a chip (or ⌥↑ / ⌥↓) glides to its section,
@@ -53,7 +61,7 @@ export interface PageCardOptions {
   /**
    * Makes the card collapsible, starting folded (`true`) or open (`false`): its header toggles it
    * (a click, or Enter where it's focused) and shows a caret. What the user last chose comes back
-   * after a reload (the store's storage), over this.
+   * after a reload (see `MountPageOptions.foldStorage`), over this.
    */
   readonly collapsed?: boolean
   /** One quiet line on the right of a folded card's header, e.g. "iPhone · 0.142.4 · connected". */
@@ -212,7 +220,7 @@ export interface Page extends Panel {
 
 export interface PageFoldOptions {
   /**
-   * `true` (the default) keeps it as the user's choice, across reloads (the store's storage);
+   * `true` (the default) keeps it as the user's choice, across reloads (see `MountPageOptions.foldStorage`);
    * `false` is for context and leaves what's remembered alone.
    */
   readonly remember?: boolean

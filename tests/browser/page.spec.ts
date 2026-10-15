@@ -459,7 +459,7 @@ test("highlight reveal glides the first highlighted card into view, unless the u
 test("collapsible cards fold to their header, glide the cards below, and remember it", async ({
   page,
 }) => {
-  const root = await fixture(page, { local: true })
+  const root = await fixture(page)
   const card = root.locator('[data-card="Pairing"]')
   const head = card.locator(":scope > .knobs-group-head")
   await expect(head).toHaveAttribute("aria-expanded", "true")
@@ -524,8 +524,8 @@ test("collapsible cards fold to their header, glide the cards below, and remembe
   await expect(card).toHaveAttribute("data-collapsed", "")
   expect(await page.evaluate(() => (window as any).__fixture.card.collapsed)).toBe(true)
 
-  // A reload brings it back folded (kept in the store's storage), without animating.
-  const again = await fixture(page, { local: true, keep: true })
+  // A reload brings it back folded (per tab), without animating.
+  const again = await fixture(page)
   await expect(again.locator('[data-card="Pairing"]')).toHaveAttribute("data-collapsed", "")
   await page.evaluate(() => (window as any).__fixture.card.collapse(false))
   await expect(again.locator('[data-card="Pairing"]')).not.toHaveAttribute("data-collapsed", "")
