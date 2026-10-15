@@ -195,6 +195,13 @@ export interface GpuRampHandle {
   readonly selected: boolean
   /** Dragged off the strip or graph: it goes when let go. */
   readonly leaving: boolean
+  /**
+   * How grown it is (0…1), when its row's morph sizes it: budding out of the line or merging
+   * into a neighbour. Its position is then already the morph's, so it isn't eased again.
+   */
+  readonly grow?: number
+  /** Its motion blur (px along its travel, across and down), 0, 0 at rest. */
+  readonly smear?: readonly [number, number]
 }
 export interface GpuGradientRow {
   readonly kind: "gradient"
@@ -232,7 +239,12 @@ export interface GpuCurveRow {
   readonly graph: HTMLElement
   /** Grid lines as x0, y0, x1, y1 quadruples in the graph. */
   grid(): readonly number[]
+  /** The line and mini curve as the row's morph shows them now (stepped to `now`, ms). */
   curve(): readonly number[]
+  /** Steps the row's morph to this frame; whether it still moves. */
+  advance(now: number): boolean
+  /** The line's motion blur (px), 0 at rest. */
+  blur(): number
   handles(): readonly GpuRampHandle[]
   /** The hover crosshair: its x, the curve's y there, and the readout's element. */
   hover(): { readonly x: number; readonly y: number; readonly read: HTMLElement } | null
@@ -1950,7 +1962,8 @@ class GpuOverlayManager {
   private curSelected = 0
 
   /** A stroke through `pts` (x,y pairs in viewport px), round-capped like SVG's. */
-  private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip) {
+  /** `blur` (px) softens it across, as a moving line's smear (the DOM's Gaussian over √12). */
+  private pushLine(pts: readonly number[], color: Rgba, width: number, clip?: Clip, blur = 0) {
     const n = pts.length >> 1
     if (n < 2 || this.pointCount + n > MAX_POINTS) return
     let x0 = Infinity
@@ -1974,6 +1987,7 @@ class GpuOverlayManager {
       color,
       strokeWidth: width,
       kind: 8,
+      blurX: blur,
       p0: this.pointCount,
       p1: n,
     })
@@ -2046,6 +2060,8 @@ class GpuOverlayManager {
     glow?: number
     glowColor?: Rgba
     clip?: Clip
+    /** A directional motion blur (px across, px down): the shape smeared along it. */
+    smear?: readonly [number, number]
   }) {
     this.pushPrim({
       x: o.x,
@@ -2059,6 +2075,8 @@ class GpuOverlayManager {
       strokeWidth: o.ring ?? 0,
       glowOrBlur: o.glow ?? 0,
       kind: 10,
+      blurX: o.smear?.[0] ?? 0,
+      blurY: o.smear?.[1] ?? 0,
       p0: (o.shadow?.[0] ?? 0) * this.curAlpha,
       p1: o.shadow?.[1] ?? 0,
       p2: o.shadow?.[2] ?? 0,
@@ -2640,12 +2658,14 @@ class GpuOverlayManager {
       cardClip,
       rowAlpha,
     )
-    const delay = row.wave.at - clock
+    // The row's own morph moves the line and points (one spring, identity kept, see
+    // ramp-morph.ts): drawn as it stands this frame, not eased again.
+    if (row.advance(this.frameNow)) this.easeMoving = true
     const snap = row.snap()
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
-    this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
+    this.pushLine(at(row.miniCurve(), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
@@ -2675,7 +2695,7 @@ class GpuOverlayManager {
           1,
           clip,
         )
-      this.pushLine(at(this.morph(row.graph, row.curve(), delay, snap, gr), gr), accent, 1.5, clip)
+      this.pushLine(at(row.curve(), gr), accent, 1.5, clip, this.curReduced ? 0 : row.blur())
       // The crosshair fades in and out where it last was, as the DOM's opacity does.
       const hover = row.hover()
       if (hover) this.lastHover.set(row.graph, hover)
@@ -2713,8 +2733,8 @@ class GpuOverlayManager {
       }
       const focused = this.isFocused(row.graph) || snap
       for (const hd of row.handles()) {
-        const [hx, hy] = this.morph(hd.el, [hd.x, hd.y], delay, snap, gr)
-        const born = this.appear(hd.el)
+        const grow = hd.grow ?? 1
+        if (grow < 0.02) continue
         const sel = this.ease(hd.el, "sel", hd.selected ? 1 : 0, 40)
         const scale = this.ease(
           hd.el,
@@ -2722,12 +2742,14 @@ class GpuOverlayManager {
           hd.leaving ? 0.7 : hd.selected && focused ? 1.2 : 1,
           30,
         )
-        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * born * shown
+        const fade = this.ease(hd.el, "leave", hd.leaving ? 0.35 : 1, 40) * shown
         if (fade < 0.005) continue
-        const d = 10 * scale * (0.4 + 0.6 * born)
+        // A budding or merging point grows from (or shrinks to) nothing, as the DOM's scale does.
+        const d = 10 * scale * grow
+        const [bx, by] = this.curReduced ? [0, 0] : (hd.smear ?? [0, 0])
         this.shape({
-          x: gr.left + hx! - d / 2,
-          y: gr.top + hy! - d / 2,
+          x: gr.left + hd.x - d / 2,
+          y: gr.top + hd.y - d / 2,
           w: d,
           h: d,
           radius: Math.min(d / 2, t.round),
@@ -2736,6 +2758,7 @@ class GpuOverlayManager {
           ringColor: withAlpha(t.accent, rowAlpha * fade),
           shadow: [0.3 * t.lift * fade, 3, 1],
           clip,
+          smear: [bx, by],
         })
       }
       if (last && lit > 0.005) {

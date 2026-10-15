@@ -26,6 +26,7 @@ import {
   panPresets,
   place,
   plainKey,
+  reducedMotion,
   rgbCss,
   setPath,
   visible,
@@ -37,6 +38,7 @@ import { band, stretched, type Band } from "./give.js"
 import { tick } from "./haptics.js"
 import { clamp } from "./motion.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { curveSmear, MORPH_SPRING, RampMorph, sampleAt, type MorphDot } from "./ramp-morph.js"
 import { onPan } from "./swipe.js"
 
 /** The custom properties a gradient strip's samples ride on (registered, so they transition). */
@@ -483,6 +485,102 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   }
 }
 
+/** The widest a moving curve's line smears (px): it's thin, so less than a point does. */
+const LINE_SMEAR = 4
+
+/** How strongly a ramp's moving line and points smear (--k-curve-blur, 0 off to 1). */
+const curveBlur = (row: HTMLElement) =>
+  reducedMotion(row.ownerDocument)
+    ? 0
+    : clamp(parseFloat(getComputedStyle(row).getPropertyValue("--k-curve-blur")) || 0, 0, 1)
+
+/**
+ * Runs a morph on one frame loop while it moves, drawing each frame; `wake` asks the GPU for a
+ * frame too, which reads the same morph (stepping it to its own frame time first: a time already
+ * reached is a no-op, so the two never step it twice).
+ */
+function morphLoop(c: RowContext<unknown>, morph: RampMorph, draw: () => void) {
+  const win = c.doc.defaultView
+  let frame = 0
+  const run = (now: number) => {
+    const moving = morph.step(now)
+    draw()
+    c.wake()
+    frame = moving && win ? win.requestAnimationFrame(run) : 0
+  }
+  return {
+    kick() {
+      if (!frame && win) frame = win.requestAnimationFrame(run)
+    },
+    dispose() {
+      if (frame) win?.cancelAnimationFrame(frame)
+      frame = 0
+    },
+  }
+}
+
+let smearIds = 0
+/**
+ * The DOM's motion blur for a ramp's line and points: an SVG Gaussian per element, its deviation
+ * the GPU smear's box width over √12 (the same spread). Off (no filter at all) at rest.
+ */
+function smearFilters(doc: Document, plot: SVGSVGElement) {
+  const ns = "http://www.w3.org/2000/svg"
+  const defs = doc.createElementNS(ns, "defs")
+  plot.prepend(defs)
+  const sigma = (px: number) => (px / Math.sqrt(12)).toFixed(2)
+  const make = (box: boolean) => {
+    const filter = doc.createElementNS(ns, "filter")
+    filter.id = `knobs-smear-${++smearIds}`
+    if (box) {
+      // Around the whole element, with room for the smear.
+      filter.setAttribute("x", "-1")
+      filter.setAttribute("y", "-1")
+      filter.setAttribute("width", "3")
+      filter.setAttribute("height", "3")
+    } else filter.setAttribute("filterUnits", "userSpaceOnUse")
+    const blur = doc.createElementNS(ns, "feGaussianBlur")
+    filter.append(blur)
+    defs.append(filter)
+    return { filter, blur }
+  }
+  const byDot = new Map<Element, ReturnType<typeof make>>()
+  return {
+    /** The line's smear: `set(px)` blurs `path` across (0 takes the filter off). */
+    line(path: SVGPathElement) {
+      const { filter, blur } = make(false)
+      let on = 0
+      return (px: number) => {
+        if (px === on) return
+        on = px
+        if (!px) return path.removeAttribute("filter")
+        const box = plot.viewBox.baseVal
+        filter.setAttribute("x", String(-20))
+        filter.setAttribute("y", String(-20))
+        filter.setAttribute("width", String((box?.width || 0) + 40))
+        filter.setAttribute("height", String((box?.height || 0) + 40))
+        blur.setAttribute("stdDeviation", sigma(px))
+        path.setAttribute("filter", `url(#${filter.id})`)
+      }
+    },
+    /** A point's smear along its travel (px across, px down); 0, 0 takes it off. */
+    dot(node: HTMLElement, sx: number, sy: number) {
+      if (!sx && !sy) {
+        if (byDot.has(node)) node.style.filter = ""
+        return
+      }
+      let f = byDot.get(node)
+      if (!f) byDot.set(node, (f = make(true)))
+      f.blur.setAttribute("stdDeviation", `${sigma(Math.abs(sx))} ${sigma(Math.abs(sy))}`)
+      node.style.filter = `url(#${f.filter.id})`
+    },
+    drop(node: HTMLElement) {
+      byDot.get(node)?.filter.remove()
+      byDot.delete(node)
+    },
+  }
+}
+
 const GRAPH_PAD = 8
 const MINI_W = 36
 /** Grid cells: ⇧ snaps to their corners. */
@@ -535,7 +633,6 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
   const x = expander(c, [read, mini], [graph, ...(chips ? [chips.el] : [])])
   let shown: readonly CurvePoint[] = f.value
   let selected = 0
-  const handles: HTMLElement[] = []
   let dragging = false
   let leaving = false
   let initialized = false
@@ -553,22 +650,43 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     clamp((lx - GRAPH_PAD) / Math.max(1, size.w - GRAPH_PAD * 2), 0, 1),
     clamp(lo + (1 - (ly - GRAPH_PAD) / Math.max(1, size.h - GRAPH_PAD * 2)) * span, lo, hi),
   ]
-  let cached = curveSamples(shown, f.interp)
-  const samples = () => cached
+  // What's drawn: the samples and points in the 0…1 box (y up), moving between shapes on one
+  // spring with the points keeping their identity (see ramp-morph.ts).
+  const morph = new RampMorph(2, 2, MORPH_SPRING, (to, s) => [to[0]!, sampleAt(s, to[0]!)])
+  const norm = (y: number) => (span ? (y - lo) / span : 0)
+  const unitSamples = () => {
+    const s = curveSamples(shown, f.interp)
+    for (let i = 1; i < s.length; i += 2) s[i] = norm(s[i]!)
+    return s
+  }
+  /** The points' spots in the box, the one a pan holds giving by its give. */
+  const unitPoints = () => {
+    const w = Math.max(1, size.w - GRAPH_PAD * 2)
+    const h = Math.max(1, size.h - GRAPH_PAD * 2)
+    return shown.map((p, i) =>
+      panAt && i === selected
+        ? [p.x + panAt[0].give / w, norm(p.y) - panAt[1].give / h]
+        : [p.x, norm(p.y)],
+    )
+  }
+  const toPx = (ux: number, uy: number): [number, number] => [
+    GRAPH_PAD + ux * (size.w - GRAPH_PAD * 2),
+    GRAPH_PAD + (1 - uy) * (size.h - GRAPH_PAD * 2),
+  ]
   const curvePoints = () => {
     if (!size.w) return []
-    const s = samples()
+    const s = morph.samples
     const out: number[] = []
-    for (let i = 0; i < s.length; i += 2) out.push(...map(s[i]!, s[i + 1]!))
+    for (let i = 0; i < s.length; i += 2) out.push(...toPx(s[i]!, s[i + 1]!))
     return out
   }
   const miniPoints = () => {
     if (!miniSize.h) return []
-    const s = samples()
+    const s = morph.samples
     const out: number[] = []
     const h = miniSize.h
     for (let i = 0; i < s.length; i += 2)
-      out.push(1.5 + s[i]! * (MINI_W - 3), 1.5 + (1 - (s[i + 1]! - lo) / span) * (h - 3))
+      out.push(1.5 + s[i]! * (MINI_W - 3), 1.5 + (1 - s[i + 1]!) * (h - 3))
     return out
   }
   const gridLines = () => {
@@ -588,18 +706,14 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     }
     return out
   }
-  /** A point's spot (px), with any give a pan holds it by. */
-  const pointAt = (i: number, p: CurvePoint): [number, number] => {
-    const [px, py] = map(p.x, p.y)
-    return panAt && i === selected ? [px + panAt[0].give, py + panAt[1].give] : [px, py]
-  }
   const yDigits = span <= 1 ? 3 : span <= 10 ? 2 : span <= 100 ? 1 : 0
   const fmt = (px: number, py: number) => `${px.toFixed(2)} → ${py.toFixed(yDigits)}`
   /** Where the crosshair sits: the dragged point, or the curve under the pointer. */
   const crosshair = (): [number, number] | null => {
     if ((dragging || panAt) && shown[selected]) return [shown[selected]!.x, shown[selected]!.y]
     if (hoverX === null) return null
-    return [hoverX, sampleCurve(shown, hoverX, f)]
+    // On the line as it's drawn, mid-morph too.
+    return [hoverX, lo + sampleAt(morph.samples, hoverX) * span]
   }
   const drawHover = () => {
     const at = size.w ? crosshair() : null
@@ -611,7 +725,79 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     dot.style.translate = `${px}px ${py}px`
     hoverRead.textContent = fmt(at[0], at[1])
   }
-  const layout = (instant: boolean) => {
+  // Each point keeps its element for as long as it shows, merging away included.
+  const dots = new Map<number, HTMLElement>()
+  const smears = smearFilters(c.doc, plot)
+  const lineSmear = smears.line(path)
+  let strength = 0
+  /** The point's element for a dot, made on first sight. */
+  const dotEl = (id: number) => {
+    let node = dots.get(id)
+    if (!node) {
+      node = el("i", "knobs-graph-pt")
+      dots.set(id, node)
+      graph.insertBefore(node, hoverRead)
+    }
+    return node
+  }
+  /** A dot's smear (px, along its travel): 0 at rest and in hand. */
+  const dotSmear = (d: MorphDot): [number, number] => {
+    if (!strength || !morph.moving) return [0, 0]
+    const vx = d.vel[0]! * (size.w - GRAPH_PAD * 2)
+    const vy = -d.vel[1]! * (size.h - GRAPH_PAD * 2)
+    const speed = Math.hypot(vx, vy)
+    const px = curveSmear(speed, strength)
+    return px ? [(vx / speed) * px, (vy / speed) * px] : [0, 0]
+  }
+  const lineBlur = () =>
+    strength && morph.moving
+      ? curveSmear(
+          morph.sampleSpeed(size.w - GRAPH_PAD * 2, size.h - GRAPH_PAD * 2),
+          strength,
+          LINE_SMEAR,
+        )
+      : 0
+  /** Writes the morph's frame to the DOM (the GPU reads the same numbers through its binding). */
+  const draw = () => {
+    const gpu = x.row.closest('[data-gpu-active="true"]') !== null
+    const live = new Set<number>()
+    for (const [i, d] of morph.live.entries()) {
+      live.add(d.id)
+      const node = dotEl(d.id)
+      node.toggleAttribute("data-selected", i === selected)
+      node.toggleAttribute("data-leaving", leaving && i === selected)
+      delete node.dataset.gone
+    }
+    for (const d of morph.gone) {
+      live.add(d.id)
+      const node = dotEl(d.id)
+      node.removeAttribute("data-selected")
+      node.removeAttribute("data-leaving")
+      node.dataset.gone = ""
+    }
+    for (const [id, node] of dots)
+      if (!live.has(id)) {
+        node.remove()
+        smears.drop(node)
+        dots.delete(id)
+      }
+    if (gpu) return
+    if (hoverX !== null && morph.moving) drawHover()
+    if (size.w) setPath(path, curvePoints())
+    if (miniSize.h) setPath(miniPath, miniPoints())
+    lineSmear(lineBlur())
+    if (!size.w) return
+    for (const d of [...morph.live, ...morph.gone]) {
+      const node = dotEl(d.id)
+      const [px, py] = toPx(d.at[0]!, d.at[1]!)
+      node.style.translate = `${px}px ${py}px`
+      const grow = d.at[2]!
+      node.style.setProperty("--kpt-grow", grow >= 0.999 ? "" : grow.toFixed(3))
+      smears.dot(node, ...dotSmear(d))
+    }
+  }
+  const loop = morphLoop(c, morph, draw)
+  const layout = (instant: boolean, delay = 0) => {
     if (size.w) {
       plot.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`)
       const lines = gridLines()
@@ -621,22 +807,13 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       grid.setAttribute("d", d)
     }
     if (miniSize.h) mini.setAttribute("viewBox", `0 0 ${MINI_W} ${miniSize.h}`)
-    sync(handles, shown.length, graph, () => el("i", "knobs-graph-pt"), instant || !initialized)
-    // Points sit under the crosshair's readout.
-    graph.append(hoverRead)
-    place([path, miniPath, ...handles], instant, () => {
-      if (size.w) setPath(path, curvePoints())
-      if (miniSize.h) setPath(miniPath, miniPoints())
-      for (const [i, p] of shown.entries()) {
-        const h = handles[i]!
-        if (size.w) {
-          const [px, py] = pointAt(i, p)
-          h.style.translate = `${px}px ${py}px`
-        }
-        h.toggleAttribute("data-selected", i === selected)
-        h.toggleAttribute("data-leaving", leaving && i === selected)
-      }
-    })
+    const still = instant || !initialized || reducedMotion(c.doc)
+    morph.set(unitSamples(), unitPoints(), { instant: still, delay, now: performance.now() })
+    if (morph.moving) {
+      strength = curveBlur(x.row)
+      loop.kick()
+    }
+    draw()
     drawHover()
   }
   const describe = () => {
@@ -770,7 +947,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       leaving = false
       remove(selected)
     }
-    layout(true)
+    layout(false)
     c.wake()
   }
   graph.onpointerup = (event) => {
@@ -927,16 +1104,21 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     graph,
     grid: gridLines,
     curve: curvePoints,
+    advance: (now) => morph.step(now),
+    blur: lineBlur,
     handles: (): GpuRampHandle[] =>
       size.w
-        ? shown.map((p, i) => {
-            const [px, py] = pointAt(i, p)
+        ? [...morph.live, ...morph.gone].map((d, i) => {
+            const [px, py] = toPx(d.at[0]!, d.at[1]!)
+            const mine = d.into === undefined && i === selected
             return {
-              el: handles[i]!,
+              el: dotEl(d.id),
               x: px,
               y: py,
-              selected: i === selected,
-              leaving: leaving && i === selected,
+              selected: mine,
+              leaving: leaving && mine,
+              grow: d.at[2]!,
+              smear: dotSmear(d),
             }
           })
         : [],
@@ -959,20 +1141,20 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       [x.head, ...(x.isOpen() ? [graph, ...(chips ? [chips.el] : [])] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value, _delay, instant = false, mixed = false) {
+    update(value, delay, instant = false, mixed = false) {
       shown = value as readonly CurvePoint[]
-      cached = curveSamples(shown, f.interp)
       if (selected >= shown.length) selected = shown.length - 1
       const match = presets.findIndex(([, p]) => sameRamp(p, shown))
       read.textContent = mixed ? "—" : (presets[match]?.[0] ?? "")
       chips?.check(mixed ? -1 : match)
-      layout(!initialized || instant || dragging || panAt !== undefined)
+      layout(!initialized || instant || dragging || panAt !== undefined, delay)
       initialized = true
       describe()
     },
     dispose() {
       size.disconnect()
       miniSize.disconnect()
+      loop.dispose()
     },
   }
 }

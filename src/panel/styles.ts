@@ -88,6 +88,7 @@ const defaultsCss = `
 @property --k-readout{syntax:"<length>";inherits:true;initial-value:0px}
 @property --kc-value-size{syntax:"<length>";inherits:true;initial-value:11.5px}
 @property --kr-lo{syntax:"<number>";inherits:true;initial-value:0}
+@property --kpt-sel{syntax:"<number>";inherits:false;initial-value:1}
 @property --kr-hi{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kr-show-hi{syntax:"<number>";inherits:true;initial-value:0}
@@ -104,7 +105,7 @@ ${GRAD_PROPS}
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
 :where(.knobs-panel,.knobs-chip)[data-theme="light"],
@@ -481,7 +482,7 @@ const css = `
 .knobs-grad-stop[data-leaving]{opacity:.35;scale:.6}
 .knobs-x[data-k-active] :is(.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i){transition:none}
 .knobs-x[data-k-active] .knobs-grad-stop{transition:scale .2s var(--k-ease),opacity .15s}
-:is(.knobs-grad-stop,.knobs-graph-pt)[data-born]{animation:knobs-born .24s var(--k-ease)}
+.knobs-grad-stop[data-born]{animation:knobs-born .24s var(--k-ease)}
 @keyframes knobs-born{from{opacity:0;scale:.4}}
 .knobs-mixed :is(.knobs-grad,.knobs-grad-mini){background:transparent}
 /* A ramp's shapes and presets share one row: each chip gives up padding before its words, and only
@@ -497,13 +498,15 @@ const css = `
 .knobs-graph{position:relative;height:calc(var(--k-row) * 4.5);border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:crosshair;touch-action:none;user-select:none;outline:none;overflow:hidden}
 .knobs-panel .knobs-graph>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .knobs-graph>i{position:absolute;left:0;top:0;pointer-events:none}
+/* The row's morph places the line and points each frame (ramp-morph.ts), so neither transitions:
+   a point's size is its focus scale (--kpt-sel, which does) times its growth (--kpt-grow, budding
+   from the line or merging into a neighbour). */
 .knobs-graph-pt{width:10px;height:10px;margin:-5px;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));
-  transition:translate ${FILL_T} ${DELAY},background-color .15s,scale .2s var(--k-ease),opacity .15s}
+  scale:calc(var(--kpt-sel) * var(--kpt-grow,1));transition:background-color .15s,--kpt-sel .2s var(--k-ease),opacity .15s}
 .knobs-graph-pt[data-selected]{background:var(--k-accent)}
-.knobs-graph:is(:focus-visible,.knobs-active) .knobs-graph-pt[data-selected]{scale:1.2}
-.knobs-graph-pt[data-leaving]{opacity:.35;scale:.7}
-.knobs-graph.knobs-active .knobs-graph-pt{transition:background-color .15s,scale .2s var(--k-ease),opacity .15s}
-.knobs-graph.knobs-active .knobs-curve,.knobs-x[data-k-active] .knobs-curve-mini .knobs-curve{transition:none}
+.knobs-graph:is(:focus-visible,.knobs-active) .knobs-graph-pt[data-selected]{--kpt-sel:1.2}
+.knobs-graph-pt[data-leaving]{opacity:.35;--kpt-sel:.7}
+.knobs-graph .knobs-curve,.knobs-curve-mini .knobs-curve{transition:none}
 .knobs-graph :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:0;transition:opacity .15s}
 .knobs-graph[data-hover] :is(.knobs-graph-v,.knobs-graph-h,.knobs-graph-dot,.knobs-graph-read){opacity:1}
 .knobs-graph-v{bottom:0;width:1px;margin-left:-.5px;background:var(--k-line-hi)}
