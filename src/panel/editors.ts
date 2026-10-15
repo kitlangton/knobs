@@ -203,7 +203,8 @@ export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) 
     }
   })
   row.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !isOpen()) return
+    // In hint mode Esc ends the hints (the panel's), not the editor.
+    if (event.key !== "Escape" || !isOpen() || row.closest(".knobs-hinting")) return
     event.preventDefault()
     event.stopPropagation()
     open(false)

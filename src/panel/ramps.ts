@@ -302,7 +302,8 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   strip.onpointerup = release
   strip.onpointercancel = release
   strip.addEventListener("keydown", (event) => {
-    if (!plainKey(event)) return
+    // Hint mode takes every key (Backspace and Enter too) until it ends.
+    if (!plainKey(event) || hinting(x.row)) return
     const k = event.key
     const edit = (fn: () => void) => {
       event.preventDefault()
@@ -323,7 +324,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       event.stopPropagation()
       return select(next)
     }
-    if (event.altKey || event.shiftKey || hinting(x.row)) return
+    if (event.altKey || event.shiftKey) return
     if (k === "[" || k === "]") {
       event.preventDefault()
       event.stopPropagation()
@@ -342,7 +343,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
   })
   // Esc in the colour strips hands focus back to the stops.
   editor.body.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return
+    if (event.key !== "Escape" || hinting(x.row)) return
     event.preventDefault()
     event.stopPropagation()
     strip.focus()
@@ -723,7 +724,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     addAt(px, py)
   }
   graph.addEventListener("keydown", (event) => {
-    if (!plainKey(event)) return
+    if (!plainKey(event) || hinting(x.row)) return
     const k = event.key
     const edit = (fn: () => void) => {
       event.preventDefault()
@@ -751,7 +752,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
       event.stopPropagation()
       return select(next)
     }
-    if (event.altKey || event.shiftKey || hinting(x.row)) return
+    if (event.altKey || event.shiftKey) return
     if (k === "[" || k === "]") {
       event.preventDefault()
       event.stopPropagation()
