@@ -289,14 +289,15 @@ export function createChoice(
     }
     return segFits
   }
-  const ro = new ResizeObserver(() => {
+  const check = () => {
     if (!row.isConnected || !(o.observe ?? row).clientWidth) return
     const fits = arrange()
     if (display === "auto" && items.length <= compact && fits === asMenu) {
       apply(!fits)
       arrange()
     } else if (!asMenu) placeSegPill(seg, buttons, o.value(), true)
-  })
+  }
+  const ro = new ResizeObserver(check)
   ro.observe(o.observe ?? row)
   if (label) ro.observe(label)
   // On the next frame, with the rest of a change's writes done: measuring now would force a
@@ -304,10 +305,10 @@ export function createChoice(
   let queued = 0
   const win = doc.defaultView
   const rearrange = () => {
-    if (!label || queued || !win) return
+    if (queued || !win) return
     queued = win.requestAnimationFrame(() => {
       queued = 0
-      if (label.isConnected) arrange()
+      check()
     })
   }
   const pillRo = new ResizeObserver(() => {

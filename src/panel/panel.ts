@@ -3659,6 +3659,8 @@ function buildPanel<S extends Schema>(
   // Rows in hand (a drag, an inline edit) hold their key against incoming values until let go.
   const inHand = new Set<string>()
   const grab = (target: EventTarget | null) => {
+    if (blockedAt(target) || (target instanceof Element && target.closest(".knobs-accessory")))
+      return
     const at = rowAt(target as Node | null)
     for (const k of rows[at]?.keys ?? []) {
       inHand.add(k)
@@ -3930,6 +3932,8 @@ function buildPanel<S extends Schema>(
         doc.removeEventListener(type, pressEnded, true)
       clearTimeout(statusTimer)
       clearTimeout(nudgeEnd)
+      for (const k of inHand) controls.hold(k, false)
+      inHand.clear()
       for (const t of peekTimers.values()) clearTimeout(t)
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
       for (const c of groupChips.values()) c.dispose()
