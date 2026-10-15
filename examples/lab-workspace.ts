@@ -151,6 +151,15 @@ const center = split(main.pane("center").body, {
   ],
 })
 
+// A station is picked by a click (or its hint code): it's marked and the pane's count follows.
+const stations = [...side.querySelectorAll<HTMLElement>(".station")]
+stations.forEach((station, i) =>
+  station.addEventListener("click", () => {
+    for (const s of stations) s.classList.toggle("on", s === station)
+    left.pane("stations").title("Stations", i + 1)
+  }),
+)
+
 // The outliner: a search field over the tree.
 const outliner = document.createElement("div")
 outliner.className = "outliner"
