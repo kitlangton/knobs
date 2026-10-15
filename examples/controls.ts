@@ -20,6 +20,7 @@ import {
   curve,
   defineControls,
   easing,
+  flatSpring,
   gradient,
   gradientCss,
   graph,
@@ -54,6 +55,7 @@ import {
   commandPalette,
   commandsFrom,
   overlayLook,
+  readout,
   restyle,
   toast,
   tooltips,
@@ -681,55 +683,66 @@ function bezierY(b: Bezier, x: number) {
   const s = section({
     id: "spring",
     title: "Spring",
-    code: "spring()",
-    what: "SwiftUI's duration and bounce beside the live step response. The card replays your spring when a change lands.",
+    code: "spring() · flatSpring()",
+    what: "SwiftUI's duration and bounce beside the live step response. The top card moves on Spring, one { duration, bounce } value; the lower one on Settle, a flat spring of two plain number keys drawn as one card.",
     stage: true,
-    tries: ["Set bounce to 0.5 and let go of the slider", "Click the stage to send the card back"],
+    tries: [
+      "Set bounce to 0.5 and let go of the slider: the cards replay",
+      "Click the stage to send them back",
+    ],
   })
   let replay = () => {}
+  const settle = flatSpring({ duration: 0.3, bounce: 0 }, { label: "Settle" })
   const { store, on } = define(
     "spring",
     "Spring",
     {
       motion: spring({ duration: 0.5, bounce: 0.3 }, { label: "Spring" }),
+      settleDuration: settle.duration,
+      settleBounce: settle.bounce,
       travel: knob(150, { min: 60, max: 220, step: 1, unit: "px", label: "Travel" }),
     },
     { onGesture: ({ phase }) => phase === "end" && replay() },
   )
-  mount(store, s.slot, { title: "Card" })
+  mount(store, s.slot, { title: "Cards" })
   s.stage.dataset.replay = ""
   s.stage.style.display = "block"
-  const ends = [0, 1].map(() => {
-    const g = h("div", "abs")
-    g.style.cssText +=
-      "width:56px;height:72px;margin:-36px 0 0 -28px;border-radius:12px;box-shadow:inset 0 0 0 1.5px var(--line)"
-    s.stage.append(g)
-    return g
-  })
-  const card = h("div", "abs")
-  card.style.cssText +=
-    "width:56px;height:72px;margin:-36px 0 0 -28px;border-radius:12px;background:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25)"
-  s.stage.append(card)
+  const box = (css: string) => {
+    const el = h("div", "abs")
+    el.style.cssText += `width:44px;height:56px;margin:-28px 0 0 -22px;border-radius:10px;${css}`
+    s.stage.append(el)
+    return el
+  }
+  const ghost = "box-shadow:inset 0 0 0 1.5px var(--line)"
+  const ends = [box(ghost), box(ghost), box(ghost), box(ghost)]
+  const cards = [
+    box("background:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.25)"),
+    box("background:color-mix(in srgb,var(--text) 55%,transparent)"),
+  ]
   const caption = h("div", "caption")
   s.stage.append(caption)
   let travel = 150
   const stage = new Stage(s.stage, () => {
     const cx = s.stage.clientWidth / 2
     const cy = s.stage.clientHeight / 2
-    ends[0]!.style.transform = `translate(${px(cx - travel / 2)},${px(cy)})`
-    ends[1]!.style.transform = `translate(${px(cx + travel / 2)},${px(cy)})`
-    card.style.transform = `translate(${px(cx + (pos.x - 0.5) * travel)},${px(cy)})`
+    ;[cy - 36, cy + 36].forEach((y, row) => {
+      ends[row * 2]!.style.transform = `translate(${px(cx - travel / 2)},${px(y)})`
+      ends[row * 2 + 1]!.style.transform = `translate(${px(cx + travel / 2)},${px(y)})`
+      cards[row]!.style.transform = `translate(${px(cx + (pos[row]!.x - 0.5) * travel)},${px(y)})`
+    })
   })
-  const pos = stage.val(0, 0.0004)
+  const pos = [stage.val(0, 0.0004), stage.val(0, 0.0004)]
   let side = 0
   replay = () => {
+    const v = store.get()
     side = 1 - side
-    pos.to(side, springMotion(store.get().motion))
+    pos[0]!.to(side, springMotion(v.motion))
+    pos[1]!.to(side, springMotion({ duration: v.settleDuration, bounce: v.settleBounce }))
   }
   s.stage.addEventListener("click", () => replay())
   on((v, how, meta) => {
     travel = v.travel
-    caption.textContent = `${v.motion.duration.toFixed(2)}s · bounce ${v.motion.bounce.toFixed(2)}`
+    caption.textContent = `${v.motion.duration.toFixed(2)}s · ${v.motion.bounce.toFixed(2)}  /  ${v.settleDuration.toFixed(2)}s · ${v.settleBounce.toFixed(2)}`
     stage.paint()
     // Presets, Random, Reset and undo land at once; drags and keys wait for the gesture's end.
     if (how === "other" && meta?.source !== "compare") replay()
@@ -1294,6 +1307,15 @@ category("Readouts")
   const right = h("div", "slot")
   s.side.prepend(right)
   mount(live, right, { title: "Live", header: { title: true, buttons: [] } })
+  // A readout on its own, outside any panel.
+  const solo = readout(sparkline({ label: "Frame", unit: "ms", decimals: 1, min: 0 }), { theme })
+  const soloRow = h("div")
+  soloRow.style.cssText = "display:flex;flex-direction:column;gap:6px"
+  const soloNote = h("div", "", "On its own, outside a panel: <code>readout(sparkline())</code>")
+  soloNote.style.cssText = "color:var(--dim);font-size:12px"
+  solo.element.style.cssText += ";max-width:300px"
+  soloRow.append(soloNote, solo.element)
+  s.side.append(soloRow)
   let spikeAt = -1e9
   let visible = false
   let timer = 0
@@ -1313,6 +1335,7 @@ category("Readouts")
     if (frame > 16.7) drops++
     mem += (180 + v.load * 300 + spike * 120 - mem) * 0.06 + jitter()
     live.watch("frame", { cpu, gpu })
+    solo.push(frame)
     live.watch("fps", Math.min(120, 1000 / frame))
     live.watch("drops", drops)
     live.watch("memory", mem)

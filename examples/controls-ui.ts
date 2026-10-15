@@ -12,6 +12,7 @@ import {
   type TimelineMarker,
   timeline,
   toast,
+  tooltip,
   tree,
 } from "knobs/ui"
 import { Stage } from "./controls-motion"
@@ -407,6 +408,7 @@ export function uiSections({ section, h, theme }: Kit) {
     const share = h("button", "chip")
     share.textContent = "Share…"
     share.setAttribute("aria-haspopup", "dialog")
+    tooltip(share, { text: () => (pop?.open ? "Close" : "Share this panel"), placement: "top" })
     let pop: ReturnType<typeof popover> | null = null
     share.addEventListener("click", () => {
       if (pop?.open) return void pop.close()
