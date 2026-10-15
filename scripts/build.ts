@@ -37,6 +37,10 @@ for (const [name, entry] of [
 const production = await Bun.file("dist/index.js").text()
 if (/import\(["']|knobs-panel|createPanel|ResizeObserver/.test(production))
   throw new Error("Panel leaked into production core.")
+// The pieces (split, tree, readouts, overlays) stand alone: no panel or GPU renderer inside.
+const ui = await Bun.file("dist/ui.js").text()
+if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(ui))
+  throw new Error("The panel leaked into knobs/ui.")
 const built = await import(new URL("../dist/index.js", import.meta.url).href)
 const locked = built.defineControls(
   "production-proof",
