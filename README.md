@@ -228,7 +228,9 @@ const node = defineControls("node", {
   says `random: true`.
 - **`keybind(value?)`**: a key combination such as `"Meta+Shift+K"` (stored canonically, `""` for
   none), drawn as key caps. Enter or a click starts listening; the next combination is the value,
-  Esc cancels and ⌫ clears. Not rolled by Random or Mutate.
+  Esc cancels and ⌫ clears. Not rolled by Random or Mutate. Letters follow the user's layout
+  (Dvorak's K records and matches as K), with ⌥ combinations read through the browser's layout
+  map; `comboFromEvent`, `matchesCombo` and `letterOf` do the same for a host's own keys.
 - **`toolbar(items)`**: a wrapping row of buttons with an icon (`play`, `pause`, `frame`,
   `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
   and a shortcut chip. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`

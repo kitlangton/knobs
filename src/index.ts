@@ -135,6 +135,7 @@ export type { TokenPreset } from "./core/theme.js"
 export { formatCode, type CodeFormat } from "./core/code.js"
 export {
   comboFromEvent,
+  letterOf,
   comboLabel,
   comboParts,
   matchesCombo,
