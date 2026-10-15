@@ -123,6 +123,71 @@ el.style.background = v.tint                                // OKLCH strings wor
 - **`point(value, { min, max, step? })`**: `{ x, y }`; bounds and step take a number or `{ x, y }`. y grows downward, as in CSS and UIKit. The pad marks the default with a ring; a drag is one undo step, and `⌥` drags at 1/10 speed.
 - **`easing(value, meta?)`**: `[x1, y1, x2, y2]` or a name: `ease`, `ease-in`/`in`, `ease-out`/`out`, `ease-in-out`/`in-out`, `linear`, `smooth`, `snappy` or `back`. x stays within 0–1 and y within −0.6–1.6. The row shows a mini curve; the editor has two handles and the named curves as chips. `bezierCss(value)` writes the CSS.
 
+### Gradients and curves
+
+```ts
+import { curve, defineControls, gradient, sampleCurve, sampleGradient } from "knobs"
+
+const schema = {
+  smoke: gradient(
+    [
+      { at: 0, color: "#fff2c4" },
+      { at: 0.3, color: "#7a2e14" },
+      { at: 1, color: "#2a2a2c" },
+    ],
+    {
+      label: "Smoke over life",
+      presets: { Steam: [{ at: 0, color: "#fff" }, { at: 1, color: "#6b7480" }] },
+    },
+  ),                                                     // [{ at, color: "oklch(…)" }]
+  falloff: curve("inverse²", { label: "Light falloff" }), // [{ x, y }]
+  gain: curve([{ x: 0, y: 0 }, { x: 1, y: 2 }], { range: [0, 2], interp: "linear" }),
+}
+const fx = defineControls("fx", schema)
+
+const v = fx.get()
+puff.style.background = sampleGradient(v.smoke, age)                  // an oklch() string
+const [r, g, b] = sampleGradient(v.smoke, age, { as: "linear" })       // for a shader
+const alpha = sampleCurve(v.falloff, distance / radius, schema.falloff) // the field's interp
+```
+
+- **`gradient(stops, { space?, presets?, ...meta })`**: a colour ramp, `[{ at, color }]`. `at` runs
+  0–1; colours take what `color()` does and are stored as `oklch()` strings. Stops stay sorted
+  (2–32 of them). `space: "oklab"` (the default) blends perceptually; `"srgb"` blends the gamma
+  channels as CSS does. The row shows the ramp with a tick per stop. Open, it's a wide strip with
+  a pin per stop: drag a pin (it may pass its neighbours), pull it off the strip to delete it
+  (never below two), or click the strip to add a stop in the colour already there. The selected
+  stop's colour is edited in the hue, chroma and lightness strips below, and `presets` show as
+  chips.
+- **`curve(points | shape, { range?, interp?, shapes?, presets?, ...meta })`**: a 1D curve,
+  `[{ x, y }]`, with x across 0–1 and y within `range` (0–1 by default). The first and last points
+  stay at x 0 and 1; a curve holds 2–64 points. `interp` is `"smooth"` (a monotone cubic, so it
+  never overshoots between points), `"linear"` or `"step"`. The row shows the shape's name, if it
+  is one, and a mini curve. Open, it's a graph with a grid: drag points (`⇧` snaps to the grid),
+  press on the curve or double-click empty space to add one, drag one out of the graph (or press
+  Delete) to remove it. A crosshair follows the pointer and reads out `x → y`. The built-in
+  shapes `linear`, `ease-out`, `inverse²`, `smoothstep` and `bell` (`CURVE_SHAPES`, mapped onto
+  the range) show as chips beside any `presets`; `shapes: false` hides them. `curve("bell")`
+  starts from one.
+- **`sampleGradient(stops, t, { space?, as? })`** returns the colour at `t` as an `oklch()` string,
+  or `as: "hex"`, `"rgb"` (gamma sRGB 0–1) or `"linear"` (linear-light, for shaders).
+  `gradientCss(stops, { space?, direction? })` writes a CSS `linear-gradient()`.
+  **`sampleCurve(points, x, { interp? })`** returns y at `x`. Pass the field as the options, as
+  above, so the blend or interpolation matches the editor's.
+
+Keys, with the strip or graph focused: `←`/`→` move the selected stop or point (`⇧` ×10, `⌥`
+finest on a curve), and `↑`/`↓` move a point's y. `Tab` / `⇧Tab` step through the stops or points,
+then move on past the ends, and `[` / `]` cycle through them. `n` adds one halfway to the next,
+and `Delete` removes the selected one. On a gradient, `Enter` edits the stop's colour and `Esc`
+comes back. `←`/`→` on a closed row or on the chips cycle the presets. A drag is one undo step.
+
+Presets change smoothly: both ramps are sampled at fixed points (64 colours, 129 curve points)
+and the samples blend on the panel's spring, so a strip shifts colour and a curve bends into its
+new shape while the pins and points glide. The WebGPU renderer draws the same samples. Random
+keeps a gradient's stop count and walks its hue along a lightness ramp. On a curve, Random picks
+a built-in shape and jitters it. Mutate nudges colours as it does a `color` and moves stops and
+points without letting them pass each other.
+
 ### Inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars
 
 ```ts
@@ -173,7 +238,7 @@ Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle
 `{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`. Each kind takes
 `disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
 
-Spring, point and easing values compare by their numbers everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
+Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
 
 ### Readouts: live values, sparklines, graphs, meters, tables and logs
 
@@ -225,9 +290,10 @@ Panels and switchers are keyboard-first:
 | --- | --- |
 | `↑` / `↓` or `j` / `k` | Move between presets, rows and custom actions (`←`/`→` move along the custom actions); a spring's two sliders are two stops |
 | `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`); on a colour row turn the hue, on a point row move x, on an easing row cycle the named curves |
-| `Enter` / `Space` | Open a colour, point or easing row's editor; `↓` then walks into it (strips, chips, handles, pad) |
+| `Enter` / `Space` | Open a colour, point, easing, gradient or curve row's editor; `↓` then walks into it (strips, chips, handles, pad) |
 | `Esc` | Fold an open editor and return to its row (before closing the panel) |
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
+| On a gradient strip or curve graph | Arrows move the selected stop or point; `Tab` / `⇧Tab` and `[` / `]` pick another; `n` adds one, `Delete` removes it; `Enter` edits a stop's colour (`Esc` returns) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
 | `⌥1`–`⌥9` | Show tab 1–9 |
 | `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
@@ -328,7 +394,7 @@ A change of several keys at once (a page or card preset, Native, Random, Mutate,
 onSetBatch: (changes) => ws.send(JSON.stringify({ type: "setMany", changes })),
 ```
 
-Descriptors also take `kind: "spring"` (default `{ duration, bounce }`), `"color"` (any string `color()` accepts), `"point"` (default `{ x, y }`, with `min`/`max`/`step` applying to both axes) and `"easing"` (default `[x1, y1, x2, y2]`). `onSet` then sends those values as they are (objects, strings and arrays), or `null` when a key returns to its default. `remote.swift()` emits matching Swift:
+Descriptors also take `kind: "spring"` (default `{ duration, bounce }`), `"color"` (any string `color()` accepts), `"point"` (default `{ x, y }`, with `min`/`max`/`step` applying to both axes), `"easing"` (default `[x1, y1, x2, y2]`), `"gradient"` (default `[{ at, color }]`, with `space` and `presets`) and `"curve"` (default `[{ x, y }]`, with `range`, `interp`, `shapes` and `presets`). `onSet` then sends those values as they are (objects, strings and arrays), or `null` when a key returns to its default. `remote.swift()` emits matching Swift:
 
 ```swift
 TunableSpring("drawer.spring", "Drawer", duration: 0.45, bounce: 0.25)  // was duration: 0.4, bounce: 0.25
@@ -337,7 +403,7 @@ Tunable<CGPoint>("composer.anchor", "Anchor", default: CGPoint(x: 0.5, y: 0.75))
 Tunable<UnitCurve>("drawer.fade", "Fade curve", default: .bezier(startControlPoint: UnitPoint(x: 0.32, y: 0.72), endControlPoint: UnitPoint(x: 0, y: 1)))  // was .bezier(...)
 ```
 
-Colours leave as sRGB components (the OKLCH value is already inside sRGB). Points are `CGPoint`s and easings SwiftUI `UnitCurve.bezier` values. Paired `*.duration` / `*.bounce` number descriptors still fold into one `TunableSpring`.
+Colours leave as sRGB components (the OKLCH value is already inside sRGB). Points are `CGPoint`s and easings SwiftUI `UnitCurve.bezier` values. Gradients become `Gradient(stops: [.init(color: Color(…), location: …)])` and curves `[CGPoint]`. Paired `*.duration` / `*.bounce` number descriptors still fold into one `TunableSpring`.
 
 **Migrating an app's Tune page:** the Swift side needs `Tunable` to support `Color`, `CGPoint` and `UnitCurve` (decoding the socket's `"oklch(L C H)"`/hex string, `{ x, y }` and `[x1, y1, x2, y2]`), and a `TunableSpring` that reads `{ duration, bounce }` from one key rather than two. Until then, keep sending a spring as paired `.duration`/`.bounce` number descriptors; the panel and codegen handle both. Nothing in other repositories changes until you opt in.
 
@@ -957,6 +1023,10 @@ The package has two core exports selected through the standard `development` con
 | `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |
 | `point({ x, y }, { min, max, step?, ...meta })` | 2D pad; bounds and step take a number or `{ x, y }`. |
 | `easing([x1, y1, x2, y2] \| name, meta?)` | Cubic bezier with a mini curve, a handle editor and named curves. |
+| `gradient([{ at, color }], { space?, presets?, ...meta })` | A colour ramp of 2–32 stops, blended in `oklab` (default) or `srgb`; a strip of draggable stops with the colour editor for the selected one. |
+| `curve([{ x, y }] \| shape, { range?, interp?, shapes?, presets?, ...meta })` | A 1D curve of 2–64 points (ends pinned to x 0 and 1), `smooth` (monotone cubic), `linear` or `step`; a graph of draggable points with shape chips. |
+| `sampleGradient(stops, t, { space?, as? })` / `gradientCss(stops, { space?, direction? })` | A gradient's colour at `t` (`oklch()`, or `as: "hex" \| "rgb" \| "linear"`); a CSS `linear-gradient()`. |
+| `sampleCurve(points, x, { interp? })` / `CURVE_SHAPES` | A curve's y at `x`; the built-in shapes (`linear`, `ease-out`, `inverse²`, `smoothstep`, `bell`) over 0–1. |
 | `vec2({ x, y }, { min, max, step?, link?, linked? })` / `vec3({ x, y, z }, …)` | Inline number cells, optionally linked for uniform scaling. |
 | `range([low, high], { min, max, step?, unit? })` | One slider with two thumbs. |
 | `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |

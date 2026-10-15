@@ -376,3 +376,19 @@ surfaces on knobs.
 
 Set the look once with `overlayLook({ preset: labPreset, theme: "dark" })`.
 
+### Gradients and curves for FX
+
+`examples/lab-fx.ts` is the inspector's FX tab: smoke colour over a puff's life, sky and fog by
+the hour, a light's falloff and how fast the unseen sinks into darkness. All of it drives the fake
+viewport.
+
+| Where the Lab has | Use |
+| --- | --- |
+| Colour ramps kept as parallel arrays of positions and hex strings, or several `color` rows | `gradient([{ at, color }], { presets })`, read with `sampleGradient(v.smoke, age, { ...field, as: "linear" })` for a shader or `as: "hex"` for CSS. |
+| Falloffs and response curves hard-coded as formulas (`1 / (1 + k d²)`) with a number knob or two | `curve("inverse²")` (or `[{ x, y }]` with `range` and `interp`), read with `sampleCurve(v.falloff, d / radius, field)`. Artists can reshape it; the formula's knobs go. |
+| Remote stations sending ramps as flattened numbers | Descriptors with `kind: "gradient"` or `"curve"`. The values go over the socket as they are (`[{ at, color }]`, `[{ x, y }]`). |
+
+Sample once per change, not per frame. The values only change when someone edits them, and
+`controls.subscribe` says when. The Lab's FX tab repaints from CSS gradients on change and never
+starts a frame loop.
+
