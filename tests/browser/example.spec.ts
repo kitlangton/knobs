@@ -2136,8 +2136,29 @@ test("quiet header tools, copy turns into a check, and numbers edit in place", a
     await expect(copy).toHaveAttribute("data-copied", "")
     await expect(panel.locator(".knobs-sr")).toHaveText("Copied")
     await expect(panel.getByRole("status")).toBeHidden()
+    // A thin stroked check (never the polyline filled into a wedge), fully drawn mid-hold.
+    const check = () =>
+      copy.evaluate((b) => {
+        const svg = b.querySelector(".knobs-check")!
+        const path = getComputedStyle(svg.querySelector("path")!)
+        return {
+          fill: path.fill,
+          stroke: path.stroke,
+          width: path.strokeWidth,
+          cap: path.strokeLinecap,
+          drawn: parseFloat(getComputedStyle(b).getPropertyValue("--k-check")),
+          shown: parseFloat(getComputedStyle(b).getPropertyValue("--k-check-a")),
+          opacity: getComputedStyle(svg).opacity,
+        }
+      })
+    await expect
+      .poll(check)
+      .toMatchObject({ fill: "none", width: "16px", cap: "round", drawn: 1, shown: 1 })
+    expect((await check()).stroke).not.toBe("none")
+    if (mode === "dom") expect((await check()).opacity).toBe("1")
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("cells")
     await expect(copy).not.toHaveAttribute("data-copied", "", { timeout: 3000 })
+    await expect.poll(async () => (await check()).shown).toBe(0)
 
     // Inline edit: the readout's digits become the field where they stand, the unit after them.
     const radius = panel.locator(".knobs-slider").nth(1)
@@ -2179,6 +2200,86 @@ test("quiet header tools, copy turns into a check, and numbers edit in place", a
     await expect(track).toHaveAttribute("aria-valuenow", "8")
     if (mode === "dom") await expect(digits.locator(".rn-value")).toHaveText("8.0")
     await expect(field).toBeHidden()
+  }
+})
+
+test("Reset's ↺ turns once per reset, additively, and blinks instead with reduced motion", async ({
+  page,
+}) => {
+  for (const reduced of [false, true]) {
+    await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" })
+    await page.goto("/?dom")
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    await page.reload()
+    const panel = await openStudy(page, "halftone")
+    await expect(panel).not.toHaveAttribute("data-morphing")
+    const reset = panel.getByRole("button", { name: "Reset", exact: true })
+    const track = panel.getByRole("slider", { name: "cells" })
+    // Every frame's turn and opacity, from here on.
+    const record = () =>
+      reset.evaluate((b) => {
+        const icon = b.querySelector<SVGElement>(".knobs-icon")!
+        const seen = { min: 0, max: 0, dim: 1, frames: 0 }
+        ;(window as any).__spin = seen
+        const tick = () => {
+          const turn = parseFloat(icon.style.rotate) || 0
+          seen.min = Math.min(seen.min, turn)
+          seen.max = Math.max(seen.max, turn)
+          seen.dim = Math.min(seen.dim, Number(icon.style.opacity || 1))
+          seen.frames++
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+    const seen = () => page.evaluate(() => ({ ...(window as any).__spin }))
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await reset.click()
+    await expect(track).toHaveAttribute("aria-valuenow", "22")
+    const icon = () =>
+      reset.evaluate((b) => {
+        const s = b.querySelector<SVGElement>(".knobs-icon")!.style
+        return s.rotate + s.opacity
+      })
+    if (reduced) {
+      await expect.poll(async () => (await seen()).dim).toBeLessThan(0.7)
+      await expect.poll(icon).toBe("")
+      const one = await seen()
+      expect([one.min, one.max]).toEqual([0, 0])
+      continue
+    }
+    // One counter-clockwise turn, with no overshoot past it and no winding back.
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-300)
+    await expect.poll(icon).toBe("")
+    const one = await seen()
+    expect(one.min).toBeGreaterThanOrEqual(-361)
+    expect(one.max).toBe(0)
+    // The button stays live while it turns: a second press adds a turn from where it is.
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await reset.dblclick()
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-660)
+    await expect.poll(icon).toBe("")
+    const two = await seen()
+    expect(two.min).toBeGreaterThanOrEqual(-721)
+    expect(two.max).toBe(0)
+    await expect(reset).toBeDisabled()
+    // ⇧R turns it too.
+    await track.focus()
+    await page.keyboard.press("ArrowRight")
+    await expect(reset).toBeEnabled()
+    await record()
+    await page.keyboard.press("Shift+R")
+    await expect.poll(async () => (await seen()).min).toBeLessThan(-300)
+    await expect.poll(icon).toBe("")
+    expect((await seen()).min).toBeGreaterThanOrEqual(-361)
   }
 })
 

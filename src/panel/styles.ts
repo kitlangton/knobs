@@ -270,7 +270,8 @@ const css = `
   transition:background .15s,color .15s,opacity .15s,--k-copy .14s ease-in,--k-check .28s cubic-bezier(.3,.7,.2,1) .06s,--k-check-a .05s linear .06s}
 .knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
 .knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
-.knobs-check path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
+/* (Over .knobs-icon>path's fill: the check is a stroke, 16 of 256 wide like Phosphor's regular icons.) */
+.knobs-panel .knobs-icon.knobs-check>path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
 .knobs-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
 /* Shortcuts Popover */

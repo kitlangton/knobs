@@ -21,7 +21,7 @@ struct Prim {
   color: vec4f,   // primary r, g, b, a
   color2: vec4f,  // secondary r, g, b, a (border / handle / thumb / glow)
   look: vec4f,    // radius, strokeWidth, glowOrBlur, kind
-  motion: vec4f,  // blurX, blurY, unused, cornersInUv + 2 * (mask index + 1)
+  motion: vec4f,  // blurX, blurY, turn (kind 5, radians), cornersInUv + 2 * (mask index + 1)
   extra: vec4f,   // kind-specific params
   aux: vec4f,     // kind-specific params
   aux2: vec4f,    // kind-specific color
@@ -401,7 +401,17 @@ fn sampleAtlasAlpha(p: Prim, local: vec2f, size: vec2f) -> f32 {
 }
 
 // kind 5: Native-rasterized atlas text & hint badges with directional motion blur
-fn shadeText(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
+fn shadeText(p: Prim, rectLocal: vec2f, rectSize: vec2f, fragPos: vec2f) -> vec4f {
+  // A turning glyph (motion.z, clockwise) sits in a quad √2 its size, sampled turned back.
+  var local = rectLocal;
+  var size = rectSize;
+  if (p.motion.z != 0.0) {
+    size = rectSize / 1.41421356;
+    let c = rectLocal - rectSize * 0.5;
+    let s = sin(p.motion.z);
+    let co = cos(p.motion.z);
+    local = vec2f(co * c.x + s * c.y, -s * c.x + co * c.y) + size * 0.5;
+  }
   let blur = p.motion.xy;
   let len = length(blur);
   var a = 0.0;

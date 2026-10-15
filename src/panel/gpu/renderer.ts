@@ -16,6 +16,7 @@ import {
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
+import { spinOf } from "../spin.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { DigitPlace, Slider } from "../slider.js"
 import type { TabStrip } from "../tabs.js"
@@ -990,6 +991,8 @@ class GpuOverlayManager {
     kind: number
     blurX?: number
     blurY?: number
+    /** Atlas glyphs (kind 5): turned this far (radians, clockwise) in a quad √2 their size. */
+    turn?: number
     p0?: number
     p1?: number
     p2?: number
@@ -1041,7 +1044,7 @@ class GpuOverlayManager {
     d[b + 23] = o.kind
     d[b + 24] = o.blurX ?? 0
     d[b + 25] = o.blurY ?? 0
-    d[b + 26] = 0
+    d[b + 26] = o.turn ?? 0
     d[b + 27] = (o.corners ? 1 : 0) + 2 * this.curMask
     d[b + 28] = o.p0 ?? 0
     d[b + 29] = o.p1 ?? 0
@@ -1501,19 +1504,23 @@ class GpuOverlayManager {
     color: Rgba,
     clip?: Clip,
     scale = 1,
+    turn = 0,
   ) {
     const entry = this.atlas.icon(iconPath(icon), px, this.curScale)
-    const s = scale === 1 ? this.curScale : 0
+    // Turning (radians, clockwise), the quad is √2 the glyph so its corners stay inside it.
+    const k = scale * (turn ? Math.SQRT2 : 1)
+    const s = k === 1 ? this.curScale : 0
     const snap = (v: number) => (s ? Math.round(v * s) / s : v)
     this.pushPrim({
-      x: snap(box.left + (box.width - entry.w * scale) * 0.5),
-      y: snap(box.top + (box.height - entry.h * scale) * 0.5),
-      w: entry.w * scale,
-      h: entry.h * scale,
+      x: snap(box.left + (box.width - entry.w * k) * 0.5),
+      y: snap(box.top + (box.height - entry.h * k) * 0.5),
+      w: entry.w * k,
+      h: entry.h * k,
       clip,
       uv: entry.uv,
       color,
       kind: 5,
+      turn,
     })
   }
 
@@ -3294,7 +3301,11 @@ class GpuOverlayManager {
             // The X nudged right, its ink ending with the values' digits (see .knobs-close).
             const nudge = hb.icon === "close" ? tokens.iconSize * 0.1 : 0
             const box = new DOMRect(bRect.left + nudge, bRect.top, bRect.width, bRect.height)
-            this.drawIcon(hb.icon, tokens.iconSize, box, iconColor, clip, scale)
+            // Reset's ↺ turns as the DOM's does (spin.ts).
+            const turn = spinOf(hb.button, clock)
+            if (turn.moving) anyMoving = true
+            const ink = turn.alpha === 1 ? iconColor : withAlpha(iconColor, turn.alpha)
+            this.drawIcon(hb.icon, tokens.iconSize, box, ink, clip, scale, turn.angle)
           }
         }
       }
@@ -3722,13 +3733,16 @@ class GpuOverlayManager {
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
           this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
+          const turn = spinOf(reset, clock)
+          if (turn.moving) anyMoving = true
           this.drawIcon(
             "reset",
             tokens.iconSm,
             br,
-            withAlpha(this.hot(reset, hovered || focused), alpha),
+            withAlpha(this.hot(reset, hovered || focused), alpha * turn.alpha),
             undefined,
             0.55 + 0.45 * resetShown,
+            turn.angle,
           )
         }
         // The group's die: quiet (dim) until hovered or focused.

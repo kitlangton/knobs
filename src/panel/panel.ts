@@ -47,6 +47,7 @@ import {
   vecRow,
   type ToolbarRow,
 } from "./inspector.js"
+import { spin, spinning } from "./spin.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
@@ -387,7 +388,19 @@ function buildPanel<S extends Schema>(
   if ((!bound("random") && !bound("mutate")) || !shows("random")) randomButton.hidden = true
   randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
-  const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), controls.reset)
+  // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
+  // stays live while it turns, so another press adds a turn; it dims once it has stopped.
+  const resetAll = () => {
+    if (!resetBtn.hidden && !resetBtn.disabled && !header.hidden)
+      spin(resetBtn, wakeGpu, () => {
+        const values = controls.get() as Record<string, unknown>
+        const base = controls.locked as Record<string, unknown>
+        resetBtn.disabled = !rows.some((r) => r.keys.some((k) => !same(values[k], base[k])))
+        wakeGpu()
+      })
+    controls.reset()
+  }
+  const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), resetAll)
   if (!bound("resetAll") || !marks || !shows("reset")) resetBtn.hidden = true
   const copyButton = command("copy", "Copy", ariaKeys(keys.copy), copyValues)
   if (!bound("copy") || !shows("copy")) copyButton.hidden = true
@@ -749,6 +762,7 @@ function buildPanel<S extends Schema>(
     }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
+      spin(gReset, wakeGpu)
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
         rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
@@ -2371,7 +2385,8 @@ function buildPanel<S extends Schema>(
       }
       const totalMod =
         anyMod || rows.some((r) => !r.group && r.keys.some((k) => !same(values[k], locked[k])))
-      if (resetBtn.disabled !== !totalMod) resetBtn.disabled = !totalMod
+      const resetOff = !totalMod && !spinning(resetBtn)
+      if (resetBtn.disabled !== resetOff) resetBtn.disabled = resetOff
     }
     let unlocked = 0
     for (const row of rows) {
@@ -3239,7 +3254,7 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("resetAll", event)) {
       event.preventDefault()
-      run(controls.reset)
+      run(resetAll)
       return
     }
     if (pressed("random", event)) {
