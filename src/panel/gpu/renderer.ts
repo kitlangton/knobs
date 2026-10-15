@@ -1609,9 +1609,10 @@ class GpuOverlayManager {
   ): string {
     const m = (t: string) => this.atlas.measure(t, px, weight, family) + t.length * track * px
     if (m(text) <= maxW + 0.5) return text
+    // Like the DOM's text-overflow: the longest prefix that fits with "…", a trailing space kept.
     let n = text.length
-    while (n > 0 && m(`${text.slice(0, n).trimEnd()}…`) > maxW) n--
-    return n > 0 ? `${text.slice(0, n).trimEnd()}…` : ""
+    while (n > 0 && m(`${text.slice(0, n)}…`) > maxW) n--
+    return n > 0 ? `${text.slice(0, n)}…` : ""
   }
 
   private curReduced = false
