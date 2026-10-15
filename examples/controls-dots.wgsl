@@ -1,9 +1,9 @@
-// The metaball dots on WebGPU: Argon's field and shutter (controls-goo.ts's WebGL shader, ported),
-// lit. The union of up to eight stretched dots under a polynomial smooth-min; its coverage is
-// integrated across a raised-cosine shutter while anything moves, so trails smear and a resting
-// row is razor crisp. The surface is read as a pillow (height from depth inside the field), so
-// each dot and every neck between two catches a key light from the upper left, a tight highlight
-// and a rim, and lays a soft shadow on the stage. Pearl on dark, black glass on light.
+// The metaball dots on WebGPU: the union of up to eight stretched dots under a polynomial
+// smooth-min; its coverage is integrated across a raised-cosine shutter while anything moves, so
+// trails smear and a resting row is razor crisp. The surface is read as a pillow (height from
+// depth inside the field), so each dot and every neck between two catches a key light from the
+// upper left, a tight highlight and a rim, and lays a soft shadow on the stage. Pearl on dark,
+// black glass on light.
 //
 // u.v[0..7]   dots: x, y, r, opacity (CSS px)
 // u.v[8..15]  direction xy, stretch, shutter travel (px)

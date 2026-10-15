@@ -13,33 +13,37 @@ import { createRollingNumber, createRollingText } from "@kitlangton/rolling-numb
 import "@kitlangton/rolling-number/styles.css"
 import { parseColor, springMotion } from "knobs"
 import { Spring } from "knobs/panel"
-import { live } from "./controls-live"
 
-export type Feel =
-  | "follow"
-  | "trail"
-  | "instant"
-  | "snappy"
-  | "default"
-  | "calm"
-  | "smooth"
-  | "morph"
-  | "morphClose"
-  | "playful"
-  | "slow"
+export type LiveLevel = "debug" | "info" | "warn" | "error"
+
+/** What the page is doing, for the Readouts scene to watch. */
+export const live = {
+  frames: 0,
+  frameMs: 0,
+  moving: 0,
+  views: new Map<string, { renders: number; ms: number }>(),
+  gpuMs: 0,
+  lumens: 0,
+  events: [] as { level: LiveLevel; text: string }[],
+  log(text: string, level: LiveLevel = "info") {
+    this.events.push({ level, text })
+    if (this.events.length > 50) this.events.shift()
+  },
+}
+
+export const px = (n: number) => `${Math.round(n * 100) / 100}px`
+export const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
+export const rad = (deg: number) => (deg * Math.PI) / 180
+
+export type Feel = "follow" | "snappy" | "default" | "calm" | "morph" | "playful"
 
 export const FEEL: Record<Feel, { omega: number; zeta: number }> = {
   follow: { omega: 34, zeta: 0.86 },
-  trail: { omega: 25, zeta: 1 },
-  instant: springMotion({ duration: 0.1, bounce: 0 }),
   snappy: springMotion({ duration: 0.25, bounce: 0 }),
   default: springMotion({ duration: 0.3, bounce: 0 }),
   calm: springMotion({ duration: 0.4, bounce: 0 }),
-  smooth: springMotion({ duration: 0.45, bounce: 0 }),
   morph: springMotion({ duration: 0.42, bounce: 0.16 }),
-  morphClose: springMotion({ duration: 0.38, bounce: 0.08 }),
   playful: springMotion({ duration: 0.3, bounce: 0.3 }),
-  slow: springMotion({ duration: 0.85, bounce: 0 }),
 }
 const FADE = springMotion({ duration: 0.18, bounce: 0 })
 
@@ -544,7 +548,7 @@ export class Speed {
 export function oklab(css: string): [number, number, number] {
   const c = parseColor(css)
   if (!c) return [0, 0, 0]
-  const h = (c.h * Math.PI) / 180
+  const h = rad(c.h)
   return [c.l, c.c * Math.cos(h), c.c * Math.sin(h)]
 }
 export const oklabCss = ([l, a, b]: readonly number[], alpha = 1) =>
@@ -561,7 +565,7 @@ export function oklabRgb([L, a, b]: readonly number[]): [number, number, number]
     -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
   ]
   return lin.map((c) => {
-    const x = Math.min(1, Math.max(0, c))
+    const x = clamp01(c)
     return Math.round((x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055) * 255)
   }) as [number, number, number]
 }
@@ -649,56 +653,5 @@ export function rolling(el: HTMLElement, parts: readonly Part[]) {
   }
   return (values: Readonly<Record<string, number | string>>) => {
     for (const [id, v] of Object.entries(values)) setters.get(id)?.(v)
-  }
-}
-
-// ── Swaps ────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * Content that changes by crossing over: what leaves softens (blur 3–4px, scale .96) a little
- * faster than what arrives blooms in from the same. Both stay mounted until they've finished.
- */
-export class Swap {
-  private layers: { el: HTMLElement; o: Val; leaving: boolean }[] = []
-  constructor(
-    private readonly stage: Stage,
-    readonly host: HTMLElement,
-  ) {
-    host.style.position ||= "relative"
-    stage.onDraw(() => this.draw())
-  }
-  show(content: Node, how: How) {
-    for (const l of this.layers) {
-      l.leaving = true
-      l.o.go(0, how === "init" ? "init" : "other", "snappy")
-    }
-    const el = document.createElement("div")
-    el.style.cssText =
-      "position:absolute;inset:0;display:grid;place-items:center;will-change:transform,opacity"
-    el.append(content)
-    this.host.append(el)
-    const o = this.stage.val(how === "init" ? 1 : 0, 0.002, true)
-    if (how !== "init") o.to(1, "default")
-    this.layers.push({ el, o, leaving: false })
-    this.draw()
-  }
-  private draw() {
-    for (const l of [...this.layers]) {
-      const o = Math.min(1, Math.max(0, l.o.x))
-      if (l.leaving && o <= 0.001 && l.o.spring.resting) {
-        l.el.remove()
-        this.stage.drop(l.o)
-        this.layers.splice(this.layers.indexOf(l), 1)
-        continue
-      }
-      l.el.style.opacity = o.toFixed(3)
-      const soft = !reduced() && (o < 0.999 || !l.o.spring.resting)
-      const dy = (1 - o) * (l.leaving ? -4 : 4)
-      l.el.style.transform = soft
-        ? `translateY(${dy.toFixed(2)}px) scale(${(0.95 + 0.05 * o).toFixed(4)})`
-        : ""
-      const b = Math.min(4, (1 - o) * 3.2 + blurFor(Math.abs(l.o.v) * 90, 2))
-      l.el.style.filter = soft && b >= 0.05 ? `blur(${b.toFixed(2)}px)` : ""
-    }
   }
 }

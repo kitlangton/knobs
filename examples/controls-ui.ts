@@ -13,25 +13,10 @@ import {
   tooltip,
   tree,
 } from "knobs/ui"
-import type { SectionSpec } from "./controls"
-import { blurFor, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
+import type { SceneKit } from "./controls"
+import { blurFor, clamp01, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
 
-interface Kit {
-  section(spec: SectionSpec): {
-    el: HTMLElement
-    slot: HTMLElement
-    side: HTMLElement
-    stage: HTMLElement
-  }
-  h<K extends keyof HTMLElementTagNameMap>(
-    tag: K,
-    className?: string,
-    html?: string,
-  ): HTMLElementTagNameMap[K]
-  theme(): "dark" | "light"
-}
-
-export function uiSections({ section, h, theme }: Kit) {
+export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h" | "theme">) {
   // ── split ──
   {
     const s = section({
@@ -220,7 +205,7 @@ export function uiSections({ section, h, theme }: Kit) {
       const cSpeed = Math.hypot(tint.l.v, tint.a.v * 2.2, tint.b.v * 2.2) * 180
       const sb = blurFor(Math.abs(size.v) * 95 + cSpeed * 0.4, 2.6) / Math.max(0.2, size.x)
       shapeBlur.set(sb, sb)
-      const o = Math.min(1, Math.max(0, outline.x))
+      const o = clamp01(outline.x)
       ring.style.opacity = o.toFixed(3)
       ring.style.transform = `scale(${(0.9 + 0.1 * o).toFixed(4)})`
       const soft = !reduced() && o > 0.001 && (o < 0.999 || !outline.spring.resting)

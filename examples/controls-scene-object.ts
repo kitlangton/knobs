@@ -3,14 +3,12 @@
 import { angle, choice, color, point, range, seed, springMotion, vec2, vec3 } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, linearRgb } from "./controls-gpu"
-import { live } from "./controls-live"
-import { ColorVal, oklabRgb, reduced, SHUTTER_S, Stage } from "./controls-motion"
+import { ColorVal, live, oklabRgb, rad, reduced, SHUTTER_S, Stage } from "./controls-motion"
 import objectWgsl from "./controls-object.wgsl?raw"
 
 const SHAPES = ["sphere", "cube", "torus"] as const
 const FINISH = { Matte: 0.72, Satin: 0.42, Gloss: 0.2 } as const
 const TURN = springMotion({ duration: 0.9, bounce: 0 })
-const rad = (deg: number) => (deg * Math.PI) / 180
 
 export function objectScene({ section, define, mount, h }: SceneKit) {
   const s = section({

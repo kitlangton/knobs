@@ -47,18 +47,19 @@ import {
   tooltips,
 } from "knobs/ui"
 import dotsWgsl from "./controls-dots.wgsl?raw"
-import skyWgsl from "./controls-sky.wgsl?raw"
-import { Goo, GooGpu } from "./controls-goo"
-import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
-import { live } from "./controls-live"
+import { gpuView, initGpu, kelvinRgb, linearRgb, toLinear } from "./controls-gpu"
 import {
   blurFor,
+  clamp01,
   ColorVal,
   DirBlur,
   FEEL,
   type How,
+  live,
   oklabCss,
   oklabRgb,
+  px,
+  rad,
   reduced,
   rgbaOf,
   Smear,
@@ -69,7 +70,10 @@ import {
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
+import skyWgsl from "./controls-sky.wgsl?raw"
 import { uiSections } from "./controls-ui"
+
+await initGpu()
 
 const params = new URLSearchParams(location.search)
 const gpu = params.has("gpu")
@@ -276,8 +280,6 @@ export function mount(store: AnyControls, slot: HTMLElement, options: MountPanel
   )
 }
 
-const px = (n: number) => `${Math.round(n * 100) / 100}px`
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** What a scene module needs from the page. */
@@ -319,15 +321,17 @@ motionScene(kit)
   /** The bud and the row's respacing (duration / bounce). */
   const BUD = springMotion({ duration: 0.25, bounce: 0.08 })
   s.stage.style.display = "block"
-  // WebGPU lights the dots; WebGL draws them flat without it.
+  // WebGPU lights the metaball field; DOM dots stand in without it.
   const view = gpuView(s.stage, { wgsl: dotsWgsl, label: "dots", tone: "neutral", bloom: 0.03 })
-  const canvas = view ? view.canvas : h("canvas")
-  if (!view) {
-    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%"
-    s.stage.append(canvas)
-  }
-  canvas.style.color = "var(--text)"
-  const goo = view ? new GooGpu(view) : new Goo(canvas)
+  const domDots = view
+    ? null
+    : Array.from({ length: MAX }, () => {
+        const el = h("div", "abs")
+        el.style.cssText +=
+          "width:2px;height:2px;margin:-1px 0 0 -1px;border-radius:50%;background:var(--text)"
+        s.stage.append(el)
+        return el
+      })
   // The stage's own colour, read from the theme (not the page's background, which is mid-transition).
   const probe = h("div")
   probe.style.cssText = "display:none;background:var(--page);color:var(--surface)"
@@ -339,7 +343,7 @@ motionScene(kit)
   }
   let bgFrom = stageColor()
   let bgTo = bgFrom
-  let inkFrom = rgbaOf(getComputedStyle(canvas).color)
+  let inkFrom = rgbaOf(getComputedStyle(s.stage).color)
   let inkTo = inkFrom
   let k = 8
   const shown: boolean[] = Array.from({ length: MAX }, () => false)
@@ -352,7 +356,7 @@ motionScene(kit)
     const t = clamp01(ink.x)
     return inkFrom.map((c, i) => c + (inkTo[i]! - c) * t)
   }
-  // Shutter travel (px) for the WebGL coverage integrator: C¹ toe near rest, up to 16 px on throws.
+  // Shutter travel (px) for the coverage integrator: C¹ toe near rest, up to 16 px on throws.
   const dotBlur = (speed: number) => {
     if (reduced() || speed < 4) return 0
     const raw = (speed - 4) / 28
@@ -366,9 +370,8 @@ motionScene(kit)
   const dotStretch = (speed: number) => (reduced() ? 1 : 1 + Math.min(0.34, speed / 620))
   const stage = new Stage(s.stage, () => {
     const dpr = Math.min(2, devicePixelRatio || 1)
-    const w = stage.width || canvas.clientWidth
-    const h = stage.height || canvas.clientHeight
-    goo.fit(dpr, w, h)
+    const w = stage.width || s.stage.clientWidth
+    const h = stage.height || s.stage.clientHeight
     const cx = w / 2
     const cy = h / 2
     // A hidden dot rides inside its neighbour, so it buds from wherever that one is.
@@ -378,51 +381,65 @@ motionScene(kit)
           dots[i]!.x.spring.target = dots[i - 1]!.x.x
           dots[i]!.y.spring.target = dots[i - 1]!.y.x
         }
-    goo.draw(
-      dots.map((d, i) => {
-        const vx = d.x.v
-        const vy = d.y.v
-        const speed = Math.hypot(vx, vy)
-        const m = merging[i]
-        const t = m ? clamp01((performance.now() - m.at) / MERGE_MS) : 0
-        const e = m ? t * (0.36 + 0.64 * t * t) : 0
-        // Dynamic neck: reaches out at the start of a merge, and thins cleanly when pinching off.
-        let neck = 1
-        if (m) {
-          neck = 1.25 - 0.78 * e
-        } else if (i > 0 && shown[i]) {
-          const nb = dots[i - 1]!
-          const dist = Math.hypot(d.x.x - nb.x.x, d.y.x - nb.y.x)
-          const touch = d.r.x + nb.r.x
-          const sepVel = (d.x.x - nb.x.x) * (d.x.v - nb.x.v) + (d.y.x - nb.y.x) * (d.y.v - nb.y.v)
-          if (sepVel > 6 && dist > touch * 0.75) {
-            const pinch = clamp01((dist - touch * 0.75) / Math.max(4, k * 0.85))
-            neck = 1.15 - 0.62 * pinch
-          }
+    let maxShift = 0
+    const data = view?.data
+    data?.fill(0, 4)
+    dots.forEach((d, i) => {
+      const vx = d.x.v
+      const vy = d.y.v
+      const speed = Math.hypot(vx, vy)
+      const m = merging[i]
+      const t = m ? clamp01((performance.now() - m.at) / MERGE_MS) : 0
+      const e = m ? t * (0.36 + 0.64 * t * t) : 0
+      // Dynamic neck: reaches out at the start of a merge, and thins cleanly when pinching off.
+      let neck = 1
+      if (m) {
+        neck = 1.25 - 0.78 * e
+      } else if (i > 0 && shown[i]) {
+        const nb = dots[i - 1]!
+        const dist = Math.hypot(d.x.x - nb.x.x, d.y.x - nb.y.x)
+        const touch = d.r.x + nb.r.x
+        const sepVel = (d.x.x - nb.x.x) * (d.x.v - nb.x.v) + (d.y.x - nb.y.x) * (d.y.v - nb.y.v)
+        if (sepVel > 6 && dist > touch * 0.75) {
+          const pinch = clamp01((dist - touch * 0.75) / Math.max(4, k * 0.85))
+          neck = 1.15 - 0.62 * pinch
         }
-        return {
-          x: cx + d.x.x,
-          y: cy + d.y.x,
-          r: Math.max(0, d.r.x) * (1 + d.pulse.x),
-          a: clamp01(d.a.x),
-          vx,
-          vy,
-          rBlur: dotRadialBlur(d.r.v + d.r.x * d.pulse.v),
-          // Pouring in, it draws out into a teardrop along its path and snaps into the neighbour.
-          stretch: Math.max(dotStretch(speed), 1 + 0.62 * Math.sin(t * Math.PI)),
-          blur: dotBlur(speed),
-          goo: neck,
-        }
-      }),
-      {
-        dpr,
-        k,
-        goo: !reduced(),
-        color: inkAt(),
-        bg: bgFrom.map((c, j) => c + (bgTo[j]! - c) * clamp01(ink.x)),
-        radius: k / 0.78,
-      },
-    )
+      }
+      const x = cx + d.x.x
+      const y = cy + d.y.x
+      const r = Math.max(0, d.r.x) * (1 + d.pulse.x)
+      const a = clamp01(d.a.x)
+      const rBlur = dotRadialBlur(d.r.v + d.r.x * d.pulse.v)
+      // Pouring in, it draws out into a teardrop along its path and snaps into the neighbour.
+      const stretch = Math.max(dotStretch(speed), 1 + 0.62 * Math.sin(t * Math.PI))
+      const blur = dotBlur(speed)
+      if (!data) {
+        const el = domDots![i]!
+        const ang = speed > 0.5 ? ((Math.atan2(vy, vx) * 180) / Math.PI).toFixed(1) : "0"
+        el.style.opacity = (r < 0.05 ? 0 : a).toFixed(3)
+        el.style.transform = `translate(${px(x)},${px(y)}) rotate(${ang}deg) scale(${(r * stretch).toFixed(3)},${(r / Math.sqrt(stretch)).toFixed(3)})`
+        return
+      }
+      data.set([x, y, r, a], 4 + i * 4)
+      data.set(
+        [speed > 0.001 ? vx / speed : 1, speed > 0.001 ? vy / speed : 0, stretch, blur],
+        4 + (8 + i) * 4,
+      )
+      data.set([neck, rBlur], 4 + 16 * 4 + i * 2)
+      if (r >= 0.05) maxShift = Math.max(maxShift, blur + Math.abs(rBlur))
+    })
+    if (!view || !data) return
+    const samples = maxShift < 0.15 ? 1 : Math.min(14, Math.max(4, Math.ceil(maxShift * 1.1)))
+    const gooOn = !reduced()
+    const color = inkAt()
+    const bg = bgFrom.map((c, j) => c + (bgTo[j]! - c) * clamp01(ink.x))
+    data.set([gooOn ? k : 0, gooOn ? 1 : 0, samples, dpr], 4 + 20 * 4)
+    const ca = color[3] ?? 1
+    const inkLin = [0, 1, 2].map((j) => toLinear(bg[j]! + (color[j]! - bg[j]!) * ca))
+    const lum = 0.2126 * bg[0]! + 0.7152 * bg[1]! + 0.0722 * bg[2]!
+    data.set([inkLin[0]!, inkLin[1]!, inkLin[2]!, lum > 0.5 ? 1 : 0], 4 + 21 * 4)
+    data.set([toLinear(bg[0]!), toLinear(bg[1]!), toLinear(bg[2]!), k / 0.78], 4 + 22 * 4)
+    view.render()
   })
   const ink = stage.val(1, 0.001)
   const dots = Array.from({ length: MAX }, () => ({
@@ -483,7 +500,7 @@ motionScene(kit)
     bgFrom = bgFrom.map((c, j) => c + (bgTo[j]! - c) * t)
     bgTo = stageColor()
     inkFrom = inkAt() as typeof inkFrom
-    inkTo = rgbaOf(getComputedStyle(canvas).color)
+    inkTo = rgbaOf(getComputedStyle(s.stage).color)
     ink.snap(0).to(1, "calm")
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
   let count = 0
@@ -1012,11 +1029,11 @@ let rowsSide!: HTMLElement
     const cy = (stage.height || s.stage.clientHeight) / 2 + 8
     cards.forEach((el, i) => {
       const c = cv[i]!
-      const rad = (c.rot.x * Math.PI) / 180
-      const cos = Math.cos(rad)
-      const sin = Math.sin(rad)
+      const a = rad(c.rot.x)
+      const cos = Math.cos(a)
+      const sin = Math.sin(a)
       // Turning about (50%, 130%) — 66 px below the card's center — sweeps the face along an arc.
-      const vTurn = ((c.rot.v * Math.PI) / 180) * 66
+      const vTurn = rad(c.rot.v) * 66
       const vxLocal = c.x.v * cos + c.y.v * sin + vTurn
       const vyLocal = -c.x.v * sin + c.y.v * cos + c.s.v * 45
       const st = stretchFor(vxLocal, 0.1)

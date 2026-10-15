@@ -7,9 +7,17 @@
 import { angle, color, curve, knob, range, sampleCurve, springMotion, toggle } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
-import { live } from "./controls-live"
 import lampWgsl from "./controls-lamp.wgsl?raw"
-import { ColorVal, oklabRgb, reduced, SHUTTER_S, Stage } from "./controls-motion"
+import {
+  clamp01,
+  ColorVal,
+  live,
+  oklabRgb,
+  rad,
+  reduced,
+  SHUTTER_S,
+  Stage,
+} from "./controls-motion"
 
 const IGNITE = springMotion({ duration: 0.5, bounce: 0 })
 const COOL = springMotion({ duration: 1.3, bounce: 0 })
@@ -20,8 +28,6 @@ const SWAY = { omega: Math.sqrt(9.81 / CORD), zeta: 0.15 }
 const ANCHOR = [0, 4.2, -0.2] as const
 const N = 32
 
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
-const rad = (deg: number) => (deg * Math.PI) / 180
 /** An angle as signed degrees, −180…180. */
 const signed = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180
 
@@ -88,8 +94,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
       return
     }
     const phi = sway.x
-    live.sway = phi
-    live.swayV = sway.v
     // The swing's travel in one shutter, and how far that moves the dome on screen (px), which
     // sets how many instants are rendered: 4 at rest (anti-aliasing only), up to 12 when fast.
     const blur = !reduced() && stage.active

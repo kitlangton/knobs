@@ -17,14 +17,12 @@ import {
 } from "knobs"
 import { timeline } from "knobs/ui"
 import type { SceneKit } from "./controls"
-import { live } from "./controls-live"
-import { DirBlur, Speed, Stage, stretchAlong } from "./controls-motion"
+import { DirBlur, live, px, Speed, Stage, stretchAlong } from "./controls-motion"
 
 /** The timeline: out at 0, back at HALF, four seconds round. */
 const D = 4
 const HALF = 2
 const SVG = "http://www.w3.org/2000/svg"
-const px = (n: number) => `${Math.round(n * 100) / 100}px`
 
 /** y at x along a cubic bezier (x is monotonic within 0–1). */
 function bezierY(b: Bezier, x: number) {

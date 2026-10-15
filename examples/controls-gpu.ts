@@ -5,7 +5,7 @@
 // (controls-post.wgsl). A view draws only when its Stage asks (something visible changed), so a
 // still page costs nothing. Without WebGPU (or with ?nogpu) `gpuView` returns null and the
 // section keeps its DOM preview.
-import { live } from "./controls-live"
+import { clamp01, live } from "./controls-motion"
 import postWgsl from "./controls-post.wgsl?raw"
 
 const HDR: GPUTextureFormat = "rgba16float"
@@ -485,6 +485,9 @@ export function gpuView(host: HTMLElement, spec: ViewSpec) {
 
 // ── Light ────────────────────────────────────────────────────────────────────────────────────
 
+/** An sRGB 0–1 channel as linear light. */
+export const toLinear = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
+
 /**
  * A black body's colour at `kelvin`, linear sRGB, scaled to unit luminance (Tanner Helland's fit
  * of the Planckian locus, good from 1000 K to 40000 K; below that it carries on reddening).
@@ -497,18 +500,12 @@ export function kelvinRgb(kelvin: number): [number, number, number] {
       ? 99.4708025861 * Math.log(t) - 161.1195681661
       : 288.1221695283 * (t - 60) ** -0.0755148492
   const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307
-  const lin = [r, g, b].map((c) => {
-    const x = Math.min(1, Math.max(0, c / 255))
-    return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
-  }) as [number, number, number]
+  const lin = [r, g, b].map((c) => toLinear(clamp01(c / 255))) as [number, number, number]
   const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
   return lin.map((c) => c / Math.max(1e-4, y)) as [number, number, number]
 }
 
 /** An sRGB hex or CSS rgb colour as linear 0–1 channels. */
 export function linearRgb(rgb255: readonly number[]): [number, number, number] {
-  return rgb255.slice(0, 3).map((c) => {
-    const x = c / 255
-    return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
-  }) as [number, number, number]
+  return rgb255.slice(0, 3).map((c) => toLinear(c / 255)) as [number, number, number]
 }
