@@ -1815,15 +1815,21 @@ function buildPanel<S extends Schema>(
         list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
       return list
     }
-    const nodes: HTMLElement[] = []
-    for (const r of rows) nodes.push(...(r.editor?.stops() ?? [r.input]))
-    // A foldable group's header is a stop of its own; rows in a folded card aren't.
+    // Rows keep their editor's own stop order; a foldable group's header is a stop of its own,
+    // placed among them by document order, and rows in a folded card aren't stops.
+    const runs: { at: HTMLElement; stops: HTMLElement[] }[] = rows.map((r) => ({
+      at: r.row,
+      stops: r.editor?.stops() ?? [r.input],
+    }))
     for (const b of blocks)
-      if (b.head?.hasAttribute("data-foldable") && !b.leaving) nodes.push(b.head)
-    for (const stop of nodes
-      .filter(visible)
-      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)))
-      list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
+      if (b.head?.hasAttribute("data-foldable") && !b.leaving)
+        runs.push({ at: b.head, stops: [b.head] })
+    runs.sort((a, b) =>
+      a.at.compareDocumentPosition(b.at) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+    )
+    for (const run of runs)
+      for (const stop of run.stops.filter((s) => !s.closest('[hidden],[data-presence="out"]')))
+        list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
     const bar = actionBarButtons()
     if (bar.length)
       list.push({
