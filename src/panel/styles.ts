@@ -591,10 +591,10 @@ const css = `
 .knobs-cells[data-wide]{width:calc(var(--k-row) * 7.5);max-width:72%}
 .knobs-cell{position:relative;display:flex;align-items:center;justify-content:space-between;gap:3px;min-width:0;height:var(--kc-control-h);padding:0 5px;border-radius:var(--k-radius-md);background:var(--k-seg-bg);cursor:ew-resize;user-select:none;touch-action:none;outline:none;transition:background var(--k-hover-t)}
 .knobs-cell:hover,.knobs-cell:focus-visible{background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
-.knobs-active .knobs-cell:focus{background:var(--k-surface-hi)}
+.knobs-active .knobs-cell:focus,.knobs-cell[data-panned]{background:var(--k-surface-hi)}
 .knobs-cell-axis{flex:none;font-style:normal;font-size:var(--k-text-cap);font-weight:var(--k-title-weight);color:var(--k-dim)}
 .knobs-cell-read,.knobs-range-read,.knobs-angle-read,.knobs-seed-read{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-family:var(--k-value-font);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-cell:focus-visible .knobs-cell-read,.knobs-active .knobs-cell:focus .knobs-cell-read{color:var(--k-text)}
+.knobs-cell:focus-visible .knobs-cell-read,.knobs-active .knobs-cell:focus .knobs-cell-read,.knobs-cell[data-panned] .knobs-cell-read{color:var(--k-text)}
 .knobs-panel .knobs-link{flex:none;width:20px;height:20px;margin:0 -4px 0 auto;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background .15s,color .15s}
 .knobs-panel .knobs-link:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-link[aria-pressed="true"]{color:var(--k-text)}

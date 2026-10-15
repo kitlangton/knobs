@@ -2935,7 +2935,7 @@ class GpuOverlayManager {
       )
     }
     for (const c of row.cells) {
-      const inHand = c.active() && this.curActiveEl === c.el
+      const inHand = c.active() && (this.curActiveEl === c.el || c.el.hasAttribute("data-panned"))
       const focused = this.isFocused(c.el)
       const level = inHand ? 2 : focused || this.isHovered(c.el) ? 1 : 0
       const cr = this.cellTray(c.el, level, rowAlpha, t.radiusMd)

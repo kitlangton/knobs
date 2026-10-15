@@ -318,6 +318,8 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
           base = c.get() as Vec
           panAt = { at: 0, give: 0 }
           row.classList.add("knobs-active")
+          // In hand like a scrubbed cell, which a scrub's press also focuses.
+          cell.setAttribute("data-panned", "")
         }
         const from = base[axis] ?? 0
         panAt = pushBand(panAt, dx, (f().min - from) / perPx, (f().max - from) / perPx)
@@ -329,6 +331,7 @@ export function vecRow(c: RowContext<VecField>): EditorRow {
         panAt = undefined
         give.release()
         row.classList.remove("knobs-active")
+        cell.removeAttribute("data-panned")
         c.wake()
       },
       step(direction) {
