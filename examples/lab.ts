@@ -493,37 +493,49 @@ const inspector = defineControls(
   },
 )
 const hostRolls: string[] = []
-const inspectorPanel = mountPanel(inspector, document.getElementById("inspector")!, {
-  title: false,
-  header: { buttons: ["random", "reset"] },
-  preset: labPreset,
-  theme: "dark",
-  density: "compact",
-  variants: false,
-  haptics: false,
-  session: false,
-  renderer: gpu ? "gpu" : "dom",
-  tabs: [
-    { id: "transform", label: "Transform" },
-    { id: "emitter", label: "Emitter" },
-    { id: "input", label: "Input" },
-  ],
-  search: true,
-  subsectionFolded: { Forces: true },
-  groupRandom: (group, mode) => {
-    if (group !== "emitter") return false
-    hostRolls.push(mode)
-    const next = inspector.get().seed + 1
-    inspector.set({ seed: next, rate: 100 + ((next * 37) % 900), drag: ((next * 13) % 100) / 100 })
-    return true
-  },
-})
-panels.push(inspectorPanel)
+const mountInspector = () =>
+  mountPanel(inspector, document.getElementById("inspector")!, {
+    title: false,
+    header: { buttons: ["random", "reset"] },
+    preset: labPreset,
+    theme: "dark",
+    density: "compact",
+    variants: false,
+    haptics: false,
+    session: false,
+    renderer: gpu ? "gpu" : "dom",
+    tabs: [
+      { id: "transform", label: "Transform" },
+      { id: "emitter", label: "Emitter" },
+      { id: "input", label: "Input" },
+    ],
+    search: true,
+    subsectionFolded: { Forces: true },
+    groupRandom: (group, mode) => {
+      if (group !== "emitter") return false
+      hostRolls.push(mode)
+      const next = inspector.get().seed + 1
+      inspector.set({
+        seed: next,
+        rate: 100 + ((next * 37) % 900),
+        drag: ((next * 13) % 100) / 100,
+      })
+      return true
+    },
+  })
+let inspectorPanel = mountInspector()
 
 Object.assign(window, {
   __lab: {
     inspector,
-    inspectorPanel,
+    get inspectorPanel() {
+      return inspectorPanel
+    },
+    /** Mounts the inspector again (it opens on the tab it last showed). */
+    remountInspector() {
+      inspectorPanel.dispose()
+      inspectorPanel = mountInspector()
+    },
     presses,
     hostRolls,
     station,

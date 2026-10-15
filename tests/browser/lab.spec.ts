@@ -363,3 +363,375 @@ test("the Lab draws on the GPU overlay as it does in the DOM: flat rows, mixed, 
   await pin.click()
   await expect(pin).toHaveAttribute("aria-pressed", "true")
 })
+
+// ——— Phase B: the inspector (tabs, sub-headings, inspector fields, the toolbar, search) ———
+const inspector = (page: Page) => page.locator('[data-controls="lab-inspector"]')
+const values = (page: Page) => lab(page, (l) => ({ ...l.inspector.get() }))
+const shown = (scope: Locator, key: string) =>
+  row(scope, key).evaluate((el) => !el.closest("[hidden],[data-leaving]"))
+async function openInspector(page: Page, query = "") {
+  const errors = await open(page, query)
+  await inspector(page).scrollIntoViewIfNeeded()
+  return errors
+}
+
+test("tabs: a sliding underline, ⌥1–9 and [ ] switch, untabbed rows stay, the tab is remembered", async ({
+  page,
+}) => {
+  const errors = await openInspector(page)
+  const panel = inspector(page)
+  const tabs = panel.getByRole("tab")
+  await expect(tabs).toHaveText(["Transform", "Emitter", "Input"])
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
+  expect(await shown(panel, "position")).toBe(true)
+  expect(await shown(panel, "seed")).toBe(false)
+  // The toolbar names no tab, so it shows on every one.
+  expect(await shown(panel, "tools")).toBe(true)
+  await tabs.nth(1).click()
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true")
+  await expect.poll(() => shown(panel, "seed")).toBe(true)
+  await expect.poll(() => shown(panel, "position")).toBe(false)
+  expect(await shown(panel, "tools")).toBe(true)
+  // The underline ends under the chosen tab.
+  await expect
+    .poll(() =>
+      panel.evaluate((root) => {
+        const bar = root.querySelector<HTMLElement>(".knobs-tabs-bar")!.getBoundingClientRect()
+        const on = root.querySelector('[role="tab"][aria-selected="true"]')!.getBoundingClientRect()
+        return Math.abs(bar.left - on.left) + Math.abs(bar.right - on.right) < 1
+      }),
+    )
+    .toBe(true)
+  // ⌥3 from a row; [ and ] cycle the tabs (the panel shows no presets).
+  await row(panel, "rate").locator(".knobs-track").focus()
+  await page.keyboard.press("Alt+Digit3")
+  await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true")
+  // The focused row left with its tab: focus stays with the strip.
+  await expect(tabs.nth(2)).toBeFocused()
+  await page.keyboard.press("]")
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true")
+  await page.keyboard.press("[")
+  await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true")
+  // ←/→ on the strip.
+  await page.keyboard.press("ArrowLeft")
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true")
+  // Mounted again, the panel opens on the tab it last showed.
+  await lab(page, (l) => l.remountInspector())
+  await expect(inspector(page).getByRole("tab", { name: "Emitter" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  expect(await lab(page, (l) => l.inspectorPanel.tab())).toBe("emitter")
+  expect(errors).toEqual([])
+})
+
+test("sub-headings: flat headings inside the card that fold, by click or keys, and are stops", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  const head = panel.getByRole("button", { name: "Pivot & bounds" })
+  await expect(head).toHaveAttribute("aria-expanded", "true")
+  // In the group's card, not a card of its own.
+  const look = await head.evaluate((el) => ({
+    parent: el.parentElement!.className,
+    bg: getComputedStyle(el).backgroundColor,
+  }))
+  expect(look.parent).toContain("knobs-card")
+  expect(clear(look.bg)).toBe(true)
+  // ↓ from the scale row reaches it; ← folds it, → opens it, Enter toggles.
+  await row(panel, "scale").locator(".knobs-cell").last().focus()
+  await page.keyboard.press("ArrowDown")
+  await expect(head).toBeFocused()
+  await page.keyboard.press("ArrowLeft")
+  await expect(head).toHaveAttribute("aria-expanded", "false")
+  await expect.poll(() => shown(panel, "pivot")).toBe(false)
+  await page.keyboard.press("ArrowRight")
+  await expect.poll(() => shown(panel, "visible")).toBe(true)
+  await head.click()
+  await expect.poll(() => shown(panel, "pivot")).toBe(false)
+  // Forces starts folded (subsectionFolded).
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  await expect(panel.getByRole("button", { name: "Forces" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
+  expect(await shown(panel, "drag")).toBe(false)
+})
+
+test("vector cells: arrows step, each cell is a stop, Enter edits, a drag scrubs, a link scales", async ({
+  page,
+}) => {
+  const errors = await openInspector(page)
+  const panel = inspector(page)
+  const cells = row(panel, "position").locator(".knobs-cell")
+  await cells.nth(0).focus()
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).position).toEqual({ x: 0.1, y: 1.2, z: -4 })
+  await page.keyboard.press("Shift+ArrowRight")
+  expect((await values(page)).position.x).toBe(1.1)
+  await page.keyboard.press("ArrowDown")
+  await expect(cells.nth(1)).toBeFocused()
+  await page.keyboard.press("Enter")
+  const edit = cells.nth(1).locator(".knobs-cell-edit")
+  await expect(edit).toBeFocused()
+  await page.keyboard.press("ControlOrMeta+a")
+  await page.keyboard.type("3")
+  await page.keyboard.press("Enter")
+  expect((await values(page)).position.y).toBe(3)
+  await expect(cells.nth(1)).toBeFocused()
+  // A sideways drag scrubs; it doesn't open the editor.
+  const z = (await cells.nth(2).boundingBox())!
+  await page.mouse.move(z.x + z.width / 2, z.y + z.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(z.x + z.width / 2 + 30, z.y + z.height / 2, { steps: 6 })
+  await page.mouse.up()
+  expect((await values(page)).position.z).toBeGreaterThan(-4)
+  await expect(cells.nth(2).locator(".knobs-cell-edit")).toBeHidden()
+  // Scale starts linked: one cell moves all three in proportion.
+  await row(panel, "scale").locator(".knobs-cell").first().focus()
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).scale).toEqual({ x: 1.01, y: 1.01, z: 1.01 })
+  await row(panel, "scale").getByRole("button", { name: "Unlink axes" }).click()
+  await row(panel, "scale").locator(".knobs-cell").first().focus()
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).scale).toEqual({ x: 1.02, y: 1.01, z: 1.01 })
+  expect(errors).toEqual([])
+})
+
+test("range: two thumbs that can't cross, each a stop with its own keys and editor", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  const low = panel.getByRole("slider", { name: "Lifetime low" })
+  const high = panel.getByRole("slider", { name: "Lifetime high" })
+  await low.focus()
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).lifetime).toEqual([0.65, 1.4])
+  // The low end stops at the high one.
+  await page.keyboard.press("End")
+  expect((await values(page)).lifetime).toEqual([1.4, 1.4])
+  await page.keyboard.press("Home")
+  await page.keyboard.press("ArrowDown")
+  await expect(high).toBeFocused()
+  await page.keyboard.press("Home")
+  expect((await values(page)).lifetime).toEqual([0, 0])
+  await page.keyboard.press("Enter")
+  await page.keyboard.press("ControlOrMeta+a")
+  await page.keyboard.type("2")
+  await page.keyboard.press("Enter")
+  expect((await values(page)).lifetime).toEqual([0, 2])
+  // A press near an end takes that end.
+  await row(panel, "lifetime").scrollIntoViewIfNeeded()
+  const track = (await row(panel, "lifetime").boundingBox())!
+  await page.mouse.click(track.x + track.width * 0.75, track.y + track.height / 2)
+  expect((await values(page)).lifetime).toEqual([0, 3])
+})
+
+test("angle: arrows step, ⇧ snaps to 15°, a full turn wraps, a bounded one stops, the dial follows the pointer", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  const yaw = panel.getByRole("slider", { name: "Yaw" })
+  await yaw.focus()
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).yaw).toBe(91)
+  await page.keyboard.press("Shift+ArrowRight")
+  expect((await values(page)).yaw).toBe(105)
+  await lab(page, (l) => l.inspector.set({ yaw: 359 }))
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).yaw).toBe(0)
+  await page.keyboard.press("ArrowLeft")
+  expect((await values(page)).yaw).toBe(359)
+  // The dial: pressing at its right edge points the hand at 90°.
+  const dial = (await row(panel, "yaw").locator(".knobs-dial").boundingBox())!
+  await page.mouse.click(dial.x + dial.width - 1, dial.y + dial.height / 2)
+  expect((await values(page)).yaw).toBeGreaterThan(80)
+  expect((await values(page)).yaw).toBeLessThan(100)
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  const spread = panel.getByRole("slider", { name: "Spread" })
+  await spread.focus()
+  await page.keyboard.press("End")
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).spread).toBe(180)
+})
+
+test("seed: the die rolls a new one, Space too; Random leaves it alone", async ({ page }) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  await panel.getByRole("button", { name: "Random", exact: true }).click()
+  expect((await values(page)).seed).toBe(1234)
+  await panel.getByRole("button", { name: "Roll Seed" }).click()
+  const rolled = (await values(page)).seed
+  expect(rolled).not.toBe(1234)
+  await panel.getByRole("spinbutton", { name: "Seed" }).focus()
+  await page.keyboard.press(" ")
+  expect((await values(page)).seed).not.toBe(rolled)
+  const was = (await values(page)).seed
+  await page.keyboard.press("ArrowRight")
+  expect((await values(page)).seed).toBe(was + 1)
+  await page.keyboard.press("Enter")
+  await page.keyboard.press("ControlOrMeta+a")
+  await page.keyboard.type("42")
+  await page.keyboard.press("Enter")
+  expect((await values(page)).seed).toBe(42)
+})
+
+test("keybind: Enter captures the next combination, Esc cancels, Backspace clears", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "Input" }).click()
+  const fire = row(panel, "fire").locator(".knobs-keys")
+  await fire.focus()
+  await page.keyboard.press("Enter")
+  await expect(fire).toHaveAttribute("aria-pressed", "true")
+  await page.keyboard.press("Meta+Shift+K")
+  expect((await values(page)).fire).toBe("Shift+Meta+K")
+  await expect(fire).toHaveText("⇧⌘K")
+  await page.keyboard.press("Enter")
+  await page.keyboard.press("Escape")
+  await expect(fire).toHaveAttribute("aria-pressed", "false")
+  expect((await values(page)).fire).toBe("Shift+Meta+K")
+  await page.keyboard.press("Enter")
+  await page.keyboard.press("Backspace")
+  expect((await values(page)).fire).toBe("")
+  await expect(fire).toHaveText("None")
+  // Random leaves key combinations alone.
+  await panel.getByRole("button", { name: "Random", exact: true }).click()
+  expect((await values(page)).reload).toBe("Shift+R")
+})
+
+test("toolbar: icons, labels and shortcut chips; shortcuts in the panel, global ones anywhere", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  const tools = panel.getByRole("toolbar", { name: "Playback" })
+  await expect(tools.locator(".knobs-tool-key")).toHaveText(["Space", "F", "R", "⇧⌫"])
+  const presses = () => lab(page, (l) => [...l.presses])
+  await tools.getByRole("button", { name: /Play/ }).click()
+  expect(await presses()).toEqual(["play"])
+  // While the panel has focus: Space, F and ⇧⌫ press their buttons.
+  await row(panel, "position").locator(".knobs-cell").first().focus()
+  await page.keyboard.press(" ")
+  await page.keyboard.press("f")
+  await page.keyboard.press("Shift+Backspace")
+  expect(await presses()).toEqual(["play", "play", "frame", "clear"])
+  // From the page, only the global one (R).
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.press(" ")
+  await page.keyboard.press("r")
+  expect(await presses()).toEqual(["play", "play", "frame", "clear", "retrigger"])
+  // ←/→ move along the buttons; the toolbar is one ↑↓ stop.
+  await tools.getByRole("button", { name: /Play/ }).focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(tools.getByRole("button", { name: /Frame/ })).toBeFocused()
+})
+
+test("search: / focuses it, rows filter across tabs by label, key or group, chips narrow, Esc clears", async ({
+  page,
+}) => {
+  const errors = await openInspector(page)
+  const panel = inspector(page)
+  await row(panel, "position").locator(".knobs-cell").first().focus()
+  await page.keyboard.press("/")
+  const box = panel.getByRole("searchbox")
+  await expect(box).toBeFocused()
+  await page.keyboard.type("yaw")
+  await expect.poll(() => shown(panel, "position")).toBe(false)
+  expect(await shown(panel, "yaw")).toBe(true)
+  await expect(panel).toHaveAttribute("data-searching", "")
+  await expect(row(panel, "yaw").locator("mark.knobs-match")).toHaveText("Yaw")
+  // A group's name keeps all of its rows, whatever tab they're on.
+  await box.fill("emitter")
+  await expect.poll(() => shown(panel, "seed")).toBe(true)
+  expect(await shown(panel, "lifetime")).toBe(true)
+  expect(await shown(panel, "yaw")).toBe(false)
+  // Esc clears; the tab's rows come back.
+  await page.keyboard.press("Escape")
+  await expect(box).toHaveValue("")
+  await expect.poll(() => shown(panel, "position")).toBe(true)
+  expect(await shown(panel, "seed")).toBe(false)
+  // "Modified" keeps the rows off their defaults, with their count.
+  await lab(page, (l) => l.inspector.set({ yaw: 45, rate: 300 }))
+  const chip = panel.getByRole("button", { name: /Modified/ })
+  await expect(chip).toHaveText(/2/)
+  await chip.click()
+  await expect.poll(() => shown(panel, "rate")).toBe(true)
+  expect(await shown(panel, "yaw")).toBe(true)
+  expect(await shown(panel, "position")).toBe(false)
+  await chip.click()
+  await expect.poll(() => shown(panel, "position")).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("groupRandom: the host rolls its group itself, and the die still tumbles", async ({
+  page,
+}) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await panel.getByRole("tab", { name: "Emitter" }).click()
+  const before = await values(page)
+  await panel.getByRole("button", { name: "Randomize Emitter" }).click()
+  expect(await lab(page, (l) => [...l.hostRolls])).toEqual(["random"])
+  const after = await values(page)
+  expect(after.seed).toBe(before.seed + 1)
+  // Rows the host didn't touch stay put (its roll replaced the panel's).
+  expect(after.lifetime).toEqual(before.lifetime)
+  // Other groups roll as ever.
+  await panel.getByRole("tab", { name: "Transform" }).click()
+  await panel.getByRole("button", { name: "Randomize Transform" }).click()
+  expect(await lab(page, (l) => [...l.hostRolls])).toEqual(["random"])
+  expect((await values(page)).position).not.toEqual(before.position)
+})
+
+test("mixed and disabled inspector rows: — readouts, no edits", async ({ page }) => {
+  await openInspector(page)
+  const panel = inspector(page)
+  await lab(page, (l) => l.inspector.setMixed(["position", "yaw", "visible"]))
+  await expect(row(panel, "position").locator(".knobs-cell-read").first()).toHaveText("—")
+  await expect(row(panel, "yaw").locator(".knobs-angle-read")).toHaveText("—")
+  await expect(row(panel, "visible").locator(".knobs-range-read")).toHaveText("—")
+  // Editing a mixed row settles it.
+  await row(panel, "yaw").getByRole("slider").focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(row(panel, "yaw").locator(".knobs-angle-read")).not.toHaveText("—")
+})
+
+test("the inspector draws on the GPU overlay as it does in the DOM", async ({ page }) => {
+  const errors = await openInspector(page, "?gpu")
+  const panel = inspector(page)
+  await expect(panel).toHaveAttribute("data-gpu-active", /true|false/)
+  test.skip((await panel.getAttribute("data-gpu-active")) !== "true", "no WebGPU here")
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__knobsGpu.lastTexts as string[]), {
+      timeout: 10_000,
+    })
+    .toEqual(
+      expect.arrayContaining([
+        "Transform",
+        "Emitter",
+        "Pivot & bounds",
+        "Position",
+        "1.2",
+        "90°",
+        "Play",
+        "Space",
+        "4.0–40.0 m",
+      ]),
+    )
+  // The search field stays the DOM's, above the overlay.
+  const box = panel.getByRole("searchbox")
+  const hit = await box.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el
+  })
+  expect(hit).toBe(true)
+  expect(errors).toEqual([])
+})
