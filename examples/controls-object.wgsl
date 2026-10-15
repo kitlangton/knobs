@@ -75,14 +75,23 @@ fn normalAt(p: vec3f) -> vec3f {
 }
 
 fn march(ro: vec3f, rd: vec3f) -> vec2f {
+  let sc = u.v[2].xyz;
+  let r = 1.45 * max(sc.x, max(sc.y, sc.z)) + 0.1;
+  let oc = ro - pose.pos;
+  let b = dot(oc, rd);
+  let disc = b * b - dot(oc, oc) + r * r;
+  if (disc < 0.0) {
+    return vec2f(9.0, 0.0);
+  }
+  let tMax = min(9.0, -b + sqrt(disc));
   var t = 1.0;
   for (var i = 0; i < 96; i++) {
-    let h = map(ro + rd * t).x;
-    if (h < 0.0008 * t) {
-      return vec2f(t, 1.0);
+    let h = map(ro + rd * t);
+    if (h.x < 0.0008 * t) {
+      return vec2f(t, 1.0 + h.y);
     }
-    t += h * 0.9;
-    if (t > 9.0) {
+    t += h.x * 0.9;
+    if (t > tMax) {
       break;
     }
   }
@@ -90,13 +99,27 @@ fn march(ro: vec3f, rd: vec3f) -> vec2f {
 }
 
 fn softShadow(ro: vec3f, rd: vec3f) -> f32 {
+  let sc = u.v[2].xyz;
+  let r = 1.45 * max(sc.x, max(sc.y, sc.z)) + 0.1;
+  let toObj = pose.pos - ro;
+  let tc = dot(toObj, rd);
+  if (tc < -r) {
+    return 1.0;
+  }
+  let near = max(tc, 0.0);
+  let d2 = dot(toObj, toObj) - near * near;
+  let rPen = r + near / 8.5 + 0.15;
+  if (d2 > rPen * rPen) {
+    return 1.0;
+  }
+  let tMax = min(5.0, tc + rPen);
   var res = 1.0;
   var t = 0.02;
   for (var i = 0; i < 40; i++) {
     let h = map(ro + rd * t).x;
     res = min(res, 9.0 * h / t);
     t += clamp(h, 0.02, 0.25);
-    if (res < 0.002 || t > 5.0) {
+    if (res < 0.002 || t > tMax) {
       break;
     }
   }
@@ -177,7 +200,7 @@ fn render(px: vec2f, tau: f32) -> vec3f {
     let p = CAM + rd * hit.x;
     let n = normalAt(p);
     let v = -rd;
-    let cutFace = map(p).y > 0.5;
+    let cutFace = hit.y > 1.5;
     let q = local(p) / u.v[2].xyz;
     let qn = rotX(rotY(n, -pose.spin), -TILT);
     var albedo = u.v[4].rgb;

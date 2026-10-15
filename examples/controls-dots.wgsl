@@ -73,10 +73,32 @@ fn coverage(p: vec2f, tau: f32, invS: f32, aa: f32) -> f32 {
   return mix(f.apart, goo, u.v[20].y);
 }
 
+/** Rest-pose distance to the union, for height and shadow where sub-pixel/apart weights aren't used. */
+fn fieldD(p: vec2f) -> f32 {
+  var d = 1e5;
+  for (var i = 0u; i < 8u; i++) {
+    let D = u.v[i];
+    if (D.z < 0.05) {
+      continue;
+    }
+    let V = u.v[8u + i];
+    let K = dotK(i);
+    let r = max(0.05, D.z);
+    let q = p - D.xy;
+    let dir = V.xy;
+    let lq = vec2f(dot(q, dir), dot(q, vec2f(-dir.y, dir.x)));
+    let a = r * V.z;
+    let b = r / sqrt(V.z);
+    let di = (length(lq / vec2f(a, b)) - 1.0) * min(a, b);
+    d = smin(d, di, u.v[20].x * K.x);
+  }
+  return d;
+}
+
 /** The pillow's height at p (px): a dome over each dot, rising from the edge. */
 fn height(p: vec2f) -> f32 {
   let R = max(u.v[22].w, 1.0);
-  let s = clamp(-field(p, 0.0, 0.0, 0.5).d, 0.0, R);
+  let s = clamp(-fieldD(p), 0.0, R);
   return sqrt(max(s * (2.0 * R - s), 0.0));
 }
 
@@ -86,8 +108,12 @@ fn scene(px: vec2f) -> vec3f {
   let aa = 0.75 / dpr;
   let samples = u.v[20].z;
   var cov = 0.0;
+  var d0 = 0.0;
   if (samples <= 1.5) {
-    cov = coverage(p, 0.0, 0.0, aa);
+    let f = field(p, 0.0, 0.0, aa);
+    let e = aa + f.sub;
+    cov = mix(f.apart, 1.0 - smoothstep(-e, e, f.d), u.v[20].y);
+    d0 = f.d;
   } else {
     let invS = 1.0 / samples;
     let ign = fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
@@ -110,14 +136,16 @@ fn scene(px: vec2f) -> vec3f {
   let bg = u.v[22].rgb;
   let R = max(u.v[22].w, 1.0);
   // A soft shadow below and right, wider than the dot.
-  let ds = field(p - vec2f(R * 0.12, R * 0.3), 0.0, 0.0, 0.5).d;
+  let ds = fieldD(p - vec2f(R * 0.12, R * 0.3));
   let shadow = (1.0 - smoothstep(-R * 0.4, R * 0.75, ds)) * mix(0.42, 0.16, tone) * u.v[20].y;
   var under = bg * (1.0 - shadow);
   if (cov <= 0.0005) {
     return under;
   }
   var col = ink;
-  let d0 = field(p, 0.0, 0.0, 0.5).d;
+  if (samples > 1.5) {
+    d0 = fieldD(p);
+  }
   if (d0 < 1.0 && u.v[20].y > 0.5) {
     let e = 0.75;
     let hx = height(p + vec2f(e, 0.0)) - height(p - vec2f(e, 0.0));

@@ -138,7 +138,11 @@ fn direct(p: vec3f, n: vec3f) -> vec4f {
   let L = lampPos - p;
   let d = length(L);
   let l = L / d;
-  let e = u.v[5].x * curveAt(d / RANGE) * cone(-l) * max(dot(n, l), 0.0) * ballShadow(p + n * 0.002, l, d);
+  let spot = u.v[5].x * cone(-l) * max(dot(n, l), 0.0);
+  if (spot <= 0.0) {
+    return vec4f(l, 0.0);
+  }
+  let e = spot * curveAt(d / RANGE) * ballShadow(p + n * 0.002, l, d);
   return vec4f(l, e);
 }
 
@@ -215,7 +219,9 @@ fn shade(ro: vec3f, rd: vec3f, hit: Hit) -> vec3f {
   col += albedo * fill * (0.35 + 0.65 * max(dot(n, v), 0.0)) * ao;
   if (hit.kind != 3) {
     let dl = direct(p, n);
-    col += (albedo / PI + specK * ggxSpec(n, v, dl.xyz, rough)) * lc * dl.w;
+    if (dl.w > 0.0) {
+      col += (albedo / PI + specK * ggxSpec(n, v, dl.xyz, rough)) * lc * dl.w;
+    }
   } else {
     // The enamel outside: a soft neutral key from the room (a window off to the left) so its
     // own hue reads under the warm bulb, a glossy streak of that window, and a sheen in its rim.
@@ -281,6 +287,9 @@ fn render(px: vec2f) -> vec3f {
 fn scene(px: vec2f) -> vec3f {
   let n = max(i32(u.v[5].w), 1);
   let moving = abs(u.v[1].z) + abs(u.v[1].w) > 0.0;
+  if (!moving) {
+    pose(0.0);
+  }
   let j = hash12(px);
   var c = vec3f(0.0);
   var ws = 0.0;
@@ -289,13 +298,12 @@ fn scene(px: vec2f) -> vec3f {
     // Sub-pixel offsets on a golden-angle spiral; instants stratified across the shutter.
     let ang = fi * 2.39996 + j * 6.2831853;
     let off = vec2f(cos(ang), sin(ang)) * sqrt((fi + 0.5) / f32(n)) * 0.5;
-    var tau = 0.0;
     var w = 1.0;
     if (moving) {
-      tau = (fi + 0.5 + (hash12(px.yx + fi) - 0.5) * 0.6) / f32(n) - 0.5;
+      let tau = (fi + 0.5 + (hash12(px.yx + fi) - 0.5) * 0.6) / f32(n) - 0.5;
       w = 0.64 + 0.36 * cos(tau * 6.2831853);
+      pose(tau);
     }
-    pose(tau);
     c += w * render(px + off);
     ws += w;
   }

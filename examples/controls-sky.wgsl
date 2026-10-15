@@ -85,10 +85,11 @@ fn scene(px: vec2f) -> vec3f {
   col += sunCol * 9.0 * (1.0 - smoothstep(r - pix, r + pix, ds)) * (1.0 - 0.35 * sat(ds / r)) * vis;
 
   // Clouds in a band above the hills, lit from the sun's side, dark against the night.
-  if (clouds > 0.001) {
-    let q = vec2f(uv.x * 1.6, (uv.y - HORIZON) * 5.0);
+  let hBand = uv.y - HORIZON;
+  if (clouds > 0.001 && hBand > 0.0 && hBand < 0.62) {
+    let q = vec2f(uv.x * 1.6, hBand * 5.0);
     let n = fbm(q * vec2f(1.0, 1.6) + vec2f(u.v[2].w * 0.01, 0.0));
-    let band = smoothstep(0.0, 0.12, uv.y - HORIZON) * (1.0 - smoothstep(0.3, 0.62, uv.y - HORIZON));
+    let band = smoothstep(0.0, 0.12, hBand) * (1.0 - smoothstep(0.3, 0.62, hBand));
     let dens = smoothstep(0.62 - clouds * 0.32, 0.86, n) * band;
     let lit = 0.45 + 0.55 * exp(-max(ds - 0.05, 0.0) * 2.2);
     let cloud = sky * 0.75 + sunCol * 0.11 * lit * vis + vec3f(0.01);
