@@ -32,6 +32,18 @@
     "./themes": {
       "types": "./dist/types/themes/index.d.ts",
       "default": "./dist/themes.js"
+    },
+    "./ui": {
+      "types": "./dist/types/ui/index.d.ts",
+      "default": "./dist/ui.js"
+    },
+    "./ui/react": {
+      "types": "./dist/types/ui/react.d.ts",
+      "default": "./dist/ui-react.js"
+    },
+    "./ui/solid": {
+      "types": "./dist/types/ui/solid.d.ts",
+      "default": "./dist/ui-solid.js"
     }
   },
   "scripts": {

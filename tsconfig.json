@@ -14,7 +14,10 @@
       "knobs/react": ["./src/react/index.ts"],
       "knobs/solid": ["./src/solid/index.ts"],
       "knobs/panel": ["./src/panel/index.ts"],
-      "knobs/themes": ["./src/themes/index.ts"]
+      "knobs/themes": ["./src/themes/index.ts"],
+      "knobs/ui": ["./src/ui/index.ts"],
+      "knobs/ui/react": ["./src/ui/react.tsx"],
+      "knobs/ui/solid": ["./src/ui/solid.ts"]
     }
   },
   "include": ["src", "tests", "examples", "scripts", "site", "*.ts"]

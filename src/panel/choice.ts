@@ -14,6 +14,8 @@ export type ChoiceDisplay = "auto" | "menu" | "segmented"
 
 /** More options than this always drop down a menu (unless `display: "segmented"`). */
 export const COMPACT_CHOICES = 4
+/** A menu of more options than this opens with a search field. */
+export const SEARCH_CHOICES = 8
 /** The least room (px) either side of a segment's label before the row turns into a menu. */
 const MIN_PAD = 6
 /** Finger travel (px) per option when panning over the menu button. */
@@ -28,8 +30,11 @@ export interface ChoiceControl {
   /** Whichever of the two is showing: the row's ↑↓ stop. */
   focusTarget(): HTMLElement
   isMenu(): boolean
-  /** Shows `value` (the pill under its segment and the menu's label). */
-  show(value: string, instant?: boolean): void
+  /**
+   * Shows `value` (the pill under its segment and the menu's label); `mixed` shows none of them
+   * (no pill, "—"), for a multi-selection whose items differ.
+   */
+  show(value: string, instant?: boolean, mixed?: boolean): void
   /** New labels for the same options. */
   relabel(items: readonly ChoiceItem[]): void
   /** Steps one option (←/→), stopping at the ends unless `wrap`. */
@@ -55,10 +60,21 @@ export function createChoice(
     /** `coalesce`: a later change in the same pan, folded into its undo step. */
     choose(value: string, coalesce?: boolean): void
     wake?(): void
+    /** The width (px) the segments may take; the row's, less its label, by default. */
+    room?(): number
+    /** What a resize is watched on, when not the row (the room depends on more than it). */
+    observe?: HTMLElement
+    /** Most options shown as segments under `auto`; `COMPACT_CHOICES` by default. */
+    compact?: number
+    /** Menu items show their 1-based number as a key equivalent. */
+    numbered?: boolean
+    /** The menu's label when no option matches the value. */
+    none?: string
   },
 ): ChoiceControl {
   let items = o.items
   const display = o.display ?? "auto"
+  const compact = o.compact ?? COMPACT_CHOICES
   const seg = doc.createElement("div")
   seg.className = "knobs-seg"
   const pill = doc.createElement("span")
@@ -94,7 +110,7 @@ export function createChoice(
   menu.append(menuValue, iconSvg(doc, "caret"))
   row.append(seg, menu)
 
-  const labelOf = (value: string) => items.find((i) => i.value === value)?.label ?? value
+  const labelOf = (value: string) => items.find((i) => i.value === value)?.label ?? o.none ?? value
   let open: Menu | undefined
   const openMenuAt = (keyboard: boolean) => {
     const current = o.value()
@@ -104,8 +120,9 @@ export function createChoice(
     open = openMenu(
       doc,
       (row.closest(".knobs-panel") as HTMLElement | null) ?? row,
-      items.map((item) => ({
+      items.map((item, i) => ({
         label: item.label,
+        ...(o.numbered && i < 9 ? { shortcut: String(i + 1) } : {}),
         checked: item.value === current,
         run: () => o.choose(item.value),
       })),
@@ -115,6 +132,7 @@ export function createChoice(
         returnTo: menu,
         active: items.findIndex((i) => i.value === current),
         minWidth: r.width,
+        search: !o.numbered && items.length > SEARCH_CHOICES,
         onClose: () => {
           open = undefined
           menu.setAttribute("aria-expanded", "false")
@@ -176,7 +194,7 @@ export function createChoice(
     canvas.font = font
     return canvas.measureText(text).width
   }
-  let asMenu = display === "menu" || (display === "auto" && items.length > COMPACT_CHOICES)
+  let asMenu = display === "menu" || (display === "auto" && items.length > compact)
   const apply = (next: boolean) => {
     const focused = doc.activeElement
     const had = focused === seg || seg.contains(focused) || focused === menu
@@ -198,6 +216,7 @@ export function createChoice(
       items.reduce((sum, i) => sum + measure(i.label, font) + MIN_PAD * 2, 0) +
       gap * Math.max(0, items.length - 1) +
       tray
+    if (o.room) return need <= o.room()
     const rowCs = getComputedStyle(row)
     const label = row.querySelector<HTMLElement>(":scope > span:first-child")
     const labelW = label
@@ -217,15 +236,15 @@ export function createChoice(
     return need <= Math.min(inner - labelW, cap)
   }
   const ro =
-    display === "auto" && items.length <= COMPACT_CHOICES
+    display === "auto" && items.length <= compact
       ? new ResizeObserver(() => {
-          if (!row.isConnected || !row.clientWidth) return
+          if (!row.isConnected || !(o.observe ?? row).clientWidth) return
           const next = !fits()
           if (next !== asMenu) apply(next)
           else if (!next) placeSegPill(seg, buttons, o.value(), true)
         })
       : undefined
-  ro?.observe(row)
+  ro?.observe(o.observe ?? row)
   const pillRo = new ResizeObserver(() => {
     if (!asMenu) placeSegPill(seg, buttons, o.value(), true)
   })
@@ -239,10 +258,13 @@ export function createChoice(
     menuValue,
     focusTarget: () => (asMenu ? menu : seg),
     isMenu: () => asMenu,
-    show(value, instant = false) {
-      placeSegPill(seg, buttons, value, instant)
-      const text = labelOf(value)
+    show(value, instant = false, mixed = false) {
+      placeSegPill(seg, buttons, mixed ? "\u0000mixed" : value, instant)
+      const text = mixed ? "—" : labelOf(value)
       if (menuValue.textContent !== text) menuValue.textContent = text
+      // The whole label on hover, where the button's room truncates it.
+      if (menu.title !== text) menu.title = text
+      menu.toggleAttribute("data-none", !mixed && !items.some((i) => i.value === value))
     },
     relabel(next) {
       items = next
@@ -250,6 +272,8 @@ export function createChoice(
         if (next[i]) b.textContent = next[i]!.label
       })
       menuValue.textContent = labelOf(o.value())
+      // New labels move the segments; the pill follows (showing the same value doesn't measure).
+      if (!asMenu) placeSegPill(seg, buttons, o.value(), true)
     },
     step,
     dispose() {

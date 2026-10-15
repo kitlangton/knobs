@@ -1,6 +1,6 @@
 # Migrating OpenCode iOS Tune & Problems to `knobs`
 
-This document covers how the OpenCode iOS Mac tuning page (`scripts/tune-server.ts` in `opencode-ios`) and the Problems rewrite's panels (`team-board`) adopt `knobs` as one shared control surface without losing any project-specific workflow.
+This document covers how the OpenCode iOS Mac tuning page (`scripts/tune-server.ts` in `opencode-ios`), the Problems rewrite's panels (`team-board`) and Arcade's Lab adopt `knobs` as one shared control surface without losing any project-specific workflow.
 
 ---
 
@@ -43,7 +43,10 @@ The tune page is a page of groups, not a panel, so it maps onto `mountPage` (fro
 | Per-group randomize / undo roll | The card's die (`g`, `⌥` mutates) runs locally and sends sets; local undo/redo replaces "undo roll". Keep `{ type: "randomize" }` as a group action if the phone's own dice matter. |
 | Copy as Swift / Copy values | `copy: () => remote.swift()` (Copy and ⇧C); a row's menu copies a selection. |
 | Playground & Slow Motion, Motion Watch, review player | `page.card({ title, section, element })` with `choice` (segmented, e.g. speed chips 0.1×–2×), `toggle`, `actions` and `item`; jumps that come and go are a keyed `card.list()`, and per-screen scenario buttons an `actions(...).set`, so both animate; arbitrary DOM goes in `card.body`. |
-| `context` (only this screen's groups unless All), `hidden` | Build the descriptors from the groups to show and remount when that set changes, or show everything: a page has room. `/` filters rows live. |
+| `context` (only this screen's groups unless All), `hidden` | Show everything (a page has room) and `page.highlight({ sections })` what's on the phone's screen: the rest dims a little, and the highlight glides as the phone moves (see below). `/` filters rows live. |
+| Card titles such as "Transcript · Arrivals" under Transcript | Shown as "Arrivals" automatically; or keep machine ids (`transcript.arrivals`) as groups with `groupLabels` / `groupLabel` for what they show. |
+| Numbered preset chips 1, 2, 3 | Names ("Today · Brisk · Gentle") while they fit beside the title, else a compact menu; `1`–`9` still apply them (`groupPresetDisplay: "numbers"` keeps the chips). |
+| The pairing card (QR code, Copy Link) | A collapsible custom card: `collapsed: false` while pairing, `card.collapse(true)` once the phone has signed in, with a one-line `summary`. |
 
 ```ts
 import { createRemoteControls, type ControlDescriptor, type GroupPreset } from "knobs"
@@ -114,7 +117,69 @@ function onState(phone: Phone) {
 }
 ```
 
-Nothing in `opencode-ios` changes for this: the wire stays as it is. What knobs doesn't do yet: a choice with many options (`DrawerTextStyle` has eight) is still a segmented row, which outgrows a card; it wants a compact menu. The review player's frame canvas stays your own DOM in a custom card.
+### What's on screen, pairing, and quieter titles
+
+The phone already reports what it shows (`phone.context = { id, groups, label? }`, sent as `{ type: "context" }`). Its `groups` are the keys' first segments, which are the page's sections, so the page highlights them: those sections keep full strength with a dot by their headings, the rest dims a little (still readable and interactive), and each change glides. `reveal: true` brings the first one into view when it's off screen, unless Kit scrolled, typed or touched the page in the last two seconds, or is dragging.
+
+```ts
+let shownContext = ""
+function onState(phone: Phone) {
+  // …remote.sync(…) as above…
+  const key = JSON.stringify(phone.context)
+  if (key !== shownContext) {
+    const first = shownContext === ""
+    shownContext = key
+    // The phone's groups → the page's section ids (here the section names themselves).
+    const sections = [...new Set(phone.context.groups.map((g) => SECTIONS[g] ?? title(g)))]
+    page.highlight(showsAll ? null : { sections }, { reveal: !first })
+  }
+}
+```
+
+The groups can be cards too (`{ groups: ["transcript.arrivals"] }`, group ids or custom card titles), and a card highlighted on its own gets the dot by its title. Call it again after a remount: a new page starts with nothing highlighted.
+
+The pairing card folds away once the phone is in. It remembers being folded per tab, so a reload doesn't bring the QR code back:
+
+```ts
+const connection = page.card({
+  title: "Connection",
+  section: "Connection",
+  collapsed: false, // collapsible, open until paired
+  summary: "Waiting for iPhone…",
+})
+connection.body.append(qrImage, pairingHint)
+connection.actions([{ label: "Copy Link", run: copyLink }])
+
+let paired: boolean | undefined
+function onPairing(phone?: Phone) {
+  const now = Boolean(phone)
+  if (now === paired) return
+  connection.summary(phone ? `iPhone · ${phone.version} · connected` : "Waiting for iPhone…")
+  if (now && paired === false) connection.collapse(true) // paired just now: fold the code away
+  paired = now
+}
+```
+
+Clicking its header (or `Enter` on it) opens it again to pair another phone.
+
+Card titles: a title that repeats its section ("Transcript · Arrivals" under Transcript) shows as "Arrivals" on its own. To keep unique ids without the prefix, group by id (the preset set's key for keys a set covers, else the key's first two segments) and label the groups. "Spacing" under Session List and "Spacing" under Composer then stay two cards, and presets, resets (`onReset({ group })`), `swift(group)` and highlights all take the id:
+
+```ts
+const setOf = new Map(phone.presets.flatMap((set) => set.keys.map((k) => [k, set] as const)))
+const descriptors = phone.schema.map((d) => {
+  const set = setOf.get(d.key)
+  const id = set?.key ?? d.key.split(".").slice(0, 2).join(".") // "drawer.spacing"
+  const label = set ? title(set.label) : title(d.key.split(".")[1] ?? d.group)
+  return { ...d, group: id, groupLabel: label, section: d.group, sectionLabel: SECTIONS[d.group] }
+})
+const groupPresets = Object.fromEntries(phone.presets.map((set) => [set.key, set.presets]))
+// onPreset: ({ group, index }) => send({ type: "preset", key: group, index }): the id is the set's key
+mountPage(remote, app, { sections: ["Connection", "Playground", "drawer", "transcript", "composer"], defaultLabel: "Native" })
+```
+
+`defaultLabel: "Native"` names the header's baseline chip (its id stays `default`). Card presets show their names: "Today · Compact · Roomy" where they fit beside the title, a compact menu where they don't; `1`–`9` apply them as before.
+
+Nothing in `opencode-ios` changes for this: the wire stays as it is. The review player's frame canvas stays your own DOM in a custom card.
 
 ---
 
@@ -237,3 +302,77 @@ const panel = useValue(dock, "panel")   // re-runs only when this key changes
 
 Without `ship`, the dock is dev-only: in a production build it's locked to its defaults, mounts
 nothing and none of the panel's code is in the bundle.
+
+---
+
+## 3. Arcade's Lab (`packages/kit/lab-knobs.ts`)
+
+Arcade draws every tuning panel with knobs (vendored at `942dff7`) and works around it in
+`packages/kit/lab-knobs.ts`. Each workaround now has an option. `examples/lab.html` is a working
+model of the Lab's column on these options, in both renderers.
+
+| `lab-knobs.ts` today | Replace with |
+| --- | --- |
+| The facade (`Object.defineProperties` over the store) whose `randomize` and `mutate` call `roll()` with `seededPatch` | Store options `random: () => draw()` (a generator seeded from `tuning.seed`) and `tunable: (key, values) => isTunable(control(key), values)`; `random: false` on the seed descriptors in `describe()`. In `onSet`, a `meta.source` of `"randomize"` or `"mutate"` records `tuning.last` and moves to the next seed (see `rolled()` in `examples/lab.ts`). |
+| The facade's `undo` / `redo`, and `history: !host.history` on the mount | Store option `history: { undo, redo, canUndo, canRedo, subscribe }` over the workbench's stack. The header's Undo and Redo stay, and follow `canUndo` / `canRedo`. Compare (hold `\`) is unchanged. |
+| `data-lab-disabled` from `decorate()`, its `opacity:.38;pointer-events:none` rule, and the `enabled() === false` revert in `onSet` and `onAction` | `disabled: () => row.control.enabled?.(nav.settings) === false` on the descriptor. knobs dims the row (`--k-disabled-opacity`, `.38` in `labPreset`), blocks pointer and key edits, keeps focus able to read it, and Random, Mutate and Reset skip it. Function fields don't change a descriptor's shape, so a new closure on each `refreshShape` swaps nothing. |
+| `onReset` filtering out what it can't reset | Reset skips disabled and read-only keys itself; when it skips any, `onReset` reports the rest key by key instead of `{}`. |
+| `variantStorage()`, a port that lets only `:variants:v1` keys through | `storage: localStorage, persist: "variants"` (or `storage: null` without `variantsId`). |
+| `sessionStorage.removeItem("knobs:<id>:session:v1")` before mounting | `session: false` on the mount. |
+| `orderRows` putting `folded` groups last | `folded: row.control.folded` on the descriptors (or `groupFolded` from `nav.folded`). Those groups fold in place, start folded, and open from their header; `panel.fold(group, folded?)` follows `nav.fold()`. |
+| The pin button appended in `decorate()` (with `stopPropagation` and absolute positioning) and the spawn-time `::after` dot and `title` | `rowAccessory: (key) => node` returning the pin and the dot; call `panel.updateAccessories()` after `pin.toggle`. The slot sits after the label and its clicks never reach the row. Keep the `.lab-knobs-pin` colours; drop its positioning. |
+| `ensureLabKnobsStyles()`'s `(0,0,2)` reset and `letter-spacing:normal` on the panel | Nothing: panels reset a host's element rules themselves (`button`, `input`, `span`, `*:focus`). |
+| `:is(.knobs-row,.knobs-slider)[data-field="…"]` in `rowElement` | `.knobs-row[data-field="…"]`: every row carries `knobs-row`. |
+| `arcadePreset` | `labPreset` from `knobs/themes`, square and flat. Spread it to keep the width rule: `{ ...labPreset, css: "&{--k-width:100%}&[data-lab-floating]{--k-width:300px}" }`. |
+| `packages/knobs/scripts/sync.ts` rewriting rolling-number's text import | Nothing: `src/panel/rolling-css.ts` ships the stylesheet as a module. Drop the rewrite from the sync script. |
+
+A few things to watch:
+
+- **Seeds.** knobs draws a field's value its own way, so a seed recorded under `seededPatch` gives
+  different values after the switch. Seeds recorded afterwards reproduce: a roll draws only for the
+  keys it changes, in schema order.
+- **Multi-selection.** When the Lab edits several items at once, pass the keys whose values differ
+  as `sync(values, { mixed })` (or `update(…, { mixed })`). Those rows read "—", and the first edit
+  of one reaches `onSet` even when the value is unchanged, so it applies to every item.
+- **Long choices.** Menus with more than eight options open with a search field, values truncate
+  with a tooltip, and labels keep their words up to half the row. The Lab's own label-column sizing
+  can go.
+- **A group's own Randomize.** A group with its own "Randomize <group>" action no longer needs the
+  facade: `groupRandom: (group, mode) => …` on the mount runs for the group's die, `g` and `⌥G`.
+  Return `true` when the host rolled the group (the die still tumbles) and knobs leaves its values
+  alone; return anything else to let knobs roll it. The Lab's Emitter group in `examples/lab.ts`
+  works this way.
+- **What stays in Arcade.** The `data-lab-flash` highlight is the Lab's own.
+
+### The workspace: `panels.ts` and `outliner.ts`
+
+The Lab's hand-built panes and outliner can move to `knobs/ui`. `examples/lab-workspace.ts` is a
+working model of the Lab's layout on it: an outliner on the left, the viewport over a dock in the
+middle, and the inspector column on the right.
+
+| Lab today | Replace with |
+| --- | --- |
+| The resizable columns and the dock in `panels.ts`, with their own drag handles, min and max clamps and saved sizes | `split()` from `knobs/ui`, one per direction, nested in each other's `pane(id).body`. Give each split an `id` and layouts are saved and restored before the first paint. Mark side columns and the dock `collapsible`; `rail` names a collapsed column and `title` gives a pane a header (a column pane folds to it). |
+| Code that re-lays out a canvas or panel when a column moves | Listen for `knobs-pane-resize` on the pane element, or use `onLayout`. GPU panels in panes follow on their own (the `knobs-layout` event). |
+| The outliner's rows, expand state, selection and drag reorder in `outliner.ts` | `tree()` over the scene's items (`getId`, `getLabel` and `getChildren` if they aren't `id`, `label` and `children`). `onSelect` drives the inspector; `onMove` returns `{ ids, parent, index }` for the scene graph (`applyMove` for plain items), then `update(items)`. Visibility and lock are `toggles: [{ id: "visible", … }, { id: "locked", … }]`; rename is `onRename`. |
+| The outliner's search box filter | Keep the input and call `outline.filter(query)`: matching rows show with their ancestors, the match marked. |
+| `arcadePreset` on the workspace chrome | `{ preset: labPreset }` on each `split` and `tree`, as on the panels. |
+
+Mount the inspector panels in the right pane's body as before (`mountPanel(controls, main.pane("right").body)`).
+Panes create no stacking contexts, so the panels keep the GPU renderer and their overlays.
+
+### Live readouts and overlays
+
+`examples/lab-live.ts` and `examples/lab-overlays.ts` model the Lab's live dock and its command
+surfaces on knobs.
+
+| Lab today | Replace with |
+| --- | --- |
+| Hand-drawn perf HUDs and stat strips (canvas sparklines, frame-time graphs, text counters updated each frame) | Readout rows in a store of their own: `graph` for CPU/GPU frame time with a `16.7` threshold, `sparkline` and `watch` for counts, `meter` for budgets (`warn`, `critical`), `table` for per-pass timings, `log` for events. Push with `controls.watch(key, value)` from the frame loop; rows redraw at most once a frame, only on screen, and sleep when the feed stops. They draw on the GPU overlay too. |
+| `title` attributes on toolbar and pane buttons | `tooltip(el, { text, shortcut })` or `data-tip` with `tooltips(document)`; split panes' buttons have them already. |
+| A search box that filters stations or commands by substring | `commandPalette({ commands })` on `⌘K`, with `commandsFrom(controls, { reveal })` for each panel's store and the workbench's own commands beside them. |
+| `window.confirm` before deleting from the outliner | `await confirm({ title, body, confirm: "Delete", destructive: true })`. |
+| Ad-hoc status text after Copy or Export | `toast(message)`; pages already use it for their status. |
+
+Set the look once with `overlayLook({ preset: labPreset, theme: "dark" })`.
+

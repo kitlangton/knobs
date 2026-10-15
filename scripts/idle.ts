@@ -151,11 +151,26 @@ try {
   await page.keyboard.press("Escape")
   await report("collapse")
 
-  // The full page: scrolling wakes the overlay, and it sleeps again once the page is still.
-  await page.goto(`http://127.0.0.1:${port}/tune.html?gpu`)
+  // The full page: scrolling wakes the overlay, and it sleeps again once the page is still. The
+  // phone stays on one screen (?still) unless told otherwise, so its own moves don't land in a
+  // measurement.
+  await page.goto(`http://127.0.0.1:${port}/tune.html?gpu&still`)
   await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.locator(".knobs-page .knobs-tile").first().waitFor()
+  // The phone's first news (2.6 s) and its pairing (3.2 s) land before measuring.
+  await sleep(3000)
   await report("page open")
+  // Sections fold and open, and the jump strip glides between them.
+  await page.locator('.knobs-section-head[data-section="Session List"]').click()
+  await report("section opens")
+  await page.locator('.knobs-section-head[data-section="Transcript"]').click()
+  await report("section folds")
+  await page.locator('.knobs-nav [data-tab="Composer"]').click()
+  await report("nav jump")
   await page.mouse.move(700, 500)
+  await page.mouse.wheel(0, -1200)
   await page.mouse.wheel(0, 600)
   await report("page scroll")
   await page.getByRole("slider", { name: "Row height" }).focus()
@@ -175,10 +190,23 @@ try {
   await report("page card folds")
   await playground.getByRole("radio", { name: "Composer", exact: true }).click()
   await report("page card unfolds")
+  // The phone changes screen: the highlight glides there, then the overlay sleeps.
+  await page.evaluate(() =>
+    (window as any).__tune.send({ type: "playground", playground: "sessionList" }),
+  )
+  await report("page highlight")
   await page.setViewportSize({ width: 900, height: 900 })
   await report("page reflow")
   await page.setViewportSize({ width: 1280, height: 900 })
   await report("page reflow back")
+
+  // The Lab's Live dock: readouts draw while the feed runs, and all sleep once it pauses.
+  await page.goto(`http://127.0.0.1:${port}/lab.html?gpu`)
+  await page.locator('[data-controls="lab-live"][data-gpu-active="true"]').waitFor()
+  await page.evaluate(() => (window as any).__live.pause(true))
+  await report("lab live paused")
+  await page.evaluate(() => (window as any).__live.diag.watch("events", "A new event"))
+  await report("lab log push")
   await browser.close()
 } finally {
   server.kill()

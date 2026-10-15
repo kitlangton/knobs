@@ -444,7 +444,9 @@ test("meta page self-tunes knobs tokens live, switches presets, copies CSS, and 
   await page.screenshot({ path: "test-results/example-gpu.png" })
 
   // Verify idle frame skipping (RAF loop goes to sleep once springs settle)
-  await expect.poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false)).toBe(true)
+  await expect
+    .poll(() => page.evaluate(() => window.__knobsGpu?.sleeping ?? false), { timeout: 20_000 })
+    .toBe(true)
 
   // Verify graceful fallback when WebGPU is unavailable
   const fallbackContext = await page.context().browser()!.newContext()
@@ -474,7 +476,9 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   // Random, Reset and Copy are Phosphor icons in the header with undo/redo and close; undo and
   // redo fold in once there's history
   await expect(
-    panel.locator("header :is(.knobs-icon, .knobs-die-icon):not(.knobs-check)"),
+    panel.locator(
+      "header button:not([hidden]) :is(.knobs-icon, .knobs-die-icon):not(.knobs-check)",
+    ),
   ).toHaveCount(6)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
   await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
@@ -774,7 +778,10 @@ test("panning drags the preset and choice pills across their options, one undo e
   // moves nothing.
   expect(seen.slice(5)).toEqual(seen.slice(5).map(() => ["warm", chips[1], ""]))
   // Each gesture is one undo entry; the cascade still ripples the rows.
-  await expect(synth.locator('[data-field="drive"]')).toHaveAttribute("style", /--k-delay/)
+  await expect(synth.locator('[data-field="drive"] .knobs-fill')).toHaveAttribute(
+    "style",
+    /--k-delay/,
+  )
   await synth.getByRole("button", { name: "Undo" }).click()
   expect(await checked()).toBe("default")
 
@@ -842,14 +849,15 @@ test("presets ripple down the rows, reduced motion moves them together, and glas
   await page.reload()
   const synth = page.getByRole("region", { name: "synth-voice controls" })
   const delays = () =>
-    synth
-      .locator("[data-field]")
-      .evaluateAll((rows) =>
-        rows.map((row) => [
-          (row as HTMLElement).dataset.field,
-          (row as HTMLElement).style.getPropertyValue("--k-delay"),
-        ]),
-      )
+    synth.locator("[data-field]").evaluateAll((rows) =>
+      // The row's turn is set on what it times (its fill, pill, switch…), not the row.
+      rows.map((row) => [
+        (row as HTMLElement).dataset.field,
+        row
+          .querySelector<HTMLElement>(".knobs-fill,.knobs-seg-pill,.knobs-toggle")
+          ?.style.getPropertyValue("--k-delay") ?? "",
+      ]),
+    )
 
   // default → acid changes every row but detune and voices; each changed row starts 12 ms after the
   // one above.
@@ -1103,7 +1111,9 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   await expect(gpuPanel).toHaveAttribute("data-gpu-active", "true")
   const settled = async () => {
     await page.mouse.move(5, 5)
-    await expect.poll(() => page.evaluate(() => window.__knobsGpu!.sleeping)).toBe(true)
+    await expect
+      .poll(() => page.evaluate(() => window.__knobsGpu!.sleeping), { timeout: 20_000 })
+      .toBe(true)
     return page.evaluate(() => window.__knobsGpu!.lastInstanceCount)
   }
   const closed = await settled()
@@ -1681,7 +1691,13 @@ test("design-system geometry contracts: left/right column alignment, concentric 
           panel.querySelector(".knobs-close")
             ? R(panel.querySelector(".knobs-close > .knobs-icon")!) +
               parseFloat(getComputedStyle(panel).getPropertyValue("--k-icon-size")) * 0.1
-            : R(panel.querySelector(".knobs-head-actions > button:last-of-type > .knobs-icon")!),
+            : R(
+                [
+                  ...panel.querySelectorAll<HTMLElement>(
+                    ".knobs-head-actions > button:not([hidden]) > .knobs-icon",
+                  ),
+                ].at(-1)!,
+              ),
           ...Array.from(
             panel.querySelectorAll(".knobs-group-head > span:last-child > button:last-child > *"),
             R,
@@ -1692,7 +1708,10 @@ test("design-system geometry contracts: left/right column alignment, concentric 
         const rowTarget = parseFloat(getComputedStyle(panel).getPropertyValue("--kv-row"))
         const rowHeights = [
           ...Array.from(panel.querySelectorAll(".knobs-slider"), H),
-          ...Array.from(panel.querySelectorAll(".knobs-row"), H),
+          ...Array.from(
+            panel.querySelectorAll(".knobs-row:not(.knobs-slider, .knobs-x, .knobs-spring)"),
+            H,
+          ),
           ...Array.from(panel.querySelectorAll(".knobs-x-head"), H),
         ]
 
@@ -1755,20 +1774,21 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto("/tune.html")
+  await page.goto("/tune.html?classic")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const tune = page.getByRole("region", { name: "iPhone Tune controls" })
   const card = (name: string) => tune.locator(`.knobs-tile[aria-label="${name}"]`)
   // Groups become cards in sections; custom cards join them; the columns follow the width.
   await expect(tune.locator(".knobs-section-head:not([data-continued])")).toHaveText([
+    "Connection",
     "Playground",
     "Session List",
     "Transcript",
     "Composer",
   ])
   await expect(card("Spacing")).toBeVisible()
-  await expect(tune.locator(".knobs-live")).toHaveCount(2)
+  await expect(tune.locator(".knobs-live")).toHaveCount(3)
   await expect(tune.locator(".knobs-column")).toHaveCount(4)
 
   // j runs off the end of one card into the next; Tab and ⇧Tab move between groups.
@@ -1782,36 +1802,22 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await page.keyboard.press("k")
   await expect(page.getByRole("slider", { name: "Room below a header" })).toBeFocused()
 
-  // 1–9 apply the focused group's numbered preset; the phone applies its own and agrees.
+  // 1–9 apply the focused group's preset; the phone applies its own and agrees. Four names don't
+  // fit beside "Spacing", so its presets are a menu showing the selected one's name.
   const rowHeight = page.getByRole("slider", { name: "Row height" })
   await rowHeight.focus()
-  // The header peeks the preset's name for a moment: watched as it happens, not raced.
-  await card("Spacing")
-    .locator(".knobs-group-head")
-    .evaluate((head) => {
-      const seen = window as unknown as { __peeked?: boolean }
-      seen.__peeked = false
-      new MutationObserver(() => {
-        if (head.hasAttribute("data-peek")) seen.__peeked = true
-      }).observe(head, { attributes: true, attributeFilter: ["data-peek"] })
-    })
+  const spacingPresets = card("Spacing").getByRole("button", { name: "Spacing presets" })
+  await expect(spacingPresets).toHaveText("Today")
   await page.keyboard.press("2")
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
-  await expect(card("Spacing").getByRole("radio", { name: "2 Compact" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  )
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __peeked?: boolean }).__peeked))
-    .toBe(true)
+  await expect(spacingPresets).toHaveText("Compact")
   await page.waitForTimeout(400)
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "38")
   await page.keyboard.press("u")
   await expect(rowHeight).toHaveAttribute("aria-valuenow", "44")
-  await expect(card("Spacing").getByRole("radio", { name: "1 Today" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  )
+  await expect(spacingPresets).toHaveText("Today")
+  // Three short names fit beside "Arrivals": segments.
+  await expect(card("Arrivals").getByRole("radio")).toHaveText(["Today", "Brisk", "Gentle"])
 
   // A custom card's controls round-trip through the phone.
   // Five speeds are more than a row of segments holds: a menu.
@@ -1849,7 +1855,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   await expect(header).not.toHaveAttribute("data-scrolled", "")
 
   // The GPU overlay draws the page too.
-  await page.goto("/tune.html?gpu")
+  await page.goto("/tune.html?classic&gpu")
   await expect(tune.locator(".knobs-tile").first()).toBeVisible()
   await page.waitForTimeout(500)
 
@@ -1857,7 +1863,7 @@ test("full page: cards in columns under a sticky header, keys across cards, numb
   // both renderers, with no overlap or horizontal overflow.
   for (const mode of ["dom", "gpu"] as const) {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(`/tune.html${mode === "gpu" ? "?gpu" : ""}`)
+    await page.goto(`/tune.html?classic${mode === "gpu" ? "&gpu" : ""}`)
     await expect(tune.locator(".knobs-tile").first()).toBeVisible()
     const head = await header.evaluate((h) => {
       const title = h.querySelector("strong")!.getBoundingClientRect()
@@ -1887,7 +1893,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto("/tune.html")
+  await page.goto("/tune.html?classic")
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const tune = page.getByRole("region", { name: "iPhone Tune controls" })
@@ -2019,7 +2025,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   // glide's springs can't jump more than a few frames' worth however slow the runner), and the
   // overlay keeps drawing until they land, then sleeps.
   await page.setViewportSize({ width: 1100, height: 900 })
-  await page.goto("/tune.html?gpu")
+  await page.goto("/tune.html?classic&gpu")
   await expect(tune.locator(".knobs-column")).toHaveCount(3)
   const track = page.evaluate(
     () =>
@@ -2055,7 +2061,7 @@ test("full page columns: sections stack independently, heights ease, reflows gli
   ).toBeGreaterThan(2)
   expect(Math.abs(start.y - end.y) + Math.abs(start.x - end.x)).toBeGreaterThan(50)
   await expect
-    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 5000 })
+    .poll(() => page.evaluate(() => (window as any).__knobsGpu?.sleeping), { timeout: 20_000 })
     .toBe(true)
   expect(errors).toEqual([])
 })

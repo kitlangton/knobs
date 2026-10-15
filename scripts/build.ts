@@ -18,6 +18,9 @@ for (const [name, entry] of [
   ["solid", "src/solid/index.ts"],
   ["panel", "src/panel/index.ts"],
   ["themes", "src/themes/index.ts"],
+  ["ui", "src/ui/index.ts"],
+  ["ui-react", "src/ui/react.tsx"],
+  ["ui-solid", "src/ui/solid.ts"],
 ]) {
   const result = await Bun.build({
     entrypoints: [entry],
@@ -26,14 +29,18 @@ for (const [name, entry] of [
     target: "browser",
     format: "esm",
     jsx: { development: false },
-    external: ["react", "react/jsx-runtime", "solid-js", "solid-js/web"],
-    banner: name === "react" ? '"use client";' : undefined,
+    external: ["react", "react/jsx-runtime", "react-dom", "solid-js", "solid-js/web"],
+    banner: name === "react" || name === "ui-react" ? '"use client";' : undefined,
   })
   if (!result.success) throw new AggregateError(result.logs, `${name} build failed`)
 }
 const production = await Bun.file("dist/index.js").text()
 if (/import\(["']|knobs-panel|createPanel|ResizeObserver/.test(production))
   throw new Error("Panel leaked into production core.")
+// The pieces (split, tree, readouts, overlays) stand alone: no panel or GPU renderer inside.
+const ui = await Bun.file("dist/ui.js").text()
+if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(ui))
+  throw new Error("The panel leaked into knobs/ui.")
 const built = await import(new URL("../dist/index.js", import.meta.url).href)
 const locked = built.defineControls(
   "production-proof",

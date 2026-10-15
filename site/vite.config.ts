@@ -5,10 +5,6 @@ import { defineConfig, type Plugin } from "vite"
 const siteDir = import.meta.dirname
 const rootDir = resolve(siteDir, "..")
 const examplesDir = resolve(rootDir, "examples")
-const rollingCss = readFileSync(
-  resolve(rootDir, "node_modules/@kitlangton/rolling-number/dist/styles.css"),
-  "utf8",
-)
 const port = Number(process.env.PORT) || 5196
 const examples = ["studies", "meta", "die", "contracts", "tune", "problems"]
 
@@ -91,17 +87,5 @@ export default defineConfig({
       { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
     ],
   },
-  plugins: [
-    examplePages(),
-    {
-      name: "knobs-css-text",
-      enforce: "pre",
-      resolveId(id) {
-        if (id === "@kitlangton/rolling-number/styles.css") return "\0rolling-number-css"
-      },
-      load(id) {
-        if (id === "\0rolling-number-css") return `export default ${JSON.stringify(rollingCss)}`
-      },
-    },
-  ],
+  plugins: [examplePages()],
 })

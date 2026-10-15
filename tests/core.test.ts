@@ -1,8 +1,19 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest"
 import { createRoot as createSolidRoot, type Accessor } from "solid-js"
 import {
+  angle,
   choice,
   color,
+  comboFromEvent,
+  comboLabel,
+  keybind,
+  matchesCombo,
+  normalizeCombo,
+  range,
+  seed,
+  toolbar,
+  vec2,
+  vec3,
   colorHex,
   createRemoteControls,
   defineControls,
@@ -69,10 +80,12 @@ describe("schema", () => {
       controls.set({ missing: 3 })
     }
   })
-  it("clamps, snaps relative to min, drops extra keys and rejects non-finite input", () => {
+  it("clamps, keeps incoming values exact, drops extra keys and rejects non-finite input", () => {
     expect(
       normalize(schema, { count: 999, size: 1.7, flavor: "bad", grain: "false", extra: 4 }),
-    ).toEqual({ count: 300, size: 1.5, flavor: "inked", grain: true })
+    ).toEqual({ count: 300, size: 1.7, flavor: "inked", grain: true })
+    // Whole-number fields stay whole.
+    expect(normalize(schema, { count: 104.7 }).count).toBe(105)
     expect(normalize(schema, { count: NaN, size: -100, grain: false })).toEqual({
       count: 98,
       size: 1,
@@ -84,9 +97,22 @@ describe("schema", () => {
     expect(() => knob(1, { min: 2, max: 1 })).toThrow()
     expect(() => choice("a", ["a", "a"])).toThrow()
   })
-  it("never overshoots or lands off-step when the maximum isn't on the lattice", () => {
+  it("keeps declared defaults and incoming values off the step lattice exactly (as on the phone)", () => {
+    // OpenCode iOS tunables: defaults that sit between min-relative steps must read exactly.
+    const tune = {
+      promotion: knob(0.4, { min: 0.15, max: 1, step: 0.02 }),
+      jump: knob(0.5, { min: 0.15, max: 1, step: 0.02 }),
+      reveal: knob(0.78, { min: 0.55, max: 1, step: 0.02 }),
+    }
+    expect(normalize(tune, {})).toEqual({ promotion: 0.4, jump: 0.5, reveal: 0.78 })
+    expect(normalize(tune, { promotion: 0.4, reveal: 0.79 })).toMatchObject({
+      promotion: 0.4,
+      reveal: 0.79,
+    })
+  })
+  it("never overshoots when the maximum isn't on the lattice", () => {
     const s = { n: knob(0.1, { min: 0.1, max: 1, step: 0.2 }) }
-    expect(normalize(s, { n: 1 }).n).toBe(0.9)
+    expect(normalize(s, { n: 1.4 }).n).toBe(1)
     for (let i = 0; i <= 100; i++) {
       const n = randomValues(s, () => i / 100).n
       expect(n).toBeLessThanOrEqual(1)
@@ -1137,6 +1163,173 @@ describe("sections and group presets", () => {
   })
 })
 
+describe("remote batches", () => {
+  const descriptors: ControlDescriptor[] = [
+    { key: "a", kind: "number", default: 1, min: 0, max: 10, step: 0.1, group: "G" },
+    { key: "b", kind: "number", default: 2, min: 0, max: 10, step: 0.1, group: "G" },
+    { key: "c", kind: "choice", default: "x", choices: ["x", "y"], group: "H" },
+    { key: "d", kind: "toggle", default: false, group: "H" },
+  ]
+  const make = (options: Parameters<typeof createRemoteControls>[2] = {}) => {
+    const batches: { changes: { key: string; value: unknown }[]; source: string }[] = []
+    const sets: [string, unknown][] = []
+    const resets: unknown[] = []
+    const remote = createRemoteControls("batch", descriptors, {
+      presets: { lively: { a: 5, b: 6, c: "y", d: true } },
+      groupPresets: { G: [{ name: "Wide", values: { a: 9, b: 9 } }] },
+      onSet: (key, value) => sets.push([key, value]),
+      onSetBatch: (changes, meta) => batches.push({ changes, source: meta.source }),
+      onReset: (target) => resets.push(target),
+      ...options,
+    })
+    return { remote, batches, sets, resets }
+  }
+
+  it("sends a preset as one batch and one undo step, and its undo and redo as one batch each", () => {
+    const { remote, batches, sets } = make()
+    remote.preset("lively")
+    expect(sets).toEqual([])
+    expect(batches).toEqual([
+      {
+        source: "preset",
+        changes: [
+          { key: "a", value: 5 },
+          { key: "b", value: 6 },
+          { key: "c", value: "y" },
+          { key: "d", value: true },
+        ],
+      },
+    ])
+    expect(remote.canUndo).toBe(true)
+    remote.undo()
+    expect(remote.canUndo).toBe(false)
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches.at(-1)).toEqual({
+      source: "undo",
+      changes: [
+        { key: "a", value: null },
+        { key: "b", value: null },
+        { key: "c", value: null },
+        { key: "d", value: null },
+      ],
+    })
+    remote.redo()
+    expect(batches).toHaveLength(3)
+    expect(batches.at(-1)?.source).toBe("redo")
+    expect(batches.at(-1)?.changes).toHaveLength(4)
+    expect(sets).toEqual([])
+  })
+
+  it("lands Native exactly, as nulls in one batch", () => {
+    const { remote, batches } = make()
+    remote.set({ a: 3.3, c: "y" })
+    remote.preset("default")
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches.at(-1)).toEqual({
+      source: "preset",
+      changes: [
+        { key: "a", value: null },
+        { key: "c", value: null },
+      ],
+    })
+    // Only what changed goes out: from Native, Native sends nothing.
+    remote.preset("default")
+    expect(batches).toHaveLength(2)
+  })
+
+  it("batches group presets (without onPreset), Random, Mutate and a selection's reset", () => {
+    const { remote, batches, sets, resets } = make()
+    remote.groupPreset("G", 0)
+    expect(batches.at(-1)).toEqual({
+      source: "preset",
+      changes: [
+        { key: "a", value: 9 },
+        { key: "b", value: 9 },
+      ],
+    })
+    remote.randomize()
+    expect(batches.at(-1)?.source).toBe("randomize")
+    remote.mutate()
+    expect(batches.at(-1)?.source).toBe("mutate")
+    const before = batches.length
+    remote.reset(["a", "b"])
+    expect(batches).toHaveLength(before + 1)
+    expect(batches.at(-1)).toEqual({
+      source: "reset",
+      changes: [
+        { key: "a", value: null },
+        { key: "b", value: null },
+      ],
+    })
+    expect(resets.slice(-2)).toEqual([{ key: "a" }, { key: "b" }])
+    expect(sets).toEqual([])
+    // Each was one store change: four undo steps back to the start, one batch each.
+    const sent = batches.length
+    for (let i = 0; i < 4; i++) remote.undo()
+    expect(remote.canUndo).toBe(false)
+    expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
+    expect(batches).toHaveLength(sent + 4)
+  })
+
+  it("keeps onSet for one key, and sends it as a one-entry batch without onSet", () => {
+    const { remote, batches, sets } = make()
+    remote.set({ a: 4 })
+    remote.resetKey("a")
+    remote.groupPreset("G", 0)
+    remote.reset(["b"])
+    expect(sets).toEqual([
+      ["a", 4],
+      ["a", null],
+      ["b", null],
+    ])
+    expect(batches).toHaveLength(1)
+
+    const only = make({ onSet: undefined })
+    only.remote.set({ a: 4 })
+    only.remote.resetKey("a")
+    expect(only.batches).toEqual([
+      { source: "local", changes: [{ key: "a", value: 4 }] },
+      { source: "reset", changes: [{ key: "a", value: null }] },
+    ])
+  })
+
+  it("leaves resetting everything or a group to onReset, and peer presets to onPreset", () => {
+    const presets: unknown[] = []
+    const { remote, batches, resets } = make({ onPreset: (target) => presets.push(target) })
+    remote.preset("lively")
+    remote.reset()
+    expect(resets.at(-1)).toEqual({})
+    remote.preset("lively")
+    remote.resetGroup("G")
+    expect(resets.at(-1)).toEqual({ group: "G" })
+    remote.groupPreset("G", 0)
+    expect(presets).toEqual([{ group: "G", index: 0, name: "Wide" }])
+    expect(batches.map((b) => b.source)).toEqual(["preset", "preset"])
+    // Undoing the peer's preset is ours to send.
+    remote.undo()
+    expect(batches.at(-1)?.source).toBe("undo")
+  })
+
+  it("holds each batched key against a stale echo until the peer acknowledges it", () => {
+    vi.useFakeTimers()
+    try {
+      const { remote } = make()
+      remote.preset("lively")
+      // A state from before the preset crosses in flight: every key holds.
+      remote.sync({ a: 1, b: 2, c: "x", d: false }, { replace: true })
+      expect(remote.get()).toEqual({ a: 5, b: 6, c: "y", d: true })
+      // The peer acknowledges a and c; b and d still hold against a stale value.
+      remote.sync({ a: 5, b: 2, c: "y", d: false }, { replace: true })
+      remote.sync({ a: 7, b: 2, c: "x", d: false }, { replace: true })
+      expect(remote.get()).toEqual({ a: 7, b: 6, c: "x", d: true })
+      vi.advanceTimersByTime(700)
+      expect(remote.get()).toEqual({ a: 7, b: 2, c: "x", d: false })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe("page layout", () => {
   it("splits cards into balanced runs that keep their order down each column", async () => {
     const { balancedRuns } = await import("../src/panel/page.js")
@@ -1219,6 +1412,291 @@ describe("page layout", () => {
       walk(0, k, 0)
       expect(Math.max(...got.map((c) => c.height))).toBeCloseTo(best, 5)
     }
+  })
+
+  it("drops a card title's repeated section prefix, only after a separator", async () => {
+    const { cardTitle } = await import("../src/panel/page.js")
+    expect(cardTitle("Transcript · Arrivals", ["Transcript"])).toBe("Arrivals")
+    expect(cardTitle("transcript: Follow", ["Transcript"])).toBe("Follow")
+    expect(cardTitle("Session — Header Style", ["session", "Session List"])).toBe("Header Style")
+    expect(cardTitle("Composer / Actions", ["composer", "Composer"])).toBe("Actions")
+    // No separator, nothing left, or another section: kept as it is.
+    expect(cardTitle("Transcript Arrivals", ["Transcript"])).toBe("Transcript Arrivals")
+    expect(cardTitle("Transcript", ["Transcript"])).toBe("Transcript")
+    expect(cardTitle("Transcript · ", ["Transcript"])).toBe("Transcript · ")
+    expect(cardTitle("Composer · Layout", ["Transcript"])).toBe("Composer · Layout")
+    expect(cardTitle("Spacing", [""])).toBe("Spacing")
+  })
+})
+
+describe("labels apart from ids", () => {
+  it("resolves group, section and preset labels: options first, then the first field's", () => {
+    const controls = defineControls(
+      "labels",
+      {
+        a: knob(1, {
+          min: 0,
+          max: 2,
+          group: "drawer.spacing",
+          groupLabel: "Spacing",
+          section: "drawer",
+          sectionLabel: "Session List",
+        }),
+        b: knob(1, {
+          min: 0,
+          max: 2,
+          group: "drawer.spacing",
+          groupLabel: "Ignored",
+          section: "drawer",
+        }),
+        c: knob(1, { min: 0, max: 2, group: "composer.spacing", section: "composer" }),
+      },
+      {
+        enabled: true,
+        storage: memoryStorage(),
+        groupLabels: { "composer.spacing": "Spacing" },
+        sectionLabels: { composer: "Composer" },
+        defaultLabel: "Native",
+        presets: { airy: { a: 2 } },
+        presetLabels: { airy: "Airy" },
+      },
+    )
+    expect(controls.groupLabel("drawer.spacing")).toBe("Spacing")
+    expect(controls.groupLabel("composer.spacing")).toBe("Spacing")
+    expect(controls.groupLabel("nowhere")).toBeUndefined()
+    expect(controls.sectionLabel("drawer")).toBe("Session List")
+    expect(controls.sectionLabel("composer")).toBe("Composer")
+    expect(controls.presetLabel("default")).toBe("Native")
+    expect(controls.presetLabel("airy")).toBe("Airy")
+    expect(controls.presetLabel("other")).toBe("other")
+    // Ids stay the identity: the preset is still "default", the group still its id.
+    expect(Object.keys(controls.presets)).toEqual(["default", "airy"])
+    expect(controls.groupPresetDisplay).toBe("auto")
+    controls.set({ a: 2, c: 2 })
+    controls.resetGroup("drawer.spacing")
+    expect(controls.get()).toMatchObject({ a: 1, b: 1, c: 2 })
+  })
+
+  it("carries descriptor labels through remote controls; Swift and resets keep the ids", () => {
+    const resets: unknown[] = []
+    const remote = createRemoteControls(
+      "remote-labels",
+      [
+        {
+          key: "drawer.row.height",
+          kind: "number",
+          default: 44,
+          min: 28,
+          max: 72,
+          step: 1,
+          swiftType: "CGFloat",
+          group: "drawer.spacing",
+          groupLabel: "Spacing",
+          section: "drawer",
+          sectionLabel: "Session List",
+        },
+        {
+          key: "composer.spacing.margin",
+          kind: "number",
+          default: 20,
+          min: 8,
+          max: 48,
+          step: 1,
+          swiftType: "CGFloat",
+          group: "composer.spacing",
+          section: "composer",
+        },
+        {
+          key: "drawer.open",
+          kind: "spring",
+          bind: { duration: "drawer.open.duration", bounce: "drawer.open.bounce" },
+          default: { duration: 0.4, bounce: 0.1 },
+          group: "drawer.motion",
+          groupLabel: "Motion",
+        },
+      ],
+      {
+        groupLabels: { "composer.spacing": "Spacing" },
+        defaultLabel: "Native",
+        groupPresetDisplay: "menu",
+        onReset: (t) => resets.push(t),
+      },
+    )
+    expect(remote.groupLabel("drawer.spacing")).toBe("Spacing")
+    expect(remote.groupLabel("composer.spacing")).toBe("Spacing")
+    expect(remote.groupLabel("drawer.motion")).toBe("Motion")
+    expect(remote.sectionLabel("drawer")).toBe("Session List")
+    expect(remote.presetLabel("default")).toBe("Native")
+    expect(remote.groupPresetDisplay).toBe("menu")
+    remote.set({ "drawer.row.height": 50, "composer.spacing.margin": 30 })
+    expect(remote.swift("drawer.spacing")).toContain("drawer.row.height")
+    expect(remote.swift("drawer.spacing")).not.toContain("composer.spacing.margin")
+    remote.resetGroup("composer.spacing")
+    expect(resets).toEqual([{ group: "composer.spacing" }])
+    expect(remote.get()["drawer.row.height"]).toBe(50)
+  })
+
+  it("folds a pan across a card's presets into one undo step", () => {
+    const controls = defineControls(
+      "pan-presets",
+      { a: knob(1, { min: 0, max: 9, step: 1, group: "g" }) },
+      {
+        enabled: true,
+        storage: memoryStorage(),
+        groupPresets: {
+          g: [
+            { name: "One", values: {} },
+            { name: "Two", values: { a: 2 } },
+            { name: "Three", values: { a: 3 } },
+          ],
+        },
+      },
+    )
+    controls.groupPreset("g", 1)
+    controls.groupPreset("g", 2, { coalesce: true })
+    expect(controls.get().a).toBe(3)
+    controls.undo()
+    expect(controls.get().a).toBe(1)
+  })
+})
+
+describe("inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars", () => {
+  const key = (init: KeyboardEventInit & { key: string; code?: string }) =>
+    ({
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+      code: "",
+      ...init,
+    }) as KeyboardEvent
+  it("vec2 and vec3 clamp each axis and keep the axes they have", () => {
+    const s = {
+      at: vec2({ x: 0, y: 1 }, { min: -1, max: 1, step: 0.1 }),
+      size: vec3({ x: 1, y: 1, z: 1 }, { min: 0, max: 4, linked: true }),
+    }
+    const v = normalize(s, { at: { x: 5, y: -5, z: 9 }, size: { x: 2 } })
+    expect(v.at).toEqual({ x: 1, y: -1 })
+    expect(v.size).toEqual({ x: 2, y: 1, z: 1 })
+    expect(s.size.link).toBe(true)
+    expect(() => vec2({ x: 0, y: 0 }, { min: 1, max: 0 })).toThrow()
+  })
+  it("range keeps low under high and inside its bounds", () => {
+    const s = { r: range([0.2, 0.8], { min: 0, max: 1, step: 0.01 }) }
+    expect(normalize(s, { r: [0.9, 0.1] }).r).toEqual([0.1, 0.9])
+    expect(normalize(s, { r: [-1, 2] }).r).toEqual([0, 1])
+    expect(normalize(s, { r: "nope" }).r).toEqual([0.2, 0.8])
+  })
+  it("angle wraps a full turn and clamps a bounded one", () => {
+    const s = { turn: angle(10), tilt: angle(0, { min: -90, max: 90 }) }
+    expect(s.turn.wrap).toBe(true)
+    expect(s.tilt.wrap).toBe(false)
+    expect(normalize(s, { turn: 370, tilt: 120 })).toEqual({ turn: 10, tilt: 90 })
+    expect(normalize(s, { turn: -30, tilt: -100 })).toEqual({ turn: 330, tilt: -90 })
+    expect(normalize(s, { turn: 360 }).turn).toBe(0)
+  })
+  it("seeds and key combinations stay out of Random and Mutate unless asked", () => {
+    const s = {
+      a: seed(7),
+      b: seed(7, { random: true, max: 9 }),
+      k: keybind("cmd+shift+k"),
+      n: knob(0.5, { min: 0, max: 1 }),
+    }
+    expect(s.k.value).toBe("Shift+Meta+K")
+    const c = defineControls("insp-roll", s, { enabled: true, storage: null, random: () => 0.99 })
+    c.randomize()
+    expect(c.get().a).toBe(7)
+    expect(c.get().k).toBe("Shift+Meta+K")
+    expect(c.get().b).toBe(9)
+    c.mutate()
+    expect(c.get().a).toBe(7)
+  })
+  it("Random and Mutate move vectors, ranges and angles within their bounds", () => {
+    let n = 0
+    const rand = () => ((n = (n * 9301 + 49297) % 233280), n / 233280)
+    const s = {
+      v: vec3({ x: 0, y: 0, z: 0 }, { min: -2, max: 2, step: 0.5 }),
+      r: range([1, 2], { min: 0, max: 10, step: 1 }),
+      a: angle(0, { min: -45, max: 45 }),
+    }
+    for (let i = 0; i < 20; i++) {
+      const v = randomValues(s, rand) as Values<typeof s>
+      for (const axis of ["x", "y", "z"] as const) {
+        expect(v.v[axis]).toBeGreaterThanOrEqual(-2)
+        expect(v.v[axis]).toBeLessThanOrEqual(2)
+      }
+      expect(v.r[0]).toBeLessThanOrEqual(v.r[1])
+      expect(Math.abs(v.a)).toBeLessThanOrEqual(45)
+      const m = mutateValues(s, v, undefined, rand) as unknown as Values<typeof s>
+      expect(m.r[0]).toBeLessThanOrEqual(m.r[1])
+      expect(Math.abs(m.a)).toBeLessThanOrEqual(45)
+    }
+  })
+  it("toolbars hold no value; pressing an item runs it and reports its id", () => {
+    const run = vi.fn()
+    const onAction = vi.fn()
+    const s = {
+      tools: toolbar([
+        { id: "play", label: "Play", shortcut: "Space", run },
+        { label: "Frame", disabled: true },
+      ]),
+      x: knob(1, { min: 0, max: 2 }),
+    }
+    const c = defineControls("insp-tools", s, { enabled: true, storage: null, onAction })
+    expect(Object.keys(c.get())).toEqual(["x"])
+    c.action("tools", "play")
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(onAction).toHaveBeenCalledWith("play")
+    c.action("tools", "Frame")
+    expect(onAction).toHaveBeenCalledTimes(1)
+    expect(() => c.action("tools", "missing")).toThrow()
+    expect(() => toolbar([])).toThrow()
+  })
+  it("tab and subsection travel as meta, from schema and descriptors", () => {
+    const s = fromDescriptors([
+      { key: "p", kind: "vec2", default: { x: 1, y: 2 }, min: 0, max: 4, tab: "xform" },
+      { key: "r", kind: "range", default: [1, 3], min: 0, max: 4, subsection: "Limits" },
+      { key: "a", kind: "angle", default: 45 },
+      { key: "s", kind: "seed", default: 12 },
+      { key: "k", kind: "keybind", default: "Alt+F" },
+      { key: "t", kind: "toolbar", items: [{ key: "go", label: "Go", shortcut: "G" }] },
+    ])
+    expect(s.p!.tab).toBe("xform")
+    expect(s.r!.subsection).toBe("Limits")
+    expect(s.a!.kind).toBe("angle")
+    expect(s.s!.random).toBe(false)
+    expect(s.k!.kind).toBe("keybind")
+    expect(s.t!.kind).toBe("toolbar")
+    const values = normalize(s, {})
+    expect(values).toEqual({ p: { x: 1, y: 2 }, r: [1, 3], a: 45, s: 12, k: "Alt+F" })
+  })
+  it("key combinations: one spelling, read from events by position, shown as glyphs or words", () => {
+    expect(normalizeCombo("shift+cmd+k")).toBe("Shift+Meta+K")
+    expect(normalizeCombo("⌥⇧ArrowUp".replace(/(⌥|⇧)/g, "$1+"))).toBe("Alt+Shift+ArrowUp")
+    expect(normalizeCombo("space")).toBe("Space")
+    expect(normalizeCombo("")).toBe("")
+    // ⌥ changes the character on macOS; the code says which key it was.
+    expect(comboFromEvent(key({ key: "å", code: "KeyA", altKey: true }))).toBe("Alt+A")
+    expect(comboFromEvent(key({ key: " ", code: "Space" }))).toBe("Space")
+    expect(comboFromEvent(key({ key: "Shift", shiftKey: true }))).toBe("")
+    expect(matchesCombo("shift+backspace", key({ key: "Backspace", shiftKey: true }))).toBe(true)
+    expect(matchesCombo("F", key({ key: "f", code: "KeyF", metaKey: true }))).toBe(false)
+    expect(comboLabel("Ctrl+Alt+Shift+Meta+K", true)).toBe("⌃⌥⇧⌘K")
+    expect(comboLabel("Shift+Meta+K", false)).toBe("Shift+Meta+K")
+    expect(comboLabel("Shift+Backspace", true)).toBe("⇧⌫")
+  })
+  it("remote descriptors write Swift literals for the new kinds", () => {
+    const d: ControlDescriptor[] = [
+      { key: "p", kind: "vec2", default: { x: 1, y: 2 }, min: 0, max: 4 },
+      { key: "r", kind: "range", default: [1, 3], min: 0, max: 4 },
+      { key: "s", kind: "seed", default: 12 },
+      { key: "k", kind: "keybind", default: "Alt+F" },
+    ]
+    const swift = formatSwift(d, { p: { x: 3, y: 1 }, r: [0, 2], s: 99, k: "Meta+K" })
+    expect(swift).toContain("SIMD2<Double>(3, 1)")
+    expect(swift).toContain("0...2")
+    expect(swift).toContain("99")
+    expect(swift).toContain('"Meta+K"')
   })
 })
 

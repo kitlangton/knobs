@@ -13,7 +13,11 @@ function trackErrors(page: Page) {
 async function scrollThrough(page: Page) {
   const height = await page.evaluate(() => document.body.scrollHeight)
   for (let y = 0; y <= height + 600; y += 600) {
-    await page.evaluate((top) => scrollTo({ top, behavior: "instant" }), y)
+    // Two frames at each stop, so a busy machine still renders (and reports intersections) there.
+    await page.evaluate(async (top) => {
+      scrollTo({ top, behavior: "instant" })
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+    }, y)
     await page.waitForTimeout(60)
   }
 }

@@ -238,7 +238,8 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     let hh = max(6.0, size.y - 12.0);
     // motion.y: how far inside the fill's edge the handle sits (--k-handle-inset).
     let hp = local - vec2f(fillX - hw * 0.5 - p.motion.y, (size.y - hh) * 0.5);
-    let hDist = roundedBox(hp, vec2f(hw, hh), hw * 0.5);
+    // look.y: 1 rounds the handle's ends, 0 squares them (--k-round).
+    let hDist = roundedBox(hp, vec2f(hw, hh), select(0.0, hw * 0.5, p.look.y > 0.5));
     let hCov = covSd(hDist);
     let hAlpha = p.color2.a * handleScale * fade;
     if (hCov > 0.0) {
@@ -350,7 +351,8 @@ fn shadePill(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
 
 // kind 4: Toggle switch track + spring-driven thumb with velocity elongation
 fn shadeToggle(p: Prim, local: vec2f, size: vec2f) -> vec4f {
-  let r = size.y * 0.5;
+  // look.x: the corner radius (--k-round), a capsule at most; look.y: the thumb shadow (--k-lift).
+  let r = min(p.look.x, size.y * 0.5);
   let trackDist = roundedBox(local, size, r);
   var out = vec4f(0.0);
 
@@ -377,11 +379,12 @@ fn shadeToggle(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let thumbX = p.extra.z;
   let thumbW = max(baseD, p.extra.w - p.extra.z);
   let tp = local - vec2f(thumbX, pad);
-  let tDist = roundedBox(tp, vec2f(thumbW, baseD), baseD * 0.5);
+  let tr = min(p.look.x, baseD * 0.5);
+  let tDist = roundedBox(tp, vec2f(thumbW, baseD), tr);
 
   // Subtle thumb drop shadow
-  let shDist = roundedBox(tp - vec2f(0.0, 1.0), vec2f(thumbW, baseD), baseD * 0.5);
-  let shA = smoothstep(2.0, -0.5, shDist) * 0.25 * trackCov;
+  let shDist = roundedBox(tp - vec2f(0.0, 1.0), vec2f(thumbW, baseD), tr);
+  let shA = smoothstep(2.0, -0.5, shDist) * 0.25 * p.look.y * trackCov;
   out = over(out, vec4f(0.0, 0.0, 0.0, shA));
 
   let tCov = covSd(tDist) * trackCov;
@@ -441,6 +444,30 @@ fn shadeLine(p: Prim, screen: vec2f) -> vec4f {
     d = min(d, length(screen - a - ab * t));
   }
   let a = covSd(d - p.look.y * 0.5) * p.color.a;
+  return vec4f(p.color.rgb * a, a);
+}
+
+// kind 12: The area under a polyline (pts[extra.x .. extra.x + extra.y], x increasing) down to
+// extra.z (a y), its alpha fading from the line's highest point to extra.w × at the base, as a
+// readout's canvas gradient does.
+fn shadeArea(p: Prim, screen: vec2f, rect: vec4f) -> vec4f {
+  let start = u32(p.extra.x);
+  let count = u32(p.extra.y);
+  let x = screen.x;
+  var top = 1e5;
+  for (var i = 1u; i < count; i++) {
+    let a = pts[start + i - 1u];
+    let b = pts[start + i];
+    if (x >= a.x && x <= b.x) {
+      top = mix(a.y, b.y, clamp((x - a.x) / max(b.x - a.x, 1e-4), 0.0, 1.0));
+      break;
+    }
+  }
+  if (top > 1e4) { return vec4f(0.0); }
+  let base = p.extra.z;
+  let cov = clamp((screen.y - top) * view.dpr + 0.5, 0.0, 1.0) * clamp((base - screen.y) * view.dpr + 0.5, 0.0, 1.0);
+  let t = clamp((screen.y - rect.y) / max(base - rect.y, 1e-3), 0.0, 1.0);
+  let a = cov * p.color.a * mix(1.0, p.extra.w, t);
   return vec4f(p.color.rgb * a, a);
 }
 
@@ -543,7 +570,8 @@ fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
   if (clipCov <= 0.0) { return vec4f(0.0); }
 
   let local = at - rect.xy;
-  let size = max(rect.zw, vec2f(1.0));
+  // Sub-pixel shapes keep their size: a 0.5px hairline covers one device pixel, as in the DOM.
+  let size = max(rect.zw, vec2f(0.01));
   let kind = i32(p.look.w + 0.5);
 
   var out = vec4f(0.0);
@@ -560,11 +588,18 @@ fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
         let edge = min(at.y - p.clip.y, p.clip.w - at.y);
         out = out * smoothstep(0.0, p.extra.x, edge);
       }
+      // Gaps around a range's thumbs: aux.xy at, aux.z half-width, aux.w ramp; extra.yz strength.
+      if (p.aux.z > 0.0) {
+        let x = at.x;
+        out = out * (1.0 - p.extra.y * (1.0 - smoothstep(p.aux.z, p.aux.z + p.aux.w, abs(x - p.aux.x))));
+        out = out * (1.0 - p.extra.z * (1.0 - smoothstep(p.aux.z, p.aux.z + p.aux.w, abs(x - p.aux.y))));
+      }
     }
     case 8: { out = shadeLine(p, at); }
     case 9: { out = shadeStrip(p, local, size); }
     case 10: { out = shadeShape(p, local, size); }
     case 11: { out = shadeDie(p, rect, frag); }
+    case 12: { out = shadeArea(p, at, rect); }
     default: { out = shadeDot(p, local, size); }
   }
   return out * clipCov;

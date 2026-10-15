@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hostile host CSS · knobs keeps its look</title>
+    <style>
+      html, body { margin: 0; background: #101012; }
+      .lane { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+      .slot { width: 300px; }
+    </style>
+    <!-- A host's bare element rules, the kind a game's stylesheet has (Blackout's button rule and
+         worse). tests/browser/host.spec.ts measures every panel element with and without them. -->
+    <style id="hostile">
+      body { letter-spacing: .2em; text-transform: uppercase; font: italic 700 19px/2 Georgia, serif; color: #f0f; text-shadow: 0 0 2px red; word-spacing: 6px; text-align: center; }
+      button { border: 2px solid red; padding: 12px 20px; letter-spacing: .3em; text-transform: uppercase; background: yellow; border-radius: 20px; font: bold 18px Georgia, serif; margin: 6px; min-height: 44px; box-shadow: 0 0 0 3px lime; color: red; display: block; width: 100%; line-height: 3; text-align: right; position: relative; top: 3px; transition: all 1s; }
+      button:hover { background: orange; transform: scale(1.1); }
+      button:focus { outline: 4px solid magenta; }
+      input, textarea, select { border: 3px solid red; padding: 14px; font-size: 22px; background: yellow; margin: 8px; border-radius: 12px; height: 50px; color: red; }
+      input[type="number"], input[type="search"] { width: 300px; letter-spacing: .5em; }
+      header { position: sticky; top: 0; background: red; padding: 20px; height: 80px; border-bottom: 4px solid blue; }
+      strong { font-weight: 900; color: red; font-size: 30px; }
+      p { margin: 2em; padding: 1em; }
+      kbd { border: 2px solid red; padding: 6px; font-size: 20px; }
+      aside { margin: 40px; float: right; border: 5px solid green; }
+      span { letter-spacing: .1em; color: orange; line-height: 3; }
+      div { line-height: 2.5; word-spacing: 10px; }
+      svg { width: 40px; height: 40px; }
+      svg path { fill: red; }
+      * { box-sizing: content-box; }
+      *:focus { outline: 3px solid magenta; }
+    </style>
+  </head>
+  <body>
+    <div class="lane">
+      <div class="slot" id="plain"></div>
+      <div class="slot" id="lab"></div>
+    </div>
+    <script type="module" src="./host.ts"></script>
+  </body>
+</html>

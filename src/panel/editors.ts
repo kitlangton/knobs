@@ -61,8 +61,13 @@ export interface EditorRow {
   readonly input: HTMLElement
   /** Every ↑↓ stop in the row, in order (an open editor's parts follow its head). */
   stops(): HTMLElement[]
-  /** `instant` places the value without motion (a different item arrived). */
-  update(value: Value, delay: number, instant?: boolean): void
+  /**
+   * `instant` places the value without motion (a different item arrived); `mixed` shows it as
+   * indeterminate (a multi-selection whose items differ).
+   */
+  update(value: Value, delay: number, instant?: boolean, mixed?: boolean): void
+  /** Reads what `update` will, ahead of a batch's writes (see `Slider.prime`). */
+  prime?(): void
   /** A flat spring's halves changed range or label (see `RowContext.parts`). */
   retune?(parts: { readonly duration: Knob; readonly bounce: Knob }): void
   dispose(): void
@@ -422,7 +427,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     slider.element.classList.add("knobs-sub")
     if (!c.parts) slider.track.setAttribute("aria-label", `${c.display} ${part}`)
     slider.element.ondblclick = (event) => {
-      if (!(event.target as HTMLElement).closest(".knobs-value,.knobs-number"))
+      if (!(event.target as HTMLElement).closest(".knobs-value,.knobs-number,.knobs-accessory"))
         set(slider.field.value)
     }
     tracksEl.append(slider.element)
@@ -480,6 +485,7 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
   })
   const dragging = () => parts.some((p) => p.slider.isDragging())
   // The dot runs the curve in real time: x is time, y the spring's position.
+  let dotAnimation: Animation | undefined
   const play = (delay: number) => {
     if (!size.w || reducedMotion(c.doc)) return
     const frames = points()
@@ -494,8 +500,9 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
         offset: t,
       })
     }
-    dot.getAnimations().forEach((a) => a.cancel())
-    dot.animate(keys, { duration: ms, delay, easing: "linear" })
+    // The run it replaces, without getAnimations() (which would bring style up to date).
+    dotAnimation?.cancel()
+    dotAnimation = dot.animate(keys, { duration: ms, delay, easing: "linear" })
     c.wake()
   }
   tracksEl.addEventListener("pointerup", () => {
@@ -532,6 +539,9 @@ export function springRow(c: RowContext<SpringField>): EditorRow {
     stops: () => parts.map((p) => p.slider.track),
     tracks: parts,
     gpu: [...knobRows, gpu],
+    prime() {
+      for (const p of parts) p.slider.prime()
+    },
     retune(next) {
       parts[0]!.slider.retune(next.duration)
       parts[1]!.slider.retune(next.bounce)
@@ -671,18 +681,20 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? strips.map((s) => s.track) : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value) {
+    update(value, _delay, _instant, mixed = false) {
       shown = parseColor(value)!
       const { l, c: ch, h } = shown
       const maxC = maxChroma(l, h)
       if (!sending && maxC > 1e-4 && Math.abs(rel * maxC - ch) > 5e-4) rel = clamp(ch / maxC, 0, 1)
       const rgb = rgbCss(oklchToRgb(shown))
-      swatch.style.backgroundColor = rgb
-      hex.textContent = colorHex(shown).toUpperCase()
+      // Mixed leaves an empty well: no one colour stands for the selection.
+      swatch.style.backgroundColor = mixed ? "transparent" : rgb
+      hex.textContent = mixed ? "—" : colorHex(shown).toUpperCase()
       const [hs, cs, ls] = strips
-      hs!.update(h)
-      cs!.update(rel, ch.toFixed(3))
-      ls!.update(l)
+      const dash = mixed ? "—" : undefined
+      hs!.update(h, dash)
+      cs!.update(rel, dash ?? ch.toFixed(3))
+      ls!.update(l, dash)
       const hc = Math.max(ch, 0.06)
       hs!.paint(`${l}|${hc}`, (r) => rgbCss(oklchToRgb({ l, c: hc, h: r * 360 })))
       cs!.paint(`${l}|${h}`, (r) => rgbCss(oklchToRgb({ l, c: r * maxC, h })))
@@ -875,11 +887,11 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? [pad] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value) {
+    update(value, _delay, _instant, mixed = false) {
       const first = read.textContent === ""
       shown = value as Point
-      read.textContent = format(shown)
-      pad.setAttribute("aria-valuetext", format(shown))
+      read.textContent = mixed ? "—" : format(shown)
+      pad.setAttribute("aria-valuetext", mixed ? "Mixed" : format(shown))
       layout(first)
     },
     dispose: () => size.disconnect(),
@@ -1143,12 +1155,12 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     stops: () => [x.head, ...(x.isOpen() ? [chips, ...handles] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
-    update(value) {
+    update(value, _delay, _instant, mixed = false) {
       const first = name.dataset.placed === undefined
       name.dataset.placed = ""
       shown = value as Bezier
-      const match = easingName(shown)
-      name.textContent = match ?? ""
+      const match = mixed ? undefined : easingName(shown)
+      name.textContent = mixed ? "—" : (match ?? "")
       for (const [i, b] of chipButtons.entries())
         b.setAttribute("aria-checked", String(names[i] === match))
       handles.forEach((h, i) =>

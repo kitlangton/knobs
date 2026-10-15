@@ -282,7 +282,10 @@ test("flat spring, prototype settings over postMessage, modified dot, fine-grain
   await page.keyboard.press("Tab")
   await page.keyboard.press("ArrowLeft")
   await expect(log(page)).toContainText("set bounce = 0.25")
-  expect((await problems(page)).values).toMatchObject({ duration: 0.5, bounce: 0.25 })
+  // The fake server applies the write a moment after the log line.
+  await expect
+    .poll(async () => (await problems(page)).values)
+    .toMatchObject({ duration: 0.5, bounce: 0.25 })
   await expect(page.locator(".choose .dot")).toHaveClass(/on/)
   // Long choice lists drop down a menu.
   const device = settings(page).getByRole("button", { name: "Device" })

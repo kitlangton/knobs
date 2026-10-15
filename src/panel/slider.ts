@@ -70,12 +70,19 @@ export interface Slider {
    * value without springing or rolling (a different item arrived).
    */
   update(value: number, delay?: number, instant?: boolean): void
+  /**
+   * Reads its design tokens now. A batch (a preset) primes every row it will move before writing
+   * any, so no row's read lands after another's writes and forces a style pass.
+   */
+  prime(): void
   /** Takes a new range, step, label or unit in place, keeping the DOM (see `RemoteControls.update`). */
   retune(field: KnobField): void
   /** The field it currently draws. */
   readonly field: KnobField
   /** Open the inline editor, with `initial` in place of the value (a digit typed on the track). */
   edit(initial?: string): void
+  /** Puts a row accessory just after the label; the ticks and handle keep clear of it too. */
+  slot(node: HTMLElement): void
   dispose(): void
 }
 
@@ -83,6 +90,27 @@ export const decimals = (step: number) => {
   const text = String(step)
   const i = text.indexOf(".")
   return i < 0 ? 0 : text.length - i - 1
+}
+
+/**
+ * `steps` grid steps from `value` (negative goes down), on the slider's grid counted from `min`.
+ * From a value between grid points (a declared default like 0.4 on a 0.02 grid from 0.15) the
+ * first step lands on the next grid point that way, not past it.
+ */
+export function stepValue(
+  field: { min: number; max: number; step: number },
+  value: number,
+  steps: number,
+) {
+  const at = (value - field.min) / field.step
+  const on = Math.abs(at - Math.round(at)) < 1e-6
+  const target = on
+    ? Math.round(at) + steps
+    : steps > 0
+      ? Math.ceil(at) + steps - 1
+      : Math.floor(at) + steps + 1
+  const v = field.min + target * field.step
+  return Number(Math.min(field.max, Math.max(field.min, v)).toPrecision(14))
 }
 
 /**
@@ -178,10 +206,17 @@ export function createSlider(
   root.append(track)
   // Hover ticks and the default notch stay clear of both the readout and the label.
   let trackWidth = 0
+  let accessory: HTMLElement | undefined
   const ro = new ResizeObserver(() => {
     trackWidth = track.offsetWidth
     if (value.offsetWidth) track.style.setProperty("--k-readout", `${value.offsetWidth}px`)
-    track.style.setProperty("--k-label-end", `${label.offsetLeft + label.offsetWidth}px`)
+    const right = label.offsetLeft + label.offsetWidth
+    const extra = accessory?.offsetWidth ? accessory.offsetWidth + 4 : 0
+    track.style.setProperty("--k-label-end", `${right + extra}px`)
+    if (accessory) {
+      track.style.setProperty("--k-label-right", `${right}px`)
+      track.style.setProperty("--k-accessory-w", `${extra}px`)
+    }
   })
   ro.observe(value)
   ro.observe(track)
@@ -524,7 +559,8 @@ export function createSlider(
 
   track.onpointerdown = (event) => {
     const target = event.target as Node | null
-    if (event.button !== 0 || (target && number.contains(target))) return
+    if (event.button !== 0 || (target && (number.contains(target) || accessory?.contains(target))))
+      return
     event.preventDefault()
     fromValue = Boolean(target && value.contains(target))
     tokensAt = Number.NEGATIVE_INFINITY
@@ -676,7 +712,7 @@ export function createSlider(
       panGesture = false
     },
     step(direction) {
-      const next = quantize(current + direction * field.step)
+      const next = stepValue(field, current, direction)
       if (next !== current) set(next)
     },
   })
@@ -759,9 +795,8 @@ export function createSlider(
       // ↑↓ step the text (⇧ by the big step); Enter still commits it.
       event.preventDefault()
       event.stopPropagation()
-      const by = (event.shiftKey ? keyPrefs(track).bigStep : 1) * field.step
-      const from = parse(number.value) ?? current
-      number.value = fmtDigits(quantize(from + (event.key === "ArrowUp" ? by : -by)))
+      const by = (event.shiftKey ? keyPrefs(track).bigStep : 1) * (event.key === "ArrowUp" ? 1 : -1)
+      number.value = fmtDigits(stepValue(field, parse(number.value) ?? current, by))
       fit()
       number.select()
     }
@@ -805,7 +840,13 @@ export function createSlider(
     isDragging: inHand,
     isEditing: () => !number.hidden,
     update,
+    prime: () => void readTokens(),
     edit,
+    slot(node) {
+      accessory = node
+      track.insertBefore(node, value)
+      ro.observe(node)
+    },
     dispose() {
       ro.disconnect()
       clearTimeout(rollTimer)

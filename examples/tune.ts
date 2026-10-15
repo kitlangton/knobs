@@ -14,6 +14,9 @@ import { mountPage, type Page, type PageControl } from "knobs/panel"
 import { connectPhone, type Descriptor, type Phone, type Value } from "./tune-phone"
 
 const params = new URLSearchParams(location.search)
+// `?classic`: the page before sections folded (every section and card open, no jump strip, no
+// descriptions), which the older layout tests measure.
+const classic = params.has("classic")
 const ws = connectPhone()
 const send = (message: object) => ws.send(JSON.stringify(message))
 
@@ -41,6 +44,26 @@ const CARDS: Record<string, string> = {
   controls: "Controls",
   expand: "Controls",
 }
+// One muted line under a section's heading or a card's title (the `/` filter reads them too).
+const SECTION_TEXT: Record<string, string> = {
+  Connection: "Pair an iPhone by scanning the code with its camera.",
+  Playground: "What the phone shows, how fast it moves, and the jumps it notices.",
+  "Session List": "The drawer of sessions: rows, section headers and the edge under the title.",
+  Transcript: "Messages as they stream in, and the session header above them.",
+  Composer: "The bar you type and talk in: its size, level picker and buttons.",
+}
+const CARD_TEXT: Record<string, string> = {
+  Spacing: "Row height, the gaps between rows and the highlight's inset",
+  Edge: "Where the list fades and blurs under the title",
+  Springs: "Search, drawer and card motion",
+  Rhythm: "Gaps between replies, turns and sections",
+  Arrivals: "How new rows and streamed text come in",
+  Glide: "Steering, jumps and following new text",
+  "Header Style": "The session header's blur and wash",
+  Size: "The bar's height, corners and text",
+  "Level picker": "The reasoning level control and its backdrop",
+  Controls: "Send, call and mic buttons",
+}
 const title = (s: string) =>
   s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase())
 
@@ -53,6 +76,18 @@ interface Mapping {
   springs: Map<string, { duration: Descriptor; bounce: Descriptor }>
   fromPhone(values: Record<string, Value>): Record<string, KnobValue>
 }
+
+/**
+ * Every card folds (`folded: false` starts it open; the user's folds are remembered), and the
+ * phone's sections describe themselves from their descriptors.
+ */
+const card = (section: string) =>
+  classic
+    ? {}
+    : {
+        folded: false,
+        ...(SECTION_TEXT[section] ? { sectionDescription: SECTION_TEXT[section] } : {}),
+      }
 
 function mapPhone(phone: Phone): Mapping {
   const byKey = new Map(phone.schema.map((d) => [d.key, d]))
@@ -82,6 +117,7 @@ function mapPhone(phone: Phone): Mapping {
         default: { duration: Number(duration.default), bounce: Number(bounce.default) },
         group,
         section,
+        ...card(section),
       })
       continue
     }
@@ -97,6 +133,7 @@ function mapPhone(phone: Phone): Mapping {
       choices: d.choices,
       group,
       section,
+      ...card(section),
     })
   }
   const fromPhone = (values: Record<string, Value>) => {
@@ -171,17 +208,92 @@ function mount(phone: Phone) {
   page = mountPage(remote, document.querySelector<HTMLElement>("#app")!, {
     title: "iPhone Tune",
     theme: (params.get("theme") as "dark" | "light" | null) ?? "auto",
-    sections: ["Playground", "Session List", "Transcript", "Composer"],
+    sections: ["Connection", "Playground", "Session List", "Transcript", "Composer"],
+    // The phone's sections start folded to their headings, each saying what changed in it; a
+    // strip of chips in the header jumps between them.
+    ...(classic
+      ? {}
+      : {
+          sectionFolded: { "Session List": true, Transcript: true, Composer: true },
+          // What you fold and open stays that way, across reloads and tabs.
+          foldStorage: localStorage,
+          nav: true,
+          groupDescriptions: CARD_TEXT,
+          sectionDescriptions: {
+            Connection: SECTION_TEXT.Connection!,
+            Playground: SECTION_TEXT.Playground!,
+          },
+        }),
     copy: () => remote!.swift() || "// Nothing changed",
+    // The phone's own baseline, shown as such (its id stays "default").
+    defaultLabel: "Native",
   })
   ui = customCards(page)
   ui.update(phone)
+  shownContext = ""
+  highlight(phone)
   ;(window as any).__tune = { remote, page, send }
   // Tests and capture scripts mount pages of their own here.
   ;(window as any).__knobs = { knobs, mountPage }
 }
 
+// What's on the phone's screen, highlighted on the page: its groups are the page's sections.
+let shownContext = ""
+function highlight(phone: Phone) {
+  const key = JSON.stringify(phone.context)
+  if (!page || key === shownContext) return
+  const first = shownContext === ""
+  shownContext = key
+  const sections = [...new Set(phone.context.groups.map((g) => SECTIONS[g] ?? title(g)))]
+  // The first one is where the page opens; later screens glide into view if they're off it.
+  // What's on screen opens, and folds again once the phone moves on (unless it was worked in).
+  page.highlight({ sections }, { reveal: !first, expand: !classic })
+}
+
+/** A stand-in pairing code: a QR-like grid, the same every time. */
+function fakeCode() {
+  const n = 25
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", `-2 -2 ${n + 4} ${n + 4}`)
+  svg.setAttribute("class", "tune-qr")
+  let seed = 7
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const finder = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < 7 && y < 7
+      ? x === 0 || y === 0 || x === 6 || y === 6 || (x > 1 && x < 5 && y > 1 && y < 5)
+      : undefined
+  let d = ""
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const f = finder(x, y) ?? finder(x - (n - 7), y) ?? finder(x, y - (n - 7))
+      const near = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9)
+      if (f ?? (!near && random() < 0.48)) d += `M${x} ${y}h1v1h-1z`
+    }
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  path.setAttribute("d", d)
+  svg.append(path)
+  return svg
+}
+
 function customCards(p: Page) {
+  // Connection: the pairing code until the phone signs in, then just a line saying it's there.
+  const connection = p.card({
+    title: "Connection",
+    section: "Connection",
+    collapsed: false,
+    summary: "Waiting for iPhone…",
+  })
+  const pairing = document.createElement("div")
+  pairing.className = "tune-pairing"
+  const hint = document.createElement("p")
+  hint.textContent = "Scan with the iPhone’s camera to pair and sign in."
+  pairing.append(fakeCode(), hint)
+  connection.body.append(pairing)
+  connection.actions([
+    { label: "Copy Link", run: () => navigator.clipboard?.writeText(location.href) },
+  ])
+  let paired: boolean | undefined
+
   // Playground & Slow Motion: what the phone shows and how fast it moves.
   const pg = p.card({ title: "Playground & Slow Motion", section: "Playground" })
   const command = (c: object) => send({ type: "playgroundCommand", command: c })
@@ -263,6 +375,14 @@ function customCards(p: Page) {
   const set = <T>(control: PageControl<T>, value: T) => control.set(value)
   return {
     update(phone: Phone) {
+      if (phone.paired !== paired) {
+        connection.summary(
+          phone.paired ? `iPhone · ${phone.version} · connected` : "Waiting for iPhone…",
+        )
+        // Signing in folds the code away; a page that opens already paired keeps it as it was.
+        if (phone.paired && paired === false) connection.collapse(true)
+        paired = phone.paired
+      }
       const s = phone.playgroundStatus
       set(screen, s.active ?? "off")
       set(speed, String(s.timeScale))
@@ -319,5 +439,6 @@ ws.onmessage = (event) => {
     // holds against stale echoes for a moment.
     remote.sync(mapping!.fromPhone(phone.values), { replace: true })
     ui?.update(phone)
+    highlight(phone)
   }
 }

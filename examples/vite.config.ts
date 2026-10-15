@@ -1,12 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { defineConfig } from "vite"
 
 const rootDir = resolve(import.meta.dirname, "..")
-const rollingCss = readFileSync(
-  resolve(rootDir, "node_modules/@kitlangton/rolling-number/dist/styles.css"),
-  "utf8",
-)
 const port = Number(process.env.PORT) || 5178
 
 // `--mode site` builds the public demo (knobs.kitlangton.com): source-linked like dev, with panels on.
@@ -22,6 +18,7 @@ export default defineConfig(({ command, mode }) => ({
       "die.html",
       "tune.html",
       "problems.html",
+      "presets-bench.html",
     ],
   },
   server: { host: "127.0.0.1", port, strictPort: true, allowedHosts: [".ts.net"] },
@@ -36,6 +33,7 @@ export default defineConfig(({ command, mode }) => ({
         die: resolve(import.meta.dirname, "die.html"),
         tune: resolve(import.meta.dirname, "tune.html"),
         problems: resolve(import.meta.dirname, "problems.html"),
+        presetsBench: resolve(import.meta.dirname, "presets-bench.html"),
       },
     },
   },
@@ -49,6 +47,9 @@ export default defineConfig(({ command, mode }) => ({
             { find: /^knobs\/solid$/, replacement: resolve(rootDir, "src/solid/index.ts") },
             { find: /^knobs\/panel$/, replacement: resolve(rootDir, "src/panel/index.ts") },
             { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
+            { find: /^knobs\/ui$/, replacement: resolve(rootDir, "src/ui/index.ts") },
+            { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "src/ui/react.tsx") },
+            { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "src/ui/solid.ts") },
           ],
         },
         plugins: [
@@ -69,17 +70,6 @@ export default defineConfig(({ command, mode }) => ({
                   res.writeHead(200).end("ok")
                 })
               })
-            },
-          },
-          {
-            name: "knobs-css-text",
-            enforce: "pre",
-            resolveId(id) {
-              if (id === "@kitlangton/rolling-number/styles.css") return "\0rolling-number-css"
-            },
-            load(id) {
-              if (id === "\0rolling-number-css")
-                return `export default ${JSON.stringify(rollingCss)}`
             },
           },
         ],

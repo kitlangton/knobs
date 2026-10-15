@@ -1,9 +1,20 @@
-import { Spring } from "../core/spring.js"
+import { Spring, springMotion } from "../core/spring.js"
 import { arrowOf } from "./prefs.js"
-import type { MountPanelOptions } from "../core/store.js"
+import type { StoragePort } from "../core/storage.js"
+import type { MountPanelOptions, SectionFolded } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { isRevealingIn, resize, reveal } from "./reveal.js"
 import { createChoice } from "./choice.js"
+
+/** What a folded card's or section's summary is made of (see `MountPageOptions.groupSummary`). */
+export interface FoldSummaryInfo {
+  /** The group preset its values match (its name), "Custom" when none does; null without any. */
+  readonly preset: string | null
+  /** How many of its rows differ from their defaults (a spring's two keys count once). */
+  readonly changed: number
+  /** Its value keys. */
+  readonly keys: readonly string[]
+}
 
 export interface MountPageOptions extends MountPanelOptions {
   /** Section order; sections not listed follow in the order they first appear. */
@@ -12,6 +23,35 @@ export interface MountPageOptions extends MountPanelOptions {
   readonly columnWidth?: number
   /** `/` filters rows by label, live. Default true. */
   readonly filter?: boolean
+  /**
+   * Sections that start folded to their heading: `true` for all of them, or by section id (over
+   * the store's `sectionFolded` and fields' `sectionFolded`). A section that says either way
+   * folds: its heading toggles it (a click, or Enter where it's focused). What the user last
+   * chose is remembered (see `foldStorage`) and wins over this.
+   */
+  readonly sectionFolded?: SectionFolded
+  /**
+   * Where the page keeps what the user folds and opens (sections and group cards), under
+   * `knobs:<id>:folds:v1` as `{ sections, groups }`. By default the store's own storage, unless
+   * it has `persist: "none"` (then nothing). Given, it always wins and keeps folds only (never
+   * values, locks or variants), so a store with `storage: null` can still remember its folds.
+   * `null` keeps none. Folds made for context (`remember: false`) and by the filter are never
+   * written.
+   */
+  readonly foldStorage?: StoragePort | null
+  /**
+   * A strip of section chips in the sticky header: the section in view is marked as the page
+   * scrolls, each chip counts its changed rows, and a chip (or ⌥↑ / ⌥↓) glides to its section,
+   * opening it if it's folded.
+   */
+  readonly nav?: boolean
+  /**
+   * What a folded group card's header says. By default "<matching preset, or Custom> · N
+   * changed", leaving out what doesn't apply. `null` shows nothing.
+   */
+  readonly groupSummary?: (group: string, info: FoldSummaryInfo) => string | Node | null
+  /** What a folded section's heading says ("N changed · M cards" by default; `preset` is null). */
+  readonly sectionSummary?: (section: string, info: FoldSummaryInfo) => string | Node | null
 }
 
 export interface PageCardOptions {
@@ -20,6 +60,16 @@ export interface PageCardOptions {
   readonly section?: string
   /** Any content, placed in the card's body (more can follow with `card.body.append`). */
   readonly element?: HTMLElement
+  /**
+   * Makes the card collapsible, starting folded (`true`) or open (`false`): its header toggles it
+   * (a click, or Enter where it's focused) and shows a caret. What the user last chose comes back
+   * after a reload in the same tab, over this.
+   */
+  readonly collapsed?: boolean
+  /** One quiet line on the right of a folded card's header, e.g. "iPhone · 0.142.4 · connected". */
+  readonly summary?: string | Node
+  /** One muted line under the title (the whole of it on hover). */
+  readonly description?: string
 }
 
 export interface PageItem {
@@ -85,20 +135,167 @@ export interface PageCard {
   }
   /** Folds a row (or anything in the card) open or shut. */
   show(element: HTMLElement, visible: boolean): void
+  /**
+   * Folds the card down to its header (or back open, with `false`); the cards below in its
+   * column glide. Makes a card collapsible if it wasn't.
+   */
+  collapse(collapsed?: boolean): void
+  /** Whether the card is folded to its header. */
+  readonly collapsed: boolean
+  /** Replaces the folded header's summary (`null` clears it). */
+  summary(content: string | Node | null): void
   /** Empties the body. */
   clear(): void
   remove(): void
 }
 
+/**
+ * What's on screen elsewhere (a phone's current screen): group ids (or custom card titles) and
+ * section ids. `null` clears it.
+ */
+export interface PageHighlight {
+  readonly groups?: readonly string[]
+  readonly sections?: readonly string[]
+}
+
 export interface Page extends Panel {
   /** A card of your own in the page's grid, styled by the same tokens. */
   card(options: PageCardOptions): PageCard
+  /**
+   * Emphasizes what's on screen: highlighted cards and sections keep full strength, with a small
+   * dot by the title of each highlighted section (or of a card highlighted on its own); the rest
+   * dims a little, readable and fully interactive (a dimmed card you focus comes back up). Every
+   * change glides on the panel spring and can be interrupted. `null` clears it.
+   *
+   * `reveal: true` glides the first highlighted card (or its section's heading) into view when
+   * it's off screen, unless the user scrolled, pressed a key or touched the page in the last two
+   * seconds, or is dragging.
+   *
+   * `expand: true` opens the folded sections and cards it highlights. What it opened folds again
+   * once a later highlight moves away from it, unless the user worked in it meanwhile (it's
+   * theirs then). Opening it this way isn't remembered: the user's own folds are.
+   */
+  highlight(
+    target: PageHighlight | null,
+    options?: { readonly reveal?: boolean; readonly expand?: boolean },
+  ): void
+  /**
+   * Folds a foldable group's card to its header (or opens it, with `false`; toggles without
+   * `folded`). Remembered as the user's choice unless `remember: false`; `reveal` glides the card
+   * into view.
+   */
+  fold(group: string, folded?: boolean, options?: PageFoldOptions): void
+  /**
+   * Folds a section to its heading (or opens it, with `false`; toggles without `folded`). Its
+   * cards fold away and the columns re-balance, gliding. Remembered as the user's choice unless
+   * `remember: false`; `reveal` glides the heading into view. Makes the section foldable if it
+   * wasn't.
+   */
+  foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void
+  /** Whether a section is folded to its heading (its own state; the filter's opening aside). */
+  sectionFolded(section: string): boolean
+  /**
+   * Opens a section, or a group's card and its section, and glides it into view. By default
+   * it's for context (what's on another screen) and isn't remembered; a jump the user asked for
+   * passes `remember: true` so it stays open after a reload.
+   */
+  reveal(
+    target: { readonly section: string } | { readonly group: string },
+    options?: { readonly remember?: boolean },
+  ): void
+  /** The page's sections in reading order, with their groups, for a navigation of your own. */
+  sections(): readonly PageSectionInfo[]
+  /**
+   * The section filling most of the window below the header, as the page scrolls; after a
+   * `reveal` (or a jump), that section until the user scrolls.
+   */
+  activeSection(): string | undefined
+  /**
+   * Calls `listener` (after a microtask) whenever `sections()` would say something new: a fold,
+   * a changed count, a label or description, sections and groups coming or going. Returns an
+   * unsubscribe. `source` says what folded or opened something (see `PageFoldSource`); it's null
+   * for the first call and for changes that aren't folds (a value, a label).
+   */
+  onSections(
+    listener: (sections: readonly PageSectionInfo[], source: PageFoldSource | null) => void,
+  ): () => void
+  /** Calls `listener` when `activeSection()` changes. Returns an unsubscribe. */
+  onActiveSection(listener: (section: string | undefined) => void): () => void
+}
+
+/**
+ * What a change `onSections` reports came from: `"user"` a click or key on a heading or card
+ * header; `"code"` the page's methods (`fold`, `foldSection`, `reveal`, `highlight`'s expand);
+ * `"search"` the filter opening matches while it runs (`folded` keeps the saved state; the list
+ * shows what the filter shows); `"restore"` the filter clearing, everything back as it was.
+ */
+export type PageFoldSource = "user" | "code" | "search" | "restore"
+
+export interface PageFoldOptions {
+  /**
+   * `true` (the default) keeps it as the user's choice, across reloads (see `MountPageOptions.foldStorage`);
+   * `false` is for context and leaves what's remembered alone.
+   */
+  readonly remember?: boolean
+  /** Glides the card or heading into view. */
+  readonly reveal?: boolean
+}
+
+/** A group's card, as `page.sections()` describes it. */
+export interface PageGroupInfo {
+  readonly id: string
+  /** Its title as the card shows it. */
+  readonly label: string
+  /** Folded to its header (false for a group that doesn't fold). */
+  readonly folded: boolean
+  /** How many of its rows differ from their defaults. */
+  readonly changed: number
+  /** The group preset its values match, "Custom" when none does; null without presets. */
+  readonly preset: string | null
+}
+
+/** A section, as `page.sections()` describes it. */
+export interface PageSectionInfo {
+  readonly id: string
+  /** Its heading as the page shows it. */
+  readonly label: string
+  readonly description?: string
+  /** Folded to its heading (its own state: a running filter's opening doesn't count). */
+  readonly folded: boolean
+  /** Changed rows across its groups. */
+  readonly changed: number
+  /** Its group cards in reading order (custom cards aren't listed). */
+  readonly groups: readonly PageGroupInfo[]
 }
 
 export interface PageLayout {
   /** Each showing section's label (the overlay draws their text). */
-  readonly sections: readonly { readonly element: HTMLElement; readonly head: HTMLElement | null }[]
+  readonly sections: readonly PageSectionView[]
   add(tile: HTMLElement, section: string): void
+  /**
+   * Folds a section to its heading or opens it (making it foldable): its cards fold away or grow
+   * back, and the columns re-balance, gliding from wherever the last change had them.
+   */
+  foldSection(name: string, folded: boolean, animate?: boolean): void
+  /** Whether a section is folded to its heading (while folds hold; see `openFolds`). */
+  isFolded(name: string): boolean
+  /** Whether a section's heading toggles it. */
+  isFoldable(name: string): boolean
+  /** While on (a filter runs), folded sections show their cards; call inside `change`. */
+  openFolds(open: boolean): void
+  /** Sections with something in them, in reading order. */
+  sectionList(): readonly {
+    readonly name: string
+    readonly label: HTMLElement | null
+    readonly tiles: readonly HTMLElement[]
+    readonly folded: boolean
+  }[]
+  /** The section a card sits in. */
+  sectionOf(tile: HTMLElement): string | undefined
+  /** Re-reads each heading's label and description (the schema changed). */
+  relabel(): void
+  /** Where a node lands once the glide has settled (its rect less its glide offset). */
+  settled(node: HTMLElement): { top: number; bottom: number }
   /** Folds the card away, then takes it out of the page. */
   remove(tile: HTMLElement): void
   /** Re-balances the columns when their count changed (or always, with `force`). */
@@ -107,9 +304,22 @@ export interface PageLayout {
    * Applies a structural change (the filter, cards shown or hidden) and animates the result:
    * `rows` whose `hidden` changed fold open or shut, cards glide to their new places.
    */
-  change(mutate: () => void, rows?: readonly HTMLElement[]): void
+  change(mutate: () => void, rows?: readonly HTMLElement[], instant?: boolean): void
   /** Steps the motion now, at the start of the overlay's frame (`now` from requestAnimationFrame). */
   frame(now: number): void
+  /** A card's content changed at once (it was drawn `from` px tall): its height eases there. */
+  resize(tile: HTMLElement, from: number): void
+  /** Emphasizes the cards and sections in `target` and dims the rest (see `Page.highlight`). */
+  highlight(target: PageHighlight | null): void
+  /** Highlighted cards and section headings that show, top to bottom. */
+  highlighted(): HTMLElement[]
+  /**
+   * How a card or section heading is emphasized right now: `dim` (0 full … the token's
+   * `--k-page-dim`) and its dot (`mark` 0…1), as the DOM draws them.
+   */
+  emphasis(
+    node: HTMLElement,
+  ): { readonly dim: number; readonly mark: number; readonly dot?: HTMLElement } | undefined
   /** While cards glide or change height, or something folds inside them. */
   readonly moving: boolean
   readonly version: number
@@ -132,6 +342,11 @@ export interface PageColumnItem {
   readonly height: number
   /** Cards of a section are contiguous; sections are numbered in reading order. */
   readonly section: number
+  /**
+   * A folded section's heading, standing for the whole section (whose `label` is 0): it gets
+   * `space` above it when it follows another section in a column.
+   */
+  readonly head?: boolean
 }
 
 export type PageColumnEntry =
@@ -186,6 +401,7 @@ export function pageColumns(
         mixed = true
         const l = label(sec[at]!)
         if (l > 0) h += l + space + gap
+        else if (items[at]!.head) h += space
       }
       h += items[at]!.height + (at > i ? gap : 0)
       if (!mixed || (starts(i) && ends(j))) cost[i]![j] = h
@@ -235,6 +451,37 @@ interface Section {
   readonly tiles: HTMLElement[]
   /** Blank labels topping the section's later columns, so their cards line up with the first. */
   readonly spacers: HTMLElement[]
+  /** Folded to its heading (a section that folds: see `foldable`). */
+  folded: boolean
+  /** Its heading toggles it. */
+  foldable: boolean
+  /** The heading's parts: its name, the summary shown while folded, its description. */
+  readonly name$?: HTMLElement
+  readonly summary?: HTMLElement
+  desc?: HTMLElement
+  caret?: SVGElement
+}
+
+/** A disclosure chevron: it points right while folded and down while open (see .knobs-caret). */
+export function caretIcon(doc: Document) {
+  const caret = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+  caret.setAttribute("class", "knobs-caret")
+  caret.setAttribute("viewBox", "0 0 10 10")
+  caret.setAttribute("aria-hidden", "true")
+  const chevron = doc.createElementNS("http://www.w3.org/2000/svg", "path")
+  chevron.setAttribute("d", "M3.75 2.25 6.5 5 3.75 7.75")
+  caret.append(chevron)
+  return caret
+}
+
+/** A section's heading as the GPU overlay draws it. */
+export interface PageSectionView {
+  readonly element: HTMLElement
+  readonly head: HTMLElement | null
+  readonly name?: HTMLElement
+  readonly summary?: HTMLElement
+  readonly desc?: HTMLElement
+  readonly caret?: SVGElement
 }
 
 /** A card's motion: its offset from where the layout puts it, and its height while that eases. */
@@ -260,6 +507,12 @@ export function createPageLayout(
   options: {
     order: readonly string[]
     columnWidth: number
+    /** What a section's heading says (its name by default). */
+    sectionLabel?(name: string): string
+    /** The muted line under a section's heading, if any. */
+    sectionDescription?(name: string): string | undefined
+    /** How a section starts: folded or open, or undefined when it doesn't fold. */
+    sectionFold?(name: string): boolean | undefined
     /** Cards moved in the DOM (re-sort anything kept in page order). */
     onLayout(): void
     /** Motion started or settled (the overlay re-reads rects). */
@@ -297,27 +550,205 @@ export function createPageLayout(
     const rank =
       name === "" && listed < 0 ? -1 : listed >= 0 ? listed : options.order.length + appeared++
     let label: HTMLElement | null = null
+    let parts: Pick<Section, "name$" | "summary"> = {}
     if (name) {
       label = el("knobs-section-head", "h2")
       label.dataset.section = name
-      label.textContent = name
+      const text = el("knobs-section-name", "span")
+      text.textContent = options.sectionLabel?.(name) ?? name
+      const summary = el("knobs-section-summary", "span")
+      label.append(text, summary)
+      parts = { name$: text, summary }
     }
-    s = { name, rank, label, tiles: [], spacers: [] }
+    s = { name, rank, label, tiles: [], spacers: [], folded: false, foldable: false, ...parts }
+    describe(s)
+    const start = name ? options.sectionFold?.(name) : undefined
+    if (start !== undefined) makeFoldable(s, start)
     const after = sections.findIndex((x) => x.rank > rank)
     if (after < 0) sections.push(s)
     else sections.splice(after, 0, s)
     return s
   }
+  /** Puts the section's description under its heading (or takes it away). */
+  function describe(s: Section) {
+    if (!s.label) return
+    const text = options.sectionDescription?.(s.name)
+    if (!text) {
+      s.desc?.remove()
+      s.desc = undefined
+      return
+    }
+    if (!s.desc) {
+      s.desc = el("knobs-section-desc", "span")
+      s.label.append(s.desc)
+    }
+    if (s.desc.textContent !== text) {
+      s.desc.textContent = text
+      s.desc.title = text
+    }
+  }
+  function makeFoldable(s: Section, folded: boolean) {
+    if (!s.label) return
+    s.folded = folded
+    if (s.foldable) return
+    s.foldable = true
+    s.caret = caretIcon(doc)
+    s.summary!.after(s.caret)
+    s.label.dataset.foldable = ""
+    s.label.tabIndex = -1
+    s.label.setAttribute("role", "button")
+    s.label.setAttribute("aria-label", s.name$!.textContent ?? s.name)
+    paintFold(s)
+  }
+  function paintFold(s: Section) {
+    if (!s.label || !s.foldable) return
+    s.label.setAttribute("aria-expanded", String(!s.folded))
+    s.label.toggleAttribute("data-folded", s.folded)
+  }
   const tilesInOrder = () => sections.flatMap((s) => s.tiles)
-  const sectionOf = (tile: HTMLElement) => sections.find((s) => s.tiles.includes(tile))
-  const showing = (tile: HTMLElement) => !tile.hidden && !leaving.has(tile)
+  const owner = new WeakMap<HTMLElement, Section>()
+  const sectionOf = (tile: HTMLElement) => owner.get(tile)
+  /** While a filter runs, folded sections show their cards. */
+  let foldsOpen = false
+  const shut = (s: Section | undefined) => Boolean(s?.folded && s.label && !foldsOpen)
+  /** A card whose section is folded: it's parked (`data-away`) once it has folded away. */
+  const away = (tile: HTMLElement) => shut(sectionOf(tile))
+  const showing = (tile: HTMLElement) => !tile.hidden && !leaving.has(tile) && !away(tile)
+  /** Whether a card is there at all (it may be parked in a folded section). */
+  const present = (tile: HTMLElement) => !tile.hidden && !hiding.has(tile)
+  /** Cards leaving because they're hidden (or removed), not because their section folded. */
+  const hiding = new Set<HTMLElement>()
+  /** Sections with something in them, each a heading alone when folded. */
+  const filled = () => sections.filter((s) => s.tiles.some(present))
 
   function fit() {
     const gap = gapOf()
-    const shown = tilesInOrder().filter(showing).length
+    const shown = tilesInOrder().filter(showing).length + filled().filter((s) => shut(s)).length
     const across = Math.floor((grid.clientWidth + gap) / (options.columnWidth + gap))
     return Math.max(1, Math.min(8, shown, across))
   }
+
+  // ── Emphasis ────────────────────────────────────────────────────────────────────────────────
+  /** A card's or heading's emphasis: `e` 1 full … 0 dimmed, and its dot `m` 0…1. */
+  interface Glow {
+    readonly e: Spring
+    readonly m: Spring
+    veil?: HTMLElement
+    dot?: HTMLElement
+  }
+  let lit: { groups: Set<string>; sections: Set<string> } | null = null
+  const glows = new Map<HTMLElement, Glow>()
+  const glowing = new Set<HTMLElement>()
+  let dimAmount = 0.4
+  /** The panel spring (--k-spring: duration bounce), which every token change glides on too. */
+  const panelSpring = () => {
+    const [duration, bounce] = getComputedStyle(host)
+      .getPropertyValue("--k-spring")
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+    return Number.isFinite(duration) && Number.isFinite(bounce)
+      ? springMotion({ duration: duration!, bounce: bounce! })
+      : { omega: 30, zeta: 0.88 }
+  }
+  const idOf = (tile: HTMLElement) => tile.dataset.group ?? tile.dataset.card
+  const focusedIn = (node: HTMLElement) => node.contains(doc.activeElement)
+  /** Whether a card is highlighted, and whether it wears its own dot (not its section's). */
+  const litTile = (tile: HTMLElement) => {
+    if (!lit) return { on: true, own: false }
+    const section = sectionOf(tile)?.name ?? ""
+    const byGroup = idOf(tile) !== undefined && lit.groups.has(idOf(tile)!)
+    const bySection = lit.sections.has(section)
+    return { on: byGroup || bySection, own: byGroup && !bySection }
+  }
+  function glowFor(node: HTMLElement) {
+    let g = glows.get(node)
+    if (!g) {
+      g = { e: new Spring(1, 30, 0.88, 0.002), m: new Spring(0, 30, 0.88, 0.002) }
+      glows.set(node, g)
+    }
+    return g
+  }
+  function writeGlow(node: HTMLElement, g: Glow) {
+    const e = Math.min(1, Math.max(0, g.e.x))
+    const m = Math.min(1.2, Math.max(0, g.m.x))
+    const dim = (1 - e) * dimAmount
+    const isHead = node.classList.contains("knobs-section-head")
+    if (isHead) {
+      for (const text of node.querySelectorAll<HTMLElement>(
+        ":scope > :is(.knobs-section-name,.knobs-section-summary,.knobs-section-desc)",
+      ))
+        text.style.opacity = dim > 0.0005 ? String(1 - dim) : ""
+    } else if (dim > 0.0005 || g.veil) {
+      if (!g.veil) {
+        g.veil = doc.createElement("span")
+        g.veil.className = "knobs-veil"
+        g.veil.setAttribute("aria-hidden", "true")
+      }
+      if (g.veil.parentElement !== node) node.append(g.veil)
+      g.veil.style.opacity = String(dim)
+      g.veil.hidden = dim <= 0.0005
+    }
+    if (m > 0.002 || g.dot) {
+      // A card's dot sits on the card itself, level with its header (one there is).
+      const parent = isHead || node.querySelector(":scope > .knobs-group-head") ? node : null
+      if (parent) {
+        if (!g.dot) {
+          g.dot = doc.createElement("i")
+          g.dot.className = "knobs-mark"
+          g.dot.setAttribute("aria-hidden", "true")
+        }
+        if (g.dot.parentElement !== parent) parent.append(g.dot)
+        g.dot.style.opacity = String(Math.min(1, m))
+        g.dot.style.transform = `scale(${0.4 + 0.6 * m})`
+        g.dot.hidden = m <= 0.002
+      }
+    }
+  }
+  /** Points every card and heading at its emphasis; they glide there. */
+  function retarget() {
+    const animate = ready && !reduced()
+    const { omega, zeta } = panelSpring()
+    const shownSections = new Set<string>()
+    for (const t of tilesInOrder()) {
+      const { on, own } = litTile(t)
+      const name = sectionOf(t)?.name ?? ""
+      if (on) shownSections.add(name)
+      t.classList.toggle("knobs-highlighted", Boolean(lit) && on)
+      t.classList.toggle("knobs-dimmed", Boolean(lit) && !on)
+      aim(t, on || focusedIn(t) ? 1 : 0, own ? 1 : 0)
+    }
+    for (const s of sections) {
+      if (!s.label) continue
+      const on = !lit || lit.sections.has(s.name) || shownSections.has(s.name)
+      s.label.classList.toggle("knobs-highlighted", Boolean(lit) && on)
+      s.label.classList.toggle("knobs-dimmed", Boolean(lit) && !on)
+      aim(s.label, on ? 1 : 0, lit?.sections.has(s.name) ? 1 : 0)
+    }
+    function aim(node: HTMLElement, e: number, m: number) {
+      const known = glows.get(node)
+      if (!known && e === 1 && m === 0) return
+      const g = glowFor(node)
+      for (const sp of [g.e, g.m]) {
+        sp.omega = omega
+        sp.zeta = zeta
+      }
+      g.e.set(e)
+      g.m.set(m)
+      if (!animate) {
+        g.e.snap(e)
+        g.m.snap(m)
+        writeGlow(node, g)
+      } else if (!g.e.resting || !g.m.resting) glowing.add(node)
+    }
+    run()
+    options.wake()
+  }
+  const onFocus = () => {
+    if (lit) retarget()
+  }
+  host.addEventListener("focusin", onFocus)
+  host.addEventListener("focusout", onFocus)
 
   // ── Motion ──────────────────────────────────────────────────────────────────────────────────
   let raf = 0
@@ -351,6 +782,8 @@ export function createPageLayout(
         // Borders can't fold, so the margin takes up what they keep.
         node.style.paddingTop = node.style.paddingBottom = `calc(var(--k-pad) * ${f})`
         node.style.marginBottom = `${-gapPx * (1 - f) - Math.max(0, 2 - h)}px`
+        // A card folding away fades over its last third, so its borders don't linger as a line.
+        if (!m.o) node.style.opacity = leaving.has(node) && f < 1 / 3 ? String(f * 3) : ""
       }
     }
   }
@@ -374,6 +807,11 @@ export function createPageLayout(
       done()
     }
   }
+  /** What a card folding away becomes once it's gone: hidden, or parked in its folded section. */
+  const gone = (t: HTMLElement) => () => {
+    if (hiding.delete(t)) t.hidden = true
+    else t.toggleAttribute("data-away", away(t))
+  }
   const tick = (now: number) => {
     raf = 0
     gapPx = gapOf()
@@ -388,14 +826,21 @@ export function createPageLayout(
         settle(node, m)
       else write(node, m)
     }
-    if (motions.size) raf = win.requestAnimationFrame(tick)
+    for (const node of glowing) {
+      const g = glows.get(node)!
+      g.e.step(dt)
+      g.m.step(dt)
+      writeGlow(node, g)
+      if (g.e.resting && g.m.resting) glowing.delete(node)
+    }
+    if (motions.size || glowing.size) raf = win.requestAnimationFrame(tick)
     else {
       version++
       options.wake()
     }
   }
   function run() {
-    if (raf || !motions.size) return
+    if (raf || (!motions.size && !glowing.size)) return
     last = performance.now()
     raf = win.requestAnimationFrame(tick)
     options.wake()
@@ -437,12 +882,13 @@ export function createPageLayout(
     const out: HTMLElement[] = []
     for (const column of columns)
       for (const child of column.children)
-        if (!(child as HTMLElement).hidden) out.push(child as HTMLElement)
+        if (!(child as HTMLElement).hidden && !child.hasAttribute("data-away"))
+          out.push(child as HTMLElement)
     return out
   }
 
-  function relayout(mutate?: () => void, rows: readonly HTMLElement[] = []) {
-    const animate = ready && !reduced()
+  function relayout(mutate?: () => void, rows: readonly HTMLElement[] = [], instant = false) {
+    const animate = ready && !reduced() && !instant
     if (!animate) snapAll()
     // First: where everything is drawn now.
     const first = new Map<HTMLElement, DOMRect>()
@@ -452,29 +898,40 @@ export function createPageLayout(
     for (const r of closing) r.hidden = true
     const wasHidden = new Map(rows.map((r) => [r, r.hidden]))
     const wasShowing = new Set(tilesInOrder().filter((t) => t.isConnected && showing(t)))
-    // Cards folding away are hidden as far as the change is concerned.
-    for (const t of leaving.keys()) t.hidden = true
+    // Cards folding away because they're hidden (or removed) are hidden as far as the change is
+    // concerned; ones folding away into a folded section, folded.
+    for (const t of leaving.keys()) if (hiding.has(t)) t.hidden = true
     mutate?.()
     for (const t of pending) t.style.display = ""
-    // Cards hidden by the change fold away where they are; ones it brought back stay.
+    // Cards hidden by the change, or whose section it folded, fold away where they are; ones it
+    // brought back stay.
     for (const t of [...leaving.keys()])
-      if (!t.hidden || !t.isConnected) {
+      if ((!t.hidden && !away(t)) || !t.isConnected) {
         leaving.delete(t)
+        hiding.delete(t)
         t.removeAttribute("inert")
         delete t.dataset.leaving
       }
     for (const t of tilesInOrder())
-      if (t.hidden && wasShowing.has(t) && animate) leaving.set(t, () => (t.hidden = true))
+      if ((t.hidden || away(t)) && wasShowing.has(t) && animate) leaving.set(t, gone(t))
     for (const t of leaving.keys()) {
+      if (t.hidden) hiding.add(t)
       t.hidden = false
       t.inert = true
       t.dataset.leaving = ""
     }
+    // A folded section's cards wait out of the flow once they've folded away.
+    for (const t of tilesInOrder()) {
+      const park = away(t) && !leaving.has(t)
+      if (t.hasAttribute("data-away") !== park) t.toggleAttribute("data-away", park)
+    }
 
-    // Balance the cards that show, at their final heights.
+    // Balance what shows, at its final heights: each open section's cards, each folded one's
+    // heading.
     const order = tilesInOrder()
     const shown = order.filter(showing)
-    const n = Math.max(1, Math.min(8, shown.length || 1, fit()))
+    const shownSections = filled()
+    const n = Math.max(1, Math.min(8, fit()))
     cols = n
     host.style.setProperty("--k-cols", String(n))
     while (columns.length < n) {
@@ -482,52 +939,68 @@ export function createPageLayout(
       columns.push(column)
       grid.append(column)
     }
-    const probe = sections.find((s) => s.label)?.label
-    if (probe && !probe.isConnected) columns[0]!.append(probe)
+    for (const s of shownSections) {
+      paintFold(s)
+      if (s.label && !s.label.isConnected) columns[0]!.append(s.label)
+    }
     const gap = gapOf()
     gapPx = gap
-    const labelHeight = probe ? probe.offsetHeight - gap * 0.25 : 0
-    const heights = naturals(shown)
-    const shownSections = sections.filter((s) => s.tiles.some(showing))
-    const plan = pageColumns(
-      shown.map((t) => ({
-        height: heights.get(t)!,
-        section: shownSections.indexOf(sectionOf(t)!),
-      })),
-      n,
-      {
-        gap,
-        space: gap * 0.75,
-        label: (i) => (shownSections[i]!.label ? labelHeight : 0),
-      },
+    const labelHeights = new Map(
+      shownSections.map((s) => [
+        s,
+        s.label ? s.label.offsetHeight - (shut(s) ? 0 : gap * 0.25) : 0,
+      ]),
     )
-    // Columns top to bottom; hidden and folding cards stay after the card before them.
+    const heights = naturals(shown)
+    const items: { node: HTMLElement; height: number; section: number; head?: boolean }[] = []
+    shownSections.forEach((s, i) => {
+      if (shut(s))
+        items.push({ node: s.label!, height: labelHeights.get(s)!, section: i, head: true })
+      else
+        for (const t of s.tiles)
+          if (showing(t)) items.push({ node: t, height: heights.get(t)!, section: i })
+    })
+    const plan = pageColumns(items, n, {
+      gap,
+      space: gap * 0.75,
+      label: (i) => (shut(shownSections[i]) ? 0 : labelHeights.get(shownSections[i]!)!),
+    })
+    // Columns top to bottom; hidden and folding cards stay after the card before them in their
+    // section (or under its heading).
     const want: HTMLElement[][] = Array.from({ length: n }, () => [])
     const used = new Map<Section, number>()
     plan.forEach((column, c) => {
       for (const e of column.entries) {
-        if (e.kind === "card") want[c]!.push(shown[e.index]!)
+        if (e.kind === "card") want[c]!.push(items[e.index]!.node)
         else {
           const s = shownSections[e.section]!
           if (!e.continued) want[c]!.push(s.label!)
           else {
             const i = used.get(s) ?? 0
             used.set(s, i + 1)
-            want[c]!.push(spacer(s, i))
+            const blank = spacer(s, i)
+            const h = `${s.label!.offsetHeight}px`
+            if (blank.style.minHeight !== h) blank.style.minHeight = h
+            want[c]!.push(blank)
           }
         }
       }
     })
+    const after = (node: HTMLElement, t: HTMLElement) => {
+      const c = want.findIndex((list) => list.includes(node))
+      if (c < 0) return false
+      want[c]!.splice(want[c]!.indexOf(node) + 1, 0, t)
+      return true
+    }
     if (!plan.length) want[0]!.push(...order)
     else
       order.forEach((t, i) => {
         if (showing(t)) return
-        for (let p = i - 1; p >= 0; p--) {
-          const c = want.findIndex((list) => list.includes(order[p]!))
-          if (c < 0) continue
-          want[c]!.splice(want[c]!.indexOf(order[p]!) + 1, 0, t)
-          return
-        }
+        const s = sectionOf(t)
+        let p = i - 1
+        for (; p >= 0 && sectionOf(order[p]!) === s; p--) if (after(order[p]!, t)) return
+        if (s?.label && after(s.label, t)) return
+        for (; p >= 0; p--) if (after(order[p]!, t)) return
         const top = want[0]!
         top.splice(top[0]?.classList.contains("knobs-section-head") ? 1 : 0, 0, t)
       })
@@ -569,7 +1042,8 @@ export function createPageLayout(
         reveal(row, !now)
       }
     }
-    for (const t of order) if (!t.hidden) known.set(t, heights.get(t) ?? t.offsetHeight)
+    for (const t of order)
+      if (!t.hidden && !t.hasAttribute("data-away")) known.set(t, heights.get(t) ?? t.offsetHeight)
     if (!animate) {
       for (const t of pending) pending.delete(t)
       version++
@@ -578,28 +1052,28 @@ export function createPageLayout(
     }
 
     // Heights: anything that changed at once eases from what was drawn; new cards grow in.
-    const after = naturals(order.filter((t) => !t.hidden))
+    const natural = naturals(order.filter((t) => !t.hidden && !t.hasAttribute("data-away")))
     for (const t of order) {
-      if (t.hidden) continue
+      if (t.hidden || t.hasAttribute("data-away")) continue
       const m = motions.get(t)
       const was = first.get(t)
       if (leaving.has(t)) {
-        const from = m?.h?.x ?? was?.height ?? after.get(t)!
+        const from = m?.h?.x ?? was?.height ?? natural.get(t)!
         const mm = motionFor(t)
         mm.h = mm.h ?? sizeSpring(from, 0)
         mm.h.set(0)
         mm.fold = Math.max(mm.fold ?? 0, from)
       } else if (!was) {
         const mm = motionFor(t)
-        mm.h = sizeSpring(0, after.get(t)!)
-        mm.fold = after.get(t)!
+        mm.h = sizeSpring(0, natural.get(t)!)
+        mm.fold = natural.get(t)!
       } else {
         const target = heights.get(t)!
         const drawn = m?.h ? m.h.x : was.height
         if (m?.h) {
           m.h.set(target)
           if (m.fold !== undefined) m.fold = target
-        } else if (Math.abs(after.get(t)! - drawn) > 0.5 && !isRevealingIn(t)) {
+        } else if (Math.abs(natural.get(t)! - drawn) > 0.5 && !isRevealingIn(t)) {
           const mm = motionFor(t)
           mm.h = sizeSpring(drawn, target)
         }
@@ -679,7 +1153,7 @@ export function createPageLayout(
     const tiles = new Set<HTMLElement>()
     for (const e of entries) {
       const tile = (e.target as HTMLElement).parentElement
-      if (tile && !tile.hidden && sectionOf(tile)) tiles.add(tile)
+      if (tile && !tile.hidden && sectionOf(tile) && !away(tile)) tiles.add(tile)
     }
     if (tiles.size) ease([...tiles], naturals([...tiles]))
   })
@@ -707,10 +1181,19 @@ export function createPageLayout(
     get sections() {
       return sections
         .filter((s) => s.label?.isConnected)
-        .map((s) => ({ element: s.label!, head: s.label }))
+        .map((s) => ({
+          element: s.label!,
+          head: s.label,
+          name: s.name$,
+          summary: s.summary,
+          desc: s.desc,
+          caret: s.caret,
+        }))
     },
     add(tile, name) {
-      sectionFor(name).tiles.push(tile)
+      const s = sectionFor(name)
+      s.tiles.push(tile)
+      owner.set(tile, s)
       if (ready) {
         pending.add(tile)
         tile.style.display = "none"
@@ -718,15 +1201,21 @@ export function createPageLayout(
       }
       ;(columns[0] ?? grid).append(tile)
       watch(tile)
+      if (lit) queueMicrotask(retarget)
     },
     remove(tile) {
+      glows.delete(tile)
+      glowing.delete(tile)
       const s = sectionOf(tile)
       if (s) s.tiles.splice(s.tiles.indexOf(tile), 1)
+      owner.delete(tile)
+      tile.removeAttribute("data-away")
       for (const child of tile.children) contents.unobserve(child)
       pending.delete(tile)
       const drawn = tile.isConnected && !tile.hidden ? tile.offsetHeight : 0
       if (!ready || reduced() || !drawn) {
         leaving.delete(tile)
+        hiding.delete(tile)
         motions.delete(tile)
         tile.remove()
         return
@@ -738,20 +1227,73 @@ export function createPageLayout(
       gapPx = gapOf()
       tile.inert = true
       tile.dataset.leaving = ""
-      leaving.set(tile, () => tile.remove())
+      hiding.add(tile)
+      leaving.set(tile, () => {
+        hiding.delete(tile)
+        tile.remove()
+      })
       write(tile, m)
       run()
     },
     pack,
-    change(mutate, rows) {
-      relayout(mutate, rows)
+    change(mutate, rows, instant) {
+      relayout(mutate, rows, instant)
+    },
+    foldSection(name, folded, animate = true) {
+      const s = sections.find((x) => x.name === name)
+      if (!s?.label) return
+      if (!s.foldable) makeFoldable(s, s.folded)
+      if (s.folded === folded) return
+      // Focus inside cards folding away stays with the section, on its heading.
+      if (folded && !foldsOpen && s.tiles.some((t) => t.contains(doc.activeElement)))
+        s.label.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+      const apply = () => {
+        s.folded = folded
+        paintFold(s)
+      }
+      if (cols) relayout(apply, [], !animate)
+      else apply()
+    },
+    isFolded(name) {
+      return shut(sections.find((x) => x.name === name))
+    },
+    isFoldable(name) {
+      return Boolean(sections.find((x) => x.name === name)?.foldable)
+    },
+    openFolds(open) {
+      foldsOpen = open
+    },
+    sectionList() {
+      return filled().map((s) => ({
+        name: s.name,
+        label: s.label,
+        tiles: s.tiles,
+        folded: s.folded,
+      }))
+    },
+    sectionOf(tile) {
+      return sectionOf(tile)?.name
+    },
+    relabel() {
+      for (const s of sections) {
+        if (!s.label || !s.name$) continue
+        const text = options.sectionLabel?.(s.name) ?? s.name
+        if (s.name$.textContent !== text) s.name$.textContent = text
+        if (s.foldable) s.label.setAttribute("aria-label", text)
+        describe(s)
+      }
+    },
+    settled(node) {
+      const r = node.getBoundingClientRect()
+      const dy = motions.get(node)?.y.x ?? 0
+      return { top: r.top - dy, bottom: r.bottom - dy }
     },
     frame(now) {
       // The overlay draws before ResizeObserver runs, so sudden height changes are caught here
       // too, and the motion steps before it reads where things are.
       if (ready) {
         const free = tilesInOrder().filter(
-          (t) => !t.hidden && !leaving.has(t) && !motions.get(t)?.h && known.has(t),
+          (t) => !t.hidden && !leaving.has(t) && !away(t) && !motions.get(t)?.h && known.has(t),
         )
         const heights = new Map(free.map((t) => [t, t.offsetHeight]))
         const changed = free.filter((t) => Math.abs(heights.get(t)! - known.get(t)!) >= 0.5)
@@ -762,19 +1304,89 @@ export function createPageLayout(
         tick(now)
       }
     },
+    resize(tile, from) {
+      const natural = naturals([tile]).get(tile)!
+      known.set(tile, natural)
+      if (!ready || reduced() || leaving.has(tile)) return
+      const m = motions.get(tile)
+      if (m?.h) {
+        m.h.set(natural)
+        if (m.fold !== undefined) m.fold = natural
+      } else if (Math.abs(natural - from) >= 0.5) {
+        const mm = motionFor(tile)
+        mm.h = sizeSpring(from, natural)
+        gapPx = gapOf()
+        write(tile, mm)
+      }
+      run()
+    },
+    highlight(target) {
+      const groups = new Set(target?.groups ?? [])
+      const named = new Set(target?.sections ?? [])
+      lit = target ? { groups, sections: named } : null
+      dimAmount =
+        parseFloat(getComputedStyle(host).getPropertyValue("--k-page-dim")) >= 0
+          ? parseFloat(getComputedStyle(host).getPropertyValue("--k-page-dim"))
+          : 0.4
+      retarget()
+    },
+    highlighted() {
+      if (!lit) return []
+      const out: HTMLElement[] = []
+      for (const t of tilesInOrder()) if (showing(t) && litTile(t).on) out.push(t)
+      // A section highlighted as a whole starts at its heading, as does a folded one.
+      for (const s of sections)
+        if (
+          s.label?.isConnected &&
+          (lit.sections.has(s.name) || (shut(s) && s.tiles.some((t) => litTile(t).on)))
+        )
+          out.push(s.label)
+      return out
+        .map((node) => ({ node, r: node.getBoundingClientRect() }))
+        .filter((x) => x.r.height > 0)
+        .sort((a, b) => a.r.top - b.r.top || a.r.left - b.r.left)
+        .map((x) => x.node)
+    },
+    emphasis(node) {
+      const g = glows.get(node)
+      if (!g) return undefined
+      const e = Math.min(1, Math.max(0, g.e.x))
+      return {
+        dim: (1 - e) * dimAmount,
+        mark: Math.min(1, Math.max(0, g.m.x)),
+        ...(g.dot && !g.dot.hidden ? { dot: g.dot } : {}),
+      }
+    },
     get moving() {
-      return motions.size > 0 || isRevealingIn(grid)
+      return motions.size > 0 || glowing.size > 0 || isRevealingIn(grid)
     },
     get version() {
       return version
     },
     dispose() {
       if (raf) win.cancelAnimationFrame(raf)
+      host.removeEventListener("focusin", onFocus)
+      host.removeEventListener("focusout", onFocus)
       clearTimeout(resizeTimer)
       resize.disconnect()
       contents.disconnect()
     },
   }
+}
+
+/**
+ * A card's title without its section's name repeated in front: "Transcript · Arrivals" under
+ * Transcript reads "Arrivals". `prefixes` are what the section is called (its id and label); the
+ * name has to be followed by a separator (· • : / | › » or a dash), and something has to remain.
+ */
+export function cardTitle(title: string, prefixes: readonly string[]): string {
+  const lower = title.toLowerCase()
+  for (const prefix of prefixes) {
+    if (!prefix || !lower.startsWith(prefix.toLowerCase())) continue
+    const rest = /^\s*[·•:/|›»—–-]\s*(\S.*)$/u.exec(title.slice(prefix.length))
+    if (rest) return rest[1]!
+  }
+  return title
 }
 
 /** Whether a field, group or card answers the filter: every word appears somewhere in `text`. */
@@ -787,10 +1399,30 @@ export function matchesFilter(query: string, ...text: (string | undefined)[]) {
     .every((word) => hay.includes(word))
 }
 
+/** A custom card's fold, as the page drives it (see `Page.highlight`'s `expand`). */
+export interface CustomCardFold {
+  readonly tile: HTMLElement
+  readonly folded: boolean
+  readonly collapsible: boolean
+  /** Folds or opens it, remembering it as the user's choice only with `remember`. */
+  fold(folded: boolean, remember: boolean): void
+}
+
 export function createCustomCard(
   doc: Document,
   options: PageCardOptions,
-  hooks: { wake(): void; remove(tile: HTMLElement): void },
+  hooks: {
+    wake(): void
+    remove(tile: HTMLElement): void
+    /** What the header shows for `title` (a repeated section prefix dropped). */
+    title?(title: string): string
+    /** The card's content changed at once (it was `from` px tall): its height eases there. */
+    resize?(tile: HTMLElement, from: number): void
+    /** Where a collapsible card's state is remembered, by title. */
+    folded?: { get(title: string): boolean | undefined; set(title: string, folded: boolean): void }
+    /** Hands the page a way to fold the card without remembering it (a highlight's expand). */
+    register?(card: CustomCardFold): void
+  },
 ): PageCard {
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
     const node = doc.createElement(tag)
@@ -801,17 +1433,132 @@ export function createCustomCard(
   const tile = el("div", "knobs-tile knobs-live")
   const head = el("div", "knobs-group-head")
   const accessory = el("span")
+  const shown = options.title ? (hooks.title?.(options.title) ?? options.title) : ""
   if (options.title) {
     tile.dataset.card = options.title
-    tile.setAttribute("aria-label", options.title)
+    tile.setAttribute("aria-label", shown)
     const title = el("span", "knobs-group-title")
-    title.append(el("span", "knobs-group-label", options.title))
+    title.append(el("span", "knobs-group-label", shown))
     head.append(title, accessory)
     tile.append(head)
+  }
+  if (options.description && options.title) {
+    const desc = el("div", "knobs-group-desc", options.description)
+    desc.title = options.description
+    tile.append(desc)
   }
   const body = el("div", "knobs-tile-body")
   tile.append(body)
   if (options.element) body.append(options.element)
+
+  // Collapsible: the header folds the body away; a summary shows on its right meanwhile.
+  let folded = false
+  let summaryEl: HTMLElement | undefined
+  const collapsible = () => tile.hasAttribute("data-collapsible")
+  const makeCollapsible = () => {
+    if (collapsible() || !options.title) return
+    tile.toggleAttribute("data-collapsible", true)
+    const side = el("span", "knobs-card-side")
+    summaryEl = el("span", "knobs-card-summary")
+    accessory.replaceWith(side)
+    side.append(summaryEl, accessory)
+    const right = el("span", "knobs-card-right")
+    side.replaceWith(right)
+    right.append(side, caretIcon(doc))
+    head.tabIndex = 0
+    head.dataset.knobsStop = ""
+    head.setAttribute("role", "button")
+    head.setAttribute("aria-label", shown)
+    head.setAttribute("aria-expanded", "true")
+    head.addEventListener("click", (event) => {
+      const hit = (event.target as Element).closest(
+        "button,a,input,select,textarea,[data-knobs-stop],[role=button]",
+      )
+      if (hit && hit !== head) return
+      fold(!folded)
+    })
+    head.addEventListener("keydown", (event) => {
+      if (event.target !== head || event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key !== "Enter" && event.key !== " ") return
+      event.preventDefault()
+      event.stopPropagation()
+      fold(!folded)
+    })
+  }
+  const setSummary = (content: string | Node | null) => {
+    if (!summaryEl) return
+    summaryEl.replaceChildren(...(content === null ? [] : [content]))
+    summaryEl.title = summaryEl.textContent ?? ""
+  }
+  /**
+   * Folds or opens the body; `animate: false` places it (a card restored on reload), and
+   * `remember: false` leaves what's remembered alone (a highlight opened it).
+   */
+  const fold = (next: boolean, animate = true, remember = true) => {
+    makeCollapsible()
+    if (!collapsible() || next === folded) return
+    folded = next
+    // Opening from hidden, the body first shows at its folded (clear) look, so it fades in.
+    if (!next && body.hidden) {
+      body.hidden = false
+      void getComputedStyle(body).opacity
+    }
+    tile.toggleAttribute("data-collapsed", next)
+    head.setAttribute("aria-expanded", String(!next))
+    body.setAttribute("aria-hidden", String(next))
+    body.inert = next
+    // Focus inside a body folding away stays on the card, at its header.
+    if (next && body.contains(doc.activeElement))
+      head.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+    if (animate && tile.isConnected && !still() && hooks.resize) {
+      // The card's height springs on the page's own motion (the cards below glide with it);
+      // meanwhile a folding body leaves the flow where it is and fades, clipped by the card.
+      const from = tile.getBoundingClientRect().height
+      if (next) {
+        body.style.top = `${body.offsetTop}px`
+        body.dataset.folding = ""
+        // Gone once it has faded (or soon after, should no transition run).
+        const done = (event?: TransitionEvent) => {
+          if (event && (event.target !== body || event.propertyName !== "opacity")) return
+          body.removeEventListener("transitionend", done)
+          clearTimeout(timer)
+          if (!folded || !("folding" in body.dataset)) return
+          body.hidden = true
+          delete body.dataset.folding
+          body.style.top = ""
+        }
+        const timer = setTimeout(done, 900)
+        body.addEventListener("transitionend", done)
+      } else {
+        body.hidden = false
+        delete body.dataset.folding
+        body.style.top = ""
+      }
+      hooks.resize(tile, from)
+    } else {
+      body.hidden = next
+      delete body.dataset.folding
+      body.style.top = ""
+    }
+    if (options.title && remember) hooks.folded?.set(options.title, next)
+    hooks.wake()
+  }
+  hooks.register?.({
+    tile,
+    get folded() {
+      return folded
+    },
+    get collapsible() {
+      return collapsible()
+    },
+    fold: (next, remember) => fold(next, true, remember),
+  })
+  if (options.collapsed !== undefined) {
+    makeCollapsible()
+    if (options.summary !== undefined) setSummary(options.summary)
+    const saved = options.title ? hooks.folded?.get(options.title) : undefined
+    fold(saved ?? options.collapsed, false, false)
+  }
   /** Rows join the inset card above them, as fields do; anything else starts a new one. */
   const inset = () => {
     const last = body.lastElementChild
@@ -1131,6 +1878,17 @@ export function createCustomCard(
     show(element, visible) {
       if (element.isConnected && !still()) reveal(element, visible)
       else element.hidden = !visible
+      hooks.wake()
+    },
+    collapse(next = true) {
+      fold(next)
+    },
+    get collapsed() {
+      return folded
+    },
+    summary(content) {
+      makeCollapsible()
+      setSummary(content)
       hooks.wake()
     },
     clear() {
