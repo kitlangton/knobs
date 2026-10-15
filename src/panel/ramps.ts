@@ -38,7 +38,17 @@ import { band, stretched, type Band } from "./give.js"
 import { tick } from "./haptics.js"
 import { clamp } from "./motion.js"
 import { arrowOf, bigOf } from "./prefs.js"
-import { curveSmear, MORPH_SPRING, RampMorph, sampleAt, type MorphDot } from "./ramp-morph.js"
+import {
+  curveBlur,
+  curveSmear,
+  LINE_SMEAR,
+  morphLoop,
+  MORPH_SPRING,
+  RampMorph,
+  sampleAt,
+  smearFilters,
+  type MorphDot,
+} from "./ramp-morph.js"
 import { onPan } from "./swipe.js"
 
 /** The custom properties a gradient strip's samples ride on (written each frame of a morph). */
@@ -544,102 +554,6 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       miniSize.disconnect()
       editor.dispose()
       loop.dispose()
-    },
-  }
-}
-
-/** The widest a moving curve's line smears (px): it's thin, so less than a point does. */
-const LINE_SMEAR = 4
-
-/** How strongly a ramp's moving line and points smear (--k-curve-blur, 0 off to 1). */
-const curveBlur = (row: HTMLElement) =>
-  reducedMotion(row.ownerDocument)
-    ? 0
-    : clamp(parseFloat(getComputedStyle(row).getPropertyValue("--k-curve-blur")) || 0, 0, 1)
-
-/**
- * Runs a morph on one frame loop while it moves, drawing each frame; `wake` asks the GPU for a
- * frame too, which reads the same morph (stepping it to its own frame time first: a time already
- * reached is a no-op, so the two never step it twice).
- */
-function morphLoop(c: RowContext<unknown>, morph: RampMorph, draw: () => void) {
-  const win = c.doc.defaultView
-  let frame = 0
-  const run = (now: number) => {
-    const moving = morph.step(now)
-    draw()
-    c.wake()
-    frame = moving && win ? win.requestAnimationFrame(run) : 0
-  }
-  return {
-    kick() {
-      if (!frame && win) frame = win.requestAnimationFrame(run)
-    },
-    dispose() {
-      if (frame) win?.cancelAnimationFrame(frame)
-      frame = 0
-    },
-  }
-}
-
-let smearIds = 0
-/**
- * The DOM's motion blur for a ramp's line and points: an SVG Gaussian per element, its deviation
- * the GPU smear's box width over √12 (the same spread). Off (no filter at all) at rest.
- */
-function smearFilters(doc: Document, plot: SVGSVGElement) {
-  const ns = "http://www.w3.org/2000/svg"
-  const defs = doc.createElementNS(ns, "defs")
-  plot.prepend(defs)
-  const sigma = (px: number) => (px / Math.sqrt(12)).toFixed(2)
-  const make = (box: boolean) => {
-    const filter = doc.createElementNS(ns, "filter")
-    filter.id = `knobs-smear-${++smearIds}`
-    if (box) {
-      // Around the whole element, with room for the smear.
-      filter.setAttribute("x", "-1")
-      filter.setAttribute("y", "-1")
-      filter.setAttribute("width", "3")
-      filter.setAttribute("height", "3")
-    } else filter.setAttribute("filterUnits", "userSpaceOnUse")
-    const blur = doc.createElementNS(ns, "feGaussianBlur")
-    filter.append(blur)
-    defs.append(filter)
-    return { filter, blur }
-  }
-  const byDot = new Map<Element, ReturnType<typeof make>>()
-  return {
-    /** The line's smear: `set(px)` blurs `path` across (0 takes the filter off). */
-    line(path: SVGPathElement) {
-      const { filter, blur } = make(false)
-      let on = 0
-      return (px: number) => {
-        if (px === on) return
-        on = px
-        if (!px) return path.removeAttribute("filter")
-        const box = plot.viewBox.baseVal
-        filter.setAttribute("x", String(-20))
-        filter.setAttribute("y", String(-20))
-        filter.setAttribute("width", String((box?.width || 0) + 40))
-        filter.setAttribute("height", String((box?.height || 0) + 40))
-        blur.setAttribute("stdDeviation", sigma(px))
-        path.setAttribute("filter", `url(#${filter.id})`)
-      }
-    },
-    /** A point's smear along its travel (px across, px down); 0, 0 takes it off. */
-    dot(node: HTMLElement, sx: number, sy: number) {
-      if (!sx && !sy) {
-        if (byDot.has(node)) node.style.filter = ""
-        return
-      }
-      let f = byDot.get(node)
-      if (!f) byDot.set(node, (f = make(true)))
-      f.blur.setAttribute("stdDeviation", `${sigma(Math.abs(sx))} ${sigma(Math.abs(sy))}`)
-      node.style.filter = `url(#${f.filter.id})`
-    },
-    drop(node: HTMLElement) {
-      byDot.get(node)?.filter.remove()
-      byDot.delete(node)
     },
   }
 }

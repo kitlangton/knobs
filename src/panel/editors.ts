@@ -28,6 +28,14 @@ import { reveal } from "./reveal.js"
 import { createSlider, decimals, type Slider } from "./slider.js"
 import { band, stepList, stretched, textGive, type Band, type Steps } from "./give.js"
 import { tick } from "./haptics.js"
+import {
+  curveBlur,
+  curveSmear,
+  LINE_SMEAR,
+  morphLoop,
+  RampMorph,
+  smearFilters,
+} from "./ramp-morph.js"
 import { onPan } from "./swipe.js"
 
 /** What a row needs from the panel. */
@@ -1110,20 +1118,6 @@ const DRAG_STEP = 24
 const EASE_PAD = { x: 12, y: 10 }
 const MINI = { w: 30, y: [-0.3, 1.3] as const }
 
-/** The curve's samples mapped into a box: x 0…1 across, y over `range` bottom to top. */
-function bezierCurve(
-  b: Bezier,
-  w: number,
-  h: number,
-  padX: number,
-  padY: number,
-  range: readonly [number, number],
-) {
-  const map = mapper(w, h, padX, padY, range)
-  const out: number[] = []
-  for (let i = 0; i <= 48; i++) out.push(...map(...bezierPoint(b, i / 48)))
-  return out
-}
 const mapper =
   (w: number, h: number, padX: number, padY: number, range: readonly [number, number]) =>
   (x: number, y: number): [number, number] => [
@@ -1176,41 +1170,122 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
   const range = EASING_Y
   const map = (px: number, py: number) =>
     mapper(size.w, size.h, EASE_PAD.x, EASE_PAD.y, range)(px, py)
-  const curvePoints = () =>
-    size.w ? bezierCurve(shown, size.w, size.h, EASE_PAD.x, EASE_PAD.y, range) : []
   /** Which handle a pan holds past the box's edges, and how far (px). */
   let give: [number, number, number] = [-1, 0, 0]
+  // What's drawn: the curve's samples and both handles in the 0…1 box (y up, over EASING_Y),
+  // moving between easings on one spring with the same morph a curve row uses (ramp-morph.ts).
+  const spanY = range[1] - range[0]
+  const norm = (y: number) => (clamp(y, range[0], range[1]) - range[0]) / spanY
+  const morph = new RampMorph(2, 2)
+  const unitSamples = () => {
+    const out: number[] = []
+    for (let i = 0; i <= 48; i++) {
+      const [bx, by] = bezierPoint(shown, i / 48)
+      out.push(bx, norm(by))
+    }
+    return out
+  }
+  const unitHandles = () => {
+    const w = Math.max(1, size.w - EASE_PAD.x * 2)
+    const h = Math.max(1, size.h - EASE_PAD.y * 2)
+    return [0, 1].map((i) => {
+      const [gx, gy] = give[0] === i ? [give[1] / w, give[2] / h] : [0, 0]
+      return [clamp(shown[i * 2]!, 0, 1) + gx, norm(shown[i * 2 + 1]!) - gy]
+    })
+  }
+  const toPx = (ux: number, uy: number): [number, number] => [
+    EASE_PAD.x + ux * (size.w - EASE_PAD.x * 2),
+    EASE_PAD.y + (1 - uy) * (size.h - EASE_PAD.y * 2),
+  ]
   const handleAt = (i: number): [number, number] => {
-    const [hx, hy] = map(shown[i * 2]!, shown[i * 2 + 1]!)
-    return give[0] === i ? [hx + give[1], hy + give[2]] : [hx, hy]
+    const d = morph.live[i]
+    return d ? toPx(d.at[0]!, d.at[1]!) : map(shown[i * 2]!, shown[i * 2 + 1]!)
+  }
+  const curvePoints = () => {
+    if (!size.w) return []
+    const s = morph.samples
+    const out: number[] = []
+    for (let i = 0; i < s.length; i += 2) out.push(...toPx(s[i]!, s[i + 1]!))
+    return out
   }
   const armPoints = () =>
     size.w ? [...map(0, 0), ...handleAt(0), ...map(1, 1), ...handleAt(1)] : []
-  const miniPoints = () => bezierCurve(shown, MINI.w, miniSize.h, 1.5, 1.5, MINI.y)
-  const layout = (instant: boolean) => {
-    if (!size.w) return
-    plot.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`)
-    const [x0, y0] = map(0, 0)
-    const [x1, y1] = map(1, 1)
-    guides.setAttribute(
-      "d",
-      `M${EASE_PAD.x} ${y0}H${size.w - EASE_PAD.x}M${EASE_PAD.x} ${y1}H${size.w - EASE_PAD.x}M${x0} ${y0}L${x1} ${y1}`,
-    )
+  const miniPoints = () => {
+    if (!miniSize.h) return []
+    const s = morph.samples
+    const [m0, m1] = MINI.y
+    const out: number[] = []
+    for (let i = 0; i < s.length; i += 2) {
+      const y = clamp(range[0] + s[i + 1]! * spanY, m0, m1)
+      out.push(1.5 + s[i]! * (MINI.w - 3), 1.5 + ((m1 - y) / (m1 - m0)) * (miniSize.h - 3))
+    }
+    return out
+  }
+  const plotSmears = smearFilters(c.doc, plot)
+  const lineSmear = plotSmears.line(curve)
+  let strength = 0
+  /** A handle's smear (px, along its travel): 0 at rest and in hand. */
+  const handleSmear = (i: number): [number, number] => {
+    const d = morph.live[i]
+    if (!d || !strength || !morph.moving) return [0, 0]
+    const vx = d.vel[0]! * (size.w - EASE_PAD.x * 2)
+    const vy = -d.vel[1]! * (size.h - EASE_PAD.y * 2)
+    const speed = Math.hypot(vx, vy)
+    const px = curveSmear(speed, strength)
+    return px ? [(vx / speed) * px, (vy / speed) * px] : [0, 0]
+  }
+  const lineBlur = () =>
+    strength && morph.moving
+      ? curveSmear(
+          morph.sampleSpeed(size.w - EASE_PAD.x * 2, size.h - EASE_PAD.y * 2),
+          strength,
+          LINE_SMEAR,
+        )
+      : 0
+  /** Writes the morph's frame to the DOM (the GPU reads the same numbers through its binding). */
+  const draw = () => {
     const a = armPoints()
-    place([curve, arms, ...handles], instant, () => {
-      setPath(curve, curvePoints())
-      arms.style.setProperty(
-        "d",
-        `path("M${a[0]} ${a[1]}L${a[2]} ${a[3]}M${a[4]} ${a[5]}L${a[6]} ${a[7]}")`,
-      )
+    // The handles are what a pointer grabs, so they're placed for the GPU too.
+    if (a.length === 8) {
       handles[0]!.style.translate = `${a[2]}px ${a[3]}px`
       handles[1]!.style.translate = `${a[6]}px ${a[7]}px`
-    })
+    }
+    if (x.row.closest('[data-gpu-active="true"]')) return
+    if (miniSize.h) setPath(miniPath, miniPoints())
+    if (!size.w) return
+    setPath(curve, curvePoints())
+    lineSmear(lineBlur())
+    arms.style.setProperty(
+      "d",
+      `path("M${a[0]} ${a[1]}L${a[2]} ${a[3]}M${a[4]} ${a[5]}L${a[6]} ${a[7]}")`,
+    )
+    handles.forEach((h, i) => plotSmears.dot(h, ...handleSmear(i)))
+  }
+  const loop = morphLoop(c, morph, draw)
+  let placed = false
+  const layout = (instant: boolean, delay = 0) => {
+    if (size.w) {
+      plot.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`)
+      const [x0, y0] = map(0, 0)
+      const [x1, y1] = map(1, 1)
+      guides.setAttribute(
+        "d",
+        `M${EASE_PAD.x} ${y0}H${size.w - EASE_PAD.x}M${EASE_PAD.x} ${y1}H${size.w - EASE_PAD.x}M${x0} ${y0}L${x1} ${y1}`,
+      )
+    }
+    const still = instant || !placed || reducedMotion(c.doc)
+    placed = true
+    morph.set(unitSamples(), unitHandles(), { instant: still, delay, now: performance.now() })
+    if (morph.moving) {
+      strength = curveBlur(x.row)
+      loop.kick()
+    }
+    draw()
   }
   const size = measure(box, () => layout(true))
   const miniSize = measure(mini, () => {
     mini.setAttribute("viewBox", `0 0 ${MINI.w} ${miniSize.h}`)
-    place([miniPath], true, () => setPath(miniPath, miniPoints()))
+    layout(true)
   })
   const g = gesture(c)
   let dragging = -1
@@ -1219,7 +1294,6 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
   let fine = false
   let anchor: [number, number] = [0, 0]
   let anchorValue = shown
-  const spanY = range[1] - range[0]
   const unit = () => [size.w - EASE_PAD.x * 2, size.h - EASE_PAD.y * 2] as const
   const move = (i: number, px: number, py: number) => {
     const next = [...shown] as [number, number, number, number]
@@ -1375,6 +1449,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     box,
     curve: curvePoints,
     arms: armPoints,
+    advance: (now) => morph.step(now),
+    blur: lineBlur,
+    smear: handleSmear,
     guides: () => (size.w ? [...map(0, 0), ...map(1, 1)] : []),
     handles,
     chips: chipButtons,
@@ -1395,7 +1472,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       shown: () => (x.isOpen() && visible(chips) ? chipButtons : []),
       anchor: mini,
     },
-    update(value, _delay, _instant, mixed = false) {
+    update(value, delay, instant = false, mixed = false) {
       const first = name.dataset.placed === undefined
       name.dataset.placed = ""
       shown = value as Bezier
@@ -1407,12 +1484,12 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
         h.setAttribute("aria-valuetext", `x ${shown[i * 2]}, y ${shown[i * 2 + 1]}`),
       )
       const held = dragging >= 0 || panned >= 0
-      layout(first || held)
-      if (miniSize.h) place([miniPath], first || held, () => setPath(miniPath, miniPoints()))
+      layout(first || held || instant, delay)
     },
     dispose() {
       size.disconnect()
       miniSize.disconnect()
+      loop.dispose()
     },
   }
 }

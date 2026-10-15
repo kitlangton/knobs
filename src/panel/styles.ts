@@ -425,7 +425,7 @@ const css = `
 .knobs-spring-curve{position:relative;flex:none;width:calc(var(--k-row) * 2.5);margin:var(--k-gap) var(--k-inset) var(--k-gap) 0;border-radius:var(--k-radius-sm);background:var(--k-seg-bg);pointer-events:none}
 .knobs-panel :is(.knobs-spring-curve,.knobs-ease)>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .knobs-guide{fill:none;stroke:var(--k-line);stroke-width:1}
-.knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1;transition:d ${FILL_T} ${DELAY}}
+.knobs-arm{fill:none;stroke:var(--k-dim);stroke-width:1}
 .knobs-curve{fill:none;stroke:var(--k-accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:d ${FILL_T} ${DELAY}}
 .knobs-spring-dot{position:absolute;left:0;top:0;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--k-accent);box-shadow:0 0 calc(var(--k-glow) * 8px) var(--k-accent);opacity:0;scale:var(--k-curve-dot)}
 .knobs-guide-dashed{stroke:var(--k-line-hi)}
@@ -463,10 +463,11 @@ const css = `
 .knobs-pad.knobs-active>i{transition:scale .2s var(--k-ease)}
 .knobs-pad:is(.knobs-active,:focus-visible) .knobs-pad-puck{scale:1.2}
 .knobs-ease{height:calc(var(--k-row) * 4.5)}
-.knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));cursor:grab;touch-action:none;transition:translate ${FILL_T} ${DELAY},scale .2s var(--k-ease)}
+.knobs-panel .knobs-ease-handle{position:absolute;left:0;top:0;width:12px;height:12px;margin:-6px;padding:0;border-radius:var(--k-round);background:var(--k-bg);box-shadow:inset 0 0 0 2px var(--k-accent),0 1px 3px rgba(0,0,0,calc(.3 * var(--k-lift)));cursor:grab;touch-action:none;transition:scale .2s var(--k-ease)}
 .knobs-ease-handle::before{content:"";position:absolute;inset:-8px;border-radius:50%}
-.knobs-ease.knobs-active :is(.knobs-curve,.knobs-arm){transition:none}
-.knobs-ease.knobs-active .knobs-ease-handle{transition:scale .2s var(--k-ease)}
+/* The row's morph moves the curve, arms and handles each frame (ramp-morph.ts), so they don't
+   transition. */
+:is(.knobs-ease,.knobs-ease-mini) .knobs-curve{transition:none}
 .knobs-ease-handle:active{scale:1.2;cursor:grabbing}
 .knobs-ease-handle:focus-visible{scale:1.2}
 .knobs-ease-mini{flex:none;width:30px;height:var(--k-track-h);overflow:visible}

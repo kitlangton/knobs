@@ -177,6 +177,11 @@ export interface GpuEasingRow {
   curve(): readonly number[]
   /** P0, P1, P3, P2: the two arms from the ends to their handles. */
   arms(): readonly number[]
+  /** Steps the row's morph (curve, arms, handles) to this frame; whether it still moves. */
+  advance(now: number): boolean
+  /** The line's motion blur (px), and each handle's (px across, px down): 0 at rest. */
+  blur(): number
+  smear(i: number): readonly [number, number]
   /** (0,0) and (1,1) in the box. */
   guides(): readonly number[]
   readonly handles: readonly HTMLElement[]
@@ -2460,12 +2465,13 @@ class GpuOverlayManager {
       cardClip,
       rowAlpha,
     )
-    const delay = row.wave.at - clock
-    const snap = row.snap()
+    // The row's own morph moves the curve, arms and handles (see ramp-morph.ts): drawn as they
+    // stand this frame, not eased again.
+    if (row.advance(this.frameNow)) this.easeMoving = true
     const mRect = nudge(this.rectOf(row.mini), giveOf(row.mini))
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
     const accent = withAlpha(t.accent, rowAlpha * shown)
-    this.pushLine(at(this.morph(row.mini, row.miniCurve(), delay, snap, mRect), mRect), accent, 1.5)
+    this.pushLine(at(row.miniCurve(), mRect), accent, 1.5)
     this.readout(row.read, mRect.top + mRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
@@ -2488,13 +2494,13 @@ class GpuOverlayManager {
           this.pushLine([br.left + 12, y, br.right - 12, y], line, 1, body)
         this.pushLine(g, line, 1, body)
       }
-      const arms = at(this.morph(row.handles[0]!, row.arms(), delay, snap, br), br)
+      const arms = at(row.arms(), br)
       if (arms.length === 8) {
         const dim = withAlpha(t.dim, rowAlpha * shown)
         this.pushLine(arms.slice(0, 4), dim, 1, body)
         this.pushLine(arms.slice(4), dim, 1, body)
       }
-      this.pushLine(at(this.morph(row.box, row.curve(), delay, snap, br), br), accent, 1.5, body)
+      this.pushLine(at(row.curve(), br), accent, 1.5, body, this.curReduced ? 0 : row.blur())
       row.handles.forEach((h, i) => {
         if (arms.length !== 8 || shown < 0.005) return
         const activeHandle = this.isFocused(h) || (this.curPanelHovered && h.matches(":active"))
@@ -2512,6 +2518,7 @@ class GpuOverlayManager {
           ringColor: accent,
           shadow: [0.3 * t.lift * shown, 3, 1],
           clip: body,
+          smear: this.curReduced ? [0, 0] : row.smear(i),
         })
       })
       this.drawChips(row.chips, body, rowAlpha)
