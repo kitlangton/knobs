@@ -2773,7 +2773,9 @@ class GpuOverlayManager {
 
           this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, lRect)
 
-          if (!sl.isEditing()) {
+          // While the value is edited, its DOM field sits over the digits; the unit stays drawn.
+          const editing = sl.isEditing()
+          {
             const unitText = sl.getUnitText()
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
             // --k-readout-mark: a modified value takes the modified colour behind a dot.
@@ -2850,44 +2852,48 @@ class GpuOverlayManager {
                   clip: bodyClip,
                 })
               }
-              sl.digitPlaces.forEach((place, j) => {
-                const presence = clamp(place.presence.sample(clock).position, 0, 1)
-                if (presence <= 0.005) return
-                // Tabular figures: canvas can't turn on "tnum", so every digit gets the same cell
-                // (the widest digit) with its glyph centred, at rest and mid-roll alike. Punctuation
-                // keeps its own advance. Characters on their way out keep their last spot.
-                let offset = this.placeOffsets.get(place)
-                if (j < digitsText.length) {
-                  let after = 0
-                  for (let r = digitsText.length - 1; r > digitsText.length - 1 - j; r--)
-                    after += advance(digitsText[r]!)
-                  offset = after + advance(digitsText[digitsText.length - 1 - j]!) / 2
-                  this.placeOffsets.set(place, offset)
-                }
-                const cx = rightEdge - (offset ?? 0)
-                const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
-                const col = withAlpha(ink, presence)
-                const isDigit = place.ch >= "0" && place.ch <= "9"
-                if (!isDigit) {
-                  this.drawText(place.ch, cx, rowCenterY + rise, col, { ...text, align: "center" })
-                  return
-                }
-                const { position, velocity } = place.wheel.sample(clock)
-                // 4 faces/s starts the smear; 24 faces/s is full strength.
-                const speed = Math.abs(velocity)
-                const blurY = clamp((speed - 4) / 20, 0, 1) * maxBlur
-                const [low, high] = place.wheel.span(clock)
-                for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
-                  const y = rowCenterY + rise + (k - position) * faceH
-                  if (Math.abs(y - rowCenterY) >= faceH) continue
-                  this.drawText(numeral(k), cx, y, col, {
-                    ...text,
-                    align: "center",
-                    blurY,
-                    exact: position !== k || rise !== 0,
-                  })
-                }
-              })
+              if (!editing)
+                sl.digitPlaces.forEach((place, j) => {
+                  const presence = clamp(place.presence.sample(clock).position, 0, 1)
+                  if (presence <= 0.005) return
+                  // Tabular figures: canvas can't turn on "tnum", so every digit gets the same cell
+                  // (the widest digit) with its glyph centred, at rest and mid-roll alike. Punctuation
+                  // keeps its own advance. Characters on their way out keep their last spot.
+                  let offset = this.placeOffsets.get(place)
+                  if (j < digitsText.length) {
+                    let after = 0
+                    for (let r = digitsText.length - 1; r > digitsText.length - 1 - j; r--)
+                      after += advance(digitsText[r]!)
+                    offset = after + advance(digitsText[digitsText.length - 1 - j]!) / 2
+                    this.placeOffsets.set(place, offset)
+                  }
+                  const cx = rightEdge - (offset ?? 0)
+                  const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
+                  const col = withAlpha(ink, presence)
+                  const isDigit = place.ch >= "0" && place.ch <= "9"
+                  if (!isDigit) {
+                    this.drawText(place.ch, cx, rowCenterY + rise, col, {
+                      ...text,
+                      align: "center",
+                    })
+                    return
+                  }
+                  const { position, velocity } = place.wheel.sample(clock)
+                  // 4 faces/s starts the smear; 24 faces/s is full strength.
+                  const speed = Math.abs(velocity)
+                  const blurY = clamp((speed - 4) / 20, 0, 1) * maxBlur
+                  const [low, high] = place.wheel.span(clock)
+                  for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
+                    const y = rowCenterY + rise + (k - position) * faceH
+                    if (Math.abs(y - rowCenterY) >= faceH) continue
+                    this.drawText(numeral(k), cx, y, col, {
+                      ...text,
+                      align: "center",
+                      blurY,
+                      exact: position !== k || rise !== 0,
+                    })
+                  }
+                })
             }
           }
           this.drawRowOverlay(row.row, rRect, cardClip)

@@ -138,7 +138,7 @@ Panels and switchers are keyboard-first:
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel |
 | `Home` / `End` | Jump slider to `min` or `max` |
-| `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline (`Enter` commits, `Esc` cancels) |
+| `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline: the readout's own digits, in place, with the unit after them. `↑` `↓` step the text (`⇧` by the big step), `Enter` commits (the readout rolls from what was typed to the nearest step in range), `Esc` cancels |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
 | `⌥` + drag | Fine-tune a slider at 1/10 speed |
 | Pan sideways (two fingers) | Moves a slider, colour strip, pad or easing handle 1:1 with the fingers; over the preset strip or a choice, drags the pill through the options. One undo entry per gesture; momentum is ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |

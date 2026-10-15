@@ -1942,8 +1942,7 @@ function buildPanel<S extends Schema>(
     } else if (prefs.edit && tracks.has(target) && /^[0-9.\-]$/.test(event.key)) {
       event.preventDefault()
       const { slider } = tracks.get(target)!
-      slider.edit()
-      slider.number.value = event.key
+      slider.edit(event.key)
     }
   }
 

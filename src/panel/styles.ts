@@ -355,13 +355,17 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-label{position:absolute;left:var(--k-inset);top:50%;transform:translateY(-50%);max-width:calc(100% - var(--k-inset) * 2 - var(--k-readout,48px) - 8px);overflow:hidden;text-overflow:ellipsis;color:var(--k-label);font-weight:var(--k-label-weight);pointer-events:none;white-space:nowrap}
 .knobs-value{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);transform-origin:100% 0;display:inline-flex;align-items:center;justify-content:flex-end;gap:0;padding:4px 0 4px 8px;background:transparent!important;border-radius:0!important;line-height:1.35;overflow:visible;white-space:nowrap;
   color:var(--k-label);font-family:var(--k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";font-size:var(--k-text-control);
-  border-bottom:1px solid transparent;cursor:text;transition:color .15s,border-color .15s .4s}
-.knobs-value:hover{border-bottom-color:var(--k-label)}
+  cursor:text;transition:color .15s}
 .knobs-active .knobs-value,.knobs-track:focus-visible .knobs-value{color:var(--k-text)}
-.knobs-number{position:absolute;right:var(--k-inset);top:50%;transform:translateY(-50%);z-index:2;width:6.5ch;padding:1px 4px;text-align:right;background:var(--k-bg)!important;
-  border-radius:var(--k-radius-sm)!important;border-bottom:1px solid var(--k-text)!important;color:var(--k-text);font-family:var(--k-font);font-variant-numeric:tabular-nums;font-size:var(--k-text-control);appearance:textfield}
-.knobs-number::-webkit-inner-spin-button,.knobs-number::-webkit-outer-spin-button{appearance:none}
-.knobs-number:focus-visible{outline:none;box-shadow:none}
+/* Editing: the digits' own text, in place (edit() gives it their right edge and width), with no
+   box: a soft accent selection, an accent caret, and the unit still after it. */
+.knobs-panel .knobs-number,.knobs-number-fit{position:absolute;top:50%;z-index:2;margin:0;padding:0 1px 0 0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:none;
+  font-family:var(--k-value-font);font-size:var(--k-text-control);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";letter-spacing:normal;line-height:1.35;text-align:right;white-space:pre}
+.knobs-panel .knobs-number{transform:translateY(-50%);color:var(--k-text);caret-color:var(--k-accent)}
+.knobs-number::selection{background:color-mix(in srgb,var(--k-accent) 24%,transparent);color:var(--k-text)}
+.knobs-number-fit{left:0;visibility:hidden;pointer-events:none}
+.knobs-editing .knobs-digits{visibility:hidden}
+.knobs-editing .knobs-value{pointer-events:none}
 
 /* Segmented choice */
 .knobs-seg{position:relative;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:var(--k-tray-pad);height:var(--k-control-h);padding:var(--k-tray-pad);max-width:76%;background:var(--k-seg-bg);border-radius:var(--k-radius-md)}

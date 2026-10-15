@@ -2084,6 +2084,112 @@ test("a click focuses without a focus wash; keys quiet the hover where the point
   await page.mouse.move(box.x + box.width * 0.5 + 6, box.y + box.height / 2)
   await expect(synth).not.toHaveAttribute("data-keyboard", "")
   await expect.poll(hoverWash).not.toBe("rgba(0, 0, 0, 0)")
+  // One wash at a time: the pointer's row has it, so the keyboard focus on Drive steps aside.
+  const focusWash = () => drive.evaluate((el) => getComputedStyle(el, "::after").opacity)
+  await expect.poll(focusWash).toBe("0")
+  await page.keyboard.press("ArrowUp")
+  await page.keyboard.press("ArrowDown")
+  await expect.poll(focusWash).toBe("1")
+})
+
+test("quiet header tools, copy turns into a check, and numbers edit in place", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  for (const mode of ["dom", "gpu"] as const) {
+    await page.goto(`/?${mode}`)
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    await page.reload()
+    const panel = await openStudy(page, "halftone")
+    await expect(panel).not.toHaveAttribute("data-morphing")
+    const copy = panel.getByRole("button", { name: "Copy", exact: true })
+    if (mode === "dom") {
+      // Quiet (the unit's --k-dim) until the panel has the pointer, then as bright as a label.
+      const ink = (s: string) =>
+        panel
+          .locator(s)
+          .first()
+          .evaluate((el) => getComputedStyle(el).color)
+      const dim = await ink(".knobs-unit")
+      const label = await ink(".knobs-label")
+      await page.mouse.move(2, 2)
+      await expect.poll(() => ink(".knobs-copy")).toBe(dim)
+      await panel
+        .locator(".knobs-slider")
+        .first()
+        .hover({ position: { x: 30, y: 10 } })
+      await expect.poll(() => ink(".knobs-copy")).toBe(label)
+    }
+
+    // Copy: the glyph turns into a check for a moment, said to assistive tech, with no toast.
+    await copy.click()
+    await expect(copy).toHaveAttribute("data-copied", "")
+    await expect(panel.locator(".knobs-sr")).toHaveText("Copied")
+    await expect(panel.getByRole("status")).toBeHidden()
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("cells")
+    await expect(copy).not.toHaveAttribute("data-copied", "", { timeout: 3000 })
+
+    // Inline edit: the readout's digits become the field where they stand, the unit after them.
+    const radius = panel.locator(".knobs-slider").nth(1)
+    const digits = radius.locator(".knobs-digits")
+    const before = (await digits.boundingBox())!
+    await radius.locator(".knobs-value").click()
+    const field = radius.locator(".knobs-number")
+    await expect(field).toBeFocused()
+    await expect(field).toHaveValue("4.0")
+    const look = await field.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const r = el.getBoundingClientRect()
+      return {
+        border: cs.borderBottomWidth,
+        bg: cs.backgroundColor,
+        selected: (el as HTMLInputElement).selectionEnd! - (el as HTMLInputElement).selectionStart!,
+        right: r.right - parseFloat(cs.paddingRight),
+      }
+    })
+    expect(look.border).toBe("0px")
+    expect(look.bg).toBe("rgba(0, 0, 0, 0)")
+    expect(look.selected).toBe(3)
+    expect(Math.abs(look.right - (before.x + before.width))).toBeLessThan(0.5)
+    await expect(radius.locator(".knobs-unit")).toBeVisible()
+    // ↑↓ step the text; Esc puts it back.
+    await page.keyboard.press("ArrowUp")
+    await expect(field).toHaveValue("4.5")
+    await page.keyboard.press("Shift+ArrowDown")
+    await expect(field).toHaveValue("1.0")
+    await page.keyboard.press("Escape")
+    await expect(field).toBeHidden()
+    const track = panel.getByRole("slider", { name: "radius" })
+    await expect(track).toHaveAttribute("aria-valuenow", "4")
+    await expect(track).toBeFocused()
+    // Enter lands on the nearest step in range, the readout rolling there from what was typed.
+    await page.keyboard.press("Enter")
+    await page.keyboard.type("123")
+    await page.keyboard.press("Enter")
+    await expect(track).toHaveAttribute("aria-valuenow", "8")
+    if (mode === "dom") await expect(digits.locator(".rn-value")).toHaveText("8.0")
+    await expect(field).toBeHidden()
+  }
+})
+
+test("the default notch sits at the slider's bottom edge, only while the row is in hand", async ({
+  page,
+}) => {
+  await page.goto("/?dom")
+  const panel = await openStudy(page, "halftone")
+  const radius = panel.locator(".knobs-slider").nth(1)
+  const notch = radius.locator(".knobs-notch")
+  await page.mouse.move(2, 2)
+  await expect.poll(() => notch.evaluate((el) => getComputedStyle(el).opacity)).toBe("0")
+  await radius.hover({ position: { x: 30, y: 10 } })
+  await expect.poll(() => notch.evaluate((el) => getComputedStyle(el).opacity)).not.toBe("0")
+  const [n, r] = [(await notch.boundingBox())!, (await radius.boundingBox())!]
+  expect(Math.abs(n.y + n.height - (r.y + r.height))).toBeLessThan(0.5)
+  expect(n.height).toBeLessThanOrEqual(6)
 })
 
 test.describe("haptics", () => {
