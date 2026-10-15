@@ -31,10 +31,12 @@ export interface MountPageOptions extends MountPanelOptions {
    */
   readonly sectionFolded?: SectionFolded
   /**
-   * Where the page keeps what the user folds and opens (sections, group cards, custom cards),
-   * under `knobs:<id>:folds:v1`. By default the tab's sessionStorage, so a reload brings it back
-   * (nothing with `session: false`, or for stores without storage, such as remote controls by
-   * default); `localStorage` keeps it across tabs too; `null` keeps nothing.
+   * Where the page keeps what the user folds and opens (sections and group cards), under
+   * `knobs:<id>:folds:v1` as `{ sections, groups }`. By default the store's own storage, unless
+   * it has `persist: "none"` (then nothing). Given, it always wins and keeps folds only (never
+   * values, locks or variants), so a store with `storage: null` can still remember its folds.
+   * `null` keeps none. Folds made for context (`remember: false`) and by the filter are never
+   * written.
    */
   readonly foldStorage?: StoragePort | null
   /**
@@ -61,7 +63,7 @@ export interface PageCardOptions {
   /**
    * Makes the card collapsible, starting folded (`true`) or open (`false`): its header toggles it
    * (a click, or Enter where it's focused) and shows a caret. What the user last chose comes back
-   * after a reload (see `MountPageOptions.foldStorage`), over this.
+   * after a reload in the same tab, over this.
    */
   readonly collapsed?: boolean
   /** One quiet line on the right of a folded card's header, e.g. "iPhone · 0.142.4 · connected". */

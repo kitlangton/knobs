@@ -14,7 +14,7 @@ type Options = {
   mount?: Record<string, unknown>
   /** Install groupSummary / sectionSummary overrides. */
   summaries?: boolean
-  /** Leave foldStorage at its default (the tab's sessionStorage) instead of localStorage. */
+  /** Leave foldStorage at its default (the store's storage) instead of passing localStorage. */
   tabFolds?: boolean
 }
 
@@ -285,18 +285,13 @@ test("folds are remembered across reloads and win over sectionFolded; a highligh
   await expect(tile(root, "Timing")).toHaveAttribute("data-folded", "")
   await page.evaluate(() => (window as any).__s.page.foldSection("Layout", false))
   await expect(root.locator('[data-card="Notes"]')).toHaveAttribute("data-collapsed", "")
-  // With foldStorage: null, or session: false and no foldStorage, nothing is remembered.
+  // With foldStorage: null nothing is remembered.
   await page.evaluate(() => (window as any).__s.page.foldSection("Look", true))
   const none = { mount: { sectionFolded: true, foldStorage: null }, keep: true }
   root = await mount(page, none)
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
   await head(root, "Look").click()
   root = await mount(page, none)
-  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
-  const off = { mount: { sectionFolded: true, session: false }, keep: true, tabFolds: true }
-  root = await mount(page, off)
-  await head(root, "Look").click()
-  root = await mount(page, off)
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
 })
 
@@ -648,7 +643,7 @@ test("reveal opens a section or a group and glides to it; for context it isn't r
   // fold / foldSection: remembered by default, not with remember: false; reveal glides.
   await page.evaluate(() => (window as any).__s.page.fold("Grid", true, { remember: false }))
   await expect(tile(root, "Grid")).toHaveAttribute("data-folded", "")
-  expect((await saved()).groups).toBeUndefined()
+  expect((await saved()).groups).toEqual({})
   await page.evaluate(() => window.scrollTo({ top: 0 }))
   await page.evaluate(() => (window as any).__s.page.fold("Grid", false, { reveal: true }))
   expect((await saved()).groups).toEqual({ Grid: false })
@@ -684,29 +679,123 @@ test("the filter opens matching folded sections and cards for a while, and leave
   expect(await saved()).toBe(kept)
 })
 
-test("by default folds are kept per tab, as before; foldStorage: null keeps none", async ({
+test('by default folds go to the store\'s storage, as { sections, groups }; persist: "none" keeps none; context and search never write', async ({
   page,
 }) => {
+  const key = "knobs:sections-fixture:folds:v1"
+  const saved = () => page.evaluate((key) => localStorage.getItem(key), key)
   const root = await mount(page, { tabFolds: true, mount: { sectionFolded: { Look: false } } })
   await head(root, "Look").click()
   await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
-  expect(
-    await page.evaluate(() => [
-      sessionStorage.getItem("knobs:sections-fixture:folds:v1"),
-      localStorage.getItem("knobs:sections-fixture:folds:v1"),
-    ]),
-  ).toEqual(['{"sections":{"Look":true}}', null])
-  // A reload in the tab brings it back.
-  await mount(page, { tabFolds: true, keep: true, mount: { sectionFolded: { Look: false } } })
-  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "false")
-  // With foldStorage: null nothing is read or written.
-  await mount(page, { keep: true, mount: { sectionFolded: { Look: false }, foldStorage: null } })
-  await expect(head(root, "Look")).toHaveAttribute("aria-expanded", "true")
-  await head(root, "Look").click()
-  await head(root, "Look").click()
-  expect(await page.evaluate(() => sessionStorage.getItem("knobs:sections-fixture:folds:v1"))).toBe(
-    '{"sections":{"Look":true}}',
+  expect(JSON.parse((await saved())!)).toEqual({ sections: { Look: true }, groups: {} })
+  await tile(root, "Springs").locator(".knobs-group-head").click()
+  expect(JSON.parse((await saved())!)).toEqual({
+    sections: { Look: true },
+    groups: { Springs: true },
+  })
+  // Context and the filter leave it alone.
+  const before = await saved()
+  await page.evaluate(() =>
+    (window as any).__s.page.foldSection("Motion", true, { remember: false }),
   )
+  await page.evaluate(() => (window as any).__s.page.reveal({ section: "Look" }))
+  await page.getByRole("slider", { name: "columns" }).focus()
+  await page.keyboard.press("/")
+  await page.keyboard.type("hue")
+  await page.keyboard.press("Escape")
+  expect(await saved()).toBe(before)
+  // A reload brings them back.
+  const again = await mount(page, {
+    tabFolds: true,
+    keep: true,
+    mount: { sectionFolded: { Look: false } },
+  })
+  await expect(head(again, "Look")).toHaveAttribute("aria-expanded", "false")
+  await expect(tile(again, "Springs")).toHaveAttribute("data-folded", "")
+  // A store that persists nothing keeps no folds either.
+  await page.evaluate(() => localStorage.clear())
+  const none = {
+    tabFolds: true,
+    keep: true,
+    store: { persist: "none" },
+    mount: { sectionFolded: { Look: false } },
+  }
+  let r = await mount(page, none)
+  await head(r, "Look").click()
+  expect(await saved()).toBe(null)
+  r = await mount(page, none)
+  await expect(head(r, "Look")).toHaveAttribute("aria-expanded", "true")
+})
+
+test("a remote store with storage: null and foldStorage remembers folds across a remount, and writes no value keys", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/tune.html?classic&dom")
+  await page.waitForFunction(() => (window as any).__knobs)
+  await page.evaluate(() => {
+    ;(window as any).__tune.page.dispose()
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+  const mountRemote = () =>
+    page.evaluate(() => {
+      const { knobs: k, mountPage } = (window as any).__knobs
+      ;(window as any).__r?.page.dispose()
+      const d = (key: string, group: string, section: string, extra = {}) => ({
+        key,
+        label: key,
+        kind: "number",
+        default: 10,
+        min: 0,
+        max: 100,
+        step: 1,
+        group,
+        section,
+        ...extra,
+      })
+      const remote = k.createRemoteControls(
+        "phone-folds",
+        [
+          d("rowHeight", "Rows", "Drawer", { sectionFolded: true }),
+          d("edge", "Edge", "Drawer", { folded: true }),
+          d("fade", "Arrivals", "Transcript", { folded: false }),
+        ],
+        { storage: null, values: { rowHeight: 12 } },
+      )
+      const app = document.querySelector<HTMLElement>("#app")!
+      app.replaceChildren()
+      const p = mountPage(remote, app, { title: "Phone", foldStorage: localStorage })
+      ;(window as any).__r = { remote, page: p }
+    })
+  await mountRemote()
+  const root = page.getByRole("region", { name: "Phone controls" })
+  const drawer = root.locator('.knobs-section-head[data-section="Drawer"]')
+  await expect(drawer).toHaveAttribute("aria-expanded", "false")
+  await drawer.click()
+  await root.locator('.knobs-tile[data-group="Arrivals"] .knobs-group-head').click()
+  await page.evaluate(() => (window as any).__r.remote.set({ fade: 40 }))
+  await expect(drawer).toHaveAttribute("aria-expanded", "true")
+
+  await mountRemote()
+  await expect(drawer).toHaveAttribute("aria-expanded", "true")
+  await expect(root.locator('.knobs-tile[data-group="Arrivals"]')).toHaveAttribute(
+    "data-folded",
+    "",
+  )
+  // Folds only: the phone's values (and a value set here) are nowhere in storage.
+  expect(await page.evaluate(() => (window as any).__r.remote.get().fade)).toBe(10)
+  const stored = await page.evaluate(() => ({
+    local: Object.fromEntries(Object.entries(localStorage)),
+    session: Object.keys(sessionStorage).filter((k) => k.includes("phone-folds")),
+  }))
+  expect(stored.local).toEqual({
+    "knobs:phone-folds:folds:v1": JSON.stringify({
+      sections: { Drawer: false },
+      groups: { Arrivals: true },
+    }),
+  })
+  expect(stored.session).toEqual([])
 })
 
 test("onSections says what each fold came from: user, code, search and restore; other changes say null", async ({

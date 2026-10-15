@@ -1,7 +1,7 @@
 import { storageKey, type StoragePort } from "../core/storage.js"
 
-/** What a page remembers folded or open: its sections, its group cards and its custom cards. */
-export type FoldKind = "sections" | "groups" | "cards"
+/** What a page remembers folded or open: its sections and its group cards. */
+export type FoldKind = "sections" | "groups"
 
 export interface FoldMemory {
   /** What the user last chose for it, if anything. */
@@ -10,8 +10,9 @@ export interface FoldMemory {
 }
 
 /**
- * A page's folds, kept by the store's id in `storage` (the tab's sessionStorage by default, or the
- * page's `foldStorage`). `null` storage remembers nothing.
+ * A page's folds, kept under `knobs:<id>:folds:v1` in `storage` as
+ * `{ sections: Record<string, boolean>, groups: Record<string, boolean> }`, and nothing else (no
+ * values, locks or variants). `null` storage remembers nothing.
  */
 export function foldMemory(id: string, storage: () => StoragePort | null): FoldMemory {
   const key = storageKey(id, "folds")
@@ -33,9 +34,13 @@ export function foldMemory(id: string, storage: () => StoragePort | null): FoldM
       if (!port) return
       const data = read()
       if (data[kind]?.[at] === folded) return
-      data[kind] = { ...data[kind], [at]: folded }
+      const next = {
+        sections: { ...data.sections },
+        groups: { ...data.groups },
+        [kind]: { ...data[kind], [at]: folded },
+      }
       try {
-        port.setItem(key, JSON.stringify(data))
+        port.setItem(key, JSON.stringify(next))
       } catch {
         /* Storage that's full or refused just forgets. */
       }

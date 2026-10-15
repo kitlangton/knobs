@@ -82,7 +82,7 @@ import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
-import { readSession, tabStorage, writeSession } from "./session.js"
+import { readSession, writeSession } from "./session.js"
 import { DEFAULT_PREFS, type KeyPrefs, keyLabel, resolveKeys, setKeyPrefs } from "./prefs.js"
 import { DELAYED, injectPreset, injectStyles } from "./styles.js"
 
@@ -919,11 +919,15 @@ function buildPanel<S extends Schema>(
   const sessionKept = remember
   const session = remember ? readSession(controls.id) : {}
   /**
-   * A page's folds (sections, group cards, custom cards): in `foldStorage` when given, else per
-   * tab with the rest of the session.
+   * A page's section and group folds: in `foldStorage` when given (folds only, whatever the store
+   * keeps), else in the store's storage unless it persists nothing.
    */
   const foldPort =
-    page?.foldStorage !== undefined ? page.foldStorage : remember ? tabStorage() : null
+    page?.foldStorage !== undefined
+      ? page.foldStorage
+      : controls.persist === "none"
+        ? null
+        : controls.storage
   const foldsKept: FoldMemory | null =
     page && foldPort ? foldMemory(controls.id, () => foldPort) : null
 
@@ -3779,9 +3783,13 @@ function buildPanel<S extends Schema>(
           options.groupLabels?.[title] ??
           (section ? cardTitle(title, [section, sectionTitle(section)]) : title),
         folded: {
-          get: (title: string) => foldsKept?.get("cards", title),
+          // Custom cards keep their folds per tab, with the rest of the session.
+          get: (title: string) => (remember ? readSession(controls.id).folded?.[title] : undefined),
           set: (title: string, folded: boolean) => {
-            foldsKept?.set("cards", title, folded)
+            if (remember)
+              writeSession(controls.id, {
+                folded: { ...readSession(controls.id).folded, [title]: folded },
+              })
             for (const c of auto.cards) if (c.tile.dataset.card === title) auto.cards.delete(c)
           },
         },

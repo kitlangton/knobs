@@ -615,7 +615,7 @@ watch.body.append(myPlayerElement) // or pass `element`; `clear()` empties it, `
 speed.set("0.25") // the phone changed it
 ```
 
-**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. `description` puts one muted line under the title. What the user last chose comes back after a reload (per tab by default; see `foldStorage` under [Folding sections](#folding-sections-summaries-and-the-jump-strip)), over `collapsed`.
+**Collapsible cards.** Pass `collapsed` (`true` folded, `false` open) and a card's header toggles it, by a click or `Enter` where it's focused (`j` / `k` reach the header): the body fades as the card's height springs down to its header and the cards below in its column glide, interruptibly; other columns stay put. While folded the header shows `summary` on its right. `card.collapse(bool)` folds or opens it from code, `card.collapsed` says which, and `card.summary(text)` updates the line. `description` puts one muted line under the title. What the user last chose comes back after a reload in the same tab (sessionStorage, with the panel's other per-tab state), over `collapsed`.
 
 ```ts
 const connection = page.card({ title: "Connection", section: "Connection", collapsed: false, summary: "Waiting for iPhone…" })
@@ -651,7 +651,12 @@ Folded things say what's in them. A folded group card trades its presets, reset 
 
 Descriptions add one muted line under a title: `groupDescriptions` and `sectionDescriptions` by id (on the store, remote options or the mount), or `groupDescription` / `sectionDescription` on any field or descriptor (the first that gives one wins). `page.card({ description })` does the same for a custom card. The filter matches descriptions too.
 
-What the user folds and opens is remembered under `knobs:<id>:folds:v1` and wins over `sectionFolded`, `groupFolded` and `collapsed`. By default it's kept per tab (sessionStorage, with the rest of the panel's session), so a reload brings it back; nothing is kept with `session: false`, or for a store without storage (remote controls, unless you pass one). `foldStorage` on the mount chooses: `localStorage` (or any `StoragePort`) keeps folds across tabs too, `null` keeps none.
+What the user folds and opens (sections and group cards) is remembered under `knobs:<id>:folds:v1` (`storageKey(id, "folds")`) as `{ sections: Record<string, boolean>, groups: Record<string, boolean> }`, and wins over `sectionFolded` and `groupFolded`. Only the user's folds and those made with `remember` are written; folds for context (`remember: false`, a highlight's `expand`) and the filter's never are. By default they go to the store's own storage, or nowhere with `persist: "none"`. `foldStorage` on the mount always wins and keeps folds only, never values, locks or variants, so a remote store on `storage: null` (the phone's values always win) can still remember them; `null` keeps none.
+
+```ts
+const tune = createRemoteControls("iphone-tune", descriptors, { storage: null, /* … */ })
+mountPage(tune, app, { foldStorage: localStorage })
+```
 
 Code chooses what counts as the user's:
 
