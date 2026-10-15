@@ -697,7 +697,20 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
     layout(true)
     c.wake()
   }
-  graph.onpointerup = release
+  graph.onpointerup = (event) => {
+    release()
+    // The crosshair picks up where the pointer was let go.
+    const r = graph.getBoundingClientRect()
+    if (
+      event.clientX >= r.left &&
+      event.clientX <= r.right &&
+      event.clientY >= r.top &&
+      event.clientY <= r.bottom
+    ) {
+      hoverX = unmap(event.clientX - r.left, 0)[0]
+      drawHover()
+    }
+  }
   graph.onpointercancel = release
   // A double-click on empty space adds a point there (⇧ on the grid).
   graph.ondblclick = (event) => {
