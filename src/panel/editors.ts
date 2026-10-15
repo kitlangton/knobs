@@ -728,6 +728,31 @@ export function colorRow(c: RowContext<ColorField>): EditorRow {
       h: (((h + dir * (event.shiftKey ? bigOf(event) : event.altKey ? 0.1 : 1)) % 360) + 360) % 360,
     })
   })
+  // A sideways pan on the head turns the hue with the fingers (a degree a px, wrapping), as one
+  // undo step, the swatch and hex following live.
+  let hueAt: number | undefined
+  onPan(x.head, {
+    move(dx) {
+      if (hueAt === undefined) {
+        hueAt = editor.color().h
+        g.start()
+        x.head.setAttribute("data-panned", "")
+        c.wake()
+      }
+      hueAt += dx
+      editor.send({ h: ((hueAt % 360) + 360) % 360 })
+    },
+    end() {
+      if (hueAt === undefined) return
+      hueAt = undefined
+      x.head.removeAttribute("data-panned")
+      c.wake()
+    },
+    step(direction) {
+      g.start()
+      editor.send({ h: (((editor.color().h + direction) % 360) + 360) % 360 })
+    },
+  })
   const gpu: GpuColorRow = {
     kind: "color",
     key: c.key,
