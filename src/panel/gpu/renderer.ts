@@ -3113,7 +3113,9 @@ class GpuOverlayManager {
         blurX: sLo,
         blurY: sHi,
       })
-    // Each end's handle: a hairline inside the band, shown on hover, full while in hand or focused.
+    // Each end's handle: a hairline centred on its end (held 1.5px in at the track's ends so it isn't
+    // cut), shown on hover, full while in hand or focused.
+    const on = (x: number) => clamp(x, tr.left + 1.5, tr.right - 1.5)
     const gaps = [0, 0]
     row.thumbs.forEach((th, i) => {
       const held = this.isFocused(th) || (dragging && this.curActiveEl === th)
@@ -3122,8 +3124,7 @@ class GpuOverlayManager {
       gaps[i] = Math.min(1, (op * shown) / 0.5)
       if (op * shown < 0.005) return
       const h = t.row - 12
-      const edge = i === 0 ? x0 : x1
-      const cx = i === 0 ? edge + 1.5 : edge - 1.5
+      const cx = on(i === 0 ? x0 : x1)
       const w = 3 * sx
       this.pushPrim({
         x: cx - w / 2,
@@ -3136,8 +3137,7 @@ class GpuOverlayManager {
       })
     })
     // A thumb that shows never sits on the label or readout: their text fades around it.
-    this.textGaps =
-      gaps[0]! + gaps[1]! > 0.005 ? [x0 + 1.5, x1 - 1.5, gaps[0]!, gaps[1]!] : undefined
+    this.textGaps = gaps[0]! + gaps[1]! > 0.005 ? [on(x0), on(x1), gaps[0]!, gaps[1]!] : undefined
     this.drawRowLabel(row.labelEl, row.display, false, centerY, rowAlpha)
     if (!row.editing()) {
       const live = dragging || this.hasFocusVisible(row.row)

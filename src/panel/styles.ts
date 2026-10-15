@@ -627,19 +627,18 @@ const css = `
   background:linear-gradient(to right,transparent calc(var(--ks-a) - var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-a) + var(--kr-smear-lo,0) * .5px),var(--kr-tint) calc(var(--ks-b) - var(--kr-smear-hi,0) * .5px),transparent calc(var(--ks-b) + var(--kr-smear-hi,0) * .5px))}
 .knobs-range-smearing .knobs-range-smear{display:block}
 .knobs-range-smearing .knobs-range-fill{opacity:0}
-.knobs-range-thumb{position:absolute;top:0;bottom:0;left:calc(var(--kr-lo) * 100%);width:0;outline:none}
-.knobs-range-thumb[data-end="hi"]{left:calc(var(--kr-hi) * 100%)}
+/* Each thumb sits on its end, centred, held 1.5px in at the track's ends so its hairline isn't cut. */
+.knobs-range-thumb{position:absolute;top:0;bottom:0;left:clamp(1.5px,calc(var(--kr-lo) * 100%),calc(100% - 1.5px));width:0;outline:none}
+.knobs-range-thumb[data-end="hi"]{left:clamp(1.5px,calc(var(--kr-hi) * 100%),calc(100% - 1.5px))}
 /* Where a thumb shows, the label and readout fade around it (2.5px either side of its hairline). */
 .knobs-range-text{position:absolute;inset:0;pointer-events:none;transition:--kr-show-lo .15s,--kr-show-hi .15s;
-  --kg-lo:calc(var(--kr-lo) * 100% + 1.5px);--kg-hi:calc(var(--kr-hi) * 100% - 1.5px);--kg-in-lo:rgb(0 0 0/calc(1 - var(--kr-show-lo)));--kg-in-hi:rgb(0 0 0/calc(1 - var(--kr-show-hi)));
+  --kg-lo:clamp(1.5px,calc(var(--kr-lo) * 100%),calc(100% - 1.5px));--kg-hi:clamp(1.5px,calc(var(--kr-hi) * 100%),calc(100% - 1.5px));--kg-in-lo:rgb(0 0 0/calc(1 - var(--kr-show-lo)));--kg-in-hi:rgb(0 0 0/calc(1 - var(--kr-show-hi)));
   --kg-mask:linear-gradient(to right,#000 calc(var(--kg-lo) - 6.5px),var(--kg-in-lo) calc(var(--kg-lo) - 2.5px),var(--kg-in-lo) calc(var(--kg-lo) + 2.5px),#000 calc(var(--kg-lo) + 6.5px)),linear-gradient(to right,#000 calc(var(--kg-hi) - 6.5px),var(--kg-in-hi) calc(var(--kg-hi) - 2.5px),var(--kg-in-hi) calc(var(--kg-hi) + 2.5px),#000 calc(var(--kg-hi) + 6.5px));
   -webkit-mask:var(--kg-mask);mask:var(--kg-mask);-webkit-mask-composite:source-in;mask-composite:intersect}
 .knobs-range:not(.knobs-mixed):hover .knobs-range-text{--kr-show-lo:1;--kr-show-hi:1}
 .knobs-range:not(.knobs-mixed)[data-end-focus="lo"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-lo:1}
 .knobs-range:not(.knobs-mixed)[data-end-focus="hi"]:is([data-k-fv],.knobs-active) .knobs-range-text{--kr-show-hi:1}
 .knobs-range-thumb::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:-50% 0;border-radius:var(--k-round);background:var(--k-handle);opacity:0;scale:.25 1;transition:opacity .15s,scale .22s var(--k-ease)}
-.knobs-range-thumb[data-end="lo"]::before{translate:0 0}
-.knobs-range-thumb[data-end="hi"]::before{translate:-100% 0}
 .knobs-range:hover .knobs-range-thumb::before{opacity:.5}
 .knobs-range-thumb:focus-visible::before,.knobs-range.knobs-active .knobs-range-thumb:focus::before{opacity:.95;scale:1}
 .knobs-range .knobs-label{max-width:calc(55% - var(--k-inset))}
