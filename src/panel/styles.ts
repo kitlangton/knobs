@@ -123,6 +123,10 @@ const css = `
   --k-curve-inset:6px;--k-curve-guide:solid;--k-curve-dot:1;
   --k-hint-typed-opacity:.42;
 }
+/* Inherited text properties that a host's element rules set on its own elements (span{letter-
+   spacing}, div{line-height}, *{box-sizing}) come from the panel instead. (0,1,0) and first, so
+   every knobs rule wins over it; the host's accessories and custom card contents are its own. */
+.knobs-panel *:where(:not(.knobs-accessory,.knobs-accessory *,.knobs-live *)),.knobs-menu *{box-sizing:border-box;color:inherit;letter-spacing:inherit;word-spacing:inherit;line-height:inherit;text-transform:inherit;text-shadow:inherit;font-style:inherit}
 /* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
    hovered card doesn't hand its quick entrance to the rows inside it. */
 :where(.knobs-panel,.knobs-menu) *{--k-hover-t:calc(var(--k-hover-out) * 1ms)}
@@ -185,10 +189,10 @@ const css = `
 /* A scoped reset, (0,1,1): above a host's element rules (button{...}, button:hover{...},
    input[type=text]{...}) and below every knobs rule that styles these elements, which are all
    (0,1,1) or more and come later. */
-:is(.knobs-panel,.knobs-menu) :is(button,input,select,textarea):where(:not(.knobs-accessory *)){font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-align:revert;text-shadow:none;background:var(--k-surface);border:0;border-radius:var(--k-radius);
-  margin:revert;padding:revert;width:revert;height:revert;min-width:0;min-height:revert;max-width:revert;display:revert;position:revert;float:none;vertical-align:revert;
-  box-shadow:none;outline:none;appearance:revert;cursor:revert;transform:none;transition:revert;user-select:revert}
-.knobs-panel :is(header,strong,p,kbd,aside):where(:not(.knobs-accessory *)){margin:0;padding:0;border:0;background:none;box-shadow:none;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit}
+:is(.knobs-panel,.knobs-menu) :is(button,input,select,textarea):where(:not(.knobs-accessory *)){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;text-shadow:none;
+  background:var(--k-surface);border:0;border-radius:var(--k-radius);min-width:0;box-shadow:none;outline:none}
+:is(.knobs-panel,.knobs-menu) :is(header,strong,p,kbd,aside,mark):where(:not(.knobs-accessory *)){all:revert;box-sizing:border-box;margin:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit}
+.knobs-panel .knobs-icon>path{fill:currentColor}
 :is(.knobs-panel,.knobs-menu) :is(:focus,:focus-visible):where(:not(.knobs-accessory *)){outline:none}
 
 /* Header */
@@ -240,7 +244,7 @@ const css = `
 .knobs-group-reset[data-shown="false"]{opacity:0;visibility:hidden;transform:scale(.55);transition:opacity .14s ease-in,transform .14s ease-in,visibility 0s .14s}
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--k-round);color:var(--k-dim)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
-.knobs-panel :where(header button,.knobs-group-head button){transition:background .15s,color .15s,opacity .2s,transform .12s}
+.knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background .15s,color .15s,opacity .2s,transform .12s}
 
 /* Grouped cards: rows share one surface, split by hairlines */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
@@ -448,6 +452,13 @@ const css = `
 .knobs-panel :is(.knobs-card>[data-disabled],.knobs-sub[data-disabled]){opacity:var(--k-disabled-opacity)}
 .knobs-panel .knobs-card>:is([data-disabled],[data-readonly]):hover{background:transparent}
 .knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-track,.knobs-value,.knobs-seg,.knobs-seg button,.knobs-select,.knobs-toggle,.knobs-action,.knobs-strip-track,.knobs-pad,.knobs-ease-handle,.knobs-ease-chip){cursor:default}
+.knobs-slider:is([data-disabled],[data-readonly]):hover .knobs-fill{--k-fill-mix:var(--k-fill-rest-mix)}
+.knobs-slider:is([data-disabled],[data-readonly]):hover:not(:has(:focus-visible)) :is(.knobs-handle,.knobs-marks>i){opacity:var(--k-handle-rest);background-color:transparent}
+.knobs-slider:is([data-disabled],[data-readonly]):hover:not(:has(:focus-visible)) .knobs-handle::before{transform:scaleX(calc(.25 + .75 * min(1, var(--k-handle-rest) * 4)))}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-value:hover{border-bottom-color:transparent}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-seg button:not([aria-checked=true]):hover{color:var(--k-label)}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-action:hover:not(:focus-visible){color:var(--k-text)}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-select:hover:not(:focus-visible){background:var(--k-seg-bg);color:var(--k-label)}
 /* A mixed value (a multi-selection whose items differ) reads "—" until it's edited. */
 .knobs-mixed :is(.knobs-fill,.knobs-handle-zone,.knobs-marks){opacity:0}
 .knobs-panel .knobs-mixed .knobs-value>:is(.knobs-digits,.knobs-unit,.knobs-lock){display:none}
@@ -455,7 +466,7 @@ const css = `
 .knobs-panel .knobs-toggle[aria-checked="mixed"] i{left:calc(50% - 7px);right:calc(50% - 7px)}
 
 /* Row accessories (rowAccessory): the host's node, just after the label. */
-.knobs-accessory{display:inline-flex;align-items:center;gap:var(--k-tray-pad);flex:none;min-width:0}
+.knobs-accessory{display:inline-flex;align-items:center;gap:var(--k-tray-pad);flex:none;min-width:0;color:var(--k-label)}
 .knobs-accessory:empty{display:none}
 .knobs-panel .knobs-row:where(:not(.knobs-slider,.knobs-x,.knobs-spring))>.knobs-accessory{margin:0 auto 0 -4px}
 .knobs-track>.knobs-accessory{position:absolute;top:0;bottom:0;left:calc(var(--k-label-right,0px) + 4px);z-index:1}
