@@ -22,6 +22,15 @@ import {
   toggle,
   type Field,
   type FieldMeta,
+  graph,
+  type GraphSeries,
+  type GraphThreshold,
+  isReadout,
+  log,
+  meter,
+  sparkline,
+  table,
+  watch,
   type Knob,
   type Point,
   type Schema,
@@ -88,11 +97,38 @@ export interface ToolbarDescriptor extends DescriptorMeta {
   readonly default?: undefined
   readonly bind?: undefined
 }
+/**
+ * A readout row (`watch`, `sparkline`, `graph`, `meter`, `table`, `log`): it shows what
+ * `controls.watch(key, value)` pushes and holds no value. Options as their field constructors take.
+ */
+export interface ReadoutDescriptor extends DescriptorMeta {
+  readonly kind: "watch" | "sparkline" | "graph" | "meter" | "table" | "log"
+  readonly unit?: string
+  readonly decimals?: number
+  readonly hz?: number
+  readonly min?: number
+  readonly max?: number
+  readonly history?: number
+  readonly height?: number
+  readonly color?: string
+  readonly series?: readonly (GraphSeries | string)[]
+  readonly thresholds?: readonly (GraphThreshold | number)[]
+  readonly segments?: number
+  readonly warn?: number
+  readonly critical?: number
+  readonly columns?: readonly string[]
+  readonly lines?: number
+  readonly get?: () => unknown
+  readonly format?: (value: number) => string
+  readonly default?: undefined
+  readonly bind?: undefined
+}
 export type ControlDescriptor =
   | ValueDescriptor
   | SpringBindingDescriptor
   | ActionDescriptor
   | ToolbarDescriptor
+  | ReadoutDescriptor
 export interface ValueDescriptor extends DescriptorMeta {
   readonly bind?: undefined
   readonly kind:
@@ -210,12 +246,26 @@ export interface RemoteControls extends Controls<Schema> {
   swift(group?: string): string
 }
 
+const readoutDescriptor = (d: ControlDescriptor): d is ReadoutDescriptor => isReadout(d)
+/** A readout descriptor's field: the options it gives, undefined ones left out. */
+function readoutField(d: ReadoutDescriptor): Field {
+  const { key: _key, kind, default: _d, bind: _b, ...rest } = d
+  const opts = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+  if (kind === "watch") return watch(opts)
+  if (kind === "sparkline") return sparkline(opts)
+  if (kind === "graph") return graph(opts)
+  if (kind === "meter") return meter(opts)
+  if (kind === "table") return table(opts)
+  return log(opts)
+}
+
 const optionId = (o: string | ChoiceOption) =>
   typeof o === "string" ? o : String(o.id ?? o.value ?? o.label ?? "")
 
 export function descriptorToField(d: ControlDescriptor): Field {
   const meta = pickMeta(d)
   if (d.kind === "action") return action(d.label, meta)
+  if (readoutDescriptor(d)) return readoutField(d)
   if (d.kind === "toolbar")
     return toolbar(
       d.items.map(({ key, ...item }) => ({ ...item, id: key })),
@@ -395,6 +445,7 @@ export function formatSwift(
   const lines: string[] = []
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
+    if (readoutDescriptor(d)) continue
     const changed = d.key in values && !same(values[d.key], d.default)
     if (!changed || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")

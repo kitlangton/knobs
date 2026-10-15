@@ -2,6 +2,13 @@ import { formatCode, type CodeFormat } from "./code.js"
 import { mutateValues } from "./mutate.js"
 import { randomValues } from "./random.js"
 import { RESHAPE, type Reshape } from "./internal.js"
+import {
+  pushReadout,
+  READOUT,
+  type ReadoutPort,
+  readoutState,
+  type ReadoutState,
+} from "./readout.js"
 import type { TokenPreset } from "./theme.js"
 import {
   equal,
@@ -10,6 +17,9 @@ import {
   same,
   hasValue,
   type Field,
+  isReadout,
+  type ReadoutInput,
+  type ReadoutKeys,
   type Schema,
   type State,
   type ValueField,
@@ -357,6 +367,15 @@ export interface Controls<S extends Schema = Schema> {
    * button (its id, else its label) and `onAction` gets the item's id.
    */
   action(key: keyof S & string, item?: string): void
+  /**
+   * Shows a live value in a readout row (`watch`, `sparkline`, `graph`, `meter`, `table`, `log`):
+   * a number or text, a sample for a history, `{ [series]: number }` for a graph, rows for a
+   * table, an entry for a log. `null` clears it. Rows redraw at most once a frame and sleep
+   * when nothing arrives; nothing is recorded in the values, history or storage.
+   */
+  watch<K extends ReadoutKeys<S>>(key: K, value: ReadoutInput<S[K]>): void
+  /** The latest value pushed to a readout (`undefined` before any). */
+  watched(key: ReadoutKeys<S>): unknown
   /** True while the change being notified landed (`sync(…, { land: true })`): place, don't animate. */
   readonly landing: boolean
   undo(): void
@@ -883,7 +902,30 @@ export function defineControls<const S extends Schema>(
     // A new shape with no value changes still has to reach the panels.
     if (current === before2 && (changed || fresh || land || remixed)) announce(land)
   }
-  const controls: Controls<S> & { [RESHAPE]: Reshape } = {
+  /** Each readout's latest value and history, kept while its field keeps its shape. */
+  const readouts = new Map<string, { shape: string; state: ReadoutState }>()
+  const readoutListeners = new Set<(key: string) => void>()
+  const readoutOf = (key: string) => {
+    const field = Object.hasOwn(schema, key) ? (schema[key] as Field) : undefined
+    if (!field || !isReadout(field)) return undefined
+    const shape = `${field.kind}\u0000${"history" in field ? field.history : ""}\u0000${
+      field.kind === "graph" ? field.series.map((s) => s.id).join("\u0000") : ""
+    }\u0000${field.kind === "log" ? field.max : ""}`
+    let entry = readouts.get(key)
+    if (!entry || entry.shape !== shape) {
+      entry = { shape, state: readoutState(field) }
+      readouts.set(key, entry)
+    }
+    return { field, state: entry.state }
+  }
+  const readoutPort: ReadoutPort = {
+    state: (key) => readoutOf(key)?.state,
+    listen(cb) {
+      readoutListeners.add(cb)
+      return () => readoutListeners.delete(cb)
+    },
+  }
+  const controls: Controls<S> & { [RESHAPE]: Reshape; [READOUT]: ReadoutPort } = {
     id,
     get schema() {
       return schema
@@ -934,6 +976,17 @@ export function defineControls<const S extends Schema>(
       return landing
     },
     [RESHAPE]: reshape,
+    [READOUT]: readoutPort,
+    watch(key, value) {
+      const found = readoutOf(key)
+      if (!found) return
+      pushReadout(found.field, found.state, value)
+      for (const cb of readoutListeners) cb(key)
+    },
+    watched(key) {
+      const state = readouts.get(key)?.state
+      return state && state.seq > 0 ? state.value : undefined
+    },
     hold(key, on = true) {
       if (on) {
         grabbed.add(key)
