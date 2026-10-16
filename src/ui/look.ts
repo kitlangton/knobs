@@ -184,6 +184,8 @@ const css = `
 /* The rail's chevron stands in for the header's collapse icon (it turns into the rail's), so the
    icon itself isn't drawn; hovering its button lights the chevron instead. */
 .knobs-pane[data-morph]>.knobs-pane-clip>.knobs-pane-inner>.knobs-pane-head>.knobs-pane-collapse>svg{visibility:hidden}
+/* So does the rail's label for the title, when it travels (split's fold: { title: "travel" }). */
+.knobs-pane[data-travel]>.knobs-pane-clip>.knobs-pane-inner>.knobs-pane-head>.knobs-pane-title{visibility:hidden}
 .knobs-pane[data-morph]:not([data-collapsed]):has(>.knobs-pane-clip>.knobs-pane-inner>.knobs-pane-head>.knobs-pane-collapse:is(:hover,:focus-visible))>.knobs-pane-rail .knobs-pane-chevron{color:var(--ku-text)}
 .knobs-pane[data-morph]:not([data-collapsed])>.knobs-pane-rail .knobs-pane-chevron{transition:color .15s}
 

@@ -53,6 +53,7 @@ export {
   type PaneAction,
   type PaneOptions,
   type Split,
+  type SplitFold,
   type SplitOptions,
   type SplitPane,
 } from "./split.js"

@@ -12,6 +12,7 @@ import {
 import { hints } from "../panel/page-hints.js"
 import { tooltip } from "./tooltip.js"
 import {
+  chevronFlip,
   chevronTurn,
   collapsibleSide,
   drag,
@@ -19,14 +20,17 @@ import {
   flexible,
   foldFaces,
   foldProgress,
+  foldStyle,
   nudge,
   parseLayout,
   serializeLayout,
   solve,
+  titleTravel,
   type FoldFaces,
   type PaneSpec,
   type SplitDirection,
   type SplitLayout,
+  type TitlePlaces,
 } from "./split-model.js"
 
 export interface PaneAction {
@@ -69,6 +73,24 @@ export interface SplitOptions extends UiLook {
    * hint mode (`s`), on by default; a code presses its button.
    */
   readonly hints?: boolean
+  /** How collapsible panes fold to their rails and open again. */
+  readonly fold?: SplitFold
+}
+
+/** How a pane folds (each part has a default). */
+export interface SplitFold {
+  /**
+   * The collapse chevron: `"flip"` (default) closes it to a flat line and opens it the other way,
+   * quickly, on its own snappy spring; `"turn"` spins it half a turn with the fold.
+   */
+  readonly chevron?: "flip" | "turn"
+  /**
+   * The header's title: `"travel"` (default) turns it and slides it into the rail's label, one
+   * element all the way; `"fade"` fades it out with the header as the rail's label fades in.
+   */
+  readonly title?: "travel" | "fade"
+  /** The fold's spring, in seconds (no bounce): 0.3 unless set. */
+  readonly duration?: number
 }
 
 export interface SplitPane {
@@ -98,12 +120,8 @@ export interface Split {
   dispose(): void
 }
 
-// Folding and opening a pane: smooth, or calm for a touch brisker.
-const FOLD_SPRINGS = {
-  smooth: { duration: 0.45, bounce: 0 },
-  calm: { duration: 0.4, bounce: 0 },
-} as const
-const COLLAPSE = springMotion(FOLD_SPRINGS.smooth)
+// The chevron's flip: very quick, on its own snappy spring with no bounce.
+const FLIP = springMotion({ duration: 0.18, bounce: 0 })
 const SETTLE = springMotion({ duration: 0.3, bounce: 0 })
 /** The content's blur as it fades out (px), and the rail label's. */
 const CONTENT_BLUR = 3
@@ -147,6 +165,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
   const row = direction === "row"
   const specs = options.panes
   const flex = flexible(specs)
+  const style = foldStyle(options.fold)
+  const COLLAPSE = springMotion({ duration: style.duration, bounce: 0 })
   const store = options.storage === undefined ? browserStorage() : options.storage
   const key = options.id ? storageKey(options.id, "split") : undefined
   const saved = (() => {
@@ -197,6 +217,10 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     headPx: number
     /** Where the collapse icon sits against the rail's chevron, measured (see `measureChevrons`). */
     chev: { iconEnd: number; chevEnd: number; dy: number; scale: number }
+    /** Where the header's title sits against the rail's label, measured likewise. */
+    places: TitlePlaces
+    /** The chevron's flip, 0 open to 1 folded, on its own quick spring. */
+    flip: Spring
   }
   const views = new Map<string, View>()
   const dividers: HTMLElement[] = []
@@ -228,6 +252,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
       faces: { content: shut ? 0 : 1, rail: shut ? 1 : 0 },
       headPx: 0,
       chev: { iconEnd: 0, chevEnd: 0, dy: 0, scale: 1 },
+      places: { title: 0, label: 0, dy: 0 },
+      flip: new Spring(shut ? 1 : 0, FLIP.omega, FLIP.zeta, 0.002),
     }
     if (spec.title !== undefined) {
       const head = doc.createElement("header")
@@ -371,14 +397,15 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     measured = root.isConnected && r.width > 0
   }
   /**
-   * Where each header's collapse icon sits against its rail's chevron: from the inner's end and
-   * the rail's end (both of which travel with the pane's moving edge), and down. Read at rest,
-   * after a render, so the chevron lands on the icon to the pixel.
+   * Where each header's collapse icon sits against its rail's chevron, and its title against the
+   * rail's label: from the ends or starts of the inner and the rail (which both keep their places
+   * against the pane's moving edge as it folds), and down. Read after a render, so the chevron and
+   * the label land on the icon and the title to the pixel.
    */
-  const measureChevrons = () => {
+  const measureChevrons = (only?: View) => {
     if (!row) return
-    for (const v of views.values()) {
-      if (!v.chevron || !v.toggleIcon || !v.rail) continue
+    for (const v of only ? [only] : views.values()) {
+      if (!v.chevron || !v.toggleIcon || !v.rail || !v.railLabel) continue
       const inner = v.inner.getBoundingClientRect()
       const icon = v.toggleIcon.getBoundingClientRect()
       const rail = v.rail.getBoundingClientRect()
@@ -389,6 +416,18 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
         chevEnd: rail.right - (chev.left + chev.width / 2),
         dy: icon.top + icon.height / 2 - inner.top - (chev.top + chev.height / 2 - rail.top),
         scale: icon.width / chev.width,
+      }
+      if (!v.titleEl) continue
+      // The label as it lays out, without the travel's transform.
+      const moved = v.railLabel.style.transform
+      v.railLabel.style.transform = "none"
+      const label = v.railLabel.getBoundingClientRect()
+      v.railLabel.style.transform = moved
+      const title = v.titleEl.getBoundingClientRect()
+      v.places = {
+        title: title.left + title.width / 2 - inner.left,
+        label: label.left + label.width / 2 - rail.left,
+        dy: title.top + title.height / 2 - inner.top - (label.top + label.height / 2 - rail.top),
       }
     }
   }
@@ -456,31 +495,73 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     // The chevron stands in for the header's collapse icon when there's one to morph from.
     const morph = row && Boolean(v.toggleIcon) && !v.el.hasAttribute("data-nested")
     v.el.toggleAttribute("data-morph", morph)
+    const label = v.railLabel!
+    // The title travels when the rail's label is the header's title (not a `rail` of its own).
+    const travel =
+      morph &&
+      style.title === "travel" &&
+      Boolean(v.titleEl) &&
+      label.textContent === v.titleEl!.textContent
+    // Open and still, the header shows its own title (crisp, unturned); the label stands in for it,
+    // on the same spot, from the moment the pane starts to fold.
+    v.el.toggleAttribute("data-travel", travel && folding)
+    const k = 1 - p
+    if (travel && !folding) {
+      put(label, "opacity", "0")
+      put(label, "filter", "")
+      put(label, "transform", "")
+      put(label, "color", "")
+    } else if (travel) {
+      // One title: the label is it all the way, turning and sliding from the header to the rail.
+      const t = titleTravel(v.places, open, r, v.edge, p)
+      put(label, "opacity", "")
+      put(label, "filter", "")
+      put(
+        label,
+        "transform",
+        k === 0
+          ? ""
+          : `translate(${t.x.toFixed(2)}px,${t.y.toFixed(2)}px) rotate(${t.turn.toFixed(2)}deg)`,
+      )
+      put(
+        label,
+        "color",
+        k === 0 ? "" : `color-mix(in srgb,var(--ku-text) ${(k * 100).toFixed(1)}%,var(--ku-label))`,
+      )
+    } else {
+      put(label, "transform", "")
+      put(label, "color", "")
+    }
     if (morph) {
       put(v.rail, "opacity", "1")
-      fade(v.railLabel!, v.faces.rail, LABEL_BLUR)
+      if (!travel) fade(label, v.faces.rail, LABEL_BLUR)
       const c = v.chev
       // The icon's offset from the chevron, both measured from their ends at the moving edge;
       // at the end edge the inner reaches past the rail by the rest of the open size.
       const dx = c.chevEnd - c.iconEnd + (v.edge === "end" ? open - r : 0)
-      const k = 1 - p
-      put(
-        v.turn!,
-        "transform",
-        k === 0
-          ? ""
-          : `translate(${(dx * k).toFixed(2)}px,${(c.dy * k).toFixed(2)}px) rotate(${chevronTurn(p, v.edge).toFixed(2)}deg) scale(${(1 + (c.scale - 1) * k).toFixed(4)})`,
-      )
+      const move = `translate(${(dx * k).toFixed(2)}px,${(c.dy * k).toFixed(2)}px)`
+      const size = `scale(${(1 + (c.scale - 1) * k).toFixed(4)})`
+      if (style.chevron === "turn")
+        put(
+          v.turn!,
+          "transform",
+          k === 0 ? "" : `${move} rotate(${chevronTurn(p, v.edge).toFixed(2)}deg) ${size}`,
+        )
+      else {
+        // It travels with the fold and flips on its own spring: flat halfway, then the other way.
+        const w = chevronFlip(v.flip.x)
+        put(
+          v.turn!,
+          "transform",
+          k === 0 && w === 1 ? "" : `${move} ${size} scaleX(${w.toFixed(4)})`,
+        )
+      }
     } else {
       // No header to morph from (or a slot of a nested split): the rail fades in whole.
       const a = v.faces.rail
       put(v.rail, "opacity", a >= 1 ? "1" : a.toFixed(3))
-      put(v.railLabel!, "opacity", "")
-      put(
-        v.railLabel!,
-        "filter",
-        a >= 1 || a <= 0 ? "" : `blur(${(LABEL_BLUR * (1 - a)).toFixed(2)}px)`,
-      )
+      put(label, "opacity", "")
+      put(label, "filter", a >= 1 || a <= 0 ? "" : `blur(${(LABEL_BLUR * (1 - a)).toFixed(2)}px)`)
       put(v.turn!, "transform", "")
     }
   }
@@ -541,10 +622,15 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
         views.get(id)!.folding = false
       }
     }
+    let flipping = false
+    for (const v of views.values()) {
+      v.flip.step(dt)
+      if (!v.flip.resting) flipping = true
+    }
     const shown = current()
     if (springs.size === 0) rememberOpen(shown)
     render(shown)
-    return springs.size > 0
+    return springs.size > 0 || flipping
   })
 
   /** Springs every pane from where it shows to the layout the state now asks for. */
@@ -558,7 +644,10 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
       const arriving = [...views.values()]
         .filter((v) => v.folding)
         .map((v) => (collapsed[v.spec.id] ? v.rail : v.rail ? v.inner : v.body))
-      for (const v of views.values()) v.folding = false
+      for (const v of views.values()) {
+        v.folding = false
+        v.flip.snap(collapsed[v.spec.id] ? 1 : 0)
+      }
       rememberOpen(to)
       render(to)
       for (const el of arriving)
@@ -590,6 +679,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     if (value && !v.folding) v.open = v.shown
     collapsed[id] = value
     v.folding = true
+    v.flip.set(value ? 1 : 0)
   }
 
   /** Hands a pane to the pointer: its spring stops where it is. */
@@ -778,6 +868,8 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
         if (v.titleEl) v.titleEl.textContent = text
         if (v.countEl && count !== undefined) v.countEl.textContent = String(count)
         if (v.railLabel) v.railLabel.textContent = text
+        // The title travels into the label: where they sit moves with the words.
+        measureChevrons(v)
       },
     }
   }

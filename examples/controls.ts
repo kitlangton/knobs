@@ -1344,7 +1344,7 @@ let rowsSide!: HTMLElement
 // ── knobs/ui ─────────────────────────────────────────────────────────────────────────────────
 
 category("knobs/ui")
-uiSections({ section, h, theme: () => theme, define, panelOptions })
+uiSections({ section, h, theme: () => theme, define, mount, panelOptions })
 
 // ── Matching your app ────────────────────────────────────────────────────────────────────────
 
