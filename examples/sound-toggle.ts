@@ -21,11 +21,14 @@ export function speakerToggle(button: HTMLButtonElement) {
   }
   button.addEventListener("click", () => {
     sound.enable(!sound.enabled)
+    sound.play("toggle", { direction: 1 })
+  })
+  // Kept however it changed: here, or a panel's ? popover.
+  sound.subscribe(() => {
     try {
       localStorage.setItem(KEY, sound.enabled ? "on" : "off")
     } catch {}
-    sound.play("toggle", { direction: 1 })
+    paint()
   })
-  sound.subscribe(paint)
   paint()
 }
