@@ -88,7 +88,6 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     const lc = kelvinRgb(kelvin)
     const intensity = 13 * k * hot ** 2.4 * flicker
     live.lumens = 800 * k * hot ** 2.4 * flicker
-    audio.frame(hot, clamp01(flick.x), n, k)
     if (!data || !view) {
       fallback?.(lc, intensity / 13, oklabRgb(shade.lab))
       return
