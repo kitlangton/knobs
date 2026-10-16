@@ -1,5 +1,5 @@
-// The site's settings: one panel in the header runs the whole page. Its lead row sweeps the
-// themes (Night, Ocean, Synth, Brutal, Paper; site-look-themes.ts), blended by site-look-math.ts;
+// The site's settings: one panel in the header runs the whole page. Theme buttons choose
+// Night, Ocean, Synth, Brutal or Paper (site-look-themes.ts), blended by site-look-math.ts;
 // the rest dress that look (site-dress.ts): accent, contrast, grain and speed; the title's face,
 // size and weight, the body's size and tracking; corners and surface; density and width. One rAF
 // loop springs every setting toward the store's value and writes the result to the root as custom
@@ -15,7 +15,6 @@ import {
   css,
   darkAt,
   type FontKey,
-  faceWipe,
   type Look,
   lerp,
   lookAt,
@@ -27,6 +26,7 @@ import {
   stepSpring,
 } from "./site-look-math"
 import { THEMES } from "./site-look-themes"
+import "./site-look.css"
 
 /** Where the resolved look is kept for the next first paint (read by controls.html). */
 const KEY = "knobs-site-look"
@@ -43,11 +43,17 @@ const FLIP = 0.12
 const FADE = 0.18
 const FACES = ["sans", "serif", "mono", "wide"] as const
 const FACE_OPTIONS = ["theme", ...FACES] as const
-type Face = (typeof FACE_OPTIONS)[number]
 
-const last = THEMES.length - 1
+const THEME_IDS = ["night", "ocean", "synth", "brutal", "paper"] as const
+type ThemeId = (typeof THEME_IDS)[number]
+const themeAt = (x: number): ThemeId =>
+  THEME_IDS[Math.min(THEME_IDS.length - 1, Math.max(0, Math.round(x)))]!
 const schema = {
-  theme: knob(0, { min: 0, max: last, step: 0.01, decimals: 2, label: "Theme" }),
+  theme: choice("night", THEME_IDS, {
+    label: "Theme",
+    display: "segmented",
+    labels: Object.fromEntries(THEMES.map((t) => [t.id, t.name])),
+  }),
   accent: color("#ffffff", { label: "Accent", tab: "look" }),
   contrast: knob(0, { min: -0.5, max: 1, step: 0.01, decimals: 2, label: "Contrast", tab: "look" }),
   grain: knob(0, { min: 0, max: 1, step: 0.01, decimals: 2, label: "Grain", tab: "look" }),
@@ -88,7 +94,7 @@ type Values = { [K in keyof typeof schema]: (typeof schema)[K]["value"] }
 /** Complete looks: a theme and everything over it. Night is the defaults, the page as it was. */
 const PRESETS: Record<string, Partial<Values>> = {
   Editorial: {
-    theme: 1,
+    theme: "ocean",
     accent: "#e9b75c",
     contrast: 0.2,
     grain: 0.35,
@@ -104,7 +110,7 @@ const PRESETS: Record<string, Partial<Values>> = {
     width: 1080,
   },
   Synth: {
-    theme: 2,
+    theme: "synth",
     accent: "#ff4fc4",
     contrast: 0.1,
     grain: 0.2,
@@ -119,7 +125,7 @@ const PRESETS: Record<string, Partial<Values>> = {
     width: 1280,
   },
   Brutal: {
-    theme: 3,
+    theme: "brutal",
     accent: "#ff3b00",
     contrast: 0.6,
     speed: 1.6,
@@ -133,7 +139,7 @@ const PRESETS: Record<string, Partial<Values>> = {
     width: 1440,
   },
   Paper: {
-    theme: 4,
+    theme: "paper",
     accent: "#a8331f",
     grain: 0.55,
     speed: 0.8,
@@ -147,7 +153,6 @@ const PRESETS: Record<string, Partial<Values>> = {
 
 /** What springs: every number, the accent as OKLab. */
 const NUMS = [
-  "theme",
   "contrast",
   "grain",
   "size",
@@ -159,7 +164,7 @@ const NUMS = [
   "density",
   "width",
 ] as const
-type Num = (typeof NUMS)[number] | "aL" | "aA" | "aB"
+type Num = (typeof NUMS)[number] | "theme" | "aL" | "aA" | "aB"
 /** How close a row must be to count as caught up (or settled), in its own units. */
 const EPS: Record<Num, number> = {
   theme: 0.012,
@@ -180,7 +185,7 @@ const EPS: Record<Num, number> = {
 
 const targetsOf = (v: Values): Record<Num, number> => {
   const [aL, aA, aB] = labOf(v.accent)
-  const out = { aL, aA, aB } as Record<Num, number>
+  const out = { aL, aA, aB, theme: THEME_IDS.indexOf(v.theme) } as Record<Num, number>
   for (const k of NUMS) out[k] = v[k]
   return out
 }
@@ -188,8 +193,6 @@ const targetsOf = (v: Values): Record<Num, number> => {
 export interface SiteLookOptions {
   /** Where the settings' panel goes. */
   readonly slot: HTMLElement
-  /** The title's faces (`[data-font]` layers), crossfaded. */
-  readonly title?: HTMLElement | null
   readonly panel: MountPanelOptions
   /** Light or dark changed (the page's own `data-theme`, restyles, scenes). */
   readonly onPolarity: (dark: boolean) => void
@@ -198,7 +201,7 @@ export interface SiteLookOptions {
 export interface SiteLook {
   /** Glides the theme to the nearest one of the other polarity. */
   toggle(): void
-  /** Puts the theme at `x` at once, outside the undo history (for scripts). */
+  /** Chooses the theme nearest `x` at once, outside the undo history (for scripts). */
   jump(x: number): void
   readonly dark: boolean
   readonly store: {
@@ -213,6 +216,15 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const root = document.documentElement
   let booting = true
+  // Keep the rest of an existing saved look when upgrading the old numeric theme slider.
+  try {
+    const key = "knobs:site:state:v1"
+    const saved = JSON.parse(localStorage.getItem(key) ?? "null")
+    if (saved?.version === 1 && Number.isFinite(saved.values?.theme)) {
+      saved.values.theme = themeAt(saved.values.theme)
+      localStorage.setItem(key, JSON.stringify(saved))
+    }
+  } catch {}
   const store = defineControls("site", schema, {
     enabled: true,
     defaultLabel: THEMES[0]!.name,
@@ -225,8 +237,8 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   // ── State: each number a spring toward the store, the inks' polarity, the face, a fade ──
   const values0 = store.get()
   // A first visit asking for light (?theme=light) starts at the nearest light theme.
-  if (values0.theme === 0 && root.dataset.theme === "light" && !localStorage.getItem(KEY))
-    store.sync({ theme: nearestTheme(THEMES, 0, false) })
+  if (values0.theme === "night" && root.dataset.theme === "light" && !localStorage.getItem(KEY))
+    store.sync({ theme: themeAt(nearestTheme(THEMES, 0, false)) })
   let targets = targetsOf(store.get())
   const springs = Object.fromEntries(
     Object.entries(targets).map(([k, x]) => [k, { x, v: 0 }]),
@@ -236,13 +248,29 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const caught = new Set<Num>()
   let dark = darkAt(THEMES, targets.theme)
   const ink = { x: dark ? 0 : 1, v: 0 }
-  /** The title's face: from one to the other on a spring (k, 0–1). */
-  let face = { from: store.get().face as Face, to: store.get().face as Face, k: { x: 1, v: 0 } }
+  // All faces keep their own position and velocity, even when a third is picked mid-transition.
+  const faceTargets = (values: Values) => {
+    const base = THEMES[THEME_IDS.indexOf(values.theme)]!.font
+    const selected = values.face === "theme" ? base : values.face
+    return Object.fromEntries(FACES.map((f) => [f, f === selected ? 1 : 0])) as Record<
+      FontKey,
+      number
+    >
+  }
+  let wantedFaces = faceTargets(store.get())
+  const faces = Object.fromEntries(FACES.map((f) => [f, { x: wantedFaces[f], v: 0 }])) as Record<
+    FontKey,
+    { x: number; v: number }
+  >
   let fade: { from: Look; k: number } | null = null
 
   const keysOf = (patch: Partial<Values>): Num[] =>
     Object.keys(patch).flatMap((k) =>
-      k === "accent" ? (["aL", "aA", "aB"] as Num[]) : NUMS.includes(k as never) ? [k as Num] : [],
+      k === "accent"
+        ? (["aL", "aA", "aB"] as Num[])
+        : k === "theme" || NUMS.includes(k as never)
+          ? [k as Num]
+          : [],
     )
 
   function drive(patch: Partial<Values>, values: Values, meta: ChangeMeta) {
@@ -256,42 +284,22 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         hand.add(k)
       } else hand.delete(k)
     }
-    if ("face" in patch && values.face !== face.to) {
-      if (values.face === face.from) {
-        // Back where it came from: the same seam, reversed.
-        face = { from: face.to, to: face.from, k: { x: 1 - face.k.x, v: -face.k.v } }
-      } else {
-        face = {
-          from: face.k.x < 0.5 ? face.from : face.to,
-          to: values.face as Face,
-          k: { x: 0, v: 0 },
-        }
-      }
-    }
+    wantedFaces = faceTargets(values)
     if (!byHand && reducedQuery.matches) {
       fade = { from: current, k: 0 }
       for (const k of Object.keys(springs) as Num[]) {
         springs[k].x = targets[k]
         springs[k].v = 0
       }
-      face.k = { x: 1, v: 0 }
-    }
-    // Random lands on a theme, not between two: every roll is a look someone would pick.
-    if (meta.source === "randomize") {
-      const t = Math.round(values.theme)
-      if (t !== values.theme) queueMicrotask(() => store.sync({ theme: t }))
+      for (const f of FACES) {
+        faces[f].x = wantedFaces[f]
+        faces[f].v = 0
+      }
     }
     wake()
   }
 
   // ── Resolving the look: the theme at its point, the face, then the settings ──
-  const onehot = (f: FontKey): Record<string, number> => ({ [f]: 1 })
-  const facesOf = (spec: Face, base: Look) => (spec === "theme" ? base.fonts : onehot(spec))
-  const dominant = (w: Readonly<Record<string, number>>) =>
-    Object.entries(w).reduce((a, b) => (b[1] > a[1] ? b : a), ["sans", -1] as [
-      string,
-      number,
-    ])[0] as FontKey
   const settings = (): Settings => {
     const n = (k: Num) => springs[k].x
     return {
@@ -310,14 +318,11 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   }
   const resolve = (light: number): Look => {
     const base = lookAt(THEMES, springs.theme.x, light)
-    const a = facesOf(face.from, base)
-    const b = facesOf(face.to, base)
-    const k = Math.min(1, Math.max(0, face.k.x))
     const fonts: Record<string, number> = {}
-    for (const f of FACES) {
-      const w = lerp(a[f] ?? 0, b[f] ?? 0, k)
-      if (w > 0) fonts[f] = w
-    }
+    // A retargeted spring may briefly overshoot. Keep the total coverage at one without
+    // dropping any face, so the title never flashes brighter or dimmer on interruption.
+    const total = FACES.reduce((sum, f) => sum + Math.max(0, faces[f].x), 0)
+    for (const f of FACES) fonts[f] = Math.max(0, faces[f].x) / (total || 1)
     return dress({ ...base, fonts }, settings(), light)
   }
   let current = resolve(ink.x)
@@ -403,9 +408,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     for (const f of FACES) out[`--f-${f}`] = (look.fonts[f] ?? 0).toFixed(4)
     return out
   }
-  const faces = options.title
-    ? FACES.map((f) => options.title!.querySelector<HTMLElement>(`[data-font="${f}"]`))
-    : []
   let frameNo = 0
   const write = (out: Record<string, string>) => {
     for (const [k, v] of Object.entries(out)) {
@@ -416,8 +418,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   }
   const apply = (look: Look) => {
     write(vars(look))
-    // The faces' seam is measured on the faces as the look just set them.
-    write({ ...wipeVars(), "--look-name": JSON.stringify(caption()) })
+    write({ "--look-name": JSON.stringify(caption()) })
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
     document.dispatchEvent(
@@ -434,45 +435,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     if (u < 0.005) return a
     if (u > 0.995) return b
     return `${a} ${Math.round((1 - u) * 100)} · ${b} ${Math.round(u * 100)}`
-  }
-  /** Which two faces meet on the title, and where: a face being picked, else the theme's sweep. */
-  const seam = (): { from: FontKey; to: FontKey; at: number } | null => {
-    if (fade) return null
-    if (face.k.x < 1 && face.from !== face.to) {
-      const base = lookAt(THEMES, springs.theme.x, ink.x)
-      const from = dominant(facesOf(face.from, base))
-      const to = dominant(facesOf(face.to, base))
-      const at = Math.min(1, Math.max(0, face.k.x))
-      return from === to || at <= 0 || at >= 1 ? null : { from, to, at }
-    }
-    return face.to === "theme" ? faceWipe(THEMES, springs.theme.x) : null
-  }
-  /**
-   * Two faces meet as a soft line sweeping across the title, left to right as the setting moves:
-   * both whole, each masked to its side, so any position reads as a deliberate split. Their masks
-   * are complementary and they add (plus-lighter), so the seam is as solid as either face. With a
-   * fade (reduced motion) they just crossfade. Kept as root properties, like the rest, so the next
-   * first paint has them.
-   */
-  const wipeVars = () => {
-    const out: Record<string, string> = {}
-    for (const f of FACES) out[`--m-${f}`] = "none"
-    const wipe = seam()
-    const from = wipe && faces[FACES.indexOf(wipe.from)]
-    const to = wipe && faces[FACES.indexOf(wipe.to)]
-    if (!wipe || !from || !to) return out
-    const a = from.getBoundingClientRect()
-    const b = to.getBoundingClientRect()
-    const left = Math.min(a.left, b.left)
-    const right = Math.max(a.right, b.right)
-    const soft = (right - left) * 0.06
-    const at = left - soft + (right - left + 2 * soft) * wipe.at
-    const mask = (r: DOMRect, near: string, far: string) =>
-      `linear-gradient(90deg,${near} ${(at - r.left - soft).toFixed(1)}px,${far} ${(at - r.left + soft).toFixed(1)}px)`
-    out[`--m-${wipe.to}`] = mask(b, "#000", "transparent")
-    out[`--m-${wipe.from}`] = mask(a, "transparent", "#000")
-    for (const f of FACES) out[`--f-${f}`] = f === wipe.from || f === wipe.to ? "1" : "0"
-    return out
   }
   const restyleReadouts = () => {
     for (const el of document.querySelectorAll(".knobs-rd-spark,.knobs-rd-graph,.knobs-rd-meter"))
@@ -509,10 +471,13 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         s.v = 0
       } else settled = false
     }
-    if (face.k.x < 1) {
-      stepSpring(face.k, 1, glide, dt)
-      if (1 - face.k.x < 1e-3 && Math.abs(face.k.v) < 1e-2) face.k = { x: 1, v: 0 }
-      else settled = false
+    for (const f of FACES) {
+      const s = faces[f]
+      stepSpring(s, wantedFaces[f], glide, dt)
+      if (Math.abs(wantedFaces[f] - s.x) < 1e-4 && Math.abs(s.v) < 1e-3) {
+        s.x = wantedFaces[f]
+        s.v = 0
+      } else settled = false
     }
     const nextDark = darkAt(THEMES, springs.theme.x, dark)
     if (nextDark !== dark) {
@@ -556,12 +521,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   if ((root.dataset.theme === "light") === dark) options.onPolarity(dark)
   apply(current)
   keep()
-  // The seam is measured: a new width, or a face arriving, places it again.
-  const remeasure = () => {
-    if (!raf) write(wipeVars())
-  }
-  addEventListener("resize", remeasure)
-  document.fonts?.addEventListener("loadingdone", remeasure)
 
   mountPanel(store, options.slot, {
     ...options.panel,
@@ -579,15 +538,20 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   return {
     toggle() {
       const i = nearestTheme(THEMES, springs.theme.x, !dark)
-      if (i >= 0) store.set({ theme: i })
+      if (i >= 0) store.set({ theme: themeAt(i) })
     },
     jump(x) {
       booting = true
-      store.sync({ theme: x })
+      store.sync({ theme: themeAt(x) })
       booting = false
       targets = targetsOf(store.get())
       springs.theme.x = targets.theme
       springs.theme.v = 0
+      wantedFaces = faceTargets(store.get())
+      for (const f of FACES) {
+        faces[f].x = wantedFaces[f]
+        faces[f].v = 0
+      }
       hand.clear()
       fade = null
       wake()

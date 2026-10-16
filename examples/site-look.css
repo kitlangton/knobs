@@ -1,5 +1,5 @@
-/* The site look (site-look.ts): the header's big title and its knob, and everything on the page
-   that follows the knob. site-look.ts writes the custom properties below on the root, once a frame
+/* The site look (site-look.ts): the header's big title and its settings, and everything on the page
+   that follows them. site-look.ts writes the custom properties below on the root, once a frame
    while the look moves; the defaults here are Night, the page as it was. Nothing that holds a panel
    gets a transform, filter, clip or blend (the WebGPU overlay would lose it). */
 @property --t-size {
@@ -120,9 +120,9 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* The faces share one cell and one baseline. Each is placed by the look's alignment (0 left, .5
-   centred) against its own width, and they add up (plus-lighter in an isolated group), so two faces
-   halfway through a crossfade are as solid as one. */
+/* The faces share one cell and baseline, with no masks: the glow always has room to fall away.
+   Each keeps its own spring weight on interruption. They add up (plus-lighter in an isolated
+   group), so two faces halfway through a blend are as solid as one. */
 .mast-ink {
   display: grid;
   align-items: last baseline;
@@ -154,31 +154,23 @@
 .mast-ink > [data-font="sans"] {
   --widest: 3.04;
   opacity: var(--f-sans);
-  -webkit-mask-image: var(--m-sans, none);
-  mask-image: var(--m-sans, none);
   font-family: system-ui, -apple-system, "SF Pro Display", "Segoe UI", sans-serif;
 }
 .mast-ink > [data-font="serif"] {
   --widest: 2.73;
   opacity: var(--f-serif);
-  -webkit-mask-image: var(--m-serif, none);
-  mask-image: var(--m-serif, none);
   font-family: Fraunces, ui-serif, Georgia, serif;
   font-optical-sizing: auto;
 }
 .mast-ink > [data-font="mono"] {
   --widest: 3.09;
   opacity: var(--f-mono);
-  -webkit-mask-image: var(--m-mono, none);
-  mask-image: var(--m-mono, none);
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   text-transform: uppercase;
 }
 .mast-ink > [data-font="wide"] {
   --widest: 4.12;
   opacity: var(--f-wide);
-  -webkit-mask-image: var(--m-wide, none);
-  mask-image: var(--m-wide, none);
   font-family: Unbounded, system-ui, sans-serif;
 }
 
