@@ -131,8 +131,8 @@ ${GRAD_PROPS}
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
   --k-row-gap:0px;--k-hover-in:0;--k-hover-out:120;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
-  --k-lens-ms:340;--k-lens-lead:1.25;--k-lens-wash:.9;--k-lens-line:.65;--k-lens-panel-wash:.35;--k-lens-inset:2px;--k-lens-panel-inset:4px;--k-lens-flash:1;--k-lens-flash-ms:520;
-  --k-armed-edge:.4;--k-armed-glow:16;--k-armed-glow-a:.14;--k-title-rest:.6;--k-esc-hint-ms:1800;
+  --k-lens-ms:180;--k-lens-lead:1;--k-lens-wash:.9;--k-lens-line:.65;--k-lens-panel-wash:.35;--k-lens-inset:0px;--k-lens-panel-inset:0px;
+  --k-armed-edge:.1;--k-armed-glow:0;--k-armed-glow-a:0;--k-title-rest:.6;--k-esc-hint-ms:1800;
 }
 /* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
 @media(min-resolution:1.5dppx){:where(:root,:host){--k-rim-width:.67px}}
@@ -442,11 +442,10 @@ const css = `
    wash elsewhere steps aside. */
 ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{opacity:0}
 /* The focus lens (lens.ts) marks the level keys act on, and replaces the washes above: one shape,
-   a soft wash and a hairline edge, placed and lit from script (--kl-w, --kl-l, --kl-t). */
+   a soft wash and a hairline edge, placed from script (--kl-w, --kl-l). */
 .knobs-panel[data-k-lens] :is(.knobs-card>*,.knobs-sub,.knobs-x-head,.knobs-card,.knobs-tile)::after{opacity:0!important}
 .knobs-lens{position:absolute;left:0;top:0;z-index:2;width:0;height:0;opacity:0;pointer-events:none;box-sizing:border-box;contain:strict;will-change:transform,opacity;
-  --kl-tint:color-mix(in srgb,var(--k-accent) calc(var(--kl-t,0) * 100%),transparent);
-  background:linear-gradient(var(--kl-tint),var(--kl-tint)),color-mix(in srgb,var(--k-surface-hi) calc(var(--kl-w,0) * 100%),transparent);
+  background:color-mix(in srgb,var(--k-surface-hi) calc(var(--kl-w,0) * 100%),transparent);
   box-shadow:inset 0 0 0 var(--k-rim-width) color-mix(in srgb,var(--k-line-hi) calc(var(--kl-l,0) * 100%),transparent)}
 .knobs-panel[data-gpu-active="true"] .knobs-lens{visibility:hidden}
 .knobs-panel .knobs-slider{height:var(--k-row);contain:layout style}
