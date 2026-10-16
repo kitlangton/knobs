@@ -41,7 +41,7 @@ const WIRE_SEGS = 48
  * softens the frame, and how far the trail reads as heat (its density through black, red, orange
  * and yellow) instead of its own colours.
  */
-interface Scheme {
+export interface Scheme {
   frame: readonly number[]
   calm: readonly number[]
   fast: readonly number[]
@@ -52,8 +52,8 @@ interface Scheme {
   heat?: number
 }
 const SCHEME_NAMES = ["Tactical", "Synthwave", "Acid", "Arctic", "Solar", "Thermal"] as const
-type SchemeName = (typeof SCHEME_NAMES)[number]
-const SCHEMES: Record<SchemeName, Scheme> = {
+export type SchemeName = (typeof SCHEME_NAMES)[number]
+export const SCHEMES: Record<SchemeName, Scheme> = {
   // Emerald trails, a hot orange frame, red alerts: the swarm's first look.
   Tactical: {
     frame: [1.0, 0.56, 0.16],
@@ -172,7 +172,16 @@ const toLinear = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 
-export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
+export interface HeroSwarm {
+  /**
+   * Paints the display in `scheme` (a blend, say) on `night` (sRGB 0–1), following it at once,
+   * with the Scheme row showing `name`; until the panel picks a scheme of its own.
+   */
+  paint(scheme: Scheme, night: readonly number[], name: SchemeName): void
+  dispose(): void
+}
+
+export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
   if (!document.getElementById("swarm-css")) {
     const style = document.createElement("style")
     style.id = "swarm-css"
@@ -196,6 +205,8 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
   const narrow = matchMedia("(max-width: 900px)")
 
   // ── The panel ──
+  /** A palette from outside (`paint`), until the panel picks a scheme. */
+  let painted: number[][] | null = null
   const store = defineControls("hero-swarm", schema, {
     enabled: true,
     storage: null,
@@ -232,9 +243,10 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         lure: { x: 0.5, y: 0.5 },
       },
     },
-    onChange(_patch, _values, meta) {
+    onChange(patch, _values, meta) {
       // Under the hand it follows at once; a preset, Random or undo glides.
       glide = meta.source === "local" ? 0 : 0.45
+      if ("scheme" in patch && meta.source !== "remote") painted = null
     },
   })
   const panel = mountPanel(store, slot, {
@@ -259,7 +271,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
       preds: v.predators,
       rc: 0.55 + (0.43 * (v.containment - 55)) / 45,
       lure: [(v.lure.x - 0.5) * 2 * LURE_SPAN, (v.lure.y - 0.5) * 2 * LURE_SPAN],
-      pal: flat(SCHEMES[v.scheme as SchemeName] ?? SCHEMES.Tactical),
+      pal: painted ?? flat(SCHEMES[v.scheme as SchemeName] ?? SCHEMES.Tactical),
     }
   }
   const now = target()
@@ -273,8 +285,8 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     now.preds = t.preds
     now.rc += (t.rc - now.rc) * k
     // A scheme always crossfades, every colour, the bloom and the heat together (it's a look,
-    // not a hand's motion).
-    const kp = 1 - Math.exp(-dt / 0.22)
+    // not a hand's motion); a painted one moves already, so it's followed exactly.
+    const kp = painted ? 1 : 1 - Math.exp(-dt / 0.22)
     now.pal.forEach((c, i) => c.forEach((x, j) => (c[j] = x + (t.pal[i]![j]! - x) * kp)))
   }
 
@@ -622,6 +634,16 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
       })
 
   return {
+    paint(scheme, night, name) {
+      painted = flat(scheme)
+      night.forEach((c, i) => (page[i as 0 | 1 | 2] = toLinear(c)))
+      if (store.get().scheme !== name) store.sync({ scheme: name })
+      if (!gpu) {
+        ease(1)
+        paintText()
+        still?.()
+      }
+    },
     dispose() {
       disposed = true
       running = false
