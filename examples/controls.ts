@@ -1,5 +1,5 @@
-// knobs' home page: every control, down one scrolling page. A hero first (a dial on a field of
-// light, with the knobs that drive it round its edges); then a few scenes, each one panel of several
+// knobs' home page: every control, down one scrolling page. A hero first (hardware twins: a lit
+// faceplate whose controls mirror the panel floating over it); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
