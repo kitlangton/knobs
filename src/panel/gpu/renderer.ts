@@ -16,6 +16,7 @@ import {
   trailScale,
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
+import type { LensShape } from "../lens.js"
 import { DRIFTED_PILL, type PresetStrip } from "../presets.js"
 import { flashOf } from "../flash.js"
 import { spinOf } from "../spin.js"
@@ -481,6 +482,13 @@ export interface GpuPanelBinding {
   readonly rows: readonly GpuRowBinding[]
   readonly actionButtons: readonly HTMLButtonElement[]
   isPopoverOpen(): boolean
+  /** The focus lens (lens.ts): its shapes each frame, drawn as the DOM's `.knobs-lens`. */
+  readonly lens?: {
+    frame(now: number): readonly LensShape[]
+    moving(now: number): boolean
+  }
+  /** The scope line beside the title (crumbs.ts): its spans are drawn where they sit. */
+  readonly crumbs?: HTMLElement
   /** While the panel grows out of (or into) its chip: the shape at a frame time. */
   readonly morph?: (now: number) => MorphFrame | undefined
   /** True while rows, cards or group heads arrive or leave (a descriptor swap). */
@@ -738,6 +746,13 @@ class GpuOverlayManager {
   private curSubHovered = false
   /** Whether the pointer has one of the panel's rows (and keys haven't taken over since). */
   private curPointerRow = false
+  /** The panel being drawn marks focus with its lens: the per-level washes step aside. */
+  private curLens = false
+  /** Each panel's armed look (--k-armed-*, --k-title-rest), read again when styles change. */
+  private readonly armedLooks = new WeakMap<
+    HTMLElement,
+    { v: number; edge: number; glow: number; glowA: number; titleRest: number }
+  >()
   private curPanelRect: DOMRect | null = null
   private curPanelScrollTop = 0
   private curLayoutKey = 0
@@ -1706,6 +1721,7 @@ class GpuOverlayManager {
 
   /** The focus wash, matching the row's corners inside its card. */
   private drawFocus(el: HTMLElement, on: boolean, rRect: DOMRect, cardClip: Clip) {
+    if (this.curLens) return
     const t = this.curTokens
     const focus = this.ease(el, "focus", on ? 1 : 0)
     if (focus < 0.005) return
@@ -2440,8 +2456,84 @@ class GpuOverlayManager {
     return moving
   }
 
+  /** The armed look's tokens for a panel (see the styles' --k-armed-*). */
+  private armedLook(root: HTMLElement) {
+    const hit = this.armedLooks.get(root)
+    if (hit && hit.v === this.styleVersion) return hit
+    const cs = getComputedStyle(root)
+    const num = (name: string, fallback: number) => {
+      const v = parseFloat(cs.getPropertyValue(name))
+      return Number.isFinite(v) ? v : fallback
+    }
+    const look = {
+      v: this.styleVersion,
+      edge: num("--k-armed-edge", 0.4),
+      glow: num("--k-armed-glow", 16),
+      glowA: num("--k-armed-glow-a", 0.14),
+      titleRest: num("--k-title-rest", 0.6),
+    }
+    this.armedLooks.set(root, look)
+    return look
+  }
+
+  /** The focus lens's shapes (lens.ts), as the DOM's `.knobs-lens`: a wash, a tint, a hairline. */
+  private drawLens(shapes: readonly LensShape[], clip: Clip) {
+    const t = this.curTokens
+    for (const s of shapes) {
+      if (s.alpha <= 0.002 || s.w <= 0 || s.h <= 0) continue
+      const wash = withAlpha(t.surfaceHi, t.surfaceHi[3] * Math.min(1, s.wash))
+      const tint = withAlpha(t.accent, t.accent[3] * Math.min(1, s.tint))
+      // The tint lies over the wash, as the DOM's gradient over its background colour.
+      const a = tint[3] + wash[3] * (1 - tint[3])
+      const ch = (i: number) =>
+        a > 0 ? (tint[i]! * tint[3] + wash[i]! * wash[3] * (1 - tint[3])) / a : 0
+      this.shape({
+        x: s.x,
+        y: s.y,
+        w: s.w,
+        h: s.h,
+        radius: Math.max(0, s.r),
+        fill: [ch(0), ch(1), ch(2), a * s.alpha],
+        ring: -this.hairline(t),
+        ringColor: withAlpha(t.lineHi, t.lineHi[3] * Math.min(1, s.line) * s.alpha),
+        clip,
+      })
+    }
+  }
+
+  /** The scope line's spans (crumbs.ts) where the DOM placed them, at their opacity. */
+  private drawCrumbs(host: HTMLElement, clip: Clip): boolean {
+    const t = this.curTokens
+    let moving = false
+    for (const el of host.children as HTMLCollectionOf<HTMLElement>) {
+      if (el.getAnimations().length) moving = true
+      const shown = Number.parseFloat(getComputedStyle(el).opacity)
+      if (!(shown > 0.003)) continue
+      const r = el.getBoundingClientRect()
+      const esc = el.classList.contains("knobs-crumb-esc")
+      const sep = el.classList.contains("knobs-crumb-sep")
+      const deep = this.ease(el, "deep", el.hasAttribute("data-deep") ? 1 : 0, 26)
+      const hot = this.ease(
+        el,
+        "hot",
+        !deep && this.curPanelHovered && el.matches(":hover") ? 1 : 0,
+        26,
+      )
+      const ink = cssMix(t.text, cssMix(t.label, t.dim, hot), deep)
+      const alpha = ink[3] * shown * (sep ? 0.7 : 1)
+      this.drawText(el.textContent ?? "", r.left, r.top + r.height / 2, withAlpha(ink, alpha), {
+        px: esc ? t.textCap : t.textMeta,
+        weight: esc ? t.fontWeight : t.labelWeight,
+        mono: esc,
+        clip,
+      })
+    }
+    return moving
+  }
+
   /** The soft wash on the card focus is on (`data-k-scope`), as the DOM's ::after. */
   private drawScope(card: HTMLElement, r: DOMRect, radius: number, alpha: number) {
+    if (this.curLens) return
     const on = this.ease(card, "scope", card.hasAttribute("data-k-scope") ? 1 : 0, 26)
     if (on < 0.005) return
     this.pushPrim({
@@ -3960,6 +4052,15 @@ class GpuOverlayManager {
       const tokens = rawTokens
       this.curTokens = tokens
       this.curLocks = panel.locks
+      this.curLens = panel.lens !== undefined
+      // Holding the keys (focus inside), the panel's edge takes the accent and its title lights.
+      const armedLook = this.armedLook(panel.root)
+      const armed = this.ease(
+        panel.root,
+        "armed",
+        panel.root.hasAttribute("data-k-armed") ? 1 : 0,
+        reducedMotion ? SNAP_OMEGA : (2 * Math.PI) / 0.3,
+      )
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion
       // Follow CSS open/close and reveal animations: fade with the panel, and keep drawing while they run.
@@ -4009,6 +4110,20 @@ class GpuOverlayManager {
         this.placeBackdrop(panel, card, outerClip, cardRadius, glass * chrome, tokens.glassTone)
       // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
       const shadow = tokens.isLight ? 0.16 : 0.48
+      if (!pageB && chrome > 0.005 && armed > 0.002 && armedLook.glow > 0)
+        this.shape({
+          x: card.left,
+          y: card.top,
+          w: card.width,
+          h: card.height,
+          radius: cardRadius,
+          fill: [0, 0, 0, 0],
+          glow: armedLook.glow,
+          // The shader's glow peaks lower than box-shadow's blur at the edge.
+          glowColor: withAlpha(tokens.accent, armed * armedLook.glowA * chrome * 1.6),
+          clip: outerClip,
+        })
+      const edgeInk = cssMix(tokens.accent, tokens.edge, armed * armedLook.edge)
       if (!pageB && chrome > 0.005)
         this.pushPrim({
           x: card.left,
@@ -4018,7 +4133,7 @@ class GpuOverlayManager {
           clip: outerClip,
           color: withAlpha(tokens.bg, (1 - glass * 0.2 * shown) * chrome),
           // A hairline edge outside the card and a hairline of top light inside it.
-          color2: withAlpha(tokens.edge, tokens.edge[3] * chrome),
+          color2: withAlpha(edgeInk, edgeInk[3] * chrome),
           radius: cardRadius,
           glowOrBlur: panel.inline ? 0 : 16 + 2 * shown,
           kind: 0,
@@ -4082,13 +4197,25 @@ class GpuOverlayManager {
         const indent = pageB ? tokens.pad + tokens.inset + 1 : 0
         // Dims while compare is held, like the DOM's 0.2 s opacity transition.
         const comparing = panel.root.hasAttribute("data-comparing")
+        // Quiet at rest, at full strength while the panel holds the keys (as the DOM's colour-mix).
+        const titleInk = cssMix(
+          tokens.text,
+          tokens.label,
+          armedLook.titleRest + (1 - armedLook.titleRest) * armed,
+        )
         this.drawText(
           this.fit(panel.titleEl.textContent ?? "", tRect.width - indent, px, tokens.titleWeight),
           tRect.left + indent,
           tRect.top + tRect.height * 0.5,
-          withAlpha(tokens.text, this.ease(panel.titleEl, "compare", comparing ? 0.4 : 1, 26)),
+          withAlpha(
+            titleInk,
+            (titleInk[3] / (tokens.text[3] || 1)) *
+              this.ease(panel.titleEl, "compare", comparing ? 0.4 : 1, 26),
+          ),
           { px, weight: tokens.titleWeight, clip: panelClip, track: pageB ? -0.015 : -0.01 },
         )
+        if (panel.crumbs && panel.crumbs.childElementCount)
+          if (this.drawCrumbs(panel.crumbs, panelClip)) anyMoving = true
         // The tools sit quiet until the panel has the pointer or keyboard focus (see the CSS).
         const lit =
           panel.root.matches(":hover") ||
@@ -5326,6 +5453,13 @@ class GpuOverlayManager {
         if (!btn.hidden && this.doc.body.contains(btn)) {
           this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.textControl, true)
         }
+      }
+
+      // The focus lens, over the rows as the DOM's sits over them (under the pinned header).
+      if (panel.lens) {
+        this.curAlpha = panelAlpha
+        this.drawLens(panel.lens.frame(clock), bodyClip)
+        if (panel.lens.moving(clock)) anyMoving = true
       }
 
       // Hint badges reach the header's buttons too: out of the rows' fade.

@@ -65,12 +65,19 @@ import { createChoice, type ChoiceControl } from "./choice.js"
 import { createOptionKeys } from "./optkeys.js"
 import {
   commandScope,
+  crumbTrail,
   digitOption,
   escapeTo,
+  escTarget,
   scopeLabel,
+  scopeTargets,
   type CommandScope,
+  type Crumb,
+  type CrumbLevel,
   type FocusLevel,
 } from "./scope.js"
+import { createLens, type LensTarget } from "./lens.js"
+import { createCrumbs } from "./crumbs.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { pageHints } from "./page-hints.js"
@@ -3504,6 +3511,138 @@ function buildPanel<S extends Schema>(
   // The card focus is on wears a soft wash (data-k-scope), both renderers; a row's own focus
   // wash is the card children's (see styles).
   let scoped: HTMLElement | null = null
+  // ——— The focus lens, the armed frame and the scope line (lens.ts, crumbs.ts) ———
+  // One shape marks the level keys act on and morphs between levels; the panel holding the keys
+  // lights its edge and title; the header names where keys go and, for a moment, where Esc goes.
+  root.dataset.kLens = ""
+  /** A level a click on a crumb took focus to shows its lens, as keys would have. */
+  let jumpedTo: Element | null = null
+  const keyed = () =>
+    "keyboard" in root.dataset || Boolean(doc.activeElement?.matches(":focus-visible"))
+  const lens = createLens({
+    root,
+    header,
+    page: Boolean(page),
+    reduced: () => reducedMotion(),
+    wake: () => wakeGpu(),
+    follow: () => layout?.moving ?? false,
+    shown: (t) => {
+      if (t.level === "card" || t.el === jumpedTo) return true
+      if (!keyed()) return false
+      if (t.level === "panel") return true
+      // One wash at a time: the pointer's row has its own meanwhile.
+      return !(
+        root.hasAttribute("data-k-row-hover") &&
+        !("keyboard" in root.dataset) &&
+        !t.el.matches(":hover")
+      )
+    },
+  })
+  /** What the lens marks for focus on `active`: an open editor's part, a row, a card, the panel. */
+  const lensTarget = (active: Element | null): LensTarget | null | "out" => {
+    if (!active || !root.contains(active) || !doc.hasFocus()) return "out"
+    if (active === root) return { el: root, level: "panel" }
+    const r = rows[rowAt(active)]
+    if (r) {
+      const bodyEl = active.closest<HTMLElement>(".knobs-x-body")
+      if (bodyEl && r.row.contains(bodyEl)) {
+        const part = [...bodyEl.children].find((c) => c.contains(active))
+        if (part instanceof HTMLElement) return { el: part, level: "editor" }
+      }
+      const sub = active.closest<HTMLElement>(".knobs-sub,.knobs-x-head")
+      if (sub && r.row.contains(sub)) return { el: sub, level: "row" }
+      return { el: r.row.closest<HTMLElement>(".knobs-card > *") ?? r.row, level: "row" }
+    }
+    const card = cardOf(active)
+    return card ? { el: card, level: "card" } : null
+  }
+  /** An editor part's name: a strip's label, else what it's called (aria-label). */
+  const partName = (part: HTMLElement, active: Element | null) =>
+    part.querySelector(".knobs-strip-label")?.textContent ||
+    active?.getAttribute("aria-label") ||
+    part.getAttribute("aria-label") ||
+    "Editor"
+  const trailFor = (t: LensTarget | null | "out", active: Element | null): Crumb[] => {
+    if (!t || t === "out" || t.level === "panel") return []
+    const card = cardOf(active)
+    return crumbTrail({
+      card: card ? card.getAttribute("aria-label") || "Rows" : undefined,
+      row: rows[rowAt(active)]?.display,
+      editor: t.level === "editor" ? partName(t.el, active) : undefined,
+    })
+  }
+  const crumbs =
+    options.crumbs === false || header.hidden || !titleEl.isConnected
+      ? undefined
+      : createCrumbs({
+          header,
+          title: titleEl,
+          reduced: () => reducedMotion(),
+          wake: () => wakeGpu(),
+          jump: (level) => jump(level),
+        })
+  /** Takes focus to a level from a crumb (or the title): the panel, the card, the row. */
+  const jump = (level: CrumbLevel | "panel") => {
+    const active = doc.activeElement
+    const quiet = { preventScroll: true } as FocusOptions
+    let to: HTMLElement | null | undefined
+    if (level === "panel") to = root
+    else if (level === "card") to = cardOf(active)
+    else if (level === "row") to = rows[rowAt(active)]?.input
+    if (!to) return
+    const t = lensTarget(to)
+    jumpedTo = t && t !== "out" ? t.el : null
+    to.focus(quiet)
+    queueScope()
+  }
+  let titleDown: [number, number] | undefined
+  titleEl.addEventListener("pointerdown", (event) => {
+    titleDown = [event.clientX, event.clientY]
+  })
+  titleEl.addEventListener("click", (event) => {
+    const [x, y] = titleDown ?? [event.clientX, event.clientY]
+    titleDown = undefined
+    // A drag by the title moves the panel; only a click takes focus to it.
+    if (Math.hypot(event.clientX - x, event.clientY - y) > 4) return
+    if (doc.activeElement !== root) jump("panel")
+  })
+  let escTimer: ReturnType<typeof setTimeout> | undefined
+  /** The Esc hint shows for a while after a key, below the panel's level, then fades. */
+  const pulseHint = () => {
+    if (!crumbs) return
+    crumbs.hint(true)
+    clearTimeout(escTimer)
+    const ms = parseFloat(getComputedStyle(root).getPropertyValue("--k-esc-hint-ms"))
+    escTimer = setTimeout(() => crumbs.hint(false), Number.isFinite(ms) ? ms : 1800)
+  }
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      if (!["Shift", "Alt", "Meta", "Control", "CapsLock"].includes(event.key))
+        queueMicrotask(pulseHint)
+    },
+    true,
+  )
+  /** Lights what a scoped command acts on (R, ⌥R, ⇧R): the selection, row, card or panel. */
+  const flashScope = (target: Node | null) => {
+    const r = rows[rowAt(target)]
+    lens.flash(
+      scopeTargets(scopeAt(target), {
+        selection: [...selected].map((i) => rows[i]?.row).filter((n): n is HTMLElement => !!n),
+        row: r ? (r.row.closest<HTMLElement>(".knobs-card > *") ?? r.row) : undefined,
+        card: cardOf(target) ?? undefined,
+        panel: root,
+      }),
+    )
+  }
+  /** Lights a group's card (G, ⌥G). */
+  const flashGroup = (group: string) => {
+    const card = [...root.querySelectorAll<HTMLElement>(page ? ".knobs-tile" : ".knobs-card")].find(
+      (c) => c.dataset.group === group,
+    )
+    if (card) lens.flash([card])
+  }
+  let wasArmed = false
   const syncScope = () => {
     const active = doc.activeElement
     const card = focusLevel(active) === "card" ? cardOf(active) : null
@@ -3512,6 +3651,21 @@ function buildPanel<S extends Schema>(
       card?.setAttribute("data-k-scope", "")
       scoped = card
       wakeGpu()
+    }
+    const target = lensTarget(active)
+    if (jumpedTo && (target === "out" || target?.el !== jumpedTo)) jumpedTo = null
+    lens.set(target)
+    lens.poke()
+    const armed = target !== "out"
+    if (armed !== wasArmed) {
+      wasArmed = armed
+      root.toggleAttribute("data-k-armed", armed)
+      wakeGpu()
+    }
+    if (crumbs) {
+      const trail = trailFor(target, active)
+      crumbs.set(trail, escTarget(trail, titleEl.textContent ?? ""))
+      if (!trail.length) crumbs.hint(false)
     }
     if (!popover.hidden) describeScope()
     optionKeys.show(optionsAt(active))
@@ -3529,6 +3683,9 @@ function buildPanel<S extends Schema>(
   root.addEventListener("focusout", queueScope)
   root.addEventListener("click", queueScope)
   root.addEventListener("keyup", queueScope)
+  // Keys go elsewhere while the window is in the background: the panel disarms meanwhile.
+  win?.addEventListener("blur", queueScope)
+  win?.addEventListener("focus", queueScope)
   // The digits ride along when the rows scroll under them.
   root.addEventListener("scroll", queueScope, { capture: true, passive: true })
   // A row's options as the digits pick them: a choice's, or an editor's presets.
@@ -3657,8 +3814,13 @@ function buildPanel<S extends Schema>(
         !all && bound("mutate") && pressedAlt("group", event) ? focusedGroup(target) : undefined
       if (!all && !group) return
       event.preventDefault()
-      if (all) run(() => rollFrom(target, true))
-      else if (group) run(() => rerollGroup(group, true))
+      if (all) {
+        flashScope(target)
+        run(() => rollFrom(target, true))
+      } else if (group) {
+        flashGroup(group)
+        run(() => rerollGroup(group, true))
+      }
       return
     }
     if (hintCtrl.handleKey(event)) return
@@ -3856,11 +4018,13 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("resetAll", event)) {
       event.preventDefault()
+      flashScope(target)
       run(() => resetFrom(target))
       return
     }
     if (pressed("random", event)) {
       event.preventDefault()
+      flashScope(target)
       run(() => rollFrom(target, false))
       return
     }
@@ -3868,6 +4032,7 @@ function buildPanel<S extends Schema>(
       const group = focusedGroup(target)
       if (group) {
         event.preventDefault()
+        flashGroup(group)
         run(() => rerollGroup(group, false))
       }
       return
@@ -4461,6 +4626,8 @@ function buildPanel<S extends Schema>(
     rows: gpuRows,
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,
+    lens,
+    ...(crumbs ? { crumbs: crumbs.element } : {}),
     morph: (now) => morph?.frame(now) ?? presence.frame(now),
     presence: () => presenceRuns > 0 || shifting.size > 0,
     landing: () => "landing" in root.dataset,
@@ -4608,6 +4775,11 @@ function buildPanel<S extends Schema>(
       hintCtrl.stop()
       modeObserver.disconnect()
       unregisterGpu?.()
+      lens.dispose()
+      crumbs?.dispose()
+      clearTimeout(escTimer)
+      win?.removeEventListener("blur", queueScope)
+      win?.removeEventListener("focus", queueScope)
       unsubscribe()
       unlisten?.()
       rowsObserver.disconnect()
