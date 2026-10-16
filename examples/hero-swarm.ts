@@ -113,9 +113,12 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     parent.append(e)
     return e
   }
-  const stage = el("swarm-stage")
-  host.prepend(stage)
-  const text = el("swarm-text")
+  // A host with a stage of its own (the landing's layer) gets the display in it, under the
+  // host's title; else the display goes in first.
+  const room = host.querySelector<HTMLElement>(":scope > .hero-stage")
+  const stage = el("swarm-stage", room ?? host)
+  if (!room) host.prepend(stage)
+  const text = el("swarm-text", room ?? host)
   stage.after(text)
   const slot = el("swarm-panel")
   const narrow = matchMedia("(max-width: 900px)")

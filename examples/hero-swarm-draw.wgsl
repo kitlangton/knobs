@@ -255,7 +255,7 @@ fn hud(p: vec2f) -> vec3f {
       smoothstep(R * 1.15, R * 0.95, abs(q.y)) * smoothstep(colRight + 6.0, colRight + 46.0, p.x);
     let pulse = 0.5 + 0.5 * sin(t * 2.0 + h * 9.0 - length(id) * 0.2);
     var cc = mix(sec, prim, step(0.55, h)) * 0.1;
-    if (h < order * 0.6 + 0.05) {
+    if (h < order * 0.4 + 0.04) {
       cc = mix(sec, prim, step(0.5, h)) * (0.3 + 0.6 * pulse);
     }
     if (h > 1.0 - fear * 0.6) {
