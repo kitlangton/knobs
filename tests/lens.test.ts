@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { flashAt, Glide, LENS_DEFAULTS, omegaOf, readLensTune } from "../src/panel/lens.js"
+import { cornersWithin, Glide, LENS_DEFAULTS, omegaOf, readLensTune } from "../src/panel/lens.js"
 
 describe("the lens's glide", () => {
   it("settles an offset to zero within its duration, without overshoot", () => {
@@ -12,7 +12,7 @@ describe("the lens's glide", () => {
       expect(x).toBeLessThanOrEqual(prev + 1e-9)
       prev = x
     }
-    expect(g.sample(340).x[0]!).toBeLessThan(5)
+    expect(g.sample(340).x[0]!).toBeLessThan(2)
     expect(g.resting(700)).toBe(true)
   })
   it("keeps position and speed across a retarget", () => {
@@ -27,13 +27,36 @@ describe("the lens's glide", () => {
   })
 })
 
-describe("a scoped action's light", () => {
-  it("comes up at once and fades over its time", () => {
-    expect(flashAt(-1, 500)).toBe(0)
-    expect(flashAt(40, 500)).toBeCloseTo(1)
-    expect(flashAt(270, 500)).toBeGreaterThan(0)
-    expect(flashAt(270, 500)).toBeLessThan(1)
-    expect(flashAt(500, 500)).toBe(0)
+describe("a row's shape in its card", () => {
+  const card = {
+    left: 0,
+    top: 0,
+    right: 200,
+    bottom: 96,
+    r: [8, 8, 8, 8] as [number, number, number, number],
+  }
+  const square: [number, number, number, number] = [0, 0, 0, 0]
+  it("takes the card's corners where it reaches them, and is square elsewhere", () => {
+    expect(cornersWithin({ left: 0, top: 0, right: 200, bottom: 32 }, square, card)).toEqual([
+      8, 8, 0, 0,
+    ])
+    expect(cornersWithin({ left: 0, top: 32, right: 200, bottom: 64 }, square, card)).toEqual([
+      0, 0, 0, 0,
+    ])
+    expect(cornersWithin({ left: 0, top: 64, right: 200, bottom: 96 }, square, card)).toEqual([
+      0, 0, 8, 8,
+    ])
+    expect(cornersWithin({ left: 0, top: 0, right: 200, bottom: 96 }, square, card)).toEqual([
+      8, 8, 8, 8,
+    ])
+  })
+  it("keeps its own corners, and those outside a card", () => {
+    expect(cornersWithin({ left: 20, top: 40, right: 60, bottom: 50 }, [5, 5, 5, 5], card)).toEqual(
+      [5, 5, 5, 5],
+    )
+    expect(cornersWithin({ left: 0, top: 0, right: 10, bottom: 10 }, [3, 3, 3, 3])).toEqual([
+      3, 3, 3, 3,
+    ])
   })
 })
 

@@ -378,15 +378,18 @@ Keys act on the level focus is at: an open editor's part, a row, its card, or th
 Three things show which, in both renderers, on floating and inline panels and on a page:
 
 - **The focus lens.** One shape, a soft wash with a hairline edge, marks that level and morphs
-  between levels (position, size and corners on a spring with no bounce, the size a little
-  quicker). Going in, it shrinks onto the row; `Esc` grows it out to the card, then to the panel;
-  out of the panel it grows to the panel's edge and fades. A row to the next glides. It replaces
-  the per-row and per-card washes. A row's lens shows while you use keys (as the old focus wash
-  did); a card's also after a click on it. With reduced motion it fades out where it was and in
-  where it lands.
+  straight from where it is to the next (position, size and corners on a quick spring with no
+  bounce), never through another level. At rest it fits its target exactly: a row's own shape in
+  its card (square, but for the card's corners it reaches), a card's rounded rect. Going in, it
+  shrinks onto the row; `Esc` grows it out to the card, then to the panel; `Esc` or `Tab` out of
+  the panel grows it to the panel's edge as it fades (a click elsewhere just fades it). A row to
+  the next glides. It replaces the per-row and per-card washes. A row's lens shows while you use
+  keys (as the old focus wash did); a card's also after a click on it. A press waits for its click
+  to finish, so a click on a heading goes straight to the card. With reduced motion it fades out
+  where it was and in where it lands.
 - **The armed panel.** While a panel holds the keys (focus is inside it; hovering isn't enough),
-  its edge takes a little of the accent with a faint glow, and its title is at full strength. At
-  rest the title is a touch quieter, so on a page with several panels the one listening is plain.
+  its hairline edge brightens a touch toward the accent and its title is at full strength. At rest
+  the title is a little quieter, so on a page with several panels the one listening is plain.
   Focus leaving (or `Esc` out of the panel, or the window going to the background) disarms it.
 - **The scope line.** Beside the title, a quiet trail says where keys go: `Swarm › Shape ›
   Cohesion`, the deepest crumb bright and its parents dim. Crumbs glide to their places as focus
@@ -395,21 +398,17 @@ Three things show which, in both renderers, on floating and inline panels and on
   its level; clicking the title takes it to the panel. When it doesn't fit, the first crumbs fold
   into `…`. `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
 
-When `r`, `⇧R`, `⌥R`, `g` or `⌥G` acts, the lens lights up over exactly what changed (the selected
-rows, the row, the card, or the panel) and fades back.
-
 Tune them with tokens on the panel or any ancestor:
 
 | Token | Default | What it does |
 | --- | --- | --- |
-| `--k-lens-ms` | `340` | The lens's morph (ms), a spring with no bounce |
-| `--k-lens-lead` | `1.25` | How much quicker its size settles than its position |
+| `--k-lens-ms` | `180` | The lens's morph (ms), a spring with no bounce |
+| `--k-lens-lead` | `1` | How much quicker its size settles than its position (`1`: together) |
 | `--k-lens-wash`, `--k-lens-line` | `.9`, `.65` | Its wash (a share of `--k-surface-hi`) and hairline edge (of `--k-line-hi`) |
 | `--k-lens-panel-wash` | `.35` | The wash at the panel's level, where it covers everything (a share of the wash) |
-| `--k-lens-inset`, `--k-lens-panel-inset` | `2px`, `4px` | How far inside a row, and inside the panel's edge, it sits |
-| `--k-lens-flash`, `--k-lens-flash-ms` | `1`, `520` | How bright a scoped action lights it (wash, edge and an accent tint), and how long that fades |
-| `--k-armed-edge` | `.4` | How much accent an armed panel's edge takes |
-| `--k-armed-glow`, `--k-armed-glow-a` | `16`, `.14` | Its glow: blur (px) and the accent's strength |
+| `--k-lens-inset`, `--k-lens-panel-inset` | `0px`, `0px` | How far inside a row, and inside the panel's edge, it sits |
+| `--k-armed-edge` | `.1` | How much accent an armed panel's hairline edge takes |
+| `--k-armed-glow`, `--k-armed-glow-a` | `0`, `0` | An optional glow around it: blur (px) and the accent's strength |
 | `--k-title-rest` | `.6` | A resting panel's title, between `--k-label` (0) and `--k-text` (1) |
 | `--k-esc-hint-ms` | `1800` | How long `esc ↑ …` stays after the last key |
 

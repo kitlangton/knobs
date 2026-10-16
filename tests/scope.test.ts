@@ -8,7 +8,6 @@ import {
   escTarget,
   fitCrumbs,
   scopeLabel,
-  scopeTargets,
 } from "../src/panel/scope.js"
 
 describe("Esc's ladder", () => {
@@ -67,21 +66,6 @@ describe("digits on a row with options", () => {
     expect(digitHints(14, false)).toEqual(["1–9"])
     expect(digitHints(1, false)).toEqual(["1"])
     expect(digitHints(0, true)).toEqual([])
-  })
-})
-
-describe("what a scoped command lights", () => {
-  const at = { selection: ["a", "b"], row: "row", card: "card", panel: "panel" }
-  it("lights the selection, the row, the card or the panel", () => {
-    expect(scopeTargets("selection", at)).toEqual(["a", "b"])
-    expect(scopeTargets("row", at)).toEqual(["row"])
-    expect(scopeTargets("group", at)).toEqual(["card"])
-    expect(scopeTargets("all", at)).toEqual(["panel"])
-  })
-  it("falls back to the panel when the level isn't there", () => {
-    expect(scopeTargets("row", { panel: "p" })).toEqual(["p"])
-    expect(scopeTargets("group", { panel: "p" })).toEqual(["p"])
-    expect(scopeTargets("selection", { selection: [], panel: "p" })).toEqual(["p"])
   })
 })
 

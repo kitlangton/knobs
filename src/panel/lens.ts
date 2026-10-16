@@ -4,39 +4,43 @@
 // glides. It's a soft wash with a hairline edge, drawn by the DOM (a div in the panel) or the GPU
 // overlay from the same frames.
 //
-// The shape is the target's live rect plus an offset that springs to zero (by duration, no
-// bounce), so at rest it sits exactly on its target however the panel scrolls or reflows, and a
-// retarget mid-flight keeps the shape where it's drawn and the speed it has.
+// The shape is the target's live rect and corners plus an offset that springs to zero (by
+// duration, no bounce), so at rest it sits exactly on its target (a row's own shape inside its
+// card, a card's own rounded rect) however the panel scrolls or reflows, and a retarget mid-flight
+// goes straight from where the shape is drawn, keeping its speed. A target that doesn't show (a
+// row under the pointer, say) gets no travel: the shape fades where it was.
 
 import { clamp, Roll } from "./motion.js"
 
-/** A rounded box in viewport px. */
+/** Corner radii: top left, top right, bottom right, bottom left. */
+export type LensCorners = [number, number, number, number]
+
+/** A box with its corners, in viewport px. */
 export interface LensBox {
   x: number
   y: number
   w: number
   h: number
-  r: number
+  r: LensCorners
 }
 
 export type LensLevel = "editor" | "row" | "card" | "panel"
 
 /**
- * One shape to draw: its box, how present it is (0–1), its wash and edge (shares of
- * --k-surface-hi and --k-line-hi) and the accent's tint while a scoped action lights it.
+ * One shape to draw: its box, how present it is (0–1), and its wash and edge (shares of
+ * --k-surface-hi and --k-line-hi).
  */
 export interface LensShape extends LensBox {
   alpha: number
   wash: number
   line: number
-  tint: number
 }
 
-/** The look, from the panel's `--k-lens-*` and `--k-armed-*` tokens (see the README). */
+/** The look, from the panel's `--k-lens-*` tokens (see the README). */
 export interface LensTune {
   /** The morph's duration (ms), a spring with no bounce. */
   ms: number
-  /** How much quicker the size settles than the position (width leads). */
+  /** How much quicker the size settles than the position (1: together). */
   lead: number
   /** The wash: a share of --k-surface-hi. */
   wash: number
@@ -48,22 +52,16 @@ export interface LensTune {
   inset: number
   /** The panel's shape sits this far inside its edge (px). */
   panelInset: number
-  /** How far a scoped action lights the shape: its wash and edge brighten, tinted by the accent. */
-  flash: number
-  /** How long that light takes to fade (ms). */
-  flashMs: number
 }
 
 export const LENS_DEFAULTS: LensTune = {
-  ms: 340,
-  lead: 1.25,
+  ms: 180,
+  lead: 1,
   wash: 0.9,
   line: 0.65,
   panelWash: 0.35,
-  inset: 2,
-  panelInset: 4,
-  flash: 1,
-  flashMs: 520,
+  inset: 0,
+  panelInset: 0,
 }
 
 const TUNE_PROPS: Record<keyof LensTune, string> = {
@@ -74,8 +72,6 @@ const TUNE_PROPS: Record<keyof LensTune, string> = {
   panelWash: "--k-lens-panel-wash",
   inset: "--k-lens-inset",
   panelInset: "--k-lens-panel-inset",
-  flash: "--k-lens-flash",
-  flashMs: "--k-lens-flash-ms",
 }
 
 export function readLensTune(style: CSSStyleDeclaration): LensTune {
@@ -86,12 +82,14 @@ export function readLensTune(style: CSSStyleDeclaration): LensTune {
   }
   out.ms = Math.max(0, out.ms)
   out.lead = Math.max(0.1, out.lead)
+  out.inset = Math.max(0, out.inset)
+  out.panelInset = Math.max(0, out.panelInset)
   return out
 }
 
 /**
  * Offsets that decay to zero on a critically damped spring (ω = 2π / duration), sampled by time:
- * x(t) = (x₀ + (v₀ + ωx₀)t)·e^(−ωt). Each channel has its own ω (the size's leads).
+ * x(t) = (x₀ + (v₀ + ωx₀)t)·e^(−ωt). Each channel has its own ω.
  */
 export class Glide {
   private x0: number[]
@@ -137,15 +135,44 @@ export class Glide {
 /** The ω for a spring that settles in `ms` with no bounce (knobs' mapping: ω = 2π / duration). */
 export const omegaOf = (ms: number) => (2 * Math.PI) / Math.max(0.001, ms / 1000)
 
-/** A scoped action's light at `t` ms: up at once (40 ms), then fading over `ms`. */
-export function flashAt(t: number, ms: number): number {
-  if (t < 0 || t >= ms) return 0
-  if (t < 40) return t / 40
-  const u = (t - 40) / Math.max(1, ms - 40)
-  return (1 - u) * (1 - u)
+/** A box as glide channels (x, y, w, h, then the four radii), and back. */
+export const boxChannels = (b: LensBox) => [b.x, b.y, b.w, b.h, ...b.r]
+export const boxPlus = (b: LensBox, d: readonly number[]): LensBox => ({
+  x: b.x + (d[0] ?? 0),
+  y: b.y + (d[1] ?? 0),
+  w: b.w + (d[2] ?? 0),
+  h: b.h + (d[3] ?? 0),
+  r: [0, 1, 2, 3].map((i) => Math.max(0, b.r[i]! + (d[4 + i] ?? 0))) as LensCorners,
+})
+const boxDiff = (a: LensBox, b: LensBox) => {
+  const x = boxChannels(a)
+  const y = boxChannels(b)
+  return x.map((v, i) => v - y[i]!)
 }
 
-const boxDiff = (a: LensBox, b: LensBox) => [a.x - b.x, a.y - b.y, a.w - b.w, a.h - b.h, a.r - b.r]
+/**
+ * The corners a box inside a rounded container shows: where one of its corners sits on the
+ * container's (within half a pixel), the container's radius there, else its own. A row in a card
+ * is square but for the card's corners it reaches; so is an editor's part.
+ */
+export function cornersWithin(
+  box: { left: number; top: number; right: number; bottom: number },
+  own: LensCorners,
+  outer?: { left: number; top: number; right: number; bottom: number; r: LensCorners },
+): LensCorners {
+  if (!outer) return own
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.5
+  const l = near(box.left, outer.left)
+  const r = near(box.right, outer.right)
+  const t = near(box.top, outer.top)
+  const b = near(box.bottom, outer.bottom)
+  return [
+    l && t ? Math.max(own[0], outer.r[0]) : own[0],
+    r && t ? Math.max(own[1], outer.r[1]) : own[1],
+    r && b ? Math.max(own[2], outer.r[2]) : own[2],
+    l && b ? Math.max(own[3], outer.r[3]) : own[3],
+  ]
+}
 
 export interface LensTarget {
   readonly el: HTMLElement
@@ -172,8 +199,6 @@ export interface Lens {
   /** Where focus is: a target, `null` to fade where it is, or "out" to grow out and fade. */
   set(target: LensTarget | null | "out"): void
   readonly target: LensTarget | null
-  /** Lights what a scoped action affected. */
-  flash(els: readonly HTMLElement[]): void
   /** The shapes to draw at `now` (viewport px). */
   frame(now: number): LensShape[]
   moving(now: number): boolean
@@ -186,12 +211,6 @@ export interface Lens {
 interface Ghost {
   target: LensTarget
   from: number
-  start: number
-}
-
-interface Flash {
-  el: HTMLElement
-  level: LensLevel
   start: number
 }
 
@@ -208,7 +227,8 @@ export function createLens(o: LensOptions): Lens {
   let tune = readLensTune(getComputedStyle(root))
   const omegas = () => {
     const w = omegaOf(tune.ms)
-    return [w, w, w * tune.lead, w * tune.lead, w * tune.lead]
+    const s = w * tune.lead
+    return [w, w, s, s, s, s, s, s]
   }
   const glide = new Glide(omegas())
   const alpha = new Roll(0)
@@ -216,11 +236,17 @@ export function createLens(o: LensOptions): Lens {
   let current: LensTarget | null = null
   let out = false
   let ghosts: Ghost[] = []
-  let flashes: Flash[] = []
 
-  const radiusOf = (el: Element) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0
-  const panelRadius = () =>
-    parseFloat(getComputedStyle(root).getPropertyValue("--kt-panel-radius")) || radiusOf(root)
+  const radiiOf = (el: Element): LensCorners => {
+    const cs = getComputedStyle(el)
+    return [
+      parseFloat(cs.borderTopLeftRadius) || 0,
+      parseFloat(cs.borderTopRightRadius) || 0,
+      parseFloat(cs.borderBottomRightRadius) || 0,
+      parseFloat(cs.borderBottomLeftRadius) || 0,
+    ]
+  }
+  const all = (r: number): LensCorners => [r, r, r, r]
   /** The panel's box: inside its edge, or on a page what shows under its header. */
   const panelBox = (inset: number): LensBox => {
     const r = root.getBoundingClientRect()
@@ -228,38 +254,45 @@ export function createLens(o: LensOptions): Lens {
       const top = Math.max(r.top, o.header?.getBoundingClientRect().bottom ?? 0)
       const bottom = Math.min(r.bottom, win?.innerHeight ?? r.bottom)
       const pad = 8 + inset
+      const radius = parseFloat(getComputedStyle(root).getPropertyValue("--kt-panel-radius")) || 0
       return {
         x: r.left + pad,
         y: top + pad,
         w: Math.max(0, r.width - pad * 2),
         h: Math.max(0, bottom - top - pad * 2),
-        r: Math.max(0, panelRadius()),
+        r: all(Math.max(0, radius)),
       }
     }
-    const edge = root.clientLeft
-    const k = edge + inset
+    // Inside the panel's border: its own corners, less the border and the inset.
+    const k = root.clientLeft + inset
     return {
       x: r.left + k,
       y: r.top + k,
       w: Math.max(0, r.width - k * 2),
       h: Math.max(0, r.height - k * 2),
-      r: Math.max(0, panelRadius() - k),
+      r: radiiOf(root).map((v) => Math.max(0, v - k)) as LensCorners,
     }
   }
   const measure = (t: LensTarget): LensBox => {
     if (t.level === "panel") return panelBox(tune.panelInset)
     const r = t.el.getBoundingClientRect()
     if (t.level === "card")
-      return { x: r.left, y: r.top, w: r.width, h: r.height, r: radiusOf(t.el) }
-    const k = Math.min(tune.inset, r.height / 4)
+      return { x: r.left, y: r.top, w: r.width, h: r.height, r: radiiOf(t.el) }
+    // A row (or an editor's part) as it shows: its own corners, rounded where it meets its card's.
     const card = t.el.closest<HTMLElement>(".knobs-card")
-    const cardR = card ? radiusOf(card) : 8
+    const cr = card?.getBoundingClientRect()
+    const corners = cornersWithin(
+      r,
+      radiiOf(t.el),
+      cr && { left: cr.left, top: cr.top, right: cr.right, bottom: cr.bottom, r: radiiOf(card!) },
+    )
+    const k = Math.min(tune.inset, r.height / 4)
     return {
       x: r.left + k,
       y: r.top + k,
       w: Math.max(0, r.width - k * 2),
       h: Math.max(0, r.height - k * 2),
-      r: Math.max(0, Math.min(cardR - k, (r.height - k * 2) / 2)),
+      r: corners.map((v) => Math.max(0, v - k)) as LensCorners,
     }
   }
   /** Where the shape heads: its target, or on the way out the panel's edge. */
@@ -267,28 +300,28 @@ export function createLens(o: LensOptions): Lens {
     if (out) return panelBox(0)
     return current?.el.isConnected ? measure(current) : undefined
   }
-  let last: { box: LensBox; at: number } | undefined
   const drawnAt = (now: number): { box: LensBox; v: number[] } | undefined => {
     const live = goal()
-    if (!live) return last ? { box: last.box, v: [0, 0, 0, 0, 0] } : undefined
+    if (!live) return undefined
     const { x, v } = glide.sample(now)
-    const box = {
-      x: live.x + x[0]!,
-      y: live.y + x[1]!,
-      w: live.w + x[2]!,
-      h: live.h + x[3]!,
-      r: live.r + x[4]!,
-    }
-    return { box, v }
+    return { box: boxPlus(live, x), v }
   }
   const visibleNow = () => (current && !out ? current.el.isConnected && o.shown(current) : false)
-  const fadeMs = () => (o.reduced() ? 160 : Math.min(220, tune.ms * 0.6))
+  const fadeMs = () => (o.reduced() ? 160 : Math.min(160, Math.max(90, tune.ms * 0.7)))
   const syncAlpha = (now: number) => {
     const next = visibleNow() ? 1 : 0
     if (next === alphaTarget) return
     alphaTarget = next
     // Out of the panel the shape fades as it grows, on the morph's own time.
-    alpha.set(next, out && !o.reduced() ? tune.ms * 0.9 : fadeMs(), now)
+    alpha.set(next, out && !o.reduced() ? tune.ms : fadeMs(), now)
+  }
+  /** The shape now showing fades where it is (no travel). */
+  const fadeHere = (now: number, shownAlpha: number) => {
+    if (current && !out && shownAlpha > 0.02)
+      ghosts.push({ target: current, from: shownAlpha, start: now })
+    alpha.snap(0)
+    alphaTarget = 0
+    glide.zero()
   }
 
   const set = (next: LensTarget | null | "out") => {
@@ -296,141 +329,71 @@ export function createLens(o: LensOptions): Lens {
     tune = readLensTune(getComputedStyle(root))
     const leaving = next === "out"
     const target = leaving || next === null ? null : next
-    if (
-      !leaving &&
-      target &&
-      current &&
-      !out &&
-      target.el === current.el &&
-      target.level === current.level
-    )
+    if (target && current && !out && target.el === current.el && target.level === current.level)
       return
     if (leaving && (out || !current)) return
     const shownAlpha = clamp(alpha.sample(now).position, 0, 1)
-    const was = drawnAt(now)
+    const was = shownAlpha > 0.02 ? drawnAt(now) : undefined
     const reduced = o.reduced()
     if (next === null) {
       // Focus is somewhere the lens doesn't mark (a header button, a tab): it fades in place.
-      if (was) last = { box: was.box, at: now }
-      if (current && shownAlpha > 0.02)
-        ghosts.push({ target: current, from: shownAlpha, start: now })
+      fadeHere(now, shownAlpha)
       current = null
       out = false
-      alpha.snap(0)
-      alphaTarget = 0
-      glide.zero()
-      return poke(0)
-    }
-    if (leaving && reduced) {
-      // Reduced motion: no growing out, it fades where it is.
-      if (current && shownAlpha > 0.02)
-        ghosts.push({ target: current, from: shownAlpha, start: now })
-      out = true
-      alpha.snap(0)
-      alphaTarget = 0
-      glide.zero()
       return poke(0)
     }
     if (leaving) {
+      if (reduced || !was) {
+        // No growing out under reduced motion (or with nothing showing): it fades where it is.
+        fadeHere(now, shownAlpha)
+      } else {
+        glide.set(boxDiff(was.box, panelBox(0)), was.v, now, omegas())
+      }
       out = true
-      const live = panelBox(0)
-      if (was && !reduced) glide.set(boxDiff(was.box, live), was.v, now, omegas())
-      else glide.zero()
       syncAlpha(now)
       return poke(0)
     }
-    out = false
-    const prev = current
-    current = target
     const live = measure(target!)
-    const travel = was && shownAlpha > 0.05 && !reduced
-    if (travel) glide.set(boxDiff(was!.box, live), was!.v, now, omegas())
-    else {
-      glide.zero()
-      // Reduced motion (or nothing showing): the old shape fades where it is, the new one in.
-      if (prev && shownAlpha > 0.02) ghosts.push({ target: prev, from: shownAlpha, start: now })
-      alpha.snap(0)
-      alphaTarget = 0
-    }
+    // Straight from where the shape is drawn to the new target, keeping its speed, but only
+    // when both show: a hidden target gets no travel, so nothing passes through other levels.
+    const travel = was && !out && !reduced && o.shown(target!)
+    if (travel) glide.set(boxDiff(was.box, live), was.v, now, omegas())
+    else fadeHere(now, shownAlpha)
+    out = false
+    current = target
     syncAlpha(now)
     observe()
     poke(0)
   }
 
-  const flash = (els: readonly HTMLElement[]) => {
-    const now = performance.now()
-    tune = readLensTune(getComputedStyle(root))
-    flashes = flashes.filter((f) => now - f.start < tune.flashMs)
-    for (const el of els.slice(0, 24)) {
-      const level: LensLevel =
-        el === root
-          ? "panel"
-          : el.classList.contains("knobs-card") || el.classList.contains("knobs-tile")
-            ? "card"
-            : "row"
-      flashes = flashes.filter((f) => f.el !== el)
-      flashes.push({ el, level, start: now })
-    }
-    poke(0)
-  }
-
-  /** A shape's look at `level`, lit `f` (0–1) by a scoped action. */
-  const look = (box: LensBox, level: LensLevel, a: number, f: number): LensShape => {
-    const wash = tune.wash * (level === "panel" ? tune.panelWash : 1)
-    const k = clamp(f * tune.flash, 0, 1)
-    return {
-      ...box,
-      alpha: a,
-      wash: wash + (1 - wash) * k,
-      line: tune.line + (1 - tune.line) * k,
-      tint: 0.16 * k,
-    }
-  }
+  /** A shape's look at `level`. */
+  const look = (box: LensBox, level: LensLevel, a: number): LensShape => ({
+    ...box,
+    alpha: a,
+    wash: tune.wash * (level === "panel" ? tune.panelWash : 1),
+    line: tune.line,
+  })
   const frame = (now: number): LensShape[] => {
     syncAlpha(now)
     const shapes: LensShape[] = []
     const a = clamp(alpha.sample(now).position, 0, 1)
-    const lit = (el: HTMLElement) => {
-      let f = 0
-      for (const fl of flashes)
-        if (fl.el === el) f = Math.max(f, flashAt(now - fl.start, tune.flashMs))
-      return f
-    }
-    const d = drawnAt(now)
-    const mainEl = current && !out ? current.el : null
-    if (d && a > 0.002) {
-      last = { box: d.box, at: now }
-      shapes.push(
-        look(d.box, out ? "panel" : (current?.level ?? "panel"), a, mainEl ? lit(mainEl) : 0),
-      )
-    }
+    const d = a > 0.002 ? drawnAt(now) : undefined
+    if (d) shapes.push(look(d.box, out ? "panel" : (current?.level ?? "panel"), a))
     const fade = fadeMs()
     ghosts = ghosts.filter((g) => now - g.start < fade && g.target.el.isConnected)
     for (const g of ghosts) {
       const k = 1 - (now - g.start) / fade
-      shapes.push(look(measure(g.target), g.target.level, g.from * k * k, 0))
-    }
-    flashes = flashes.filter((f) => now - f.start < tune.flashMs && f.el.isConnected)
-    for (const f of flashes) {
-      // The shape itself lights when it's on what was affected.
-      if (f.el === mainEl && a > 0.5) continue
-      const k = flashAt(now - f.start, tune.flashMs)
-      if (k <= 0.002) continue
-      const box = measure({ el: f.el, level: f.level })
-      shapes.push(look(box, f.level, k, k))
+      shapes.push(look(measure(g.target), g.target.level, g.from * k * k))
     }
     return shapes
   }
 
-  const moving = (now: number) =>
-    !glide.resting(now) ||
-    !alpha.resting(now) ||
-    ghosts.length > 0 ||
-    flashes.some((f) => now - f.start < tune.flashMs)
+  const moving = (now: number) => !glide.resting(now) || !alpha.resting(now) || ghosts.length > 0
 
   // ——— The DOM's shape: a div per shape, placed in the panel's own coordinates ———
   let raf = 0
   let followUntil = 0
+  const px = (v: number) => `${Math.max(0, v).toFixed(2)}px`
   const place = (node: HTMLElement, s: LensShape | undefined, origin: DOMRect) => {
     if (!s) {
       if (node.style.opacity !== "0") node.style.opacity = "0"
@@ -439,13 +402,12 @@ export function createLens(o: LensOptions): Lens {
     const x = s.x - origin.left - root.clientLeft + root.scrollLeft
     const y = s.y - origin.top - root.clientTop + root.scrollTop
     node.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`
-    node.style.width = `${Math.max(0, s.w).toFixed(2)}px`
-    node.style.height = `${Math.max(0, s.h).toFixed(2)}px`
-    node.style.borderRadius = `${Math.max(0, s.r).toFixed(2)}px`
+    node.style.width = px(s.w)
+    node.style.height = px(s.h)
+    node.style.borderRadius = s.r.map(px).join(" ")
     node.style.opacity = s.alpha.toFixed(3)
     node.style.setProperty("--kl-w", s.wash.toFixed(3))
     node.style.setProperty("--kl-l", s.line.toFixed(3))
-    node.style.setProperty("--kl-t", s.tint.toFixed(3))
   }
   const draw = (now: number) => {
     const shapes = frame(now)
@@ -503,7 +465,6 @@ export function createLens(o: LensOptions): Lens {
     get target() {
       return out ? null : current
     },
-    flash,
     frame,
     moving,
     tune: () => tune,

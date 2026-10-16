@@ -70,7 +70,6 @@ import {
   escapeTo,
   escTarget,
   scopeLabel,
-  scopeTargets,
   type CommandScope,
   type Crumb,
   type CrumbLevel,
@@ -3623,26 +3622,56 @@ function buildPanel<S extends Schema>(
     },
     true,
   )
-  /** Lights what a scoped command acts on (R, ⌥R, ⇧R): the selection, row, card or panel. */
-  const flashScope = (target: Node | null) => {
-    const r = rows[rowAt(target)]
-    lens.flash(
-      scopeTargets(scopeAt(target), {
-        selection: [...selected].map((i) => rows[i]?.row).filter((n): n is HTMLElement => !!n),
-        row: r ? (r.row.closest<HTMLElement>(".knobs-card > *") ?? r.row) : undefined,
-        card: cardOf(target) ?? undefined,
-        panel: root,
-      }),
-    )
-  }
-  /** Lights a group's card (G, ⌥G). */
-  const flashGroup = (group: string) => {
-    const card = [...root.querySelectorAll<HTMLElement>(page ? ".knobs-tile" : ".knobs-card")].find(
-      (c) => c.dataset.group === group,
-    )
-    if (card) lens.flash([card])
-  }
   let wasArmed = false
+  // The lens and the crumbs follow focus once it settles: focus changes in a frame count once,
+  // and while the pointer is down they wait for the click to finish (a press on a heading or the
+  // panel's own space lands focus on the panel, then the click moves it to the card), so the
+  // lens only ever goes straight to where focus ends up.
+  let pointerHeld = false
+  let lensFrame = 0
+  const syncLens = () => {
+    lensFrame = 0
+    const active = doc.activeElement
+    const target = lensTarget(active)
+    if (pointerHeld && target !== "out") return
+    if (jumpedTo && (target === "out" || target?.el !== jumpedTo)) jumpedTo = null
+    // A click elsewhere lets the lens fade where it is; Esc or Tab out grows it out of the panel.
+    lens.set(target === "out" && pointerOut ? null : target)
+    lens.poke()
+    if (crumbs) {
+      const trail = trailFor(target, active)
+      crumbs.set(trail, escTarget(trail, titleEl.textContent ?? ""))
+      if (!trail.length) crumbs.hint(false)
+    }
+  }
+  /** Focus left the panel by a press (not a key). */
+  let pointerOut = false
+  const queueLens = () => {
+    if (!lensFrame) lensFrame = win?.requestAnimationFrame(syncLens) ?? 0
+    if (!win) syncLens()
+  }
+  const onPress = (event: PointerEvent) => {
+    pointerHeld = true
+    pointerOut = !root.contains(event.target as Node)
+  }
+  const onRelease = () => {
+    if (!pointerHeld) return
+    // After the click that follows, which may move focus again.
+    setTimeout(() => {
+      pointerHeld = false
+      queueScope()
+    })
+  }
+  doc.addEventListener("pointerdown", onPress, true)
+  doc.addEventListener("pointerup", onRelease, true)
+  doc.addEventListener("pointercancel", onRelease, true)
+  root.addEventListener(
+    "keydown",
+    () => {
+      pointerOut = false
+    },
+    true,
+  )
   const syncScope = () => {
     const active = doc.activeElement
     const card = focusLevel(active) === "card" ? cardOf(active) : null
@@ -3652,21 +3681,13 @@ function buildPanel<S extends Schema>(
       scoped = card
       wakeGpu()
     }
-    const target = lensTarget(active)
-    if (jumpedTo && (target === "out" || target?.el !== jumpedTo)) jumpedTo = null
-    lens.set(target)
-    lens.poke()
-    const armed = target !== "out"
+    const armed = lensTarget(active) !== "out"
     if (armed !== wasArmed) {
       wasArmed = armed
       root.toggleAttribute("data-k-armed", armed)
       wakeGpu()
     }
-    if (crumbs) {
-      const trail = trailFor(target, active)
-      crumbs.set(trail, escTarget(trail, titleEl.textContent ?? ""))
-      if (!trail.length) crumbs.hint(false)
-    }
+    queueLens()
     if (!popover.hidden) describeScope()
     optionKeys.show(optionsAt(active))
   }
@@ -3814,13 +3835,8 @@ function buildPanel<S extends Schema>(
         !all && bound("mutate") && pressedAlt("group", event) ? focusedGroup(target) : undefined
       if (!all && !group) return
       event.preventDefault()
-      if (all) {
-        flashScope(target)
-        run(() => rollFrom(target, true))
-      } else if (group) {
-        flashGroup(group)
-        run(() => rerollGroup(group, true))
-      }
+      if (all) run(() => rollFrom(target, true))
+      else if (group) run(() => rerollGroup(group, true))
       return
     }
     if (hintCtrl.handleKey(event)) return
@@ -4018,13 +4034,11 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("resetAll", event)) {
       event.preventDefault()
-      flashScope(target)
       run(() => resetFrom(target))
       return
     }
     if (pressed("random", event)) {
       event.preventDefault()
-      flashScope(target)
       run(() => rollFrom(target, false))
       return
     }
@@ -4032,7 +4046,6 @@ function buildPanel<S extends Schema>(
       const group = focusedGroup(target)
       if (group) {
         event.preventDefault()
-        flashGroup(group)
         run(() => rerollGroup(group, false))
       }
       return
@@ -4776,6 +4789,10 @@ function buildPanel<S extends Schema>(
       modeObserver.disconnect()
       unregisterGpu?.()
       lens.dispose()
+      win?.cancelAnimationFrame(lensFrame)
+      doc.removeEventListener("pointerdown", onPress, true)
+      doc.removeEventListener("pointerup", onRelease, true)
+      doc.removeEventListener("pointercancel", onRelease, true)
       crumbs?.dispose()
       clearTimeout(escTimer)
       win?.removeEventListener("blur", queueScope)

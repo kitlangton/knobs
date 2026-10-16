@@ -35,20 +35,6 @@ export function scopeLabel(verb: string, scope: CommandScope): string {
   return `${verb} ${what}`
 }
 
-/**
- * What a scoped command acts on, as the focus lens flashes it: the selected rows, the focused
- * row, its card, or the whole panel.
- */
-export function scopeTargets<T>(
-  scope: CommandScope,
-  at: { readonly selection?: readonly T[]; readonly row?: T; readonly card?: T; readonly panel: T },
-): T[] {
-  if (scope === "selection") return at.selection?.length ? [...at.selection] : [at.panel]
-  if (scope === "row") return at.row !== undefined ? [at.row] : [at.panel]
-  if (scope === "group") return at.card !== undefined ? [at.card] : [at.panel]
-  return [at.panel]
-}
-
 /** A level below the panel that the header's crumbs name: a card, a row, an open editor's part. */
 export type CrumbLevel = "card" | "row" | "editor"
 

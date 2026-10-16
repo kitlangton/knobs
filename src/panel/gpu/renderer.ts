@@ -2476,27 +2476,23 @@ class GpuOverlayManager {
     return look
   }
 
-  /** The focus lens's shapes (lens.ts), as the DOM's `.knobs-lens`: a wash, a tint, a hairline. */
+  /** The focus lens's shapes (lens.ts), as the DOM's `.knobs-lens`: a wash and a hairline. */
   private drawLens(shapes: readonly LensShape[], clip: Clip) {
     const t = this.curTokens
     for (const s of shapes) {
       if (s.alpha <= 0.002 || s.w <= 0 || s.h <= 0) continue
-      const wash = withAlpha(t.surfaceHi, t.surfaceHi[3] * Math.min(1, s.wash))
-      const tint = withAlpha(t.accent, t.accent[3] * Math.min(1, s.tint))
-      // The tint lies over the wash, as the DOM's gradient over its background colour.
-      const a = tint[3] + wash[3] * (1 - tint[3])
-      const ch = (i: number) =>
-        a > 0 ? (tint[i]! * tint[3] + wash[i]! * wash[3] * (1 - tint[3])) / a : 0
-      this.shape({
+      // Its own corners (a row's square sides, its card's rounded ends) and an inner hairline.
+      this.pushPrim({
         x: s.x,
         y: s.y,
         w: s.w,
         h: s.h,
-        radius: Math.max(0, s.r),
-        fill: [ch(0), ch(1), ch(2), a * s.alpha],
-        ring: -this.hairline(t),
-        ringColor: withAlpha(t.lineHi, t.lineHi[3] * Math.min(1, s.line) * s.alpha),
         clip,
+        color: withAlpha(t.surfaceHi, t.surfaceHi[3] * Math.min(1, s.wash) * s.alpha),
+        color2: withAlpha(t.lineHi, t.lineHi[3] * Math.min(1, s.line) * s.alpha),
+        strokeWidth: this.hairline(t),
+        corners: s.r,
+        kind: 1,
       })
     }
   }
@@ -4110,7 +4106,7 @@ class GpuOverlayManager {
         this.placeBackdrop(panel, card, outerClip, cardRadius, glass * chrome, tokens.glassTone)
       // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
       const shadow = tokens.isLight ? 0.16 : 0.48
-      if (!pageB && chrome > 0.005 && armed > 0.002 && armedLook.glow > 0)
+      if (!pageB && chrome > 0.005 && armed > 0.002 && armedLook.glow > 0 && armedLook.glowA > 0)
         this.shape({
           x: card.left,
           y: card.top,
