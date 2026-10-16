@@ -214,6 +214,8 @@ export interface PanelThemeTokens {
   readonly thumb: Rgba
   /** How strongly small drop shadows show under thumbs and pills (--k-lift). */
   readonly lift: number
+  /** How dark the panel's drop shadow is (--k-shadow-strength): .48 on dark panels, .16 on light. */
+  readonly shadowStrength: number
 }
 
 /** A token as the panel shows it now: the gliding alias (see styles.ts), else the public value. */
@@ -432,6 +434,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     flat: style.getPropertyValue("--k-frame").trim() === "flat",
     thumb: colorProp(style, "thumb", [1, 1, 1, 1]),
     lift: Math.max(0, numProp(style, "lift", 1)),
+    shadowStrength: Math.max(0, numProp(style, "shadow-strength", isLight ? 0.16 : 0.48)),
   }
   if (version >= 0) tokenCache.set(panel, { version, tokens })
   return tokens

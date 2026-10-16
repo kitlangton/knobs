@@ -813,6 +813,7 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-radius`, `--k-panel-radius` | `8px` by density, radius + `4px` | Corners. `0` squares everything, the pill shapes (switches, handles, dots) included |
 | `--k-thumb` | `#fff` | Switch thumbs and strip handles |
 | `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
+| `--k-shadow-strength` | `.48` (light: `.16`) | How dark the WebGPU renderer draws the panel's drop shadow. Set it beside `--k-shadow` when you change that, so both renderers match (a host blending a dark look into a light one moves both together) |
 | `--k-frame` | `card` | `flat`: no card inside the host's own card (see below) |
 | `--k-disabled-opacity` | `.32` | How far a disabled row dims |
 | `--k-warn`, `--k-critical` | `#ff9f0a`, `#ff453a` (light: `#c56a00`, `#e0352b`) | Readouts' warning and critical colours (meters past `warn` / `critical`, log levels), and a destructive confirm |
