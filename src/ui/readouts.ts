@@ -15,7 +15,7 @@ import type {
   WatchField,
 } from "../core/schema.js"
 import { Spring } from "../core/spring.js"
-import { applyLook, injectUiStyles, type UiLook } from "./look.js"
+import { applyLook, injectUiStyles, reducedMotion, type UiLook } from "./look.js"
 import {
   EasedRange,
   fitRange,
@@ -161,8 +161,7 @@ export function paletteOf(el: HTMLElement, now = performance.now()): Palette {
   return p
 }
 
-const reduced = (doc: Document) =>
-  doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+const reduced = (doc: Document) => reducedMotion(doc.defaultView)
 
 function make(doc: Document) {
   return <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -779,7 +778,7 @@ function createGraph(env: ReadoutEnv): ReadoutView {
           font: "meta",
           align: "left",
         })
-        items.push(...k.value.texts(p, hoverAt >= 0 ? p.text : p.text))
+        items.push(...k.value.texts(p, p.text))
       }
       items.push({
         el: top,

@@ -31,7 +31,18 @@ export function parseCssColor(raw: string, fallback: Rgba = [1, 1, 1, 1]): Rgba 
       parseInt(full.slice(4, 6), 16) / 255,
       full.length === 8 ? parseInt(full.slice(6, 8), 16) / 255 : 1,
     ]
-  } else {
+  } else if (s.startsWith("rgb")) {
+    const nums = s.match(/[\d.]+/g)?.map(Number)
+    if (nums && nums.length >= 3) {
+      out = [
+        Math.min(1, Math.max(0, nums[0]! / 255)),
+        Math.min(1, Math.max(0, nums[1]! / 255)),
+        Math.min(1, Math.max(0, nums[2]! / 255)),
+        nums.length >= 4 ? Math.min(1, Math.max(0, nums[3]!)) : 1,
+      ]
+    }
+  }
+  if (!out) {
     const ctx = probeCtx()
     if (ctx) {
       ctx.clearRect(0, 0, 1, 1)
