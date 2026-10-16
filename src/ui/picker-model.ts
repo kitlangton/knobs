@@ -51,8 +51,8 @@ export function askPick(
 export const stillWanted = (ids: readonly string[], wanted: string | null): string | null =>
   wanted !== null && ids.includes(wanted) ? null : wanted
 
-/** The digit an option shows: its place, 1–9; none past the ninth. */
-export const pickDigit = (index: number): string => (index < 9 ? String(index + 1) : "")
+/** The number an option shows: its place, 1, 2, … 12 (only 1–9 are keys that pick). */
+export const pickDigit = (index: number): string => String(index + 1)
 
 /**
  * Whether a key event goes to the picker's digits: a bare 1–9 that nothing focused claimed (a

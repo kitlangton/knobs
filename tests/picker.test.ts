@@ -18,7 +18,10 @@ describe("option picker", () => {
     expect(digitPick(options, "4")).toBeUndefined()
     expect(digitPick(options, "0")).toBeUndefined()
     expect(pickDigit(0)).toBe("1")
-    expect(pickDigit(9)).toBe("")
+    // Every row is numbered; past 9 the number shows but no digit picks it.
+    expect(pickDigit(9)).toBe("10")
+    expect(pickDigit(11)).toBe("12")
+    expect(digitPick(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"], "1")).toBe("A")
   })
   test("↑/↓ step and stop at the ends; Home/End", () => {
     expect(stepPick(options, "A", "ArrowDown")).toBe("B")

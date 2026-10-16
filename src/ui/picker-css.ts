@@ -23,7 +23,9 @@ export const pickerCss = `
 .knobs-picker-head:focus-visible::before{opacity:1;background:var(--ku-wash-hi);transition-duration:0s}
 .knobs-picker-head>*{position:relative}
 .knobs-picker-option[data-selected] .knobs-picker-head{color:var(--ku-text)}
-.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:5px;background:var(--ku-surface);
+/* Every row is numbered (only 1–9 are keys): tabular digits in a column two digits wide, so the
+   names line up past the ninth. */
+.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;width:max(17px,calc(2ch + 6px));height:17px;padding:0;border-radius:5px;background:var(--ku-surface);
   color:var(--ku-dim);font:var(--ku-label-weight) calc(var(--ku-font-size) - 1.5px)/1 var(--ku-font);font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
 .knobs-picker-key:empty{visibility:hidden}
 .knobs-picker-option[data-selected] .knobs-picker-key{background:var(--ku-surface-hi);color:var(--ku-text)}
