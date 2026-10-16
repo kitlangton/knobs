@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest"
-import { claimsDigit, digitPick, keepPick, pickDigit, stepPick } from "../src/ui/picker-model"
+import {
+  cardTarget,
+  claimsDigit,
+  digitPick,
+  keepPick,
+  pickDigit,
+  stepPick,
+} from "../src/ui/picker-model"
 
 describe("option picker", () => {
   const options = ["A", "B", "C"]
@@ -39,5 +46,14 @@ describe("option picker", () => {
     expect(claimsDigit({ ...key, typing: true })).toBe(false)
     expect(claimsDigit({ ...key, shiftKey: true })).toBe(false)
     expect(claimsDigit({ ...key, key: "a" })).toBe(false)
+  })
+})
+
+describe("the card's target", () => {
+  test("below the earlier options with their bodies shut, as tall as head and body", () => {
+    // Clicking 2 from 1: 1's body is still open above, but the card aims past its head alone.
+    expect(cardTarget([32, 32, 32], 1, 153, 2)).toEqual({ y: 34, h: 185 })
+    expect(cardTarget([32, 32, 32], 0, 120, 2)).toEqual({ y: 0, h: 152 })
+    expect(cardTarget([32, 40, 32], 2, 0, 2, 4)).toEqual({ y: 80, h: 32 })
   })
 })

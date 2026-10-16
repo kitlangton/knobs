@@ -35,9 +35,12 @@ export const pickerCss = `
 .knobs-picker-option[data-chosen] .knobs-picker-check{opacity:1;scale:1;filter:none;transition:opacity .15s ease-out,scale var(--kp-snappy-ms) var(--kp-snappy),filter .15s ease-out}
 .knobs-picker-body{position:relative;overflow:visible}
 .knobs-picker-body[data-moving]{overflow:hidden}
-.knobs-picker-inner{padding:0 0 6px}
-/* A panel inside sheds its own card for the picker's, so nothing draws a card inside a card. */
-.knobs-picker-inner .knobs-panel.knobs-inline{--k-chrome:0}
+/* The picker insets its parameters itself (--k-picker-pad), whatever a panel's own pad: a panel
+   inside sheds its card and pad for the picker's, so nothing draws a card inside a card and no
+   heading sits at the card's edge. */
+.knobs-picker-inner{padding:var(--k-picker-pad,0 8px 8px)}
+.knobs-picker-inner:empty{padding:0}
+.knobs-picker-inner .knobs-panel.knobs-inline{--k-chrome:0;padding:0}
 .knobs-picker-empty{padding:8px var(--ku-inset);color:var(--ku-dim)}
 @media(prefers-reduced-motion:reduce){.knobs-picker :where(*,::before,::after){transition-duration:.15s!important;scale:none!important;filter:none!important}}
 `
