@@ -20,12 +20,14 @@ import {
 import type { CurveField, GradientField } from "../core/schema.js"
 import {
   colorStrips,
+  cycleKeys,
   expander,
   factory,
   gesture,
   measure,
   panPresets,
   plainKey,
+  presetChips as makePresetChips,
   reducedMotion,
   rgbCss,
   setPath,
@@ -60,59 +62,11 @@ const locked = (row: HTMLElement) => row.closest("[data-disabled],[data-readonly
 const hinting = (row: HTMLElement) => row.closest(".knobs-hinting") !== null
 const quiet = { preventScroll: true, focusVisible: false } as FocusOptions
 
-/** Named presets as chips in a radiogroup (the easing editor's look); ←/→ cycle them. */
-function presetChips(
+const presetChips = (
   c: RowContext<unknown>,
   names: readonly string[],
   choose: (i: number) => void,
-) {
-  const { el } = factory(c.doc)
-  const chips = el("div", "knobs-ease-chips knobs-ramp-chips")
-  chips.tabIndex = 0
-  chips.setAttribute("role", "radiogroup")
-  chips.setAttribute("aria-label", `${c.display} presets`)
-  const buttons = names.map((n, i) => {
-    const b = el("button", "knobs-ease-chip", n)
-    b.type = "button"
-    b.tabIndex = -1
-    b.setAttribute("role", "radio")
-    b.onclick = () => {
-      choose(i)
-      chips.focus(quiet)
-    }
-    return b
-  })
-  chips.append(...buttons)
-  const cycle = (dir: number) => {
-    if (!names.length) return
-    const i = buttons.findIndex((b) => b.getAttribute("aria-checked") === "true")
-    choose(i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length)
-  }
-  return {
-    el: chips,
-    buttons,
-    cycle,
-    check(i: number) {
-      for (const [j, b] of buttons.entries()) b.setAttribute("aria-checked", String(i === j))
-    },
-  }
-}
-
-/** ←/→ on `target` itself cycle the presets (a row's head, the chips). */
-function cycleKeys(
-  targets: readonly HTMLElement[],
-  row: HTMLElement,
-  cycle: (dir: number) => void,
-) {
-  for (const target of targets)
-    target.addEventListener("keydown", (event) => {
-      const dir = arrowOf(event)
-      if (!dir || event.target !== target || !plainKey(event) || event.altKey) return
-      event.preventDefault()
-      event.stopPropagation()
-      if (!locked(row)) cycle(dir)
-    })
-}
+) => makePresetChips(c, names, choose, "knobs-ease-chips knobs-ramp-chips")
 
 const stopRgb = (s: GradientStop) =>
   oklchToRgb(parseColor(s.color) ?? { l: 0, c: 0, h: 0 }) as [number, number, number]

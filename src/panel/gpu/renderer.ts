@@ -2734,13 +2734,7 @@ class GpuOverlayManager {
     })
   }
 
-  private drawEasing(
-    row: GpuEasingRow,
-    rRect: DOMRect,
-    cardClip: Clip,
-    rowAlpha: number,
-    clock: number,
-  ) {
+  private drawEasing(row: GpuEasingRow, rRect: DOMRect, cardClip: Clip, rowAlpha: number) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
     const { bodyClip: body } = this.drawHead(
@@ -2944,13 +2938,7 @@ class GpuOverlayManager {
     })
   }
 
-  private drawCurve(
-    row: GpuCurveRow,
-    rRect: DOMRect,
-    cardClip: Clip,
-    rowAlpha: number,
-    clock: number,
-  ) {
+  private drawCurve(row: GpuCurveRow, rRect: DOMRect, cardClip: Clip, rowAlpha: number) {
     const t = this.curTokens
     this.drawSeparator(row.row, rRect, cardClip)
     const { bodyClip: body } = this.drawHead(
@@ -5116,11 +5104,11 @@ class GpuOverlayManager {
         } else if (row.kind === "point") {
           this.drawPoint(row, rRect, cardClip, rowAlpha, clock)
         } else if (row.kind === "easing") {
-          this.drawEasing(row, rRect, cardClip, rowAlpha, clock)
+          this.drawEasing(row, rRect, cardClip, rowAlpha)
         } else if (row.kind === "gradient") {
           this.drawGradient(row, rRect, cardClip, rowAlpha, clock)
         } else if (row.kind === "curve") {
-          this.drawCurve(row, rRect, cardClip, rowAlpha, clock)
+          this.drawCurve(row, rRect, cardClip, rowAlpha)
         } else if (row.kind === "subhead") {
           this.drawRowHover(row.row, rRect, hovered)
           const lr = this.rectOf(row.labelEl)

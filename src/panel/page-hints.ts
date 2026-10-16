@@ -4,6 +4,7 @@
 // panels draw their own badges (in both renderers) and everything else shares one page layer.
 // The registry lives on the document, so copies of this module in separate bundles (knobs/panel,
 // knobs/ui) share it.
+import { isTypingTarget } from "../core/keys.js"
 import { assignHintCodes, type HintSpot, resolveHintCodes } from "./hints.js"
 
 /** Code letters, home row first: groups take the first letters, their targets the second. */
@@ -193,18 +194,7 @@ export function claimsHintKey(doc: Document, key: string) {
   return key === PAGE_HINT_KEY && Boolean(holder[KEY]?.listening)
 }
 
-export const isTyping = (target: EventTarget | null) => {
-  const el = target as HTMLElement | null
-  if (!el || typeof el.tagName !== "string") return false
-  const tag = el.tagName
-  if (tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true
-  return (
-    tag === "INPUT" &&
-    !["range", "checkbox", "radio", "button", "submit", "reset", "color"].includes(
-      (el as HTMLInputElement).type,
-    )
-  )
-}
+export const isTyping = isTypingTarget
 
 const PRESSABLE =
   "button,a[href],summary,[role=button],[role=tab],[role=radio],[role=switch],[role=checkbox],[role=menuitem],[role=option]"
