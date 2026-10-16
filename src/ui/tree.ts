@@ -779,6 +779,8 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   const typesAhead = (key: string, running: boolean) => {
     const rule = options.typeahead ?? true
     if (rule === false) return false
+    // A run starts on a letter or digit: punctuation (⇧1 is "!") is left to the page's shortcuts.
+    if (!(running && typed !== "") && !/^[\p{L}\p{N}]$/u.test(key)) return false
     if (!(running && typed !== "") && options.hints !== false && claimsHintKey(doc, key))
       return false
     return rule === true || (running && typed !== "") || rule(key)
