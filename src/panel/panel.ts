@@ -2836,13 +2836,24 @@ function buildPanel<S extends Schema>(
     node.isConnected && !node.closest("[hidden],[data-leaving]") && node.getClientRects().length > 0
   const hintCtrl = createHintController(doc, root, () => wakeGpu())
 
-  /** On a page, hints go to what's on screen below the header (and the header itself). */
+  /**
+   * Hints go to the header and to what shows below it: rows scrolled under a pinned header (or
+   * out of a bounded panel, or off a page's window) get none, so no badge lands on the title.
+   */
   const onScreen = (node: HTMLElement) => {
-    if (!page || header.contains(node)) return true
+    if (header.contains(node)) return true
     const r = node.getBoundingClientRect()
-    return (
-      r.bottom > header.getBoundingClientRect().bottom + 4 && r.top < (win?.innerHeight ?? 0) - 4
+    const head = header.getBoundingClientRect()
+    const box = page ? undefined : root.getBoundingClientRect()
+    const top = Math.max(
+      head.height > 0 ? head.bottom : Number.NEGATIVE_INFINITY,
+      box?.top ?? Number.NEGATIVE_INFINITY,
     )
+    const bottom = Math.min(
+      win?.innerHeight ?? Number.POSITIVE_INFINITY,
+      box?.bottom ?? Number.POSITIVE_INFINITY,
+    )
+    return r.bottom > top + 4 && r.top < bottom - 4
   }
   const win = doc.defaultView
   const collectHintTargets = (): HintTarget[] => {
