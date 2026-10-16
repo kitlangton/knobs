@@ -18,7 +18,20 @@
     <script>
       if (new URLSearchParams(location.search).get("theme") === "light")
         document.documentElement.dataset.theme = "light"
+      // The header knob's last look (site-look.ts), painted before anything else.
+      try {
+        const look = JSON.parse(localStorage.getItem("knobs-site-look") || "null")
+        if (look && typeof look.css === "string") {
+          document.documentElement.setAttribute("style", look.css)
+          document.documentElement.dataset.siteLook = ""
+          document.documentElement.dataset.theme = look.dark ? "dark" : "light"
+        }
+      } catch {}
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,100..900&family=JetBrains+Mono:wght@100..800&family=Unbounded:wght@200..900&display=block&text=knobsKNOBS" />
+    <link rel="stylesheet" href="./site-look.css" />
     <style>
       /* knobs' own look: the panels' palette, type and radii on a calm page. The page scrolls in
          .scroller, under a fixed top bar, so the WebGPU overlay clips panels at its edge. Nothing
@@ -83,13 +96,6 @@
       .page-keys > div { display: grid; grid-template-columns: 72px auto; align-items: center; gap: 10px; }
       .page-keys > div > span:first-child { display: inline-flex; gap: 3px; }
 
-      /* The hero (Swarm): always dark, in light mode too; below 900 px the panel sits under it. */
-      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
-      .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
-      .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
-      .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
-      .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
-      .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
 
       .cathead { margin: 72px 0 0; padding-bottom: 12px; color: var(--dim); font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
       .cathead:first-child { margin-top: 2px; }
@@ -137,11 +143,6 @@
       .chip.danger { color: #ff6b5e; }
       html[data-theme="light"] .chip.danger { color: #d63a2c; }
 
-      @media (max-width: 900px) {
-        .hero { height: auto; overflow: visible; padding-bottom: 20px; margin-bottom: 56px; }
-        .hero-stage { position: relative; height: 58vh; min-height: 360px; }
-        .hero-panel { position: static; width: auto; max-width: 420px; margin: 0 auto; padding: 0 16px; display: block; pointer-events: auto; }
-      }
       @media (max-width: 1040px) {
         .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 24px 140px; }
         .index { display: none; }
@@ -160,10 +161,16 @@
   <body>
     <div class="app">
       <div class="scroller" id="scroller">
-        <header class="hero" id="hero" data-own-look>
-          <div class="hero-stage"></div>
-          <div class="hero-title"><h1>knobs</h1></div>
-          <div class="hero-panel"></div>
+        <header class="masthead" id="hero">
+          <h1 class="mast-title">
+            <span class="sr">knobs</span>
+            <span class="mast-ink" aria-hidden="true"><span data-font="sans">knobs</span><span data-font="serif">knobs</span><span data-font="mono">knobs</span><span data-font="wide">knobs</span></span>
+          </h1>
+          <div class="mast-copy">
+            <p class="mast-sub">Really pretty knobs for any page. Keyboard-first, with presets, random and locks. Turn this one: it runs the page.</p>
+            <p class="mast-now" id="look-now"></p>
+          </div>
+          <div class="mast-knob" id="look"></div>
         </header>
         <div class="layout">
           <nav class="index" id="index" aria-label="Sections"></nav>

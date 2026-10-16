@@ -4105,7 +4105,7 @@ class GpuOverlayManager {
       if (!pageB)
         this.placeBackdrop(panel, card, outerClip, cardRadius, glass * chrome, tokens.glassTone)
       // At the chip end the card wears the chip's look: opaque, with its 0 4px 16px shadow.
-      const shadow = tokens.isLight ? 0.16 : 0.48
+      const shadow = tokens.shadowStrength
       if (!pageB && chrome > 0.005 && armed > 0.002 && armedLook.glow > 0 && armedLook.glowA > 0)
         this.shape({
           x: card.left,

@@ -1,5 +1,5 @@
-// knobs' home page: every control, down one scrolling page. A hero first (Swarm: a GPU flock read by
-// a tactical display and steered by the panel beside it, hero-swarm.ts); then a few scenes, each one panel of several
+// knobs' home page: every control, down one scrolling page. A header first, whose panel runs the
+// page itself (site-look.ts); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
@@ -72,12 +72,12 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
-import { mountHeroSwarm } from "./hero-swarm"
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
 import skyWgsl from "./controls-sky.wgsl?raw"
 import { uiSections } from "./controls-ui"
+import { mountSiteLook } from "./site-look"
 import { speakerToggle } from "./sound-toggle"
 
 await initGpu()
@@ -300,10 +300,6 @@ export interface SceneKit {
 }
 const kit: SceneKit = { section, define, mount, h, theme: () => theme }
 
-// ── Hero ─────────────────────────────────────────────────────────────────────────────────────
-
-mountHeroSwarm(document.getElementById("hero")!)
-
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
 category("Scenes")
@@ -515,6 +511,14 @@ motionScene(kit)
     inkTo = rgbaOf(getComputedStyle(s.stage).color)
     ink.snap(0).to(1, "calm")
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+  // The header knob moves the page's colours every frame (site-look.ts): the stage follows them
+  // exactly, from the look itself rather than restyling the page to read them.
+  document.addEventListener("site-look", (e) => {
+    const { page, surface, text } = (e as CustomEvent<Record<string, typeof inkTo>>).detail
+    bgFrom = bgTo = [0, 1, 2].map((j) => page![j]! + (surface![j]! - page![j]!) * surface![3]!)
+    inkFrom = inkTo = text!
+    ink.snap(1)
+  })
   let count = 0
   on((v, how) => {
     const r0 = v.size / 2
@@ -1413,7 +1417,7 @@ function setTheme(next: "dark" | "light") {
   syncThemeButton()
   syncRendererLinks()
 }
-themeButton.addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"))
+themeButton.addEventListener("click", () => look.toggle())
 syncThemeButton()
 speakerToggle(document.getElementById("sound") as HTMLButtonElement)
 
@@ -1431,6 +1435,15 @@ function syncRendererLinks() {
   gpuLink.setAttribute("aria-checked", String(gpu))
 }
 syncRendererLinks()
+
+// The header's panel: the whole page's settings. The top bar's toggle glides its theme to the
+// nearest one of the other polarity, and crossing between light and dark restyles as the toggle did.
+const look = mountSiteLook({
+  slot: document.getElementById("look")!,
+  title: document.querySelector<HTMLElement>(".mast-ink"),
+  panel: panelOptions(),
+  onPolarity: (dark) => setTheme(dark ? "dark" : "light"),
+})
 
 // The side index and the narrow strip, following the scroll.
 const index = document.getElementById("index")!
@@ -1651,8 +1664,8 @@ const commands = (): Command[] => [
     id: "page/theme",
     label: theme === "dark" ? "Light appearance" : "Dark appearance",
     section: "Page",
-    keywords: ["theme", "dark", "light"],
-    run: () => setTheme(theme === "dark" ? "light" : "dark"),
+    keywords: ["theme", "dark", "light", "look"],
+    run: () => look.toggle(),
   },
   {
     id: "page/toggle",
@@ -1680,4 +1693,4 @@ const palette = commandPalette({
 })
 document.getElementById("palette")!.addEventListener("click", () => palette.open())
 
-Object.assign(window, { __catalog: { stores, panels, palette, toast, live } })
+Object.assign(window, { __catalog: { stores, panels, palette, toast, live, look } })
