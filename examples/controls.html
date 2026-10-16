@@ -68,29 +68,31 @@
       .index a.on { background: var(--surface); color: var(--text); font-weight: 500; }
       .index a:focus-visible, .strip a:focus-visible, .top .seg a:focus-visible { background: var(--surface-hi); color: var(--text); }
 
-      /* The hero: the dial full width under the top bar, its knobs in the corners. */
-      .hero { position: relative; height: clamp(520px, 78vh, 980px); margin-bottom: 96px; overflow: hidden; }
-      .hero-stage { position: absolute; inset: 0; background: var(--page); user-select: none; -webkit-user-select: none; }
-      .hero-title { position: absolute; left: 0; right: 0; top: 30px; text-align: center; pointer-events: none; }
-      .hero-title h1 { margin: 0; font: 600 24px/1.2 var(--sans); letter-spacing: -.02em; }
-      .hero-title p { margin: 4px 0 0; color: var(--label); font-size: 13.5px; }
-      .hero-knobs { position: absolute; width: 256px; }
-      .hero-knobs .knobs-panel { --k-width: 100%; }
-      .hero-knobs.tl { left: 28px; top: 28px; }
-      .hero-knobs.tr { right: 28px; top: 28px; }
-      .hero-knobs.bl { left: 28px; bottom: 28px; }
-      .hero-knobs.br { right: 28px; bottom: 28px; }
-      /* Without WebGPU: the same dial in CSS. */
-      .hero-css .hero-glow { position: absolute; inset: 0; }
-      .hero-css .hero-dial { position: absolute; border-radius: 50%; overflow: hidden; box-shadow: 0 18px 40px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .25); }
-      .hero-css .hero-dial i { position: absolute; inset: 0; border-radius: 50%; }
-      .hero-css .hero-glass { background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .34), rgba(255, 255, 255, .06) 46%, rgba(255, 255, 255, .02) 70%), radial-gradient(circle, transparent 80%, rgba(255, 255, 255, .22) 92%, rgba(255, 255, 255, .05)); -webkit-backdrop-filter: blur(6px) saturate(1.5); backdrop-filter: blur(6px) saturate(1.5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
-      .hero-css .hero-metal { background: radial-gradient(circle, transparent 82%, rgba(255, 255, 255, .28) 90%, rgba(0, 0, 0, .25)), conic-gradient(from var(--light), #f2f3f6, #8d9096 7%, #6c6f75 25%, #8d9096 43%, #f2f3f6 50%, #8d9096 57%, #6c6f75 75%, #8d9096 93%, #f2f3f6); }
-      .hero-css .hero-obsidian { background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .22), transparent 40%), radial-gradient(circle, #121214 80%, #2a2a2e 94%, #0a0a0b); }
-      .hero-css .hero-turn { position: absolute; inset: 0; }
-      .hero-css .hero-bead { position: absolute; left: calc(50% - 6%); top: calc(18% - 6%); width: 12%; height: 12%; border-radius: 50%; box-shadow: 0 0 14px var(--a); }
-      .hero-css .hero-tick { position: absolute; left: -1px; top: 0; width: 2px; height: 14px; margin-top: -7px; border-radius: 1px; background: var(--faint); }
-      .hero-css .hero-tick.major { height: 20px; margin-top: -10px; }
+      /* The hero: hardware twins in the dark, always dark (in light mode too), its panel floating
+         over the plate's right edge; below 900 px the panel sits under the plate. */
+      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 96px; overflow: hidden; background: #101012; color: rgba(255, 255, 255, .9); }
+      .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+      .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
+      .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
+      .hero-wires { position: absolute; inset: 0; pointer-events: none; }
+      .hero-wires svg { width: 100%; height: 100%; overflow: visible; }
+      .hero-wires path { fill: none; stroke: currentColor; stroke-width: 1; }
+      .hero-wires path.halo { stroke-width: 4; stroke-linecap: round; }
+      .hero-wires circle { fill: currentColor; }
+      .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
+      .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
+      /* Without WebGPU: a CSS still of the plate. */
+      .hero-css .hero-spot { position: absolute; inset: 0; }
+      .hero-css .hero-plate { position: absolute; border-radius: 22px; background: radial-gradient(120% 90% at 40% 35%, #26262a, #121214 70%); box-shadow: 0 30px 60px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .06); }
+      .hero-css .hero-knob { position: absolute; border-radius: 50%; background: radial-gradient(circle at 40% 30%, #2c2c30, #0e0e10 70%); box-shadow: 0 10px 24px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .05); }
+      .hero-css .hero-knob i { position: absolute; inset: 0; }
+      .hero-css .hero-keyLight i::after { content: ""; position: absolute; left: calc(50% - 1px); top: 12%; width: 2px; height: 24%; border-radius: 1px; background: rgba(255, 255, 255, .7); }
+      .hero-css .hero-keyLight { box-shadow: 0 10px 24px rgba(0, 0, 0, .6), 0 0 0 10px rgba(0, 0, 0, .25), 0 0 calc(18px * var(--leds)) color-mix(in oklab, var(--accent) calc(var(--leds) * 70%), transparent); }
+      .hero-css .hero-accent { background: radial-gradient(circle, transparent 62%, #0e0e10 66%), conic-gradient(from 0deg, #ff6b6b, #ffd36b, #8cff6b, #6bdcff, #8b6bff, #ff6bd8, #ff6b6b); }
+      .hero-css .hero-leds { transform: scale(.7); }
+      .hero-css .hero-leds.on { box-shadow: 0 10px 24px rgba(0, 0, 0, .6), 0 -14px 10px -10px var(--accent); }
+      .hero-css .hero-fader { position: absolute; width: 6px; border-radius: 3px; background: color-mix(in oklab, var(--accent) calc(var(--leds) * 60%), #050506); }
+      .hero-css .hero-fader i { position: absolute; left: -14px; width: 34px; height: 18px; margin-top: -9px; border-radius: 4px; background: #1c1c1f; box-shadow: 0 6px 12px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .08); }
 
       .cathead { margin: 72px 0 0; padding-bottom: 12px; color: var(--dim); font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
       .cathead:first-of-type { margin-top: 40px; }
@@ -133,11 +135,10 @@
       html[data-theme="light"] .chip.danger { color: #d63a2c; }
 
       @media (max-width: 900px) {
-        .hero { height: auto; margin-bottom: 56px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 16px; overflow: visible; }
-        .hero-stage { position: relative; grid-column: 1 / -1; height: 62vh; min-height: 380px; margin: 0 -16px; overflow: hidden; }
-        .hero-knobs { position: static; width: auto; }
+        .hero { height: auto; overflow: visible; padding-bottom: 20px; margin-bottom: 56px; }
+        .hero-stage { position: relative; height: 58vh; min-height: 360px; }
+        .hero-panel { position: static; width: auto; max-width: 420px; margin: 0 auto; padding: 0 16px; display: block; pointer-events: auto; }
       }
-      @media (max-width: 560px) { .hero { grid-template-columns: minmax(0, 1fr); } }
       @media (max-width: 1040px) {
         .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 24px 140px; }
         .index { display: none; }
@@ -156,13 +157,10 @@
   <body>
     <div class="app">
       <div class="scroller" id="scroller">
-        <header class="hero" id="hero">
+        <header class="hero" id="hero" data-own-look>
           <div class="hero-stage"></div>
-          <div class="hero-title"><h1>knobs</h1><p>Every kind of control, each one driving something live.</p></div>
-          <div class="hero-knobs tl" data-hero="dial"></div>
-          <div class="hero-knobs bl" data-hero="material"></div>
-          <div class="hero-knobs tr" data-hero="field"></div>
-          <div class="hero-knobs br" data-hero="light"></div>
+          <div class="hero-title"><h1>knobs</h1></div>
+          <div class="hero-panel"></div>
         </header>
         <div class="layout">
           <nav class="index" id="index" aria-label="Sections"></nav>
