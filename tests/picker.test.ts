@@ -5,6 +5,7 @@ import {
   digitPick,
   keepPick,
   pickDigit,
+  settleHeight,
   stepPick,
 } from "../src/ui/picker-model"
 
@@ -55,5 +56,18 @@ describe("the card's target", () => {
     expect(cardTarget([32, 32, 32], 1, 153, 2)).toEqual({ y: 34, h: 185 })
     expect(cardTarget([32, 32, 32], 0, 120, 2)).toEqual({ y: 0, h: 152 })
     expect(cardTarget([32, 40, 32], 2, 0, 2, 4)).toEqual({ y: 80, h: 32 })
+  })
+  test("a body not yet measured (a panel's first mount) gives no target: the card holds", () => {
+    expect(cardTarget([32, 32, 32], 1, undefined, 2)).toBeNull()
+    // Once it has measured, the same target as every later visit: no dip in height.
+    expect(cardTarget([32, 32, 32], 1, 123, 2)).toEqual({ y: 34, h: 155 })
+  })
+  test("a first mount's height settles once two frames agree, or after the limit", () => {
+    expect(settleHeight(undefined, 0, 1)).toBeUndefined()
+    expect(settleHeight(0, 96, 1)).toBeUndefined()
+    expect(settleHeight(96, 123, 2)).toBeUndefined()
+    expect(settleHeight(123, 123, 3)).toBe(123)
+    expect(settleHeight(0, 0, 1)).toBe(0)
+    expect(settleHeight(100, 140, 6)).toBe(140)
   })
 })
