@@ -28,6 +28,15 @@ export const pickerCss = `
 .knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;width:max(17px,calc(2ch + 6px));height:17px;padding:0;border-radius:5px;background:var(--ku-surface);
   color:var(--ku-dim);font:var(--ku-label-weight) calc(var(--ku-font-size) - 1.5px)/1 var(--ku-font);font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
 .knobs-picker-key:empty{visibility:hidden}
+/* An option's picture: cover-fit, the rows' corner language and a hairline drawn over it. Its
+   space is kept while it loads (nothing drawn), it fades in once loaded, and one that fails
+   gives its space back on the same ease. */
+.knobs-picker-thumb{flex:none;display:block;width:var(--k-picker-thumb,min(24px,calc(var(--ku-row) - 10px)));aspect-ratio:1;margin:0;border-radius:max(3px,calc(var(--ku-radius) - 2px));
+  object-fit:cover;background:none;outline:1px solid var(--ku-line);outline-offset:-1px;opacity:0;
+  transition:opacity .2s ease-out,width .18s ease-out,margin .18s ease-out}
+.knobs-picker-thumb[data-state="loaded"]{opacity:1}
+.knobs-picker-thumb[data-instant]{transition:none}
+.knobs-picker-thumb[data-state="failed"]{width:0;margin-right:-8px;outline-color:transparent}
 .knobs-picker-option[data-selected] .knobs-picker-key{background:var(--ku-surface-hi);color:var(--ku-text)}
 .knobs-picker-name{flex:1;min-width:0;overflow:hidden;white-space:nowrap;font-weight:var(--ku-label-weight)}
 .knobs-picker-suggested{flex:none;color:var(--ku-dim);font-size:var(--ku-text-meta)}

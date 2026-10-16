@@ -409,6 +409,24 @@ export function uiSections({
       { id: "planes", label: "Stacked Planes", schema: {} },
     ]
     const stores = new Map(variants.map((v) => [v.id, define(`picker-${v.id}`, v.label, v.schema)]))
+    // A small picture per option (inline SVG gradients here; any image URL in a real app).
+    const thumb = (hue: number) =>
+      `data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="hsl(${hue} 80% 62%)"/><stop offset="1" stop-color="hsl(${hue + 50} 70% 38%)"/></linearGradient></defs><rect width="48" height="48" fill="url(#g)"/><circle cx="30" cy="20" r="9" fill="#fff" fill-opacity=".35"/></svg>`,
+      )}`
+    const base = variants.map(({ id, label, suggested }, i) => ({
+      id,
+      label,
+      suggested,
+      thumb: thumb(200 + i * 37),
+    }))
+    // Past nine every row still shows its number (digits pick 1–9).
+    const extra = Array.from({ length: 7 }, (_, i) => ({
+      id: `more-${i}`,
+      label: `Variant ${i + 6}`,
+      thumb: thumb(20 + i * 29),
+    }))
+    let many = false
     const stage = s.stage
     const tile = h("div")
     tile.style.cssText =
@@ -431,7 +449,7 @@ export function uiSections({
     const picker = optionPicker(s.slot, {
       theme: theme(),
       label: "Options",
-      options: variants.map(({ id, label, suggested }) => ({ id, label, suggested })),
+      options: base,
       selected: current,
       onSelect: (id) => {
         current = id
@@ -459,6 +477,15 @@ export function uiSections({
         chosen = picker.selected
         picker.choose(chosen)
         paint()
+      },
+      "",
+    )
+    chip(
+      row,
+      "12 options",
+      () => {
+        many = !many
+        picker.set(many ? [...base, ...extra] : base)
       },
       "",
     )
