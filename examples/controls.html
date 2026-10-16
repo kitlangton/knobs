@@ -78,43 +78,13 @@
       .index a.on { background: var(--surface); color: var(--text); font-weight: 500; }
       .index a:focus-visible, .strip a:focus-visible, .top .seg a:focus-visible { background: var(--surface-hi); color: var(--text); }
 
-      /* The hero: hardware twins in the dark, always dark (in light mode too), its panel floating
-         over the plate's right edge; below 900 px the panel sits under the plate. */
+      /* The hero (Swarm): always dark, in light mode too; below 900 px the panel sits under it. */
       .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
       .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
       .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
       .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
-      .hero-wires { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; }
-      .hero-wires svg { width: 100%; height: 100%; overflow: visible; }
-      .hero-wires path { fill: none; stroke: currentColor; stroke-width: .75; stroke-linecap: round; }
-      .hero-wires path.halo { stroke-width: 5; filter: blur(2.5px); }
-      .hero-wires circle { fill: currentColor; }
-      .hero-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-      .hero-hud div { position: absolute; left: 0; top: 0; font: 500 9.5px/1 var(--mono); letter-spacing: .16em; white-space: nowrap; opacity: .8; text-shadow: 0 0 8px currentColor; }
-      .hero-variant { position: absolute; left: 24px; top: 22px; display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgba(255, 255, 255, .04); }
-      .hero-variant button { font: 500 11px/1 var(--sans); color: rgba(255, 255, 255, .45); background: none; border: 0; padding: 6px 10px; border-radius: 6px; cursor: pointer; transition: color .15s var(--ease), background-color .15s var(--ease); }
-      .hero-variant button:hover { color: rgba(255, 255, 255, .75); }
-      .hero-variant button[aria-pressed="true"] { color: rgba(255, 255, 255, .9); background: rgba(255, 255, 255, .08); }
-      .hero-variant button:focus-visible { outline: 1.5px solid rgba(255, 255, 255, .5); outline-offset: 1px; }
-      .hero-variant { z-index: 2; }
-      /* A simulation hero, in a layer of its own over the twins, crossfading in and out. */
-      .hero-alt { position: absolute; inset: 0; z-index: 1; overflow: hidden; background: var(--night); opacity: 0; transition: opacity .7s var(--ease); }
-      .hero-alt.on { opacity: 1; }
-      @media (max-width: 900px) { .hero-variant .alt, .hero-alt { display: none; } }
-      @media (prefers-reduced-motion: reduce) { .hero-alt { transition-duration: .2s; } }
       .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
       .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
-      /* Without WebGPU: a CSS still of the plate. */
-      .hero-css .hero-spot { position: absolute; inset: 0; }
-      .hero-css .hero-knob { position: absolute; border-radius: 50%; background: radial-gradient(circle at 40% 30%, #2c2c30, #0e0e10 70%); box-shadow: 0 10px 24px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .05); }
-      .hero-css .hero-knob i { position: absolute; inset: 0; }
-      .hero-css .hero-keyLight i::after { content: ""; position: absolute; left: calc(50% - 1px); top: 12%; width: 2px; height: 24%; border-radius: 1px; background: rgba(255, 255, 255, .7); }
-      .hero-css .hero-keyLight { box-shadow: 0 10px 24px rgba(0, 0, 0, .6), 0 0 0 10px rgba(0, 0, 0, .25), 0 0 calc(18px * var(--leds)) color-mix(in oklab, var(--accent) calc(var(--leds) * 70%), transparent); }
-      .hero-css .hero-accent { background: radial-gradient(circle, transparent 62%, #0e0e10 66%), conic-gradient(from 0deg, #ff6b6b, #ffd36b, #8cff6b, #6bdcff, #8b6bff, #ff6bd8, #ff6b6b); }
-      .hero-css .hero-leds { transform: scale(.7); }
-      .hero-css .hero-leds.on { box-shadow: 0 10px 24px rgba(0, 0, 0, .6), 0 -14px 10px -10px var(--accent); }
-      .hero-css .hero-fader { position: absolute; width: 6px; border-radius: 3px; background: color-mix(in oklab, var(--accent) calc(var(--leds) * 60%), #050506); }
-      .hero-css .hero-fader i { position: absolute; left: -14px; width: 34px; height: 18px; margin-top: -9px; border-radius: 4px; background: #1c1c1f; box-shadow: 0 6px 12px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .08); }
 
       .cathead { margin: 72px 0 0; padding-bottom: 12px; color: var(--dim); font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
       .cathead:first-child { margin-top: 2px; }

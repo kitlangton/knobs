@@ -1,5 +1,5 @@
-// knobs' home page: every control, down one scrolling page. A hero first (hardware twins: a lit
-// faceplate whose controls mirror the panel floating over it); then a few scenes, each one panel of several
+// knobs' home page: every control, down one scrolling page. A hero first (Swarm: a GPU flock read by
+// a tactical display and steered by the panel beside it, hero-swarm.ts); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
@@ -70,7 +70,7 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
-import { heroScene } from "./controls-hero"
+import { mountHeroSwarm } from "./hero-swarm"
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
@@ -300,7 +300,7 @@ const kit: SceneKit = { section, define, mount, h, theme: () => theme }
 
 // ── Hero ─────────────────────────────────────────────────────────────────────────────────────
 
-heroScene(kit, document.getElementById("hero")!)
+mountHeroSwarm(document.getElementById("hero")!)
 
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
