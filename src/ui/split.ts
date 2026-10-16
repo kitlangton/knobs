@@ -286,7 +286,10 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     inner.append(body)
     clip.append(inner)
     el.append(clip)
-    if (spec.scroll ?? spec.title !== undefined) el.dataset.scroll = ""
+    if (spec.scroll ?? spec.title !== undefined) {
+      el.dataset.scroll = ""
+      body.classList.add("knobs-scroll-fade")
+    }
     if (spec.element) body.append(spec.element)
     // A rail stands in for a collapsed pane, unless a header in a column does.
     if (spec.collapsible && (row || !view.head)) {
@@ -429,13 +432,16 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     v.faces = foldFaces(v.faces, p)
     const m = marginOf(v)
     const settled = !springs.has(id)
+    // Folded and still, the content is hidden (visibility) rather than faded: no opacity left on
+    // it, which would make a stacking context that sends a panel mounted inside to the DOM.
+    const content = isCollapsed && settled ? 1 : v.faces.content
     // The fading face gets a layer of its own while it moves, so the fade doesn't repaint it.
     put(v.rail ? v.inner : v.body, "will-change", v.folding ? "opacity, filter" : "")
     if (!v.rail) {
       // A column's dock folds to its header: the header stays, the body fades.
       put(v.inner, "height", folding ? `${open - m * 2}px` : "")
       put(v.inner, "bottom", folding ? "auto" : "")
-      fade(v.body, v.faces.content, CONTENT_BLUR)
+      fade(v.body, content, CONTENT_BLUR)
       if (v.toggleIcon)
         put(v.toggleIcon as SVGElement, "transform", p ? `rotate(${(-90 * p).toFixed(2)}deg)` : "")
       hide(v.body, isCollapsed && settled)
@@ -445,7 +451,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     put(v.inner, row ? "width" : "height", folding ? `${open - m * 2}px` : "")
     put(v.inner, side, folding ? "0" : "")
     put(v.inner, far, folding ? "auto" : "")
-    fade(v.inner, v.faces.content, CONTENT_BLUR)
+    fade(v.inner, content, CONTENT_BLUR)
     hide(v.clip, isCollapsed && settled)
     // The chevron stands in for the header's collapse icon when there's one to morph from.
     const morph = row && Boolean(v.toggleIcon) && !v.el.hasAttribute("data-nested")

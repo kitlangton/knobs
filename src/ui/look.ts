@@ -115,6 +115,28 @@ const css = `
 :is(.knobs-tree,.knobs-split>.knobs-pane>.knobs-pane-clip>.knobs-pane-inner>.knobs-pane-head) [hidden]{display:none!important}
 :is(.knobs-pane-head,.knobs-pane-rail,.knobs-tree) svg{display:block;flex:none}
 
+/* Scroll fades: a scroller's content fades out over --knobs-fade at an edge with more beyond it,
+   coming in over the first --knobs-fade-travel of scroll, so reaching an end never pops. They're
+   scroll-driven (no script), so where those aren't supported there's no fade. --knobs-fade-inset
+   starts the top one below a sticky header; .knobs-scroll-fade-x fades across instead (a single
+   line that's cut off, like a tree's labels: no ellipsis). Pane bodies, trees and the palette's
+   list carry the class; around a panel the GPU draws, the mask goes (it would trap the panel's
+   overlays under it). */
+@property --knobs-fade-a{syntax:"<number>";inherits:false;initial-value:1}
+@property --knobs-fade-b{syntax:"<number>";inherits:false;initial-value:1}
+@keyframes knobs-fade-a{from{--knobs-fade-a:1}to{--knobs-fade-a:0}}
+@keyframes knobs-fade-b{from{--knobs-fade-b:0}to{--knobs-fade-b:1}}
+@supports (animation-timeline:scroll()){
+  :is(.knobs-scroll-fade,.knobs-scroll-fade-x){--knobs-fade:20px;--knobs-fade-travel:24px;animation:knobs-fade-a linear both,knobs-fade-b linear both;animation-duration:auto;
+    animation-timeline:scroll(self block),scroll(self block);animation-range:0 var(--knobs-fade-travel),calc(100% - var(--knobs-fade-travel)) 100%}
+  .knobs-scroll-fade{--knobs-fade-mask:linear-gradient(to bottom,#000 var(--knobs-fade-inset,0px),rgb(0 0 0/var(--knobs-fade-a)) var(--knobs-fade-inset,0px),#000 calc(var(--knobs-fade-inset,0px) + var(--knobs-fade)),#000 calc(100% - var(--knobs-fade)),rgb(0 0 0/var(--knobs-fade-b)));-webkit-mask-image:var(--knobs-fade-mask);mask-image:var(--knobs-fade-mask)}
+  .knobs-scroll-fade-x{--knobs-fade:16px;--knobs-fade-travel:4px;animation-timeline:scroll(self inline),scroll(self inline);
+    --knobs-fade-mask:linear-gradient(to right,rgb(0 0 0/var(--knobs-fade-a)),#000 var(--knobs-fade),#000 calc(100% - var(--knobs-fade)),rgb(0 0 0/var(--knobs-fade-b)));-webkit-mask-image:var(--knobs-fade-mask);mask-image:var(--knobs-fade-mask)}
+  .knobs-scroll-fade:has(.knobs-panel[data-gpu-active="true"]){-webkit-mask-image:none;mask-image:none}
+  .knobs-tree-row[data-editing] .knobs-tree-label{-webkit-mask-image:none;mask-image:none}
+}
+@supports not (animation-timeline:scroll()){.knobs-scroll-fade-x{text-overflow:ellipsis}}
+
 /* Split: panes along a row or column, hairline dividers with a wider grip. */
 .knobs-split{position:relative;display:flex;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
 .knobs-split[data-direction="column"]{flex-direction:column}
@@ -203,7 +225,7 @@ const css = `
 .knobs-tree-row[aria-expanded="true"]>.knobs-tree-caret{transform:rotate(90deg)}
 .knobs-tree-row:not([aria-expanded])>.knobs-tree-caret{visibility:hidden}
 .knobs-tree-icon{flex:none;display:flex;align-items:center;justify-content:center;width:14px;margin-right:6px;color:var(--ku-dim);font-size:calc(var(--ku-font-size) - 1px)}
-.knobs-tree-label{position:relative;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:var(--ku-font-weight)}
+.knobs-tree-label{position:relative;flex:1;min-width:0;overflow:hidden;font-weight:var(--ku-font-weight)}
 .knobs-tree-row[data-ancestor] .knobs-tree-label{color:var(--ku-label)}
 .knobs-tree-label .knobs-tree-mark{color:var(--ku-accent)}
 .knobs-tree-row[data-off~="visible"] :is(.knobs-tree-label,.knobs-tree-icon){opacity:.45}
