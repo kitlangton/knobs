@@ -1,9 +1,9 @@
-// The hero: hardware twins. A faceplate in the dark under one soft spot, with six physical controls
-// on it, each the twin of a row in the knobs panel floating over its right edge: twist, flick or
+// The hero: hardware twins. A dark desk under one soft spot, with six physical controls set into
+// it, each the twin of a row in the knobs panel floating over its right edge: twist, flick or
 // drag the hardware and the row follows; move the row and the hardware glides to it. Every row
 // changes how the hardware or its light looks. Thin lines of light run from each row to its twin
 // and brighten while either is hovered, focused or in hand. WebGPU draws it (controls-hero.wgsl);
-// without it, a CSS still of the plate stands in.
+// without it, a CSS still of the twins stands in.
 import { choice, color, knob, point, springMotion, toggle } from "knobs"
 import { sound } from "knobs/panel"
 import type { SceneKit } from "./controls"
@@ -30,7 +30,6 @@ const ARC = (135 * Math.PI) / 180
 const DETENT = [-0.7, 0, 0.7]
 const TOGGLE = 0.38
 const TILT = 0.42
-const PT = 0.32
 const ENTRANCE = springMotion({ duration: 1.3, bounce: 0 })
 /** LEDs warm up like a filament and fade a little slower than they came. */
 const WARM = springMotion({ duration: 0.28, bounce: 0 })
@@ -56,6 +55,8 @@ const POSES: readonly (readonly number[])[] = [
 const LIGHT = [AT(5, 0), AT(5, 1), AT(5, 2), AT(4, 3)]
 
 type V3 = readonly [number, number, number]
+/** The composition's bounds: across and along the desk, and from below it to above the twins. */
+const SPAN = { x: 3, z: 2.05, y0: -0.32, y1: 0.6 }
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 const norm = (a: V3): V3 => {
@@ -88,11 +89,11 @@ const project1 = (p: V3): [number, number] => {
  */
 const TWINS: Record<Key, { at: V3; r: number; side: "right" | "top" | "bottom"; cursor: string }> =
   {
-    keyLight: { at: [-1.85, 0.3, -0.8], r: 0.66, side: "right", cursor: "grab" },
-    finish: { at: [0, 0.22, -0.8], r: 0.58, side: "right", cursor: "pointer" },
-    leds: { at: [1.85, 0.25, -0.8], r: 0.42, side: "bottom", cursor: "pointer" },
-    spot: { at: [0, 0.3, 0.95], r: 0.62, side: "top", cursor: "move" },
-    accent: { at: [1.85, 0.25, 0.95], r: 0.56, side: "right", cursor: "grab" },
+    keyLight: { at: [-1.85, 0.22, -0.8], r: 0.66, side: "right", cursor: "grab" },
+    finish: { at: [0, 0.14, -0.8], r: 0.58, side: "right", cursor: "pointer" },
+    leds: { at: [1.85, 0.2, -0.8], r: 0.42, side: "bottom", cursor: "pointer" },
+    spot: { at: [0, 0.22, 0.95], r: 0.62, side: "top", cursor: "move" },
+    accent: { at: [1.85, 0.17, 0.95], r: 0.56, side: "right", cursor: "grab" },
     shadow: { at: [-1.9, 0.1, 0.95], r: 0.36, side: "right", cursor: "ns-resize" },
   }
 const KEYS = Object.keys(TWINS) as Key[]
@@ -171,13 +172,15 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   })
   const still = view ? null : cssStill(stageEl, h)
 
-  // ── Layout: the plate fitted into the room the panel leaves, one projection for all ──
+  // ── Layout: the twins fitted into the room the panel leaves, one projection for all ──
   const layout = {
     focal: 1,
     pp: [0, 0] as [number, number],
     w: 0,
     h: 0,
     panel: null as DOMRect | null,
+    /** Where the light dies away: the composition's centre and its reach each way (px). */
+    pool: [0, 0, 1, 1, 1, 1] as number[],
   }
   const project = (p: V3): [number, number] => {
     const [x, y] = project1(p)
@@ -195,8 +198,8 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const w = stage.width || stageEl.clientWidth
     const hh = stage.height || stageEl.clientHeight
     const beside = !narrow.matches && !!panelEl()
-    // The plate below the title, with room for its pool; beside the panel, the two together are
-    // centred, the plate's right edge passing under the panel.
+    // The twins below the title, with room for their pool; beside the panel, the two together
+    // are centred, the composition's right edge passing under the panel.
     const pw = beside ? slot.offsetWidth : 0
     const overlap = beside ? 56 : 0
     const margin = beside ? 64 : 20
@@ -206,9 +209,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     let x1 = -Infinity
     let y0 = Infinity
     let y1 = -Infinity
-    for (const x of [-3, 3])
-      for (const z of [-2.05, 2.05])
-        for (const y of [-PT, 0.6]) {
+    for (const x of [-SPAN.x, SPAN.x])
+      for (const z of [-SPAN.z, SPAN.z])
+        for (const y of [SPAN.y0, SPAN.y1]) {
           const [sx, sy] = project1([x, y, z])
           x0 = Math.min(x0, sx)
           x1 = Math.max(x1, sx)
@@ -224,6 +227,17 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     layout.w = w
     layout.h = hh
     layout.panel = null
+    // The pool fades out two-fifths again past the composition's bounds.
+    const [cx, cy] = project([0, 0, 0])
+    const far = 1.4
+    layout.pool = [
+      cx,
+      cy,
+      (cx - left) * far,
+      (left + focal * (x1 - x0) - cx) * far,
+      (cy - (layout.pp[1] + focal * y0)) * far,
+      (layout.pp[1] + focal * y1 - cy) * far,
+    ]
     if (!beside) {
       slot.style.right = ""
       return
@@ -306,6 +320,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     v(11, arrive[0]!, arrive[1]!, arrive[2]!, arrive[3]!)
     v(12, arrive[4]!, arrive[5]!, 0, 0)
     v(13, page[0], page[1], page[2], 0)
+    const pool = layout.pool
+    v(15, pool[0]!, pool[1]!, pool[2]!, pool[3]!)
+    v(16, pool[4]!, pool[5]!, 0, 0)
     // Moving: each frame folds in at MOVING. At rest: REST more, from the next frame.
     cancelAnimationFrame(refining)
     refining = 0
@@ -757,11 +774,10 @@ interface StillFrame {
   fader: number
 }
 
-/** Without WebGPU: the plate and its twins in CSS, lit by a radial spot, still but live. */
+/** Without WebGPU: the twins in CSS, lit by a radial spot on the dark, still but live. */
 function cssStill(host: HTMLElement, h: SceneKit["h"]) {
   host.classList.add("hero-css")
   const spot = h("div", "hero-spot")
-  const plate = h("div", "hero-plate")
   const knobs = (["keyLight", "finish", "leds", "spot", "accent"] as Key[]).map((k) => {
     const el = h("div", `hero-knob hero-${k}`)
     el.append(h("i"))
@@ -770,12 +786,11 @@ function cssStill(host: HTMLElement, h: SceneKit["h"]) {
   const fader = h("div", "hero-fader")
   const cap = h("i")
   fader.append(cap)
-  host.append(spot, plate, fader, ...knobs.map(([, el]) => el))
+  host.append(spot, fader, ...knobs.map(([, el]) => el))
   return {
     draw(f: StillFrame) {
-      const [x0, y0] = f.project([-3, 0, -2.05])
-      const [x1, y1] = f.project([3, 0, 2.05])
-      plate.style.cssText = `left:${px(x0)};top:${px(y0)};width:${px(x1 - x0)};height:${px(y1 - y0)}`
+      const [x0] = f.project([-SPAN.x, 0, 0])
+      const [x1] = f.project([SPAN.x, 0, 0])
       const [sx, sy] = f.project([-3 + 6 * f.spot[0], 0, -2.05 + 4.1 * f.spot[1]])
       spot.style.background = `radial-gradient(${px((x1 - x0) * 0.55)} at ${px(sx)} ${px(sy)}, rgba(255,214,170,${(0.1 + 0.22 * f.k).toFixed(3)}), transparent 70%)`
       host.style.setProperty("--accent", f.css)
