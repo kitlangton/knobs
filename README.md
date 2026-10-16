@@ -673,8 +673,10 @@ mountPanel(station, column, {
   both renderers. It pins inside the nearest scroller: an inline panel is one itself
   (`overflow: auto`), so bound the panel (`height`, `max-height`, or `flex: 1; min-height: 0` in a
   flex column) and it scrolls under its header. To scroll an ancestor instead (a card that holds
-  more than the panel), give the panel `overflow: visible` and the ancestor `overflow: auto`; the
-  header then pins to the ancestor's top while the panel passes through it.
+  more than the panel), add the class `knobs-pin-ancestor` to the panel (`panel.element`; it makes
+  the panel `overflow: visible`) and give the ancestor `overflow: auto`; the header then pins to the
+  ancestor's top while the panel passes through it. A panel that nothing scrolls under looks as it
+  always did. Where scroll-driven animations aren't supported, the header doesn't pin.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
   stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
