@@ -323,6 +323,18 @@ const css = `
 .knobs-panel .knobs-preset-chip[aria-checked="true"]{color:var(--k-text);font-weight:var(--k-title-weight)}
 .knobs-panel .knobs-preset-save{flex:none;width:calc((var(--k-inset) - var(--k-tray-pad)) * 2 + 8px);padding:0!important;color:var(--k-dim)!important;font-weight:400!important;font-size:var(--k-text-title)!important}
 .knobs-panel .knobs-preset-save:hover{color:var(--k-text)!important}
+/* The active preset's modified mark: the values have drifted off it (a row's dot, in its corner). */
+.knobs-panel .knobs-preset-chip::after{content:"";position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--k-modified);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
+.knobs-panel .knobs-preset-chip[data-drifted]::after{opacity:.95;transform:none}
+/* Naming a saved preset: a field over its chip that opens out from the middle to the chip's width;
+   the chip's own name hides beneath it. Leaving, it fades. */
+.knobs-panel .knobs-preset-chip[data-naming]{color:transparent!important}
+.knobs-panel .knobs-preset-name{position:absolute;z-index:2;box-sizing:border-box;min-width:0;margin:0;padding:0 6px;border:1px solid color-mix(in srgb,var(--k-accent) 55%,transparent);border-radius:var(--k-button-radius,var(--k-radius-md));outline:none;background:color-mix(in srgb,var(--k-accent) 10%,transparent);color:var(--k-text);caret-color:var(--k-accent);
+  font-family:inherit;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-title-weight);letter-spacing:inherit;text-align:center;animation:knobs-name-in .25s cubic-bezier(.2,.8,.2,1);transition:opacity .11s cubic-bezier(.4,0,1,1)}
+.knobs-preset-name::selection{background:color-mix(in srgb,var(--k-accent) 24%,transparent);color:var(--k-text)}
+.knobs-panel .knobs-preset-name[data-leaving]{opacity:0;pointer-events:none}
+@keyframes knobs-name-in{from{clip-path:inset(0 50% round 6px);opacity:.4}to{clip-path:inset(0 round 6px);opacity:1}}
+@media(prefers-reduced-motion:reduce){.knobs-panel .knobs-preset-name{animation:knobs-fade .15s ease-out}}
 
 /* Group headers */
 .knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--k-gap);padding:0 var(--k-group-inset);color:var(--k-group-color);font-size:var(--k-group-size);font-weight:var(--k-title-weight);letter-spacing:var(--k-group-tracking);text-transform:var(--k-group-transform)}
@@ -885,10 +897,11 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :is(.knobs-card:not(.knobs-live *),.knobs-tile:not(.knobs-live))::after,
 .knobs-panel[data-gpu-active="true"] .knobs-optkey,
 .knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
+.knobs-panel[data-gpu-active="true"] .knobs-preset-chip::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
 .knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
-.knobs-panel[data-gpu-active="true"] .knobs-number{z-index:2147480003}
+.knobs-panel[data-gpu-active="true"] :is(.knobs-number,.knobs-preset-name){z-index:2147480003}
 /* A row accessory is the host's own DOM, so it sits above the canvas too (its row then can't
    contain its layout, which would trap it in a stacking context under the canvas). */
 .knobs-panel[data-gpu-active="true"] .knobs-row[data-accessory]{contain:style}

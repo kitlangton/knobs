@@ -84,6 +84,7 @@ export {
   type SampleCurveOptions,
 } from "./core/ramp.js"
 export { bezierCss, bezierPoint, EASINGS, type Bezier, type EasingName } from "./core/easing.js"
+export { AROUND } from "./core/random.js"
 export {
   defineControls,
   type ChangeMeta,
@@ -96,6 +97,7 @@ export {
   type DensityMode,
   type GroupPreset,
   type GroupPresetDisplay,
+  type PresetRef,
   type HeaderButton,
   type HeaderOptions,
   type HostHistory,

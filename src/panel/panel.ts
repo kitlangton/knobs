@@ -63,7 +63,14 @@ import { toast } from "../ui/toast.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
 import { createOptionKeys } from "./optkeys.js"
-import { commandScope, digitOption, escapeTo, scopeLabel, type FocusLevel } from "./scope.js"
+import {
+  commandScope,
+  digitOption,
+  escapeTo,
+  scopeLabel,
+  type CommandScope,
+  type FocusLevel,
+} from "./scope.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
 import { pageHints } from "./page-hints.js"
@@ -398,7 +405,7 @@ function buildPanel<S extends Schema>(
     ...(bound("menu") ? [["⇧F10", "Row menu"]] : []),
     ...(bound("compare") ? [[`hold ${show("compare")}`, "Compare with before"]] : []),
     ...(bound("copy") ? [[show("copy"), "Copy values"]] : []),
-    ...(showVariants && bound("save") ? [[show("save"), "Save as preset"]] : []),
+    ...(showVariants && bound("save") ? [[show("save"), "Save and name a preset"]] : []),
     ...(pair("undo", "redo", "Undo / Redo") as [string, string][]),
     ...(bound("undo") && !bound("redo") ? [[show("undo"), "Undo"]] : []),
     ...(close
@@ -417,17 +424,61 @@ function buildPanel<S extends Schema>(
     if (Object.values(SCOPED).includes(desc)) scopedDescs.push([span, desc])
   }
   popover.append(popGrid)
+  /**
+   * The active preset over what a command at `scope` acts on: the group's own preset for a row or
+   * card in a group that has one, else the panel's. Its name, and whether those keys are off it.
+   */
+  const baseAt = (scope: CommandScope, from: Node | null) => {
+    const group =
+      scope === "row"
+        ? rows[rowAt(from)]?.group
+        : scope === "group"
+          ? (cardOf(from)?.dataset.group ?? undefined)
+          : undefined
+    const keys =
+      scope === "row"
+        ? (rows[rowAt(from)]?.keys ?? [])
+        : scope === "group"
+          ? cardKeys(cardOf(from)!)
+          : scope === "selection"
+            ? (selectionKeys() ?? [])
+            : undefined
+    const index = group === undefined ? -1 : controls.activeGroupPreset(group)
+    const ref = controls.activePreset()
+    const name =
+      index >= 0
+        ? controls.groupPresets[group!]?.[index]?.name
+        : ref?.kind === "preset"
+          ? presetLabel(ref.id)
+          : ref
+            ? presetStrip.getEntries().find((e) => e.id === `v:${ref.id}`)?.label
+            : undefined
+    if (!name) return null
+    const off = keys
+      ? keys.some((k) => controls.isModified(k as keyof S & string))
+      : controls.isModified()
+    return { name, off }
+  }
   /** Rewrites the popover's R, ⇧R and ⌥R lines for where focus is (or was, before it opened). */
   const describeScope = (from: Node | null = doc.activeElement) => {
     const scope = scopeAt(from)
+    // With an active preset, Random explores around it and Reset goes back to it first.
+    const base = baseAt(scope, from)
+    const lead = (verb: string) => (scope === "all" ? verb : scopeLabel(verb, scope))
+    const random = base ? `${lead("Random")} around ${base.name}` : scopeLabel("Random", scope)
+    const reset = !base
+      ? scopeLabel("Reset", scope)
+      : base.off
+        ? `${scope === "all" ? "Back" : `${scopeLabel("Reset", scope)} back`} to ${base.name}`
+        : `${scopeLabel("Reset", scope)} to defaults`
     for (const [span, which] of scopedDescs) {
       const text =
         which === SCOPED.both
-          ? `${scopeLabel("Random", scope)} / ${scopeLabel("Reset", scope)}`
+          ? `${random} / ${reset}`
           : which === SCOPED.random
-            ? scopeLabel("Random", scope)
+            ? random
             : which === SCOPED.reset
-              ? scopeLabel("Reset", scope)
+              ? reset
               : `${scopeLabel("Mutate", scope)}: small changes`
       if (span.textContent !== text) span.textContent = text
     }
@@ -2387,7 +2438,7 @@ function buildPanel<S extends Schema>(
               {
                 label: "Reset",
                 shortcut: keyLabel(keys.reset[0]!),
-                disabled: !chosen.some((k) => controls.isModified(k)),
+                disabled: !controls.canReset(chosen),
                 run: () => {
                   cue(root, "reset")
                   run(() => controls.reset(chosen))
@@ -2555,26 +2606,28 @@ function buildPanel<S extends Schema>(
   const isMixed = (r: Row) => r.keys.some((k) => controls.isMixed(k as keyof S & string))
   let lastRefresh = (controls as unknown as { [REFRESHES]?: number })[REFRESHES] ?? 0
   /**
-   * Each reset shows while its scope differs from its defaults, the scope ⇧R would reset from
-   * there (a row's mark, its group's ↺, the header's ↺ for everything), and stays while it turns.
+   * Each reset shows while it has somewhere to go (back to the active preset, else to the
+   * defaults), for the scope ⇧R would reset from there (its group's ↺, the header's ↺ for
+   * everything), and stays while it turns.
    */
   function syncResets() {
-    const values = controls.get() as Record<string, unknown>
-    const locked = controls.locked as Record<string, unknown>
-    const differs = (r: Row) => r.keys.some((k) => !same(values[k], locked[k]))
-    let anyMod = false
     let changed = false
     for (const [groupName, gReset] of groupResetButtons) {
-      const groupMod = rows.some((r) => r.group === groupName && differs(r))
-      if (groupMod) anyMod = true
+      const groupMod = controls.canReset(groupKeys(groupName) as (keyof S & string)[])
       // A group's reset is a coarse reset, so it follows `resetAll`.
       if (bloom(gReset, (marks && groupMod && bound("resetAll")) || spinning(gReset)))
         changed = true
     }
-    const totalMod = anyMod || rows.some((r) => !r.group && differs(r))
-    if (bloom(resetBtn, totalMod || spinning(resetBtn))) changed = true
+    if (bloom(resetBtn, controls.canReset() || spinning(resetBtn))) changed = true
     if (changed) wakeGpu()
   }
+  /** The active presets as last shown, so a change of base alone still updates the resets. */
+  let shownBase = ""
+  const baseSignature = () =>
+    JSON.stringify([
+      controls.activePreset(),
+      Object.keys(controls.groupPresets).map((g) => controls.activeGroupPreset(g)),
+    ])
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2616,6 +2669,11 @@ function buildPanel<S extends Schema>(
 
     wakeGpu()
   }
+  function markRow(row: Row, values: Record<string, unknown>, baseline: Record<string, unknown>) {
+    const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], baseline[k]))
+    if (row.row.classList.contains("knobs-modified") !== modified)
+      row.row.classList.toggle("knobs-modified", modified)
+  }
   /** Sets a row's turn on what it times (see `DELAYED`), each only when it differs. */
   function delayRow(row: HTMLElement, wait: string) {
     for (const el of row.querySelectorAll<HTMLElement>(DELAYED)) {
@@ -2630,10 +2688,14 @@ function buildPanel<S extends Schema>(
     stagger: number,
     landing: boolean,
   ) {
-    const locked = controls.locked as Record<string, unknown>
+    // Marks say what differs from the active preset (the defaults without one).
+    const baseline = controls.baseValues() as Record<string, unknown>
     const fresh = (r: Row) => r.row.dataset.shown === undefined
     const now = performance.now()
     let turn = 0
+    const based = baseSignature()
+    const rebased = based !== shownBase
+    shownBase = based
     for (const row of moving) {
       const instant = !initialized || landing || fresh(row)
       row.row.dataset.shown = ""
@@ -2650,9 +2712,7 @@ function buildPanel<S extends Schema>(
         row.wave.at = row.wave.until = 0
         delayRow(row.row, "")
       }
-      const modified = marks && bound("reset") && row.keys.some((k) => !same(values[k], locked[k]))
-      if (row.row.classList.contains("knobs-modified") !== modified)
-        row.row.classList.toggle("knobs-modified", modified)
+      markRow(row, values, baseline)
       const mixed = isMixed(row)
       row.mixed = mixed
       if (row.row.classList.contains("knobs-mixed") !== mixed)
@@ -2670,6 +2730,8 @@ function buildPanel<S extends Schema>(
         row.input.setAttribute("aria-checked", mixed ? "mixed" : String(Boolean(value)))
     }
     for (const row of rows) {
+      // A new base moves the marks of rows whose values stayed put.
+      if (rebased) markRow(row, values, baseline)
       applyState(row)
       row.refresh?.()
     }
@@ -2679,7 +2741,8 @@ function buildPanel<S extends Schema>(
       lastRefresh = refreshes
       for (const r of rows) fillAccessory(r)
     }
-    if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) syncResets()
+    if (!initialized || moving.length > 0 || landing || turn > 0 || rebased || rows.some(fresh))
+      syncResets()
     let unlocked = 0
     for (const row of rows) {
       if (!row.keys.length) continue
@@ -3349,10 +3412,11 @@ function buildPanel<S extends Schema>(
     if (scope === "row") return controls.reset(keysOf([rowAt(target)]))
     const card = cardOf(target)!
     const keys = cardKeys(card) as (keyof S & string)[]
-    // A group's card turns the group's ↺, as its click would.
+    // A group's card turns the group's ↺, as its click would, and resets as it does.
     const gReset = card.dataset.group ? groupResetButtons.get(card.dataset.group) : undefined
     if (gReset?.dataset.shown === "true") spin(gReset, wakeGpu, syncResets)
-    if (keys.length) controls.reset(keys)
+    if (gReset && card.dataset.group) controls.resetGroup(card.dataset.group)
+    else if (keys.length) controls.reset(keys)
   }
   const cardKeys = (card: HTMLElement) =>
     rows.filter((r) => card.contains(r.row)).flatMap((r) => r.keys)
