@@ -145,7 +145,6 @@ const center = split(main.pane("center").body, {
       max: 560,
       collapsible: true,
       title: "Dock",
-      count: "Variants · Compare · Live",
       element: dock,
     },
   ],
