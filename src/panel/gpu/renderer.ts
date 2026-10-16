@@ -16,6 +16,7 @@ import {
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
 import { DRIFTED_PILL, type PresetStrip } from "../presets.js"
+import { flashOf } from "../flash.js"
 import { spinOf } from "../spin.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { DigitPlace, Slider } from "../slider.js"
@@ -63,6 +64,8 @@ const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 /** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
 const MAX_MASKS = 16
+/** How far below a pinned header the rows fade in (px), as the DOM's `header::after`. */
+const HEAD_FADE = 10
 const MASK_FLOATS = 12
 /** An `ease` omega this high places the value at once (a 0 ms token). */
 const SNAP_OMEGA = 1e4
@@ -1776,6 +1779,52 @@ class GpuOverlayManager {
   }
 
   /** A circular icon button's hover/focus wash. */
+  /**
+   * A button's press flash (flash.ts) over its wash: the wash brightened toward the text colour,
+   * easing out. Returns how much is left (0 once it's over), for the ink to brighten by.
+   */
+  /** Panels whose DOM overlays `cutUnderHead` has cut, to restore once nothing is under. */
+  private readonly headCuts = new WeakSet<HTMLElement>()
+
+  /**
+   * The DOM pieces the GPU leaves above its canvas (a row's accessory, the number being typed,
+   * the search field) are cut at a pinned header's foot (`foot`, viewport y), as the rows are.
+   */
+  private cutUnderHead(root: HTMLElement, foot: number | undefined) {
+    if (foot === undefined && !this.headCuts.has(root)) return
+    if (foot === undefined) this.headCuts.delete(root)
+    else this.headCuts.add(root)
+    for (const el of root.querySelectorAll<HTMLElement>(
+      ".knobs-row>.knobs-accessory,.knobs-number,.knobs-search",
+    )) {
+      let css = ""
+      if (foot !== undefined) {
+        const r = el.getBoundingClientRect()
+        const cut = Math.min(r.height, foot - r.top)
+        if (cut > 0) css = `inset(${cut.toFixed(1)}px 0 0 0)`
+      }
+      if (el.style.clipPath !== css) el.style.clipPath = css
+    }
+  }
+
+  private drawFlash(button: Element, r: DOMRect, alpha: number, clock: number, clip?: Clip) {
+    const k = flashOf(button, clock)
+    if (k <= 0) return 0
+    const t = this.curTokens
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      clip,
+      color: withAlpha(cssMix(t.text, t.surfaceHi, 0.1), alpha * k),
+      color2: t.accent,
+      radius: Math.min(r.height * 0.5, t.round),
+      kind: 1,
+    })
+    return k
+  }
+
   private drawRoundWash(r: DOMRect, alpha: number, wash: number, clip?: Clip) {
     if (wash <= 0.005) return
     const t = this.curTokens
@@ -3941,11 +3990,11 @@ class GpuOverlayManager {
             bodyClip[3],
           ]
       }
-      // A page's header sticks while the body scrolls under it: its rects are read fresh, and the
-      // body is clipped to below it.
+      // A header sticks while the body scrolls under it (a page's always; a panel's in a scroller):
+      // its rects are read fresh, and the body is clipped to below it.
       const headClip = bodyClip
       const bypass = this.curBypassRectCache
-      if (pageB) this.curBypassRectCache = true
+      this.curBypassRectCache = true
       this.curClip = headClip
 
       // 2. Header (an embedded panel may have none)
@@ -4000,7 +4049,13 @@ class GpuOverlayManager {
             this.wash(hb.button, hovered || focused || expanded),
             clip,
           )
-          const iconColor = withAlpha(this.hot(hb.button, on, restInk), alpha)
+          const flashed = this.drawFlash(hb.button, bRect, alpha, clock, clip)
+          if (flashed) anyMoving = true
+          const hotInk = this.hot(hb.button, on, restInk)
+          const iconColor = withAlpha(
+            flashed ? cssMix(tokens.text, hotInk, flashed) : hotInk,
+            alpha,
+          )
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
           if (die) this.drawDie(die, bRect, iconColor, clip)
           else if (hb.icon === "copy") {
@@ -4014,6 +4069,45 @@ class GpuOverlayManager {
             if (turn.moving) anyMoving = true
             const ink = turn.alpha === 1 ? iconColor : withAlpha(iconColor, turn.alpha)
             this.drawIcon(hb.icon, tokens.iconSize, box, ink, clip, scale, turn.angle, bloom?.blur)
+          }
+        }
+      }
+      if (!pageB) this.curBypassRectCache = bypass
+      // A panel's pinned header (.knobs-panel>header, position: sticky): once rows pass under it
+      // (--k-head-on, scroll-driven in the CSS), they're clipped at its foot and fade in over
+      // HEAD_FADE below it, as the DOM's frosted header and its soft edge hide them.
+      const headMask = this.curMask
+      if (!pageB && !panel.header.hidden) {
+        const cs = getComputedStyle(panel.header)
+        const on = Math.max(
+          parseFloat(cs.getPropertyValue("--k-head-s")) || 0,
+          parseFloat(cs.getPropertyValue("--k-head-v")) || 0,
+        )
+        const hr = on > 0.001 ? panel.header.getBoundingClientRect() : undefined
+        this.cutUnderHead(panel.root, hr?.bottom)
+        if (hr) {
+          bodyClip = intersectClip(bodyClip, [bodyClip[0], hr.bottom, bodyClip[2], bodyClip[3]])
+          this.curClip = bodyClip
+          if (!this.curMask && this.maskCount < MAX_MASKS) {
+            this.masks.set(
+              // Wider than the clip, so its own edges never soften what the clip keeps.
+              [
+                bodyClip[0] - 8,
+                hr.top - 8,
+                bodyClip[2] - bodyClip[0] + 16,
+                bodyClip[3] - hr.top + 16,
+                0,
+                hr.bottom + HEAD_FADE,
+                hr.bottom - (HEAD_FADE * (1 - on)) / on,
+                0,
+                1,
+                1,
+                0,
+                0,
+              ],
+              this.maskCount * MASK_FLOATS,
+            )
+            this.curMask = ++this.maskCount
           }
         }
       }
@@ -4041,7 +4135,7 @@ class GpuOverlayManager {
             p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
           })
 
-        const stripClip = intersectClip(headClip, [
+        const stripClip = intersectClip(bodyClip, [
           psRect.left,
           psRect.top,
           psRect.right,
@@ -4473,13 +4567,16 @@ class GpuOverlayManager {
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
           this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
+          const flashed = this.drawFlash(reset, br, alpha, clock)
+          if (flashed) anyMoving = true
           const turn = spinOf(reset, clock)
           if (turn.moving) anyMoving = true
+          const ink = this.hot(reset, hovered || focused)
           this.drawIcon(
             "reset",
             tokens.iconSm,
             br,
-            withAlpha(this.hot(reset, hovered || focused), alpha * turn.alpha),
+            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, alpha * turn.alpha),
             undefined,
             bloom.scale,
             turn.angle,
@@ -4495,7 +4592,14 @@ class GpuOverlayManager {
             this.ease(button, "dim", button.disabled ? tokens.disabledOpacity : 1, 30) *
             this.missed(button, hinting)
           this.drawRoundWash(dr, dimmed, this.wash(button, on))
-          this.drawDie(die, dr, withAlpha(this.hot(button, on, tokens.dim), dimmed))
+          const flashed = this.drawFlash(button, dr, dimmed, clock)
+          if (flashed) anyMoving = true
+          const ink = this.hot(button, on, tokens.dim)
+          this.drawDie(
+            die,
+            dr,
+            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, dimmed),
+          )
         }
         this.curAlpha = headAlpha
         if (g.fold) {
@@ -5122,6 +5226,9 @@ class GpuOverlayManager {
           this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.textControl, true)
         }
       }
+
+      // Hint badges reach the header's buttons too: out of the rows' fade.
+      this.curMask = headMask
 
       // 7. Hint badges, and the focused row's option digits (optkeys.ts), in the same look.
       for (const key of panel.root.querySelectorAll<HTMLElement>(".knobs-optkeys .knobs-optkey")) {

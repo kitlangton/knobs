@@ -1398,7 +1398,8 @@ category("Matching your app")
   b.dataset.ownLook = ""
   s.slot.replaceWith(looks)
   s.el.append(s.side)
-  const opts: MountPanelOptions = { title: false, header: { buttons: ["random", "reset"] } }
+  // No header: each tile is titled above it, and the cards' own dice and resets stay.
+  const opts: MountPanelOptions = { header: false }
   mount(store, a, opts)
   mount(store, b, { ...opts, preset: labPreset, theme: "dark", density: "compact" })
   mount(store, c, opts)

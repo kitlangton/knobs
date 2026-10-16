@@ -1,5 +1,6 @@
 import { Spring, springMotion, type SpringValue } from "../core/spring.js"
 import { cue } from "./sound.js"
+import { FLASH_MS } from "./flash.js"
 
 // A die drawn like Phosphor's dice icons, but solid: a rounded cube whose bevel is inked wherever the
 // surface turns more than `bevel` degrees from a face. Face-on, that band is exactly the glyph's
@@ -466,10 +467,12 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
 
   // Colour transitions (hover, focus, disabled, theme) re-trace each frame until they settle.
   let fading = 0
+  let fadeUntil = 0
   const follow = (until: number) => {
+    fadeUntil = Math.max(fadeUntil, until)
     const step = () => {
       paint()
-      fading = performance.now() < until && !frame ? requestAnimationFrame(step) : 0
+      fading = performance.now() < fadeUntil && !frame ? requestAnimationFrame(step) : 0
     }
     if (!fading) fading = requestAnimationFrame(step)
   }
@@ -485,6 +488,8 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
       "transitionend",
     ])
       button?.addEventListener(type, nudgeColour)
+    // A press flash (flash.ts) brightens the ink too.
+    button?.addEventListener("animationstart", () => follow(performance.now() + FLASH_MS + 40))
   })
   const onResize = () => paint()
   win?.addEventListener("resize", onResize)

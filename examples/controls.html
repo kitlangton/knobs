@@ -119,12 +119,14 @@
       .stage code, .side code { font: 11.5px var(--mono); color: var(--label); }
       .abs { position: absolute; left: 0; top: 0; will-change: transform; }
 
-      .host { border-radius: 14px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); padding: 6px 0; }
+      /* The looks: three like tiles, each a stand-in for the app around its panel. knobs' own look
+         brings its card; labPreset and the flat frame sit straight on the tile, as on an app's column. */
+      .host { border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); padding: 12px; }
       .host .knobs-panel { --k-width: 100%; }
       .looks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
       .looks h3 { margin: 0 0 8px; color: var(--dim); font: 600 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
-      .looks .lab-host { background: #191a1e; padding: 0; }
-      .looks .flat-host { --k-frame: flat; }
+      .looks .lab-host { background: #191a1e; }
+      .looks .flat-host { --k-frame: flat; background: var(--card); }
 
       .ui-box { position: relative; height: 230px; border-radius: 14px; background: var(--surface); overflow: hidden; }
       .chips { display: flex; flex-wrap: wrap; gap: 6px; }
