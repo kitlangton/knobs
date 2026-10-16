@@ -3,12 +3,15 @@
 // drag the hardware and the row follows; move the row and the hardware glides to it. Every row
 // changes how the hardware or its light looks. Thin lines of light run from each row to its twin
 // and brighten while either is hovered, focused or in hand. WebGPU draws it (controls-hero.wgsl);
-// without it, a CSS still of the twins stands in.
+// without it, a CSS still of the twins stands in. A switch in the corner (or ?hero=schematic)
+// crossfades to its other face, a schematic of the same twins (controls-schematic.wgsl): the
+// same instruments in the same places, so the same hands and wires work it.
 import { choice, color, knob, point, springMotion, toggle } from "knobs"
 import { sound } from "knobs/panel"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb, toLinear } from "./controls-gpu"
 import heroWgsl from "./controls-hero.wgsl?raw"
+import schematicWgsl from "./controls-schematic.wgsl?raw"
 import {
   ColorVal,
   clamp01,
@@ -35,6 +38,9 @@ const ENTRANCE = springMotion({ duration: 1.3, bounce: 0 })
 const WARM = springMotion({ duration: 0.28, bounce: 0 })
 const COOL = springMotion({ duration: 0.6, bounce: 0 })
 const SNAP = springMotion({ duration: 0.22, bounce: 0.25 })
+/** Hardware ↔ schematic. */
+const SWITCH = springMotion({ duration: 0.9, bounce: 0 })
+const VARIANTS = ["Hardware", "Schematic"] as const
 /**
  * Every frame is jittered and folded into a history. While anything changes, each new frame
  * counts MOVING of it (the rest clipped to what's on screen now); at rest, REST more frames
@@ -170,6 +176,22 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     base: page,
     edge: 0.07,
   })
+  const scheme = view
+    ? gpuView(stageEl, {
+        wgsl: schematicWgsl,
+        label: "schematic",
+        tone: "neutral",
+        bloom: 0.2,
+        maxDpr: 2,
+        base: page,
+        edge: 0.07,
+      })
+    : null
+  // The schematic in front, fading in and out over the hardware.
+  if (view && scheme) {
+    stageEl.prepend(view.canvas)
+    scheme.canvas.style.opacity = "0"
+  }
   const still = view ? null : cssStill(stageEl, h)
 
   // ── Layout: the twins fitted into the room the panel leaves, one projection for all ──
@@ -186,12 +208,18 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const [x, y] = project1(p)
     return [layout.pp[0] + layout.focal * x, layout.pp[1] + layout.focal * y]
   }
+  /** A twin's centre: on the hardware at its height, on the schematic down on the desk. */
+  const at = (k: Key): V3 => {
+    const a = TWINS[k].at
+    return [a[0], a[1] * (1 - clamp01(variant.x)), a[2]]
+  }
   /** A twin on screen: its centre and its radii across and up the screen. */
   const disc = (k: Key) => {
-    const t = TWINS[k]
-    const c = project(t.at)
-    const rx = Math.abs(project([t.at[0] + t.r, t.at[1], t.at[2]])[0] - c[0])
-    const ry = Math.abs(project([t.at[0], t.at[1], t.at[2] + t.r])[1] - c[1])
+    const a = at(k)
+    const r = TWINS[k].r
+    const c = project(a)
+    const rx = Math.abs(project([a[0] + r, a[1], a[2]])[0] - c[0])
+    const ry = Math.abs(project([a[0], a[1], a[2] + r])[1] - c[1])
     return { c, rx, ry }
   }
   const fit = () => {
@@ -323,9 +351,17 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const pool = layout.pool
     v(15, pool[0]!, pool[1]!, pool[2]!, pool[3]!)
     v(16, pool[4]!, pool[5]!, 0, 0)
-    // Moving: each frame folds in at MOVING. At rest: REST more, from the next frame.
+    drawSchematic(lab, acc, accMax, k, ledOn)
+    // The hardware's canvas: only while it's showing.
+    const hw = 1 - clamp01(variant.x)
+    view.canvas.style.visibility = hw <= 0.001 ? "hidden" : ""
     cancelAnimationFrame(refining)
     refining = 0
+    if (hw <= 0.001) {
+      settled = REST
+      return
+    }
+    // Moving: each frame folds in at MOVING. At rest: REST more, from the next frame.
     if (stage.active) {
       settled = REST
       shoot(MOVING, true)
@@ -334,6 +370,135 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       refining = requestAnimationFrame(refine)
     }
   })
+  // ── The schematic: its own frame of the same values, while it shows ──
+  const fromUrl = new URLSearchParams(location.search).get("hero") === "schematic"
+  const variant = stage.val(fromUrl && scheme ? 1 : 0, 0.001, true)
+  let clock = 0
+  let clockAt = performance.now()
+  const hud = h("div", "hero-hud")
+  hud.setAttribute("aria-hidden", "true")
+  const READOUT: { key: Key | "title" | "status"; at: V3; align?: "left" | "right" }[] = [
+    { key: "title", at: [-2.72, 0, -1.62], align: "left" },
+    { key: "status", at: [2.72, 0, -1.62], align: "right" },
+    { key: "keyLight", at: [-1.85, 0, -0.2] },
+    { key: "finish", at: [0, 0, -1.56] },
+    { key: "leds", at: [1.85, 0, -0.24] },
+    { key: "spot", at: [0, 0, 1.7] },
+    { key: "accent", at: [1.85, 0, 1.86] },
+    { key: "shadow", at: [-1.52, 0, 0.08], align: "left" },
+  ]
+  const readouts = READOUT.map((r) => {
+    const el = h("div", r.align ? `align-${r.align}` : "")
+    hud.append(el)
+    return el
+  })
+  if (scheme) root.insertBefore(hud, slot)
+  const pad = (n: number) => String(Math.round(n)).padStart(3, "0")
+  const drawSchematic = (
+    lab: readonly number[],
+    acc: readonly number[],
+    accMax: number,
+    k: number,
+    ledOn: number,
+  ) => {
+    if (!scheme) return
+    const shown = clamp01(variant.x)
+    scheme.canvas.style.opacity = shown.toFixed(3)
+    scheme.canvas.style.visibility = shown <= 0.001 ? "hidden" : ""
+    hud.style.opacity = (shown * clamp01((intro.x - 0.4) / 0.4)).toFixed(3)
+    if (shown <= 0.001) return
+    // Its clock runs only while it animates (it holds still under reduced motion).
+    const now = performance.now()
+    if (stage.active && !reduced()) clock += Math.min(0.1, (now - clockAt) / 1000)
+    clockAt = now
+    const d = scheme.data
+    const v = (i: number, a: number, b: number, c: number, e: number) =>
+      d.set([a, b, c, e], 4 + i * 4)
+    const reveal = reduced() ? 1 : shown * clamp01(intro.x * 1.4)
+    v(0, layout.pp[0], layout.pp[1], layout.focal, ledOn)
+    v(1, CAM[0], CAM[1], CAM[2], k)
+    v(2, RIGHT[0], RIGHT[1], RIGHT[2], clamp01(shadowV.x))
+    v(3, UP[0], UP[1], UP[2], rotK.x)
+    v(4, FWD[0], FWD[1], FWD[2], rotS.x)
+    v(5, acc[0]! / accMax, acc[1]! / accMax, acc[2]! / accMax, rotC.x)
+    v(
+      6,
+      Math.max(0, fin[0]!.x),
+      Math.max(0, fin[1]!.x),
+      Math.max(0, fin[2]!.x),
+      (TOGGLE - toggleA.x) / (2 * TOGGLE),
+    )
+    v(7, spotX.x, spotY.x, reveal, clock)
+    v(8, glows[0]!.x, glows[1]!.x, glows[2]!.x, glows[3]!.x)
+    v(9, glows[4]!.x, glows[5]!.x, 0, 0)
+    const pool = layout.pool
+    v(10, pool[0]!, pool[1]!, pool[2]!, pool[3]!)
+    v(11, pool[4]!, pool[5]!, 0, 0)
+    v(12, page[0], page[1], page[2], 0)
+    scheme.render()
+    // The readouts, on the desk under their instruments.
+    const s = store.get()
+    const text: Record<string, string> = {
+      title: "KNOBS / HARDWARE · SCHEMATIC",
+      status: s.leds ? "SYS NOMINAL" : "STANDBY",
+      keyLight: `KEY ${pad(s.keyLight)}`,
+      finish: `FIN ${s.finish.toUpperCase()}`,
+      leds: s.leds ? "PWR ON" : "PWR OFF",
+      spot: `SPOT ${s.spot.x.toFixed(2)} ${s.spot.y.toFixed(2)}`,
+      accent: s.accent.startsWith("#") ? s.accent.toUpperCase() : "ACCENT",
+      shadow: `SHD ${pad(s.shadow)}`,
+    }
+    hud.style.color = oklabCss(lab)
+    READOUT.forEach((r, i) => {
+      const el = readouts[i]!
+      const [x, y] = project(r.at)
+      const t = text[r.key]!
+      if (el.textContent !== t) el.textContent = t
+      const dx = r.align === "left" ? "0%" : r.align === "right" ? "-100%" : "-50%"
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(${dx}, -50%)`
+    })
+  }
+  // While it shows, it moves (a sweep, a wave, packets): a frame each frame, on screen only.
+  let ticking = false
+  const tickSchematic = () => {
+    if (ticking || reduced() || !scheme) return
+    ticking = true
+    stage.loop(() => {
+      ticking = variant.target > 0.5 || variant.x > 0.001
+      return ticking
+    })
+  }
+  // The switch: Hardware / Schematic, in the corner.
+  const toggleEl = h("div", "hero-variant")
+  toggleEl.setAttribute("role", "group")
+  toggleEl.setAttribute("aria-label", "Hero")
+  const buttons = VARIANTS.map((name, i) => {
+    const b = h("button", "")
+    b.type = "button"
+    b.textContent = name
+    b.addEventListener("click", () => {
+      show(i)
+      stage.paint()
+    })
+    toggleEl.append(b)
+    return b
+  })
+  const show = (i: number) => {
+    buttons.forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)))
+    if (variant.target !== i) {
+      variant.to(i, SWITCH)
+      const url = new URL(location.href)
+      if (i) url.searchParams.set("hero", "schematic")
+      else url.searchParams.delete("hero")
+      history.replaceState(history.state, "", url)
+    }
+    if (i) tickSchematic()
+  }
+  if (scheme) {
+    root.append(toggleEl)
+    show(variant.target)
+  }
+
   // ── Frames: jittered, with what changed since the last one, into the history ──
   let frames = 0
   const last = new Float32Array(view?.data.length ?? 0)
@@ -394,6 +559,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     d[AT(6, 3)] = 8
     out.knobSpin = await run(0, 1)
     d.set(keep)
+    if (scheme) out.schematic = +(await scheme.bench(n)).toFixed(2)
     out.dpr = view.dpr
     stage.paint()
     return out
@@ -458,8 +624,8 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   let focus: Key | null = null
   const screenR = (k: Key) => disc(k).rx
   const faderEnds = () => {
-    const t = TWINS.shadow.at
-    return [project([t[0], 0.1, t[2] + FADER_L]), project([t[0], 0.1, t[2] - FADER_L])] as const
+    const t = at("shadow")
+    return [project([t[0], t[1], t[2] + FADER_L]), project([t[0], t[1], t[2] - FADER_L])] as const
   }
   const pick = (x: number, y: number): Key | null => {
     let best: Key | null = null
@@ -472,7 +638,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
         d = segDist([x, y], a, b)
         r = screenR(k) * 0.9
       } else {
-        const c = project(TWINS[k].at)
+        const c = project(at(k))
         d = Math.hypot(x - c[0], y - c[1])
         r = screenR(k) * 1.1
       }
@@ -489,7 +655,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   }
   /** Screen angle about a twin, clockwise from up. */
   const angleAt = (k: Key, x: number, y: number) => {
-    const c = project(TWINS[k].at)
+    const c = project(at(k))
     return Math.atan2(x - c[0], -(y - c[1]))
   }
   let first = true
@@ -527,7 +693,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     stageEl.setPointerCapture(e.pointerId)
     const v = store.get()
     const [L, a, b] = oklab(v.accent)
-    const c = project(TWINS[k].at)
+    const c = project(at(k))
     grab = {
       key: k,
       x,
@@ -702,7 +868,16 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       const start: [number, number] =
         side === "right" ? [c[0] + rx, c[1]] : [c[0], c[1] + (side === "top" ? -ry : ry)]
       const end: [number, number] = [panel.left, row.top - hero.top + row.height / 2]
-      const d = `M${start[0].toFixed(1)} ${start[1].toFixed(1)} L${end[0].toFixed(1)} ${end[1].toFixed(1)}`
+      // On the schematic a wire is a trace: out at 45°, then level into its row.
+      const s = clamp01(variant.x)
+      const dy = end[1] - start[1]
+      const bend = Math.min(start[0] + Math.abs(dy), end[0] - 12)
+      const mid: [number, number] = [
+        (start[0] + end[0]) / 2 + s * (bend - (start[0] + end[0]) / 2),
+        (start[1] + end[1]) / 2 + s * (end[1] - (start[1] + end[1]) / 2),
+      ]
+      const pt = (p: readonly number[]) => `${p[0]!.toFixed(1)} ${p[1]!.toFixed(1)}`
+      const d = `M${pt(start)} L${pt(mid)} L${pt(end)}`
       const glow = clamp01(glows[i]!.x)
       parts.line.setAttribute("d", d)
       parts.halo.setAttribute("d", d)
