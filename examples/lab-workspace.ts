@@ -145,7 +145,6 @@ const center = split(main.pane("center").body, {
       max: 560,
       collapsible: true,
       title: "Dock",
-      count: "Variants · Compare · Live",
       element: dock,
     },
   ],
@@ -350,6 +349,7 @@ const moveTo = (ids: readonly string[], parent: string) => {
 export const sceneTime = startTimeline(center.pane("timeline").body)
 
 export const liveFeed = startLive(
+  document.getElementById("sets")!,
   document.getElementById("live")!,
   document.getElementById("diag")!,
 )
