@@ -3,7 +3,6 @@
 // overlay the elements and numbers it draws from, so both renderers place things identically.
 import { comboFromEvent, comboLabel, heldMods, matchesCombo } from "../core/keys.js"
 import {
-  same,
   toolbarShortcut,
   wrapAngle,
   type AngleField,
