@@ -4,12 +4,14 @@ import {
   flattenActivity,
   formatDuration,
   groupTitle,
+  holdScroll,
   indexActivity,
   keepSelection,
   navigateActivity,
   railSegments,
   showsSelection,
   stackRows,
+  takesActivityKey,
   type ActivityEvent,
 } from "../src/ui/activity-model"
 
@@ -167,5 +169,49 @@ describe("durations", () => {
     expect(formatDuration(3723)).toBe("1:02:03")
     expect(formatDuration("live")).toBe("live")
     expect(formatDuration(-3)).toBe("0:00")
+  })
+})
+
+describe("keys left to the page", () => {
+  const closed = flattenActivity(events, new Set())
+  const take = (
+    selected: string | null,
+    key: Parameters<typeof navigateActivity>[2],
+    rows = closed,
+  ) => takesActivityKey(key, navigateActivity(rows, selected, key), rows.length)
+  test("← and → that do nothing pass through (a review stage steps frames with them)", () => {
+    expect(take("a", "ArrowLeft")).toBe(false)
+    expect(take("a", "ArrowRight")).toBe(false)
+    expect(take(null, "ArrowRight")).toBe(false)
+  })
+  test("← and → that open, close or step are the rail's", () => {
+    expect(take("g", "ArrowRight")).toBe(true)
+    const open = flattenActivity(events, new Set(["g"]))
+    expect(take("g", "ArrowLeft", open)).toBe(true)
+    expect(take("g2", "ArrowLeft", open)).toBe(true)
+    expect(take("g", "ArrowRight", open)).toBe(true)
+  })
+  test("↑/↓ and Home/End are the rail's whenever it has rows, even at an end", () => {
+    expect(take("p", "ArrowDown")).toBe(true)
+    expect(take("a", "Home")).toBe(true)
+    expect(take(null, "ArrowDown", [])).toBe(false)
+  })
+})
+
+describe("the scroll through a resize", () => {
+  const close = { from: 10, h0: 350, h1: 272 }
+  test("closing at the end: released in step with the height, the space held meanwhile", () => {
+    expect(holdScroll(close, 350, 340)).toEqual({ scroll: 10, space: 350 })
+    const early = holdScroll(close, 340.64, 340)
+    expect(early.scroll).toBeCloseTo(8.8, 1)
+    expect(early.space).toBeCloseTo(348.8, 1)
+    expect(holdScroll(close, 311, 340)).toEqual({ scroll: 5, space: 345 })
+    expect(holdScroll(close, 272, 340)).toEqual({ scroll: 0, space: 340 })
+  })
+  test("growing, or with room to spare, the scroll stays where it was", () => {
+    expect(holdScroll({ from: 10, h0: 350, h1: 428 }, 380, 340)).toEqual({ scroll: 10, space: 380 })
+    // A rail as tall as its content (the view grows with it) holds nothing.
+    expect(holdScroll({ from: 0, h0: 350, h1: 272 }, 300, 350)).toEqual({ scroll: 0, space: 300 })
+    expect(holdScroll({ from: 40, h0: 600, h1: 520 }, 560, 340).scroll).toBe(40)
   })
 })
