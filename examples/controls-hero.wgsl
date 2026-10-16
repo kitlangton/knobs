@@ -230,7 +230,7 @@ fn shadow(p: vec3f, l: vec3f, dist: f32) -> f32 {
   let k = dist / size;
   var res = 1.0;
   var ph = 1e10;
-  var t = max(bh.x, 0.0) + 0.012 + 0.03 * jit;
+  var t = max(bh.x, 0.0) + 0.012 + 0.08 * jit;
   for (var i = 0; i < 56; i++) {
     if (t > end) {
       break;
@@ -542,7 +542,7 @@ fn floorShade(p: vec3f, rd: vec3f) -> vec3f {
   // A contact shadow tucked under the plate's edge.
   let edge = sdRoundRect(p.xz, PLATE, 0.32);
   let contact = 0.5 + 0.5 * smoothstep(0.0, 0.25, edge);
-  let m = Mat(vec3f(0.05), vec3f(0.03), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
+  let m = Mat(vec3f(0.065), vec3f(0.03), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
   return u.v[13].rgb * contact + light(m, p, n, -rd, sp, sh * contact, contact);
 }
 
