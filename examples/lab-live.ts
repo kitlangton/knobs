@@ -123,6 +123,7 @@ const mount = <S extends Schema>(controls: Controls<S>, host: HTMLElement) =>
     ...lookOptions(),
     variants: false,
     haptics: false,
+    sound: true,
     session: false,
     renderer: gpu ? "gpu" : "dom",
   })

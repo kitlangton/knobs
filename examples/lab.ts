@@ -23,6 +23,7 @@ import {
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { bindLookSwitch, lookOptions } from "./lab-look"
+import { speakerToggle } from "./sound-toggle"
 import { fxSchema, type FxValues } from "./lab-fx"
 import { speedChanged, startOverlays } from "./lab-overlays"
 import { startScene } from "./lab-scene"
@@ -422,6 +423,7 @@ const panels = [
     ...lookOptions(),
     variants: false,
     haptics: false,
+    sound: true,
     session: false,
     renderer: gpu ? "gpu" : "dom",
     keys: { leave: "Escape" },
@@ -433,6 +435,7 @@ const panels = [
     ...lookOptions(),
     variants: false,
     haptics: false,
+    sound: true,
     session: false,
     renderer: gpu ? "gpu" : "dom",
     rowAccessory: accessory,
@@ -540,6 +543,7 @@ const mountInspector = () =>
     ...lookOptions(),
     variants: false,
     haptics: false,
+    sound: true,
     session: false,
     renderer: gpu ? "gpu" : "dom",
     tabs: [
@@ -584,6 +588,7 @@ const scene = startScene({
   live: liveFeed,
 })
 bindLookSwitch()
+speakerToggle(document.getElementById("sound") as HTMLButtonElement)
 speedChanged((speed) => {
   sceneTime.timeline.update({ speed })
   scene.setSpeed(speed)

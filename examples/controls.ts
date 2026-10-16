@@ -73,6 +73,7 @@ import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
 import skyWgsl from "./controls-sky.wgsl?raw"
 import { uiSections } from "./controls-ui"
+import { speakerToggle } from "./sound-toggle"
 
 await initGpu()
 
@@ -241,6 +242,7 @@ export const panelOptions = (): MountPanelOptions => ({
   session: false,
   variants: false,
   haptics: false,
+  sound: true,
 })
 
 export function mount(store: AnyControls, slot: HTMLElement, options: MountPanelOptions = {}) {
@@ -1419,6 +1421,7 @@ function setTheme(next: "dark" | "light") {
 }
 themeButton.addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"))
 syncThemeButton()
+speakerToggle(document.getElementById("sound") as HTMLButtonElement)
 
 const domLink = document.getElementById("dom") as HTMLAnchorElement
 const gpuLink = document.getElementById("gpu") as HTMLAnchorElement
