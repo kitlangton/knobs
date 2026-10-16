@@ -159,6 +159,7 @@ const CSS = `
 .swarm-text .v { text-shadow: 0 0 12px color-mix(in srgb, currentColor 45%, transparent); }
 .swarm-text .rows { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; }
 .swarm-text .rows span:nth-child(even) { text-align: right; color: var(--swarm-b); }
+.swarm-text .rows span.a { color: var(--swarm-a); }
 .swarm-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
 .swarm-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
 .swarm-still { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -326,19 +327,22 @@ export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
       const cw = Math.max(150, Math.min(220, w * 0.15))
       const side = 24
       const gapMin = 90
-      // The frame reaches 1.3 R above and below the ring, with its marks and the clock above it
-      // (28 px) and its marks below (22 px).
+      // The frame reaches 1.3 R above and below the ring, with its marks above it (22 px) and
+      // its marks and the clock below (28 px). Nothing is clipped: the ring gives way first.
       const R = Math.max(
-        100,
-        Math.min((h - 22 - 16 - roof - 28) / 2.6, (w - 2 * side - 43 - cw - gapMin - pw) / 2.91),
+        60,
+        Math.min((h - 28 - 16 - roof - 22) / 2.6, (w - 2 * side - 43 - cw - gapMin - pw) / 2.91),
       )
       const before = 43 + cw + 1.55 * R
       const after = 1.36 * R + pw
       const gap = Math.min(220, Math.max(gapMin, before - after))
-      const left = Math.max(16, (w - (before + gap + after)) / 2)
+      const left = Math.min(
+        Math.max(16, (w - (before + gap + after)) / 2),
+        w - side - (before + gap + after),
+      )
       lay.R = R
       lay.cx = left + before
-      lay.cy = (roof + 28 + h - 38) / 2
+      lay.cy = (roof + 22 + h - 44) / 2
       lay.col = [left + 43, lay.cy - 1.18 * R, cw, 2.36 * R]
       lay.panelX = lay.cx + 1.36 * R + gap
       slot.style.right = `${Math.max(0, w - lay.panelX - pw).toFixed(1)}px`
@@ -360,7 +364,6 @@ export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
   const clock = line("dim")
   const legend = line("dim")
   const numbers = line("rows")
-  const orderLabel = line("")
   const paceLabel = line("")
   const density = line("dim")
   /** How many readout lines fit between the scope and the radar. */
@@ -370,13 +373,16 @@ export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
     const at = (el: HTMLElement, x: number, y: number, shift: string) => {
       el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) ${shift}`
     }
-    at(clock, cx + 1.36 * R, cy - 1.3 * R - 22, "translateX(-100%)")
-    // Each arc's name and value at its left end, clear of the wires that come from the right.
-    const arcEnd = (a: number) => [cx + Math.cos(a) * 1.125 * R - 10, cy + Math.sin(a) * 1.125 * R]
-    const [ox, oy] = arcEnd(-Math.PI / 2 - ARC)
-    const [px, py] = arcEnd(Math.PI / 2 + ARC)
-    at(orderLabel, ox!, oy!, "translate(-100%, -50%)")
-    at(paceLabel, px!, py!, "translate(-100%, -50%)")
+    // The top stays clear, under the page's title: the clock sits under the frame, the order in
+    // the column, and only the pace's arc is named, at its left end, clear of the wires.
+    at(clock, cx + 1.36 * R, cy + 1.3 * R + 12, "translate(-100%, -50%)")
+    const a = Math.PI / 2 + ARC
+    at(
+      paceLabel,
+      cx + Math.cos(a) * 1.125 * R - 10,
+      cy + Math.sin(a) * 1.125 * R,
+      "translate(-100%, -50%)",
+    )
     const shown = col[2]! > 0
     for (const el of [legend, numbers, density]) el.style.display = shown ? "" : "none"
     if (!shown) return
@@ -395,6 +401,7 @@ export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
   const showStats = (s: Stats) => {
     const v = store.get()
     const rows: [string, string][] = [
+      ["order", s.order.toFixed(2)],
       ["fear", s.fear.toFixed(3)],
       ["clusters", String(s.clusters)],
       ["predators", String(v.predators)],
@@ -407,9 +414,10 @@ export function mountHeroSwarm(host: HTMLElement): HeroSwarm {
     ]
     numbers.innerHTML = rows
       .slice(0, fits)
-      .map(([a, b]) => `<span class="dim">${a}</span><span>${b}</span>`)
+      .map(
+        ([a, b], i) => `<span class="dim">${a}</span><span${i ? "" : ' class="a v"'}>${b}</span>`,
+      )
       .join("")
-    orderLabel.innerHTML = `<span class="dim">order</span> <span class="v">${s.order.toFixed(2)}</span>`
     paceLabel.innerHTML = `<span class="dim">pace</span> <span class="b v">${(s.pace * 2.2).toFixed(2)}× cruise</span>`
     clock.textContent = `${AGENTS.toLocaleString("en-US")} agents · ${simTime.toFixed(1)} s`
   }
@@ -1027,6 +1035,7 @@ async function createGpu(
     return [x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)] as const
   }
   let frameNo = 0
+  let lastBox = ""
   let readIdx = 0
   const reading = [false, false]
   const encode = (simDt: number, dt: number, arrive: number) => {
@@ -1065,14 +1074,25 @@ async function createGpu(
     run(pMaxima, bRead, FAR / 8, FAR / 8)
     run(pTrack, bRead, 1)
     cp.end()
-    // The trail: last frame's fades, this frame's agents add on.
+    // The trail: last frame's fades, this frame's agents add on. Only the ring holds agents, so
+    // the trail lives in its box; when the box moves, what it left behind would never fade, so the
+    // trail starts over.
+    const box = ringBox(t)
+    const boxKey = box.join()
+    const moved = boxKey !== lastBox
+    lastBox = boxKey
     let rp = enc.beginRenderPass({
-      colorAttachments: [{ view: t.trail.createView(), loadOp: "load", storeOp: "store" }],
+      colorAttachments: [
+        {
+          view: t.trail.createView(),
+          loadOp: moved ? "clear" : "load",
+          storeOp: "store",
+          clearValue: [0, 0, 0, 0],
+        },
+      ],
       ...(timed ? { timestampWrites: { querySet: query!, endOfPassWriteIndex: 2 } } : {}),
     })
     rp.setBindGroup(0, rb0)
-    // Only the ring holds agents: the trail lives in its box.
-    const box = ringBox(t)
     rp.setScissorRect(box[0], box[1], box[2], box[3])
     const decay = 0.5 ** (dt / TRAIL_HALF)
     rp.setBlendConstant([decay, decay, decay, decay])
