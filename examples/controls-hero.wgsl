@@ -531,8 +531,8 @@ fn surface(fin: Mat, id: f32, p: vec3f, n: vec3f) -> Mat {
     let q = p.xz - J;
     let tilt = u.v[10].zw;
     let lean = max(dot(q / max(length(q), 1e-4), tilt / max(length(tilt), 1e-4)), 0.0);
-    let bright = 0.4 + 0.6 * lean * min(length(tilt) / 0.3, 1.0);
-    m = mixMat(m, led(u.v[2].w * u.v[12].x * bright), lineMask(abs(length(q) - 0.5), 0.022));
+    let bright = 0.12 + 0.3 * lean * min(length(tilt) / 0.3, 1.0);
+    m = mixMat(m, led(u.v[2].w * u.v[12].x * bright), lineMask(abs(length(q) - 0.5), 0.012));
   } else if (id > 6.5 && id < 7.5 && up && p.y > 0.4) {
     // The key knob's pointer line.
     let lq = rot2(p.xz - K, -rotK);
@@ -598,7 +598,7 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
     let tip = vec3f(T.x, 0.24 + 0.58 * cos(a), T.y + 0.58 * sin(a));
     if (length(p - tip) < 0.1) {
       let lens = Mat(vec3f(0.03), vec3f(0.05), 0.25, 0.25, vec3f(1.0, 0.0, 0.0),
-        u.v[7].rgb * 6.0 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
+        u.v[7].rgb * 2.2 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
       return light(lens, p, n, v, sp, sh, ao);
     }
     let chrome = Mat(vec3f(0.0), vec3f(0.9, 0.9, 0.92), 0.07, 0.07, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
@@ -643,7 +643,7 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
     let capZ = FADER_L - 2.0 * FADER_L * u.v[10].y;
     let along = smoothstep(capZ - 0.05, capZ + 0.1, fq.y) * (1.0 - smoothstep(FADER_L, FADER_L + 0.15, fq.y));
     spill += 0.05 * u.v[11].w * along * exp(-max(abs(fq.x) - 0.06, 0.0) / 0.1);
-    spill += 0.035 * u.v[12].x * exp(-abs(length(p.xz - J) - 0.6) / 0.1);
+    spill += 0.015 * u.v[12].x * exp(-abs(length(p.xz - J) - 0.6) / 0.1);
     col += u.v[7].rgb * leds * spill;
   }
   return col;
