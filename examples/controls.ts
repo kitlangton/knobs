@@ -3,7 +3,8 @@
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
-// DOM, ?theme=light starts light. ⌘K lists the page's sections and controls.
+// DOM, ?theme=light starts light. ⌘K lists the page's sections and controls; ` hides and shows
+// every panel.
 import {
   action,
   angle,
@@ -36,7 +37,7 @@ import {
   vec3,
   watch,
 } from "knobs"
-import { mountPanel, type Panel } from "knobs/panel"
+import { mountPanel, type Panel, toggleLayer } from "knobs/panel"
 import { labPreset } from "knobs/themes"
 import {
   type Command,
@@ -1538,6 +1539,14 @@ const commands = (): Command[] => [
     section: "Page",
     keywords: ["theme", "dark", "light"],
     run: () => setTheme(theme === "dark" ? "light" : "dark"),
+  },
+  {
+    id: "page/toggle",
+    label: "Show or hide the panels",
+    section: "Page",
+    shortcut: "`",
+    keywords: ["hide", "show", "toggle", "backtick", "panels"],
+    run: () => void toggleLayer(document).toggle("`"),
   },
   {
     id: "page/renderer",

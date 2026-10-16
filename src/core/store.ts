@@ -29,6 +29,7 @@ import {
   valueKeys,
 } from "./schema.js"
 import { browserStorage, storageKey, type StoragePort } from "./storage.js"
+import { isUnlocked, onUnlock, unlockedPanel } from "./unlock.js"
 import { createVariants, type Variants } from "./variants.js"
 
 declare const __KNOBS_DEV__: boolean
@@ -49,7 +50,8 @@ export interface ChipOptions {
   /**
    * When the chip shows. `"hover"`: while the element is hovered or focused. `"shortcut"`: hidden
    * until `shortcut` turns on knobs mode (remembered for the tab), then on hover. `"always"`:
-   * whenever its panel is closed. `"hover"` in development, `"shortcut"` in production builds.
+   * whenever its panel is closed. `"hover"` in development (and on a page someone unlocked),
+   * `"shortcut"` for a shipped store in production builds.
    */
   readonly reveal?: RevealMode
   /** The key that toggles knobs mode for `"shortcut"` chips: `"Alt+Shift+D"` (⌥⇧D) by default. */
@@ -204,6 +206,12 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly hints?: "page" | "panel"
   /**
+   * The key that shows and hides every panel and chip on the page that listens for it, outside
+   * text fields and without modifiers; remembered per store. The store's `toggleKey` by default
+   * (a backtick), `false` on a full page (`mountPage`). `false`: this panel always shows.
+   */
+  readonly toggleKey?: string | false
+  /**
    * `false` hides what says a value differs from its default: modified dots and readout marks,
    * group reset icons and the header's Reset. For panels whose values belong to someone else
    * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
@@ -340,6 +348,8 @@ export interface PanelModule {
     options?: MountPanelOptions,
   ): PanelHandle
   attach(controls: Controls<any>, element: HTMLElement, chip?: ChipOptions): () => void
+  /** A brief status at the bottom of the page ("knobs unlocked"). */
+  status?(text: string): void
 }
 export interface ControlsOptions<S extends Schema> extends LabelOptions {
   enabled?: boolean | (() => boolean)
@@ -352,6 +362,12 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   ship?: () => Promise<PanelModule>
   /** The chip `attach` shows: its label, when it shows and the knobs-mode key (see `ChipOptions`). */
   chip?: ChipOptions
+  /**
+   * The key that shows and hides this store's panels and chips, with every other panel on the
+   * page that listens for it (see `MountPanelOptions.toggleKey`). A backtick by default; `false`
+   * for a shipped store (`ship`), whose panels are product UI. `false`: always shown.
+   */
+  toggleKey?: string | false
   /**
    * The longest (ms) a key changed here outranks incoming values for it (see `sync`), so an echo
    * of an older value still in flight can't pull it back. The hold ends early once the remote
@@ -420,6 +436,8 @@ export interface Controls<S extends Schema = Schema> {
   readonly marks: boolean
   /** The chip's options, with `reveal` and `shortcut` resolved. */
   readonly chip: ChipOptions & { readonly reveal: RevealMode; readonly shortcut: string }
+  /** The key that shows and hides its panels and chips, or `false` (see `ControlsOptions.toggleKey`). */
+  readonly toggleKey: string | false
   /** How page cards show group presets (`groupPresetDisplay`, `auto` by default). */
   readonly groupPresetDisplay: GroupPresetDisplay
   /** A group's display label (`groupLabels`, else its fields' `groupLabel`), if it has one. */
@@ -604,13 +622,18 @@ export function defineControls<const S extends Schema>(
   const theme: ThemeMode = options.theme ?? "dark"
   const density: DensityMode = options.density ?? "default"
   const renderer: RendererMode = options.renderer ?? "auto"
-  // Development builds, or a store shipped as product UI (`ship`), which stays live in production.
+  // Development builds, a store shipped as product UI (`ship`), which stays live in production,
+  // or a page someone unlocked (see `unlock`).
   const enabled = () =>
-    (typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__ || Boolean(options.ship)) &&
+    (typeof __KNOBS_DEV__ === "undefined" ||
+      __KNOBS_DEV__ ||
+      Boolean(options.ship) ||
+      isUnlocked()) &&
     (typeof options.enabled === "function"
       ? options.enabled()
       : (options.enabled ??
         (Boolean(options.ship) ||
+          isUnlocked() ||
           (typeof location !== "undefined" &&
             ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)))))
   const storage = () => (options.storage === undefined ? browserStorage() : options.storage)
@@ -621,6 +644,8 @@ export function defineControls<const S extends Schema>(
   const draw = options.random ?? Math.random
   const hostHistory = options.history
   let unsubscribeHistory: (() => void) | undefined
+  /** Heard while anyone listens: unlocking or locking the page changes what `get()` returns. */
+  let unsubscribeUnlock: (() => void) | undefined
   const listeners = new Set<() => void>()
   let refreshes = 0
   const notify = () => {
@@ -1281,6 +1306,49 @@ export function defineControls<const S extends Schema>(
     if (resetKeys) resetKeys(Object.keys(patch))
     else for (const key of Object.keys(patch)) options.onReset?.({ key })
   }
+  /**
+   * Keeps a panel (or a chip) up while the store is enabled: loads its module and makes it, takes
+   * it down when the page locks again and brings it back on the next unlock (see `unlock`).
+   */
+  function live<M, H>(
+    load: () => Promise<M> | undefined,
+    make: (module: M) => H,
+    unmake: (handle: H) => void,
+  ): () => void {
+    let disposed = false
+    let loading = false
+    let handle: H | undefined
+    const sync = () => {
+      if (disposed) return
+      if (!enabled()) {
+        if (handle !== undefined) unmake(handle)
+        handle = undefined
+        return
+      }
+      if (handle !== undefined || loading) return
+      const pending = load()
+      if (!pending) return
+      loading = true
+      void pending
+        .then((module) => {
+          loading = false
+          if (!disposed && enabled() && handle === undefined) handle = make(module)
+        })
+        .catch((cause) => {
+          loading = false
+          error = String(cause)
+          notify()
+        })
+    }
+    sync()
+    const off = onUnlock(sync)
+    return () => {
+      disposed = true
+      off()
+      if (handle !== undefined) unmake(handle)
+      handle = undefined
+    }
+  }
   const controls: Controls<S> & {
     [RESHAPE]: Reshape
     [READOUT]: ReadoutPort
@@ -1304,9 +1372,10 @@ export function defineControls<const S extends Schema>(
     marks: options.marks !== false,
     chip: Object.freeze({
       ...options.chip,
-      reveal: options.chip?.reveal ?? (devBuild() ? "hover" : "shortcut"),
+      reveal: options.chip?.reveal ?? (devBuild() || !options.ship ? "hover" : "shortcut"),
       shortcut: options.chip?.shortcut ?? "Alt+Shift+D",
     }),
+    toggleKey: options.toggleKey ?? (options.ship ? false : "`"),
     groupPresetDisplay: options.groupPresetDisplay ?? "auto",
     groupLabel: (group) => options.groupLabels?.[group] ?? fieldLabels().group.get(group),
     sectionLabel: (section) =>
@@ -1405,12 +1474,14 @@ export function defineControls<const S extends Schema>(
       // The host's history is heard while anyone listens, so buttons follow its canUndo.
       if (hostHistory?.subscribe && !unsubscribeHistory)
         unsubscribeHistory = hostHistory.subscribe(notify)
+      unsubscribeUnlock ??= onUnlock(notify)
       return () => {
         listeners.delete(cb)
-        if (!listeners.size && unsubscribeHistory) {
-          unsubscribeHistory()
-          unsubscribeHistory = undefined
-        }
+        if (listeners.size) return
+        unsubscribeHistory?.()
+        unsubscribeHistory = undefined
+        unsubscribeUnlock?.()
+        unsubscribeUnlock = undefined
       }
     },
     reset(keys) {
@@ -1629,52 +1700,34 @@ export function defineControls<const S extends Schema>(
     variants,
     attach(element, chip) {
       // A shipped store loads the host's panel module; a dev build its own lazy chunk. A
-      // production build of an unshipped store has neither, so no panel code is reachable.
+      // production build of an unshipped store has neither, so no panel code is reachable,
+      // until the page is unlocked and names the module to load (see `unlock`).
       const load = options.ship
         ? () => options.ship!().then((m) => m.attach)
         : typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__
           ? () => import("../panel/attach.js").then((m) => m.attach)
-          : undefined
-      if (!load || !enabled()) return () => {}
-      let disposed = false
-      let detach: (() => void) | undefined
-      void load()
-        .then((attach) => {
-          if (!disposed && enabled()) detach = attach(controls, element, chip)
-        })
-        .catch((cause) => {
-          error = String(cause)
-          notify()
-        })
-      return () => {
-        disposed = true
-        detach?.()
-      }
+          : () => unlockedPanel()?.().then((m) => m.attach)
+      return live(
+        load,
+        (attach) => attach(controls, element, chip),
+        (detach) => detach(),
+      )
     },
     mount(container, mountOptions) {
       const load = options.ship
         ? () => options.ship!().then((m) => m.mountPanel)
         : typeof __KNOBS_DEV__ === "undefined" || __KNOBS_DEV__
           ? () => import("../panel/panel.js").then((m) => m.mountPanel)
-          : undefined
-      if (!load || !enabled()) return () => {}
-      let disposed = false
-      let panel: PanelHandle | undefined
-      void load()
-        .then((mountPanel) => {
-          if (!disposed && enabled()) {
-            panel = mountPanel(controls, container, mountOptions)
-            mountOptions?.onReady?.(panel)
-          }
-        })
-        .catch((cause) => {
-          error = String(cause)
-          notify()
-        })
-      return () => {
-        disposed = true
-        panel?.dispose()
-      }
+          : () => unlockedPanel()?.().then((m) => m.mountPanel)
+      return live(
+        load,
+        (mountPanel) => {
+          const panel = mountPanel(controls, container, mountOptions)
+          mountOptions?.onReady?.(panel)
+          return panel
+        },
+        (panel) => panel.dispose(),
+      )
     },
   }
   return Object.freeze(controls)

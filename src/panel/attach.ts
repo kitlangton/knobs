@@ -4,6 +4,7 @@ import { iconSvg } from "./icons.js"
 import type { Panel } from "./panel.js"
 import { readSession, writeSession } from "./session.js"
 import { injectStyles } from "./styles.js"
+import { toggleLayer } from "./toggle.js"
 
 export function attach<S extends Schema>(
   controls: Controls<S>,
@@ -51,6 +52,8 @@ export function attach<S extends Schema>(
   let panel: Panel | undefined
   /** A panel collapsing into the chip: clicking the chip again reverses it. */
   let leaving: Panel | undefined
+  /** Whether the page's toggle key (a backtick by default) has the chip shown; see toggle.ts. */
+  let toggledOn = true
   const revealed = () => reveal !== "shortcut" || knobsMode(win)
   const position = () => {
     const box = element.getBoundingClientRect()
@@ -61,6 +64,7 @@ export function attach<S extends Schema>(
     // While its panel is open the chip has become the panel, so it stays hidden.
     const shown =
       controls.enabled &&
+      toggledOn &&
       revealed() &&
       !panel &&
       (reveal === "always" ||
@@ -170,10 +174,25 @@ export function attach<S extends Schema>(
   const offShortcut =
     reveal === "shortcut" ? listenForShortcut(win, shortcut, controls.theme) : undefined
   win.addEventListener(MODE_EVENT, onMode)
+  // The page's toggle key hides the chip with the panels (its own panel hides itself).
+  const toggled = controls.toggleKey
+    ? toggleLayer(doc).register({
+        id: controls.id,
+        key: controls.toggleKey,
+        storage: () => controls.storage,
+        root: chip,
+        show: (shown) => {
+          toggledOn = shown
+          update()
+        },
+      })
+    : undefined
+  toggledOn = toggled?.shown ?? true
   const unsubscribe = controls.subscribe(update)
   update()
   return () => {
     disposed = true
+    toggled?.dispose()
     unsubscribe()
     panel?.dispose()
     leaving?.dispose()
@@ -252,6 +271,13 @@ function listenForShortcut(win: Window, shortcut: string, theme: string): () => 
   }
   win.addEventListener("keydown", onKey, true)
   return () => win.removeEventListener("keydown", onKey, true)
+}
+
+/** A brief status at the bottom of the page, as knobs mode's "knobs on" ("knobs unlocked"). */
+export function status(text: string, doc: Document = document) {
+  injectStyles(doc)
+  const light = doc.defaultView?.matchMedia("(prefers-color-scheme: light)").matches
+  showStatus(doc, text, light ? "light" : "dark")
 }
 
 const statusTimers = new WeakMap<Document, ReturnType<typeof setTimeout>>()

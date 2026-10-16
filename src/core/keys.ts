@@ -191,3 +191,17 @@ export function comboParts(combo: string, apple = isApple()): string[] {
 export function comboLabel(combo: string, apple = isApple()): string {
   return comboParts(combo, apple).join(apple ? "" : "+")
 }
+
+/** Whether a key goes to what has focus: a text field, a select or editable text. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.tagName !== "string") return false
+  const tag = el.tagName
+  if (tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true
+  return (
+    tag === "INPUT" &&
+    !["range", "checkbox", "radio", "button", "submit", "reset", "color"].includes(
+      (el as HTMLInputElement).type,
+    )
+  )
+}

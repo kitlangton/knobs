@@ -445,3 +445,22 @@ Two defaults changed after `pan-everything`. Check them when syncing:
   values (`persist: "all"`) and undo restores it with them.
 - **Saved presets have names.** `variants.rename(id, name)`; the strip types a name on save and
   renames on F2, Enter or a double-click.
+
+### Changed default: a backtick shows and hides panels
+
+In development, `` ` `` now shows and hides every panel and chip on the page that listens for it
+(see [Show, hide and unlock](../README.md#show-hide-and-unlock)). It's on for every store unless
+it's shipped (`ship`), and off for full pages (`mountPage`). Check this when syncing:
+
+- **Panels that are the app, not dev tools,** should opt out, or the key folds them away: the
+  Lab's station and details columns and Problems' parameters and prototype settings pass
+  `toggleKey: false` (`examples/lab.ts` and `examples/problems.ts` do). The Tune page is a
+  `mountPage`, so it's unaffected. Shipped stores (Problems' production `parameters`) are too.
+- **A host that already uses the backtick** (the blog's dev tools) keeps it: knobs doesn't claim
+  the key, so both toggle together. Pick another with `toggleKey: "F8"` if they shouldn't.
+- Whether panels are shown is kept per store in its `storage` (`knobs:<id>:shown:v1`).
+- `PanelModule` gained an optional `status(text)`, which `knobs/panel` provides; a module of your
+  own for `ship` needs nothing new.
+
+Live pages can now be unlocked with `unlock({ panel: () => import("knobs/panel") })`; nothing
+changes for a page that doesn't call it.

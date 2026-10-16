@@ -367,6 +367,7 @@ Panels and switchers are keyboard-first:
 | `F2` / `Enter` on the strip, double-click a chip | Rename a saved preset |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
+| `` ` `` | Show or hide every panel and chip on the page, from anywhere outside a text field (see [Show, hide and unlock](#show-hide-and-unlock)) |
 | `Esc` | Close the shortcuts popover; on a focused floating panel (nothing deeper focused), close it and restore focus to its chip |
 | Click a card's empty area or heading | Focus the card (a soft wash shows it); `↑` / `↓` go to its first or last row, and `r`, `⌥R` and `⇧R` act on its group |
 
@@ -751,7 +752,8 @@ defineControls("settings", schema, { ship: () => import("knobs/panel") })
 
 A shipped store stays live in production (`enabled` defaults to true) and mounts from the module you
 name, which your bundler splits into its own chunk. The core never imports the panel itself.
-Stores without `ship` are unchanged.
+Stores without `ship` are unchanged. To tune dev-only stores on a deployed page without shipping
+them to visitors, see [`unlock`](#show-hide-and-unlock).
 
 In production its chips stay hidden until someone presses **⌥⇧D**, which turns knobs mode on and off
 for the tab (remembered in `sessionStorage`, with a brief "knobs on" / "knobs off"); then they show on
@@ -1299,6 +1301,78 @@ A reset that went back to the active preset rather than the defaults carries `ba
 
 `patch` holds only the fields that changed. The die page (`examples/die.ts`) rolls its demo dice this way.
 
+## Show, hide and unlock
+
+**Backtick.** `` ` `` shows and hides every panel and chip on the page at once, the way a page's
+dev tools come and go together. It works anywhere outside a text field, and never with ⌘, ⌃ or ⌥
+held. One key for the whole page, not just the focused panel: you hide them to see the page, and a
+panel you can't see can't have focus to aim at. If any panel is showing the key hides them all;
+otherwise it shows them all. Panels mounted later (scrolled into view) follow the last press.
+
+```ts
+hero.mount(column)                        // ` hides and shows it with the page's other panels
+hero.mount(column, { toggleKey: false })  // always shown
+defineControls("hero", schema, { toggleKey: "F8" }) // its panels and chips listen for F8
+```
+
+- **Remembered per store**, in its `storage`, so a reload puts the page back as you left it, with
+  no animation. Stores with `storage: null` start shown.
+- **Hidden is hidden.** The panel takes no space and is `hidden` and `inert`: no Tab stop, no hint
+  code, no click, and the WebGPU overlay stops drawing it. Chips hide too, hint mode stops, and
+  focus that was in a panel goes back there when it shows again.
+- **Motion.** Leaving, a panel fades with a little blur (4 px at most) and scale (.96 at least) on a
+  .25 s spring with no bounce; arriving is the same in reverse on .32 s. An inline panel also folds
+  its space shut, its content gone before the last of the height, so the page below glides up.
+  Pressing again mid-way turns it around from where it is. Both renderers draw the same; reduced
+  motion only fades.
+- **Off by default** for shipped stores (`ship`, product UI) and full pages (`mountPage`, the whole
+  tool); give them a `toggleKey` to opt in. The `?` popover lists the key.
+- Your own dev tools can join with ``toggleLayer(document).register({ id, key: "`", storage,
+  root, show })`` from `knobs/panel`, or keep their own handler: knobs doesn't claim the key, so a
+  page's backtick listener still runs and both come and go together.
+
+**A secret unlock for a live site.** A production build locks every store to its constants and
+leaves the panel out (see below). To tune a deployed page anyway, let the deploy be unlocked:
+
+```ts
+import { defineControls, knob, unlock } from "knobs"
+
+const hero = defineControls("hero", { radius: knob(12, { min: 0, max: 40, step: 1 }) })
+hero.mount(column) // nothing for visitors: hero.get() is the shipped constants
+
+unlock({ panel: () => import("knobs/panel") })
+```
+
+Visitors download no panel code and see the constants. You unlock it by typing **knobs** anywhere
+outside a text field, opening the page with **`?knobs`**, or tapping the **top-right corner three
+times** quickly (on a phone). Then the panel chunk loads, panels and chips appear, values come from
+this browser's storage, and a brief "knobs unlocked" confirms it. It's remembered in localStorage
+until you lock it again: the same secret again, `?knobs=off`, or the handle's `lock()`. Locking takes
+the panels down and puts the constants back, which is also how to check what visitors see.
+
+```ts
+import { KONAMI, unlock } from "knobs"
+
+const gate = unlock({
+  panel: () => import("knobs/panel"),
+  sequence: KONAMI,     // a word ("knobs"), key names (↑↑↓↓←→←→BA), or false
+  query: "tune",        // ?tune unlocks, ?tune=off locks; false for none
+  corner: "top-left",   // three taps there; false for none
+  persist: false,       // this page view only
+})
+gate.unlocked // also gate.unlock(), gate.lock(), gate.dispose()
+```
+
+It's a secret, not access control: anyone who finds it can tune the page in their own browser, and
+nothing they change reaches anyone else. In development `unlock` changes nothing, since stores are
+live there already. Once unlocked, the backtick hides and shows panels as usual.
+
+How others do it: Leva and Tweakpane have a `hidden` prop; dat.gui hides every GUI on `H` (lil-gui
+dropped it); Theatre.js toggles its studio with ⌥\\; Stripe's Workbench opens with `~`; Vercel's
+toolbar hides with ⌘. and only shows to signed-in team members. A typed word, a query flag kept in
+localStorage and a corner gesture for phones cover a keyboard, a link and a touch screen without an
+account.
+
 ## Explore in development. Ship constants.
 
 ```ts
@@ -1306,7 +1380,7 @@ splat.locked // frozen schema defaults
 splat.get()  // live while enabled; the exact locked object otherwise
 ```
 
-The package has two core exports selected through the standard `development` condition. Vite selects it automatically in dev. The default export is production-safe: **disabled unconditionally, even if `enabled: true` is passed**. `attach()` and `mount()` are no-ops, and their panel imports are erased from that entry.
+The package has two core exports selected through the standard `development` condition. Vite selects it automatically in dev. The default export is production-safe: **disabled unconditionally, even if `enabled: true` is passed**. `attach()` and `mount()` are no-ops, and their panel imports are erased from that entry. The one way back is a page that calls [`unlock`](#show-hide-and-unlock) and someone who knows its secret; the panel then loads from the module `unlock` names.
 
 ## API Summary
 
@@ -1335,6 +1409,7 @@ The package has two core exports selected through the standard `development` con
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
+| `unlock({ panel, sequence?, query?, corner?, persist? })` / `KONAMI` | Lets a production deploy be unlocked by a typed secret, `?knobs` or three corner taps; returns `{ unlocked, unlock(), lock(), dispose() }`. See [Show, hide and unlock](#show-hide-and-unlock). |
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
@@ -1376,6 +1451,7 @@ The package has two core exports selected through the standard `development` con
 - `controls.variants.list()` / `.save(name?)` / `.load(id, { coalesce? })` / `.rename(id, name)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element, chip?)` — floating chip + anchored panel; `chip` (`{ label?, reveal?, shortcut? }`) overrides the store's `chip` option
 - `controls.mount(container, options?)` — inline panel
+- `controls.toggleKey` — the key that shows and hides its panels and chips (`` "`" `` by default, `false` for shipped stores); `toggleKey` on the mount overrides it
 
 ### Workspace pieces (`knobs/ui`)
 

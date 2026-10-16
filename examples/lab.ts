@@ -390,6 +390,8 @@ const accessory = (key: string) => {
 
 const common = {
   nullDefaults: false,
+  // The panels are the editor's own columns, not dev tools: the backtick leaves them be.
+  toggleKey: false as const,
   echo: 0,
   random,
   history,

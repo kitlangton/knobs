@@ -138,6 +138,7 @@ export {
 } from "./core/remote.js"
 export type { LogEntry, LogLevel, TableRows, WatchValue } from "./core/readout.js"
 export { memoryStorage, urlFlag, type StoragePort } from "./core/storage.js"
+export { KONAMI, unlock, type Corner, type Unlock, type UnlockOptions } from "./core/unlock.js"
 export type { TokenPreset } from "./core/theme.js"
 export { formatCode, type CodeFormat } from "./core/code.js"
 export {
