@@ -91,6 +91,11 @@
       .index a.on { background: var(--surface); color: var(--text); font-weight: 500; }
       .index a:focus-visible, .strip a:focus-visible, .top .seg a:focus-visible { background: var(--surface-hi); color: var(--text); }
 
+      /* The page's keys (?), in a popover from the top bar. */
+      .page-keys { display: grid; gap: 6px; padding: 10px 12px; font-size: 12px; color: var(--label); }
+      .page-keys > div { display: grid; grid-template-columns: 72px auto; align-items: center; gap: 10px; }
+      .page-keys > div > span:first-child { display: inline-flex; gap: 3px; }
+
       /* The hero (Swarm): always dark, in light mode too; below 900 px the panel sits under it. */
       .hero { position: relative; height: clamp(520px, 74vh, 920px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
       .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
@@ -192,6 +197,7 @@
         <a class="btn hide-narrow" href="lab.html" data-tip="The Lab: knobs in a dense editor">Lab</a>
         <span class="spacer"></span>
         <button class="btn" id="palette" data-tip="Every section and control" data-tip-shortcut="Mod+K"><kbd>⌘K</kbd></button>
+        <button class="btn theme" id="keys" aria-label="Keyboard shortcuts" data-tip="Keyboard shortcuts" data-tip-shortcut="?">?</button>
         <div class="seg hide-narrow" role="radiogroup" aria-label="Renderer"><a id="dom" role="radio" data-tip="Panels drawn by the DOM">DOM</a><a id="gpu" role="radio" data-tip="Panels drawn by WebGPU">GPU</a></div>
         <button class="btn theme" id="sound" aria-label="Sound"></button>
         <button class="btn theme" id="theme" aria-label="Light or dark" data-tip="Light or dark">☾</button>

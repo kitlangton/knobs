@@ -21,6 +21,7 @@ import {
   keybind,
   knob,
   log,
+  matchesCombo,
   type MountPanelOptions,
   meter,
   range,
@@ -44,6 +45,7 @@ import {
   commandPalette,
   commandsFrom,
   overlayLook,
+  popover,
   readout,
   restyle,
   toast,
@@ -1488,18 +1490,32 @@ index.append(Object.assign(h("div", "cat"), { textContent: "More" }))
 index.append(Object.assign(h("a"), { textContent: "Lab", href: "lab.html" }))
 strip.append(Object.assign(h("a"), { textContent: "Lab", href: "lab.html" }))
 let active = ""
+/** Where the index's own scroll is gliding to, while it glides. */
+let indexTarget: number | undefined
+index.addEventListener("scrollend", () => {
+  indexTarget = undefined
+})
 const markActive = (id: string) => {
   if (id === active) return
   links.get(active)?.classList.remove("on")
   active = id
   const link = links.get(id)
   link?.classList.add("on")
-  // Keep the active link in the index's own view, without touching the page's scroll.
-  if (link) {
+  // Keep the active link in the index's own view, without touching the page's scroll. It glides
+  // there: jumped in one frame while the page scrolls, the sticky index's links tore into doubled
+  // text at its foot.
+  if (link && index.scrollHeight > index.clientHeight) {
     const top = link.offsetTop // the sticky index is the links' offset parent
-    if (top < index.scrollTop + 24) index.scrollTop = Math.max(0, top - 24)
-    else if (top + link.offsetHeight > index.scrollTop + index.clientHeight - 24)
-      index.scrollTop = top + link.offsetHeight - index.clientHeight + 24
+    const at = indexTarget ?? index.scrollTop
+    let to = at
+    if (top < at + 24) to = Math.max(0, top - 24)
+    else if (top + link.offsetHeight > at + index.clientHeight - 24)
+      to = top + link.offsetHeight - index.clientHeight + 24
+    to = Math.min(to, index.scrollHeight - index.clientHeight)
+    if (Math.abs(to - at) >= 1) {
+      indexTarget = to
+      index.scrollTo({ top: to, behavior: reduced() ? "auto" : "smooth" })
+    }
   }
   const cat = sections.find((x) => x.id === id)?.cat
   for (const [title, chip] of catLinks) chip.classList.toggle("on", title === cat)
@@ -1544,7 +1560,105 @@ const reveal = (store: AnyControls) => (key: string) => {
       ?.focus({ preventScroll: true })
   })
 }
+/** A text field, select or editable text: its own keys (a caret's ⌘↑) come first. */
+const isTypingTarget = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null
+  if (!el?.tagName) return false
+  if (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true
+  return (
+    el.tagName === "INPUT" &&
+    !/^(range|checkbox|radio|button|submit|reset|color)$/.test((el as HTMLInputElement).type)
+  )
+}
+
+// ⌘↓ / ⌘↑: the next or previous demo (the hero first), gliding there, with keys in its panel.
+const hero = document.getElementById("hero")!
+/** Where the page is: the demo focus is in, else the one the index marks (the hero near the top). */
+const currentStop = () => {
+  const focused = document.activeElement
+  const inSec = sections.findIndex((x) => x.el.contains(focused))
+  if (inSec >= 0) return inSec + 1
+  if (hero.contains(focused)) return 0
+  if (scroller.scrollTop < hero.offsetHeight * 0.5) return 0
+  return sections.findIndex((x) => x.id === active) + 1
+}
+function goStop(at: number) {
+  const behavior: ScrollBehavior = reduced() ? "auto" : "smooth"
+  const el = at <= 0 ? hero : sections[at - 1]!.el
+  if (at <= 0) {
+    scroller.scrollTo({ top: 0, behavior })
+    history.replaceState(null, "", location.pathname + location.search)
+  } else jump(el)(new Event("click"))
+  // Keys go to its panel (its first row), else to its heading.
+  const panelEl = el.querySelector<HTMLElement>(".knobs-panel[data-controls]")
+  const panel = panelEl && panels.get(panelEl.dataset.controls!)
+  if (panel) return panel.focus()
+  if (panelEl) return panelEl.focus({ preventScroll: true })
+  const heading = el.querySelector<HTMLElement>("h2") ?? el
+  if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1
+  heading.focus({ preventScroll: true })
+}
+const stepStop = (by: number) => goStop(Math.max(0, Math.min(sections.length, currentStop() + by)))
+// After the panels: a control that means something by ⌘↑ / ⌘↓ (a text field's caret) keeps it.
+window.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || e.isComposing || isTypingTarget(e.target)) return
+  const by = matchesCombo("Mod+ArrowDown", e) ? 1 : matchesCombo("Mod+ArrowUp", e) ? -1 : 0
+  if (!by) return
+  e.preventDefault()
+  stepStop(by)
+})
+
+// ?: the page's own keys (a panel's ? lists its own, inside it).
+const pageKeys: readonly [string, string][] = [
+  ["⌘K", "Sections and controls"],
+  ["⌘↓ ⌘↑", "Next or previous demo"],
+  ["s", "Jump to any control on the page"],
+  ["`", "Show or hide the panels"],
+  ["?", "These keys (in a panel: its own)"],
+]
+const keysButton = document.getElementById("keys") as HTMLButtonElement
+let keysPop: ReturnType<typeof popover> | undefined
+function toggleKeys() {
+  if (keysPop?.open) return void keysPop.close()
+  const list = h("div", "page-keys")
+  for (const [keys, what] of pageKeys) {
+    const row = h("div")
+    const caps = h("span")
+    for (const k of keys.split(" ")) caps.append(Object.assign(h("kbd"), { textContent: k }))
+    row.append(caps, Object.assign(h("span"), { textContent: what }))
+    list.append(row)
+  }
+  keysPop = popover(keysButton, list, {
+    placement: "bottom-end",
+    label: "Keyboard shortcuts",
+    focus: "none",
+  })
+}
+keysButton.addEventListener("click", toggleKeys)
+window.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || e.key !== "?" || e.metaKey || e.ctrlKey || e.altKey) return
+  if (isTypingTarget(e.target) || (e.target as Element).closest?.(".knobs-panel")) return
+  e.preventDefault()
+  toggleKeys()
+})
+
 const commands = (): Command[] => [
+  {
+    id: "page/next",
+    label: "Next demo",
+    section: "Page",
+    shortcut: "Mod+ArrowDown",
+    keywords: ["down", "section", "jump"],
+    run: () => stepStop(1),
+  },
+  {
+    id: "page/previous",
+    label: "Previous demo",
+    section: "Page",
+    shortcut: "Mod+ArrowUp",
+    keywords: ["up", "section", "jump"],
+    run: () => stepStop(-1),
+  },
   ...sections.map((sec) => ({
     id: `go/${sec.id}`,
     label: sec.title,
