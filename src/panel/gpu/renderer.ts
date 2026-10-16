@@ -2263,9 +2263,8 @@ class GpuOverlayManager {
       this.ease(el, "fade", texts.was ? 0 : 1, SNAP_OMEGA)
     }
     const k = this.ease(el, "fade", 1, this.curReduced ? SNAP_OMEGA : 30)
-    if (texts.was && k < 0.995)
-      this.drawText(texts.was, x, centerY, withAlpha(color, color[3] * (1 - k)), opts)
-    return this.drawText(text, x, centerY, withAlpha(color, color[3] * k), opts)
+    if (texts.was && k < 0.995) this.drawText(texts.was, x, centerY, withAlpha(color, 1 - k), opts)
+    return this.drawText(text, x, centerY, withAlpha(color, k), opts)
   }
 
   /**
@@ -2349,7 +2348,7 @@ class GpuOverlayManager {
       }
       const cx = right - (offset ?? 0)
       const rise = entranceOffset(clock - place.enterAt, place.enterMs) * faceH
-      const col = withAlpha(ink, ink[3] * presence)
+      const col = withAlpha(ink, presence)
       if (!(place.ch >= "0" && place.ch <= "9")) {
         this.drawText(place.ch, cx, centerY + rise, col, opts)
         return
@@ -3172,7 +3171,7 @@ class GpuOverlayManager {
       for (let k = Math.floor(low); k <= Math.ceil(high); k++) {
         const y = centerY + rise + (k - position) * faceH
         if (Math.abs(y - centerY) >= faceH) continue
-        this.drawText(numeral(k), cx, y, withAlpha(ink, ink[3] * presence), {
+        this.drawText(numeral(k), cx, y, withAlpha(ink, presence), {
           ...text,
           blurY,
           exact: position !== k || rise !== 0,

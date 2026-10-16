@@ -32,7 +32,7 @@ const POINTER_ROW = ".knobs-panel[data-k-row-hover]:not([data-keyboard])"
  * panel.ts) rather than on the row, where the custom property would restyle all of the row.
  */
 export const DELAYED =
-  ".knobs-fill,.knobs-handle,.knobs-seg-pill,.knobs-toggle,.knobs-toggle i,.knobs-arm,.knobs-curve,.knobs-swatch,.knobs-strip-thumb,.knobs-pad>i,.knobs-ease-handle,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand,.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i,.knobs-grad-stop,.knobs-graph-pt"
+  ".knobs-fill,.knobs-handle,.knobs-seg-pill,.knobs-toggle,.knobs-toggle i,.knobs-arm,.knobs-curve,.knobs-swatch,.knobs-strip-thumb,.knobs-pad>i,.knobs-ease-handle,.knobs-range-track,.knobs-range-fill,.knobs-range-thumb,.knobs-dial-hand,.knobs-grad,.knobs-grad-mini,.knobs-grad-mini>i,.knobs-grad-stop,.knobs-graph-pt"
 
 // A gradient strip is painted from its samples, each a registered colour (so it transitions):
 // a preset blends the strip sample by sample, as the GPU's morph does.

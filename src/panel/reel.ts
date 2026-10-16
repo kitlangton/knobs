@@ -118,7 +118,12 @@ const settle = (value: number, decimals: number) => {
 export function rollingReadout(host: HTMLElement): RollingReadout {
   const doc = host.ownerDocument
   let shape = ""
-  let segments: (ReelSegment & { roller?: RollingNumberController; value?: number })[] = []
+  /** `value` is what the canvas's places show; `dom` what the roller was last sent. */
+  let segments: (ReelSegment & {
+    roller?: RollingNumberController
+    value?: number
+    dom?: number
+  })[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
   const clear = () => {
     clearTimeout(timer)
@@ -161,7 +166,7 @@ export function rollingReadout(host: HTMLElement): RollingReadout {
           })
           const places: DigitPlace[] = []
           syncPlaces(places, text, 0, 0, 0)
-          return { el, text, places, roller, value }
+          return { el, text, places, roller, value, dom: value }
         })
         host.replaceChildren(...segments.map((s) => s.el))
         return
@@ -176,16 +181,21 @@ export function rollingReadout(host: HTMLElement): RollingReadout {
           return
         }
         const value = settle(p.value, p.decimals)
-        if (value === s.value) return
-        const trend = Math.sign(value - (s.value ?? value))
-        s.value = value
-        s.text = value.toFixed(p.decimals)
-        syncPlaces(s.places!, s.text, trend, ms, ms > 0 ? delay : 0)
+        if (value !== s.value) {
+          const trend = Math.sign(value - (s.value ?? value))
+          s.value = value
+          s.text = value.toFixed(p.decimals)
+          syncPlaces(s.places!, s.text, trend, ms, ms > 0 ? delay : 0)
+        }
+        // A roll still waiting for its turn when the next change came was dropped with the timer:
+        // the roller is sent wherever it doesn't already show the value.
+        if (value === s.dom) return
         // Never rolling-number's unanimated path (its finish() resets the reels, so the next
         // change would jump): a 1 ms roll is a snap that keeps it warm.
-        rolls.push(() =>
-          s.roller!.update({ value, animated: true, duration: dom ? ms : 1, motionBlur: dom }),
-        )
+        rolls.push(() => {
+          s.dom = value
+          s.roller!.update({ value, animated: true, duration: dom ? ms : 1, motionBlur: dom })
+        })
       })
       const run = () => {
         for (const roll of rolls) roll()
