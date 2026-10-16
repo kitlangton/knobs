@@ -42,7 +42,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     feel: spring({ duration: 0.6, bounce: 0.32 }, { label: "Spring" }),
   })
   const materialStore = define("hero-material", "Hero material", {
-    material: choice("Glass", MATERIALS, { label: "Material" }),
+    material: choice("Glass", MATERIALS, { label: "Material", display: "segmented" }),
   })
   const fieldStore = define("hero-field", "Hero field", {
     colour: color("#5b8cff", { label: "Colour" }),
@@ -55,6 +55,10 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   mount(materialStore.store, slot("material"), { title: "Material", header: false })
   mount(fieldStore.store, slot("field"), { title: "Field", header: false })
   mount(lightStore.store, slot("light"), { title: "Light", header: false })
+  // The pad starts open: it's the one control here that's a surface to drag.
+  slot("light")
+    .querySelector<HTMLElement>('[data-field="light"] .knobs-x-head[aria-expanded="false"]')
+    ?.click()
 
   const view = gpuView(stageEl, {
     wgsl: heroWgsl,

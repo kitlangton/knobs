@@ -78,12 +78,18 @@ fn field(q: vec2f) -> vec3f {
   let k = q / R;
   let gA = gauss(k - vec2f(-1.55, -0.5) - 0.24 * vec2f(sin(t * 0.13), cos(t * 0.11)), 1.55);
   let gB = gauss(k - vec2f(1.65, 0.3) - 0.24 * vec2f(cos(t * 0.09 + 1.0), sin(t * 0.12 + 2.0)), 1.7);
-  let gC = gauss(k - vec2f(0.1, 1.5) - 0.22 * vec2f(sin(t * 0.1 + 4.0), cos(t * 0.07 + 1.0)), 1.45);
+  let gC = gauss(k - vec2f(0.1, 1.3) - 0.22 * vec2f(sin(t * 0.1 + 4.0), cos(t * 0.07 + 1.0)), 1.45);
   let halo = gauss(k, 1.25);
-  let energy = u.v[3].w;
+  // The pools fade out before the hero's edges, so it meets the top bar and the page below
+  // in the page's own colour.
+  let size = u.frame.xy / u.frame.z;
+  let p = q + u.v[0].xy;
+  let edge = smoothstep(0.0, 0.16 * size.y, p.y) * smoothstep(0.0, 0.3 * size.y, size.y - p.y) *
+    smoothstep(0.0, 0.14 * size.x, p.x) * smoothstep(0.0, 0.14 * size.x, size.x - p.x);
+  let energy = u.v[3].w * edge;
   let glow = (cA * (gA + 0.55 * halo) + cB * gB + cC * gC) * energy;
   // Dark: light added to the page. Light: the page tinted toward each pool's hue.
-  let dark = page + glow * 0.6;
+  let dark = page + glow * 0.46;
   let tint = glow / max(max(glow.r, max(glow.g, glow.b)), 1e-4);
   let amount = sat(max(glow.r, max(glow.g, glow.b)) * 1.6);
   let light = page * mix(vec3f(1.0), 0.35 + 0.65 * tint, amount * 0.55);
