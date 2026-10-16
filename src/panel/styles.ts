@@ -101,6 +101,8 @@ const defaultsCss = `
 @property --k-copy{syntax:"<number>";inherits:true;initial-value:1}
 @property --k-check{syntax:"<number>";inherits:true;initial-value:0}
 @property --k-check-a{syntax:"<number>";inherits:true;initial-value:0}
+@property --k-head-s{syntax:"<number>";inherits:true;initial-value:0}
+@property --k-head-v{syntax:"<number>";inherits:true;initial-value:0}
 @property --kc-value-size{syntax:"<length>";inherits:true;initial-value:11.5px}
 @property --kr-lo{syntax:"<number>";inherits:true;initial-value:0}
 @property --kpt-sel{syntax:"<number>";inherits:false;initial-value:1}
@@ -262,6 +264,26 @@ const css = `
 /* Header */
 .knobs-panel header{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;touch-action:none;padding:0 var(--k-inset) var(--k-section-gap);min-height:var(--k-icon-btn)}
 .knobs-panel.knobs-inline header,.knobs-panel.knobs-inline header:active{cursor:default}
+/* The title row stays pinned while the rows scroll under it, in the panel (it scrolls once it's
+   bounded) or, for a panel with overflow:visible, in the nearest scroller around it. Once rows are
+   under it, and only then, it frosts (backdrop blur over the panel's colour) and softens its foot
+   with a short fade. That's scroll-driven, with no script: --k-head-s follows the panel's own
+   scroll, --k-head-v the panel's top passing its scroller's, over their first 24px. The GPU reads
+   them too, to clip the rows at the header's foot and fade them in below it. */
+@keyframes knobs-head-s{to{--k-head-s:1}}
+@keyframes knobs-head-v{to{--k-head-v:1}}
+.knobs-panel:not(.knobs-page){scroll-timeline:--knobs-self block;view-timeline:--knobs-view block}
+.knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;margin-top:calc(var(--k-pad) * -1);padding-top:var(--k-pad);
+  border-radius:max(0px,calc(var(--k-panel-radius) - 1px - var(--k-pad))) max(0px,calc(var(--k-panel-radius) - 1px - var(--k-pad))) 0 0;
+  --k-head-on:max(var(--k-head-s),var(--k-head-v));--k-head-bg:color-mix(in srgb,var(--k-bg) 88%,transparent);
+  background:color-mix(in srgb,var(--k-head-bg) calc(var(--k-head-on) * 100%),transparent);
+  -webkit-backdrop-filter:blur(calc(var(--k-head-on) * 16px)) saturate(calc(1 + var(--k-head-on) * .4));backdrop-filter:blur(calc(var(--k-head-on) * 16px)) saturate(calc(1 + var(--k-head-on) * .4));
+  animation:knobs-head-s linear both,knobs-head-v linear both;animation-timeline:--knobs-self,--knobs-view;animation-range:0px 24px,exit-crossing 0px exit-crossing 24px}
+.knobs-panel:not(.knobs-page)>header::after{content:"";position:absolute;left:0;right:0;top:100%;height:10px;pointer-events:none;
+  background:linear-gradient(var(--k-head-bg),transparent);opacity:var(--k-head-on)}
+@supports not (animation-timeline:scroll()){.knobs-panel:not(.knobs-page)>header{background:var(--k-head-bg)}.knobs-panel:not(.knobs-page)>header::after{display:none}}
+.knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header{background:transparent!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header::after{display:none}
 .knobs-panel header:active{cursor:grabbing}
 .knobs-panel header strong{flex:1;min-width:0;font-weight:var(--k-title-weight);font-size:var(--k-text-title);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s var(--k-ease)}
 /* Holding \\ shows the values from before the last change; the title dims meanwhile. */

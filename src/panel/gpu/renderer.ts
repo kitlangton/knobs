@@ -64,6 +64,8 @@ const MAX_PRIMS = 4096
 const MAX_POINTS = 16384
 /** Shapes of panels morphing out of their chips this frame (see Mask in the shader). */
 const MAX_MASKS = 16
+/** How far below a pinned header the rows fade in (px), as the DOM's `header::after`. */
+const HEAD_FADE = 10
 const MASK_FLOATS = 12
 /** An `ease` omega this high places the value at once (a 0 ms token). */
 const SNAP_OMEGA = 1e4
@@ -1781,6 +1783,30 @@ class GpuOverlayManager {
    * A button's press flash (flash.ts) over its wash: the wash brightened toward the text colour,
    * easing out. Returns how much is left (0 once it's over), for the ink to brighten by.
    */
+  /** Panels whose DOM overlays `cutUnderHead` has cut, to restore once nothing is under. */
+  private readonly headCuts = new WeakSet<HTMLElement>()
+
+  /**
+   * The DOM pieces the GPU leaves above its canvas (a row's accessory, the number being typed,
+   * the search field) are cut at a pinned header's foot (`foot`, viewport y), as the rows are.
+   */
+  private cutUnderHead(root: HTMLElement, foot: number | undefined) {
+    if (foot === undefined && !this.headCuts.has(root)) return
+    if (foot === undefined) this.headCuts.delete(root)
+    else this.headCuts.add(root)
+    for (const el of root.querySelectorAll<HTMLElement>(
+      ".knobs-row>.knobs-accessory,.knobs-number,.knobs-search",
+    )) {
+      let css = ""
+      if (foot !== undefined) {
+        const r = el.getBoundingClientRect()
+        const cut = Math.min(r.height, foot - r.top)
+        if (cut > 0) css = `inset(${cut.toFixed(1)}px 0 0 0)`
+      }
+      if (el.style.clipPath !== css) el.style.clipPath = css
+    }
+  }
+
   private drawFlash(button: Element, r: DOMRect, alpha: number, clock: number, clip?: Clip) {
     const k = flashOf(button, clock)
     if (k <= 0) return 0
@@ -3964,11 +3990,11 @@ class GpuOverlayManager {
             bodyClip[3],
           ]
       }
-      // A page's header sticks while the body scrolls under it: its rects are read fresh, and the
-      // body is clipped to below it.
+      // A header sticks while the body scrolls under it (a page's always; a panel's in a scroller):
+      // its rects are read fresh, and the body is clipped to below it.
       const headClip = bodyClip
       const bypass = this.curBypassRectCache
-      if (pageB) this.curBypassRectCache = true
+      this.curBypassRectCache = true
       this.curClip = headClip
 
       // 2. Header (an embedded panel may have none)
@@ -4046,6 +4072,45 @@ class GpuOverlayManager {
           }
         }
       }
+      if (!pageB) this.curBypassRectCache = bypass
+      // A panel's pinned header (.knobs-panel>header, position: sticky): once rows pass under it
+      // (--k-head-on, scroll-driven in the CSS), they're clipped at its foot and fade in over
+      // HEAD_FADE below it, as the DOM's frosted header and its soft edge hide them.
+      const headMask = this.curMask
+      if (!pageB && !panel.header.hidden) {
+        const cs = getComputedStyle(panel.header)
+        const on = Math.max(
+          parseFloat(cs.getPropertyValue("--k-head-s")) || 0,
+          parseFloat(cs.getPropertyValue("--k-head-v")) || 0,
+        )
+        const hr = on > 0.001 ? panel.header.getBoundingClientRect() : undefined
+        this.cutUnderHead(panel.root, hr?.bottom)
+        if (hr) {
+          bodyClip = intersectClip(bodyClip, [bodyClip[0], hr.bottom, bodyClip[2], bodyClip[3]])
+          this.curClip = bodyClip
+          if (!this.curMask && this.maskCount < MAX_MASKS) {
+            this.masks.set(
+              // Wider than the clip, so its own edges never soften what the clip keeps.
+              [
+                bodyClip[0] - 8,
+                hr.top - 8,
+                bodyClip[2] - bodyClip[0] + 16,
+                bodyClip[3] - hr.top + 16,
+                0,
+                hr.bottom + HEAD_FADE,
+                hr.bottom - (HEAD_FADE * (1 - on)) / on,
+                0,
+                1,
+                1,
+                0,
+                0,
+              ],
+              this.maskCount * MASK_FLOATS,
+            )
+            this.curMask = ++this.maskCount
+          }
+        }
+      }
 
       // 3. Preset strip
       const ps = panel.presetStrip
@@ -4070,7 +4135,7 @@ class GpuOverlayManager {
             p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
           })
 
-        const stripClip = intersectClip(headClip, [
+        const stripClip = intersectClip(bodyClip, [
           psRect.left,
           psRect.top,
           psRect.right,
@@ -5143,6 +5208,9 @@ class GpuOverlayManager {
           this.drawButton(btn, activeEl, hinting, tokens.radius, tokens.textControl, true)
         }
       }
+
+      // Hint badges reach the header's buttons too: out of the rows' fade.
+      this.curMask = headMask
 
       // 7. Hint badges, and the focused row's option digits (optkeys.ts), in the same look.
       for (const key of panel.root.querySelectorAll<HTMLElement>(".knobs-optkeys .knobs-optkey")) {

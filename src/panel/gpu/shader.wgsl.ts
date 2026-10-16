@@ -31,7 +31,8 @@ struct Prim {
 // blurred, faded and scaled as the DOM's filter, opacity and scale do it.
 struct Mask {
   rect: vec4f,    // x, y, w, h in viewport CSS px
-  look: vec4f,    // radius, fully shown above y, hidden below y, content blur (px)
+  look: vec4f,    // radius, fully shown above y, hidden below z (or, z < y: hidden above z, shown
+                  // below y), content blur (px)
   fx: vec4f,      // content opacity, content scale, scale origin x, y (viewport CSS px)
 }
 
@@ -699,6 +700,9 @@ fn shadeAt(p: Prim, at: vec2f, rect: vec4f, frag: vec2f) -> vec4f {
   var maskCov = covSd(roundedBox(in.screenPx - m.rect.xy, m.rect.zw, m.look.x)) * m.fx.x;
   if (m.look.z > m.look.y) {
     maskCov *= clamp((m.look.z - in.screenPx.y) / (m.look.z - m.look.y), 0.0, 1.0);
+  } else if (m.look.z < m.look.y) {
+    // The other way up (rows under a pinned header): hidden above z, fully shown below y.
+    maskCov *= clamp((in.screenPx.y - m.look.z) / (m.look.y - m.look.z), 0.0, 1.0);
   }
   if (maskCov <= 0.0) { return vec4f(0.0); }
   let o = m.fx.zw;

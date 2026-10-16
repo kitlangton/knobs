@@ -652,6 +652,14 @@ mountPanel(station, column, {
   the close X): a list picks which show, not their order. A button left out takes no slot; Undo,
   Redo and Reset keep theirs while they're away (`data-shown="false"`, `disabled`, out of the
   tab order and the accessibility tree).
+- **Height-bounded panels.** The header (title and buttons) stays pinned while the rows scroll
+  under it; the preset strip, tabs and search scroll with the rows. Once rows are under it, and
+  only then, it frosts and softens its foot with a short fade, scroll-driven with no script, in
+  both renderers. It pins inside the nearest scroller: an inline panel is one itself
+  (`overflow: auto`), so bound the panel (`height`, `max-height`, or `flex: 1; min-height: 0` in a
+  flex column) and it scrolls under its header. To scroll an ancestor instead (a card that holds
+  more than the panel), give the panel `overflow: visible` and the ancestor `overflow: auto`; the
+  header then pins to the ancestor's top while the panel passes through it.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
   stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
