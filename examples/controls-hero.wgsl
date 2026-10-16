@@ -781,7 +781,10 @@ fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
   let moved = u.v[14].x > 0.5;
   let bh = boxHit(cam, rd);
   var t = max(bh.x, 0.0);
-  var march = bh.x < bh.y && bh.y > 0.0;
+  // A ray that meets the desk before the controls' bounds (through their front, below the desk's
+  // top) has nothing to march: it's the open desk.
+  let tDesk = -cam.y / min(rd.y, -1e-4);
+  var march = bh.x < bh.y && bh.y > 0.0 && tDesk > bh.x;
   var c0 = vec4f(0.0, 0.0, 1.0, -2.0);
   let cached = primary && u.v[62].x > 0.5;
   if (cached) {
