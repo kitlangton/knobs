@@ -177,8 +177,8 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const pw = beside ? slot.offsetWidth : 0
     const overlap = beside ? 56 : 0
     const margin = beside ? 64 : 20
-    const top = hh * (beside ? 0.12 : 0.1)
-    const bottom = hh * (beside ? 0.88 : 0.92)
+    const top = hh * (beside ? 0.13 : 0.1)
+    const bottom = hh * (beside ? 0.81 : 0.86)
     let x0 = Infinity
     let x1 = -Infinity
     let y0 = Infinity

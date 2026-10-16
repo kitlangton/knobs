@@ -575,7 +575,7 @@ export class GpuView {
     p.end()
     q.submit([enc.finish()])
     const t0 = performance.now()
-    const label = this.spec.label
+    const label = rest ? `${this.spec.label} still` : this.spec.label
     q.onSubmittedWorkDone().then(() => {
       const ms = performance.now() - t0
       const v = live.views.get(label) ?? { renders: 0, ms: 0 }
