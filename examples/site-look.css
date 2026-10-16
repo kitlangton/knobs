@@ -147,20 +147,28 @@
 }
 .mast-ink > [data-font="sans"] {
   opacity: var(--f-sans);
+  -webkit-mask-image: var(--m-sans, none);
+  mask-image: var(--m-sans, none);
   font-family: system-ui, -apple-system, "SF Pro Display", "Segoe UI", sans-serif;
 }
 .mast-ink > [data-font="serif"] {
   opacity: var(--f-serif);
+  -webkit-mask-image: var(--m-serif, none);
+  mask-image: var(--m-serif, none);
   font-family: Fraunces, ui-serif, Georgia, serif;
   font-optical-sizing: auto;
 }
 .mast-ink > [data-font="mono"] {
   opacity: var(--f-mono);
+  -webkit-mask-image: var(--m-mono, none);
+  mask-image: var(--m-mono, none);
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   text-transform: uppercase;
 }
 .mast-ink > [data-font="wide"] {
   opacity: var(--f-wide);
+  -webkit-mask-image: var(--m-wide, none);
+  mask-image: var(--m-wide, none);
   font-family: Unbounded, system-ui, sans-serif;
 }
 
@@ -178,6 +186,9 @@
   font-size: 15px;
   line-height: 1.45;
 }
+.mast-now::before {
+  content: var(--look-name, "Night");
+}
 .mast-now {
   margin: 12px 0 0;
   color: var(--kicker);
@@ -190,6 +201,8 @@
 /* The knob: a real panel, larger. Its rows and type are set here, so both renderers draw it so. */
 .mast-knob {
   min-width: 0;
+  /* The panel's height, held before it mounts, so nothing below moves when it does. */
+  min-height: 144px;
   --k-row: 44px;
   --k-font-size: 14px;
 }

@@ -1443,7 +1443,6 @@ syncRendererLinks()
 // of the other polarity, and crossing between light and dark restyles as the toggle did.
 const look = mountSiteLook({
   slot: document.getElementById("look")!,
-  caption: document.getElementById("look-now"),
   title: document.querySelector<HTMLElement>(".mast-ink"),
   panel: panelOptions(),
   swarm,

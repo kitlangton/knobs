@@ -41,8 +41,6 @@ const FACES = ["sans", "serif", "mono", "wide"] as const
 export interface SiteLookOptions {
   /** Where the knob's panel goes. */
   readonly slot: HTMLElement
-  /** A caption naming the look (optional). */
-  readonly caption?: HTMLElement | null
   /** The title's faces (`[data-font]` layers), crossfaded. */
   readonly title?: HTMLElement | null
   readonly panel: MountPanelOptions
@@ -196,30 +194,20 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const faces = options.title
     ? FACES.map((f) => options.title!.querySelector<HTMLElement>(`[data-font="${f}"]`))
     : []
-  let lastCaption = ""
   let lastPaint = ""
   let frameNo = 0
-  const apply = (look: Look) => {
-    const out = vars(look)
+  const write = (out: Record<string, string>) => {
     for (const [k, v] of Object.entries(out)) {
       if (written.get(k) === v) continue
       written.set(k, v)
       root.style.setProperty(k, v)
     }
-    wipeFaces()
+  }
+  const apply = (look: Look) => {
+    write(vars(look))
+    // The faces' seam is measured on the faces as the look just set them.
+    write({ ...wipeVars(), "--look-name": JSON.stringify(caption()) })
     paintSwarm(look)
-    if (options.caption) {
-      const { i, u } = segment(THEMES.length, pos.x)
-      const a = THEMES[i]!.name
-      const b = THEMES[i + 1]!.name
-      const text =
-        u < 0.005
-          ? a
-          : u > 0.995
-            ? b
-            : `${a} ${Math.round((1 - u) * 100)} · ${b} ${Math.round(u * 100)}`
-      if (text !== lastCaption) options.caption.textContent = lastCaption = text
-    }
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
     document.dispatchEvent(
@@ -228,35 +216,41 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     // Readouts drawn on canvases take the new colours, every few frames while it moves.
     if (frameNo++ % 6 === 0) restyleReadouts()
   }
+  /** The look's name, or the two it's between and how far. */
+  const caption = () => {
+    const { i, u } = segment(THEMES.length, pos.x)
+    const a = THEMES[i]!.name
+    const b = THEMES[i + 1]!.name
+    if (u < 0.005) return a
+    if (u > 0.995) return b
+    return `${a} ${Math.round((1 - u) * 100)} · ${b} ${Math.round(u * 100)}`
+  }
   /**
    * Two faces meet as a soft line sweeping across the title, left to right as the knob turns up:
    * both whole, each masked to its side, so any position reads as a deliberate split. Their masks
-   * are complementary and they add (plus-lighter), so the edge is as solid as either face. With a
-   * fade (reduced motion) they just crossfade.
+   * are complementary and they add (plus-lighter), so the seam is as solid as either face. With a
+   * fade (reduced motion) they just crossfade. Kept as root properties, like the rest, so the next
+   * first paint has them.
    */
-  const wipeFaces = () => {
+  const wipeVars = () => {
+    const out: Record<string, string> = {}
+    for (const f of FACES) out[`--m-${f}`] = "none"
     const wipe = fade ? null : faceWipe(THEMES, pos.x)
-    FACES.forEach((f, i) => {
-      const el = faces[i]
-      if (!el) return
-      const side = wipe?.to === f ? "in" : wipe?.from === f ? "out" : null
-      if (!side || !wipe) {
-        if (el.style.maskImage) el.style.maskImage = el.style.webkitMaskImage = ""
-        el.style.removeProperty("opacity")
-        return
-      }
-      const a = faces[FACES.indexOf(wipe.from)]!.getBoundingClientRect()
-      const b = faces[FACES.indexOf(wipe.to)]!.getBoundingClientRect()
-      const left = Math.min(a.left, b.left)
-      const right = Math.max(a.right, b.right)
-      const soft = (right - left) * 0.06
-      const line =
-        left - soft + (right - left + 2 * soft) * wipe.at - el.getBoundingClientRect().left
-      const [near, far] = side === "in" ? ["#000", "transparent"] : ["transparent", "#000"]
-      const mask = `linear-gradient(90deg,${near} ${(line - soft).toFixed(1)}px,${far} ${(line + soft).toFixed(1)}px)`
-      el.style.opacity = "1"
-      el.style.maskImage = el.style.webkitMaskImage = mask
-    })
+    const from = wipe && faces[FACES.indexOf(wipe.from)]
+    const to = wipe && faces[FACES.indexOf(wipe.to)]
+    if (!wipe || !from || !to) return out
+    const a = from.getBoundingClientRect()
+    const b = to.getBoundingClientRect()
+    const left = Math.min(a.left, b.left)
+    const right = Math.max(a.right, b.right)
+    const soft = (right - left) * 0.06
+    const seam = left - soft + (right - left + 2 * soft) * wipe.at
+    const mask = (r: DOMRect, near: string, far: string) =>
+      `linear-gradient(90deg,${near} ${(seam - r.left - soft).toFixed(1)}px,${far} ${(seam - r.left + soft).toFixed(1)}px)`
+    out[`--m-${wipe.to}`] = mask(b, "#000", "transparent")
+    out[`--m-${wipe.from}`] = mask(a, "transparent", "#000")
+    out[`--f-${wipe.to}`] = out[`--f-${wipe.from}`] = "1"
+    return out
   }
   const restyleReadouts = () => {
     for (const el of document.querySelectorAll(".knobs-rd-spark,.knobs-rd-graph,.knobs-rd-meter"))
@@ -354,12 +348,10 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     raf = 0
     root.removeAttribute("data-site-moving")
     restyleReadouts()
-    keep(look)
+    keep()
   }
-  const keep = (look: Look) => {
-    const text = Object.entries(vars(look))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(";")
+  const keep = () => {
+    const text = [...written].map(([k, v]) => `${k}:${v}`).join(";")
     try {
       localStorage.setItem(KEY, JSON.stringify({ css: text, dark }))
     } catch {}
@@ -369,7 +361,13 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   root.dataset.siteLook = ""
   if ((root.dataset.theme === "light") === dark) options.onPolarity(dark)
   apply(current)
-  keep(current)
+  keep()
+  // The seam is measured: a new width, or a face arriving, places it again.
+  const remeasure = () => {
+    if (!raf) write(wipeVars())
+  }
+  addEventListener("resize", remeasure)
+  document.fonts?.addEventListener("loadingdone", remeasure)
 
   mountPanel(store, options.slot, {
     ...options.panel,
