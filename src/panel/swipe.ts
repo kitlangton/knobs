@@ -575,7 +575,7 @@ export function panOptions(
       const next = slide(slots, at, dx)
       if (next.index !== at.index) choose(next.index)
       // Meeting an end ticks once, as it starts to give.
-      else if (!giving(slots, at) && giving(slots, next)) tick(o.box)
+      else if (!giving(slots, at) && giving(slots, next)) tick(o.box, "limit")
       at = next
       paint(pillAt(slots, at))
     },

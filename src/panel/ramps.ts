@@ -405,7 +405,7 @@ export function gradientRow(c: RowContext<GradientField>): EditorRow {
       }
       const before = panAt.give
       panAt = band(panAt, dx, 0, room)
-      if (stretched(before, panAt.give)) tick(strip)
+      if (stretched(before, panAt.give)) tick(strip, "limit")
       moveTo(panAt.at / room)
       if (before !== panAt.give) {
         layout(true)
@@ -988,7 +988,7 @@ export function curveRow(c: RowContext<CurveField>): EditorRow {
           : [shown[i - 1]!.x + 0.001, shown[i + 1]!.x - 0.001]
         const before = panAt[0].give || panAt[1].give
         panAt = [band(panAt[0], dx, minX * w, maxX * w), band(panAt[1], dy, 0, h)]
-        if (stretched(before, panAt[0].give || panAt[1].give)) tick(graph)
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(graph, "limit")
         moveTo(panAt[0].at / w, lo + (1 - panAt[1].at / h) * span)
         layout(true)
         c.wake()

@@ -557,6 +557,33 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   Android; on iPhone, Safari's switch tick (iOS 17.4–26.4 for every tick; from iOS 26.5, which only
   plays it for a tap, switches alone). `haptics: false` on the mount turns them off, and so does
   reduced motion.
+- **Sound.** `sound: true` on the mount gives the panel quiet, short sound effects, synthesized
+  live with Web Audio (no files): a slider's detents pitched by where the value sits (a slow drag
+  ratchets evenly, a fast scrub ticks lighter, the default's notch is firmer), a soft bump where a
+  pan or an arrow meets an end, a switch's two-part throw (off sits lower), a choice's detent that
+  rises going forwards and falls going back, a glass fifth for a preset, a die tumbling for Random
+  (two clicks for Mutate), a breath drawn backwards for Reset, two rising glass notes for Copy, air
+  sliding back or forward for undo and redo, a latch for a group folding or opening, a ting and
+  key ticks for hint mode, a firm click for an action and a key going down and up for a captured
+  combination. They're off by default and follow the same moments as haptics. `{ volume, theme }`
+  sets the panel's level (0–1) and its material: `"glass"` (the default, with a faint ring) or
+  `"mech"` (drier). Nothing is made before the page's first click or key, so browsers don't warn.
+
+  ```ts
+  import { sound } from "knobs/panel"
+
+  mountPanel(controls, host, { sound: true })
+  sound.enable(false) // the page's switch: mutes every panel (and your own cues); on by default
+  sound.setVolume(0.6)
+  sound.play("copy") // a cue of knobs' palette from your own UI
+  sound.subscribe(() => speaker.ariaPressed = String(sound.enabled))
+  ```
+
+  With `sound` on, the `?` popover offers **Sounds on/off** for the user, kept in the store's
+  `storage`. `sound.output()` hands you the shared context and the bus to connect your own nodes
+  to, so volume and mute reach them too (the catalog's lamp hums through it). The approach (struck
+  modes, a sine knocked sharp, cadence that lightens repeats, one lazy context) follows
+  [Cuelume](https://cuelume.dev) (MIT); the palette is knobs' own.
 - **Reading values.** `useValue(controls, key)` and `useModified(controls, key?)` change only when
   their answer does; a panel update touches only the rows that changed.
 
@@ -1224,7 +1251,8 @@ The package has two core exports selected through the standard `development` con
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
 | `page.fold(group: string, folded?: boolean, options?: PageFoldOptions): void` / `page.foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void` / `page.sectionFolded(section: string): boolean` | Fold a group's card or a section or open it (toggles without `folded`), and ask which a section is. `PageFoldOptions` is `{ remember?: boolean, reveal?: boolean }`; `remember` defaults to `true`. |

@@ -7,6 +7,7 @@
 import { color, curve, knob, range, sampleCurve, springMotion, toggle } from "knobs"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb } from "./controls-gpu"
+import { lampSound } from "./controls-lamp-sound"
 import lampWgsl from "./controls-lamp.wgsl?raw"
 import {
   clamp01,
@@ -63,6 +64,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
   })
   mount(store, s.slot, { title: "Lamp" })
   s.stage.style.display = "block"
+  const audio = lampSound(s.stage)
 
   const view = gpuView(s.stage, {
     wgsl: lampWgsl,
@@ -86,6 +88,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     const lc = kelvinRgb(kelvin)
     const intensity = 13 * k * hot ** 2.4 * flicker
     live.lumens = 800 * k * hot ** 2.4 * flicker
+    audio.frame(hot, clamp01(flick.x), n, k)
     if (!data || !view) {
       fallback?.(lc, intensity / 13, oklabRgb(shade.lab))
       return
@@ -138,6 +141,7 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     if (how === "init") heat.snap(v.on ? 1 : 0)
     else if (v.on !== lit) {
       live.log(v.on ? "Lamp struck" : "Lamp off, cooling")
+      audio.switched(v.on)
       if (v.on) {
         heat.to(1, IGNITE)
         flick.snap(1).to(0, FLICKER)

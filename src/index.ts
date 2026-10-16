@@ -112,6 +112,8 @@ export {
   type RendererMode,
   type RevealMode,
   type SectionFolded,
+  type SoundOptions,
+  type SoundTheme,
   type ThemeMode,
 } from "./core/store.js"
 export {

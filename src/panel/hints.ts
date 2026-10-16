@@ -1,3 +1,5 @@
+import { cue } from "./sound.js"
+
 export interface HintCandidate {
   readonly key: string
   readonly display: string
@@ -242,6 +244,7 @@ export function createHintController(
     codes = nextCodes
     root.classList.add("knobs-hinting")
     if (!layer.isConnected) root.append(layer)
+    cue(root, "hint")
 
     const rootRect = root.getBoundingClientRect()
     badgeNodes = spots.map((t) => {
@@ -280,6 +283,7 @@ export function createHintController(
   }
 
   function narrow(next: string) {
+    if (next.length > query.length) cue(root, "type")
     query = next
     paint()
   }
@@ -299,6 +303,7 @@ export function createHintController(
       stop()
       first?.activate()
     } else if (/^[a-zA-Z]$/.test(event.key)) {
+      cue(root, "type")
       query += event.key.toLowerCase()
       paint()
     }

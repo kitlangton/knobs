@@ -365,7 +365,7 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
       }
       const before = panAt.give
       panAt = band(panAt, dx, 0, room)
-      if (stretched(before, panAt.give)) tick(track)
+      if (stretched(before, panAt.give)) tick(track, "limit")
       const moved = give !== panAt.give
       give = panAt.give
       o.set(quantize(o.min + (panAt.at / room) * span, false))
@@ -939,7 +939,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
         }
         const before = panAt[0].give || panAt[1].give
         panAt = [band(panAt[0], dx, 0, w), band(panAt[1], dy, 0, Math.max(0, h))]
-        if (stretched(before, panAt[0].give || panAt[1].give)) tick(pad)
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(pad, "limit")
         const moved = give[0] !== panAt[0].give || give[1] !== panAt[1].give
         give = [panAt[0].give, panAt[1].give]
         g.set({
@@ -1416,7 +1416,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
         }
         const before = panAt[0].give || panAt[1].give
         panAt = [band(panAt[0], dx, 0, w), band(panAt[1], dy, 0, h)]
-        if (stretched(before, panAt[0].give || panAt[1].give)) tick(box)
+        if (stretched(before, panAt[0].give || panAt[1].give)) tick(box, "limit")
         const moved = give[1] !== panAt[0].give || give[2] !== panAt[1].give
         give = [panned, panAt[0].give, panAt[1].give]
         move(panned, panAt[0].at / w, range[1] - (panAt[1].at / h) * spanY)

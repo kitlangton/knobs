@@ -82,6 +82,7 @@
       .lab-menu button[aria-checked="true"]::after { content: " ✓"; color: var(--blue); }
       .top .look-switch { margin-left: 4px; }
       .top .theme { width: 26px; padding: 0; }
+      .top .sound { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; padding: 0; }
       .top a.nav { color: var(--label); text-decoration: none; padding: 2px 7px; }
       .top a.nav:hover { color: var(--text); background: #1e2024; }
       html[data-look="lab"] .top .theme { display: none; }
@@ -169,6 +170,7 @@
         <a class="nav" href="controls.html" data-tip="Every control, one by one" data-hint>Controls</a>
         <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look" data-hint>knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat" data-hint>Lab</button></div>
         <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark" data-hint>☾</button>
+        <button class="sound" id="sound" aria-label="Sound" data-hint="Sound"></button>
         <button data-tip="Switch game" data-hint="Games">All games ▾</button>
         <input id="search" placeholder="Search" aria-label="Search commands" readonly data-hint />
       </div>
