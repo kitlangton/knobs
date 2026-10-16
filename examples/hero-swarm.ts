@@ -208,6 +208,17 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
   /** The scope's share of the instrument column, and the radar's radius in it. */
   const SCOPE = 0.29
   const radarR = (col: number[]) => Math.min(col[2]! * 0.5 - 4, col[3]! * 0.22)
+  /** Each row's middle (px from the stage's top), where its wire leaves the panel. */
+  const measureRows = () => {
+    if (!lay.panelX) return
+    const top = stage.getBoundingClientRect().top
+    lay.rows = KEYS.map((k) => {
+      const row = slot.querySelector<HTMLElement>(`[data-field="${k}"]`)
+      const head = row?.querySelector<HTMLElement>(".knobs-x-head") ?? row
+      const r = head?.getBoundingClientRect()
+      return r ? r.top - top + r.height / 2 : -1
+    })
+  }
   const fit = () => {
     const w = stage.clientWidth
     const h = stage.clientHeight
@@ -236,12 +247,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
       lay.cy = (roof + 28 + h - 38) / 2
       lay.col = [left + 22, lay.cy - 1.18 * R, cw, 2.36 * R]
       lay.panelX = panelX
-      lay.rows = KEYS.map((k) => {
-        const row = slot.querySelector<HTMLElement>(`[data-field="${k}"]`)
-        const head = row?.querySelector<HTMLElement>(".knobs-x-head") ?? row
-        const r = head?.getBoundingClientRect()
-        return r ? r.top - sr.top + r.height / 2 : -1
-      })
+      measureRows()
     } else {
       lay.R = Math.min((w / 2 - 16) / 1.5, h * 0.36)
       lay.cx = w / 2
@@ -405,10 +411,15 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
   })
   ro.observe(stage)
   ro.observe(slot)
+  // The panel moves its rows without the slot changing size (the lure's pad opening, a font
+  // arriving): its own size is watched, and the rows are measured again now and then.
+  const panelEl = slot.querySelector(".knobs-panel")
+  if (panelEl) ro.observe(panelEl)
   narrow.addEventListener("change", fit)
 
   let last = performance.now()
   let arrive = 0
+  let frames = 0
   const frame = (t: number) => {
     if (!running || !gpu) return
     const dt = Math.min(1 / 30, Math.max(0, (t - last) / 1000))
@@ -419,6 +430,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     KEYS.forEach((k, i) => {
       glows[i] = glows[i]! + ((k === hot ? 1 : 0) - glows[i]!) * (1 - Math.exp(-dt / 0.12))
     })
+    if (++frames % 20 === 0) measureRows()
     ease(dt)
     paintText()
     // Reduced motion: the same machine, slowly.

@@ -76,7 +76,7 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   c = mix(c, P.pal2.rgb, sat(aux[ii].x * 1.4));
   // A long streak spreads the same light thinner; each frame adds what the trail lets fade, so
   // an agent holds its brightness and a moving one leaves a tail.
-  o.col = c * 0.3 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
+  o.col = c * 0.23 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
   return o;
 }
 
@@ -552,10 +552,10 @@ fn fs_wire(in: WireOut) -> @location(0) vec4f {
   let core = sat((0.6 - a) * dpr + 0.5);
   let halo = exp(-a * a / 7.0) * 0.2;
   let glow = in.info.x;
-  var k = (core + halo) * (0.26 + 0.8 * glow);
+  var k = (core + halo) * (0.2 + 0.85 * glow);
   // Packets, from the row to what it drives, quicker the higher its value.
-  let s = in.t * in.info.z / 38.0 - P.sim1.w * (0.35 + 1.5 * in.info.y);
-  k += smoothstep(0.86, 1.0, fract(s)) * exp(-a * a / 2.5) * (0.7 + 0.8 * glow);
+  let s = in.t * in.info.z / 72.0 - P.sim1.w * (0.25 + 1.1 * in.info.y);
+  k += smoothstep(0.9, 1.0, fract(s)) * exp(-a * a / 2.5) * (0.4 + 0.9 * glow);
   let on = smoothstep(in.t, in.t + 0.04, drawn() * 1.04);
   return vec4f(P.pal0.rgb * k * on, 0.0);
 }
