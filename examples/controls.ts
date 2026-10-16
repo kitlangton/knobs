@@ -76,6 +76,7 @@ import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
 import skyWgsl from "./controls-sky.wgsl?raw"
 import { uiSections } from "./controls-ui"
+import { mountSiteLook } from "./site-look"
 import { speakerToggle } from "./sound-toggle"
 
 await initGpu()
@@ -300,7 +301,7 @@ const kit: SceneKit = { section, define, mount, h, theme: () => theme }
 
 // ── Hero ─────────────────────────────────────────────────────────────────────────────────────
 
-mountHeroSwarm(document.getElementById("hero")!)
+const swarm = mountHeroSwarm(document.getElementById("hero")!)
 
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
@@ -513,6 +514,14 @@ motionScene(kit)
     inkTo = rgbaOf(getComputedStyle(s.stage).color)
     ink.snap(0).to(1, "calm")
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+  // The header knob moves the page's colours every frame (site-look.ts): the stage follows them
+  // exactly, from the look itself rather than restyling the page to read them.
+  document.addEventListener("site-look", (e) => {
+    const { page, surface, text } = (e as CustomEvent<Record<string, typeof inkTo>>).detail
+    bgFrom = bgTo = [0, 1, 2].map((j) => page![j]! + (surface![j]! - page![j]!) * surface![3]!)
+    inkFrom = inkTo = text!
+    ink.snap(1)
+  })
   let count = 0
   on((v, how) => {
     const r0 = v.size / 2
@@ -1411,7 +1420,7 @@ function setTheme(next: "dark" | "light") {
   syncThemeButton()
   syncRendererLinks()
 }
-themeButton.addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"))
+themeButton.addEventListener("click", () => look.toggle())
 syncThemeButton()
 speakerToggle(document.getElementById("sound") as HTMLButtonElement)
 
@@ -1429,6 +1438,17 @@ function syncRendererLinks() {
   gpuLink.setAttribute("aria-checked", String(gpu))
 }
 syncRendererLinks()
+
+// The header's knob: the whole page's look. The top bar's toggle glides it to the nearest theme
+// of the other polarity, and crossing between light and dark restyles as the toggle did.
+const look = mountSiteLook({
+  slot: document.getElementById("look")!,
+  caption: document.getElementById("look-now"),
+  title: document.querySelector<HTMLElement>(".mast-ink"),
+  panel: panelOptions(),
+  swarm,
+  onPolarity: (dark) => setTheme(dark ? "dark" : "light"),
+})
 
 // The side index and the narrow strip, following the scroll.
 const index = document.getElementById("index")!
@@ -1537,8 +1557,8 @@ const commands = (): Command[] => [
     id: "page/theme",
     label: theme === "dark" ? "Light appearance" : "Dark appearance",
     section: "Page",
-    keywords: ["theme", "dark", "light"],
-    run: () => setTheme(theme === "dark" ? "light" : "dark"),
+    keywords: ["theme", "dark", "light", "look"],
+    run: () => look.toggle(),
   },
   {
     id: "page/toggle",
@@ -1566,4 +1586,4 @@ const palette = commandPalette({
 })
 document.getElementById("palette")!.addEventListener("click", () => palette.open())
 
-Object.assign(window, { __catalog: { stores, panels, palette, toast, live } })
+Object.assign(window, { __catalog: { stores, panels, palette, toast, live, look } })

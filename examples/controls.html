@@ -18,7 +18,20 @@
     <script>
       if (new URLSearchParams(location.search).get("theme") === "light")
         document.documentElement.dataset.theme = "light"
+      // The header knob's last look (site-look.ts), painted before anything else.
+      try {
+        const look = JSON.parse(localStorage.getItem("knobs-site-look") || "null")
+        if (look && typeof look.css === "string") {
+          document.documentElement.setAttribute("style", look.css)
+          document.documentElement.dataset.siteLook = ""
+          document.documentElement.dataset.theme = look.dark ? "dark" : "light"
+        }
+      } catch {}
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,100..900&family=JetBrains+Mono:wght@100..800&family=Unbounded:wght@200..900&display=block&text=knobsKNOBS" />
+    <link rel="stylesheet" href="./site-look.css" />
     <style>
       /* knobs' own look: the panels' palette, type and radii on a calm page. The page scrolls in
          .scroller, under a fixed top bar, so the WebGPU overlay clips panels at its edge. Nothing
@@ -79,10 +92,8 @@
       .index a:focus-visible, .strip a:focus-visible, .top .seg a:focus-visible { background: var(--surface-hi); color: var(--text); }
 
       /* The hero (Swarm): always dark, in light mode too; below 900 px the panel sits under it. */
-      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
+      .hero { position: relative; height: clamp(520px, 74vh, 920px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
       .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
-      .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
-      .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
       .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
       .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
 
@@ -155,9 +166,21 @@
   <body>
     <div class="app">
       <div class="scroller" id="scroller">
+        <div class="masthead" id="masthead">
+          <h1 class="mast-title">
+            <span class="sr">knobs</span>
+            <span class="mast-ink" aria-hidden="true"><span data-font="sans">knobs</span><span data-font="serif">knobs</span><span data-font="mono">knobs</span><span data-font="wide">knobs</span></span>
+          </h1>
+          <div class="mast-foot">
+            <div>
+              <p class="mast-sub">Really pretty knobs for any page. Keyboard-first, with presets, random and locks. This one dresses the whole site.</p>
+              <p class="mast-now" id="look-now"></p>
+            </div>
+            <div class="mast-knob" id="look"></div>
+          </div>
+        </div>
         <header class="hero" id="hero" data-own-look>
           <div class="hero-stage"></div>
-          <div class="hero-title"><h1>knobs</h1></div>
           <div class="hero-panel"></div>
         </header>
         <div class="layout">

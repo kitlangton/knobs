@@ -1,0 +1,298 @@
+/* The site look (site-look.ts): the header's big title and its knob, and everything on the page
+   that follows the knob. site-look.ts writes the custom properties below on the root, once a frame
+   while the look moves; the defaults here are Night, the page as it was. Nothing that holds a panel
+   gets a transform, filter, clip or blend (the WebGPU overlay would lose it). */
+@property --t-size {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --t-weight {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 650;
+}
+@property --t-align {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --t-glow {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --f-sans {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --f-serif {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --f-mono {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --f-wide {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --r-stage {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 16px;
+}
+@property --r-ctl {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 8px;
+}
+@property --density {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --rule {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 1px;
+}
+@property --h-weight {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 600;
+}
+@property --h-size {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --plate {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@property --plate-r {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+:root {
+  --kicker: var(--dim);
+  --t-track: -0.05em;
+  --h-track: -0.01em;
+  --cat-track: 0.05em;
+}
+
+/* ── The masthead ── */
+.masthead {
+  --mast: clamp(84px, 16vw, 236px);
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: clamp(24px, 3.6vw, 56px) clamp(20px, 4vw, 56px) clamp(30px, 3.4vw, 52px);
+}
+.mast-title {
+  position: relative;
+  margin: 0;
+  height: calc(var(--mast) * 0.84);
+  display: grid;
+  align-content: end;
+  font-size: var(--mast);
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text);
+}
+.mast-title .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The faces share one cell and one baseline. Each is placed by the look's alignment (0 left, .5
+   centred) against its own width, and they add up (plus-lighter in an isolated group), so two faces
+   halfway through a crossfade are as solid as one. */
+.mast-ink {
+  display: grid;
+  align-items: last baseline;
+  isolation: isolate;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+.mast-ink > span {
+  grid-area: 1 / 1;
+  justify-self: start;
+  position: relative;
+  left: calc(var(--t-align) * 100%);
+  translate: calc(var(--t-align) * -100%) 0;
+  white-space: nowrap;
+  mix-blend-mode: plus-lighter;
+  font-size: calc(var(--t-size) * 1em);
+  font-weight: var(--t-weight);
+  letter-spacing: var(--t-track);
+  font-kerning: normal;
+  text-shadow:
+    0 0 calc(var(--t-glow) * 0.06em)
+    color-mix(in srgb, var(--accent) calc(var(--t-glow) * 80%), transparent),
+    0 0 calc(var(--t-glow) * 0.32em)
+    color-mix(in srgb, var(--accent) calc(var(--t-glow) * 55%), transparent);
+}
+.mast-ink > [data-font="sans"] {
+  opacity: var(--f-sans);
+  font-family: system-ui, -apple-system, "SF Pro Display", "Segoe UI", sans-serif;
+}
+.mast-ink > [data-font="serif"] {
+  opacity: var(--f-serif);
+  font-family: Fraunces, ui-serif, Georgia, serif;
+  font-optical-sizing: auto;
+}
+.mast-ink > [data-font="mono"] {
+  opacity: var(--f-mono);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  text-transform: uppercase;
+}
+.mast-ink > [data-font="wide"] {
+  opacity: var(--f-wide);
+  font-family: Unbounded, system-ui, sans-serif;
+}
+
+.mast-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
+  gap: 22px 56px;
+  align-items: end;
+  margin-top: clamp(18px, 2.4vw, 34px);
+}
+.mast-sub {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--label);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.mast-now {
+  margin: 12px 0 0;
+  color: var(--kicker);
+  font: 600 10.5px / 1 var(--sans);
+  letter-spacing: var(--cat-track);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* The knob: a real panel, larger. Its rows and type are set here, so both renderers draw it so. */
+.mast-knob {
+  min-width: 0;
+  --k-row: 44px;
+  --k-font-size: 14px;
+}
+.mast-knob .knobs-panel {
+  --k-width: 100%;
+}
+@media (max-width: 720px) {
+  .mast-foot {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Everything that follows the knob ── */
+/* Panels take the root's tokens over their own light and dark blocks; a preset's panel keeps its own. */
+:root[data-site-look]
+:is(.knobs-panel, .knobs-chip, .knobs-toast, .knobs-menu, .knobs-ui):not([data-preset]) {
+  --k-bg: inherit;
+  --k-page: inherit;
+  --k-surface: inherit;
+  --k-surface-hi: inherit;
+  --k-line: inherit;
+  --k-line-hi: inherit;
+  --k-text: inherit;
+  --k-label: inherit;
+  --k-dim: inherit;
+  --k-accent: inherit;
+  --k-modified: inherit;
+  --k-seg-bg: inherit;
+  --k-seg-active: inherit;
+  --k-toggle-track: inherit;
+  --k-toggle-thumb: inherit;
+  --k-rim: inherit;
+  --k-edge: inherit;
+  --k-thumb: inherit;
+  --k-group-ink: inherit;
+  --k-radius: inherit;
+  --k-panel-radius: inherit;
+  --k-round: inherit;
+  --k-glass: inherit;
+  --k-glow: inherit;
+  --k-glass-tone: inherit;
+  --k-shadow: inherit;
+  --k-shadow-strength: inherit;
+  color-scheme: inherit;
+}
+/* The loop writes every frame: nothing else eases behind it. */
+:root[data-site-look],
+:root[data-site-look] body {
+  transition: none;
+}
+:root[data-site-moving] :is(.top .btn, .top .seg a, .strip a, .index a, .chip, .catalog-pin) {
+  transition: none !important;
+}
+:root[data-site-moving] :is(.knobs-panel, .knobs-chip) {
+  --k-token-t: 0s;
+}
+:root[data-site-moving] :is(.knobs-panel, .knobs-menu) * {
+  --k-hover-t: 0s;
+}
+
+/* The Swarm sits on its own night, as a plate inset from the page where the look asks. */
+:root[data-site-look] .hero {
+  background: transparent;
+}
+:root[data-site-look] .hero-stage {
+  background: var(--night);
+  clip-path: inset(var(--plate) round var(--plate-r));
+}
+
+/* The catalog's chrome: rhythm, rules, headings, corners. */
+:root[data-site-look] section.demo {
+  padding: calc(28px * var(--density)) 0 calc(36px * var(--density));
+  border-top-width: var(--rule);
+}
+:root[data-site-look] section.demo h2 {
+  font-size: calc(17px * var(--h-size));
+  font-weight: var(--h-weight);
+  letter-spacing: var(--h-track);
+}
+:root[data-site-look] .cathead {
+  margin-top: calc(72px * var(--density));
+  color: var(--kicker);
+  letter-spacing: var(--cat-track);
+}
+:root[data-site-look] .cathead:first-child {
+  margin-top: 2px;
+}
+:root[data-site-look] .index .cat {
+  color: var(--kicker);
+  letter-spacing: var(--cat-track);
+}
+:root[data-site-look] :is(.stage, .host, .ui-box) {
+  border-radius: var(--r-stage);
+}
+:root[data-site-look] :is(.top .btn, .index a, .strip a, .chip, kbd) {
+  border-radius: var(--r-ctl);
+}
+:root[data-site-look] .top .seg {
+  border-radius: calc(var(--r-ctl) + 1px);
+}
+:root[data-site-look] .top .seg a {
+  border-radius: max(0px, calc(var(--r-ctl) - 1px));
+}
+:root[data-site-look] .shows code {
+  border-radius: calc(var(--r-ctl) * 0.6);
+}
