@@ -55,6 +55,7 @@ import {
   vecRow,
   type ToolbarRow,
 } from "./inspector.js"
+import { flash } from "./flash.js"
 import { spin, spinning } from "./spin.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
@@ -486,9 +487,18 @@ function buildPanel<S extends Schema>(
       controls.canRoll(k as keyof S & string),
     ) as (keyof S & string)[]
     if (pool.length === 0) return
-    roller.roll(nudge)
+    tumble(roller, nudge)
     if (nudge) controls.mutate(keys ? pool : undefined)
     else controls.randomize(keys ? pool : undefined)
+  }
+  /** Rolls `roller` and flashes its button, whichever way the roll came (see flash.ts). */
+  const tumble = (roller: HeaderDie, nudge: boolean) => {
+    roller.roll(nudge)
+    flash(roller === die ? randomButton : findGroupDie(roller), wakeGpu)
+  }
+  const findGroupDie = (roller: HeaderDie) => {
+    for (const g of groupDice.values()) if (g.die === roller) return g.button
+    return undefined
   }
   const randomButton = command("random", "Random", "r", () => {})
   randomButton.setAttribute(
@@ -501,10 +511,14 @@ function buildPanel<S extends Schema>(
   // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
   // stays while it turns, so another press adds a turn, and leaves once it has stopped.
   const resetAll = () => {
-    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && !header.hidden)
-      spin(resetBtn, wakeGpu, syncResets)
+    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && !header.hidden) turn(resetBtn)
     cue(root, "reset")
     controls.reset()
+  }
+  /** A reset's ↺ turns once and its button flashes, from a click or a key alike. */
+  const turn = (button: HTMLButtonElement) => {
+    spin(button, wakeGpu, syncResets)
+    flash(button, wakeGpu)
   }
   const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), resetAll)
   if (!bound("resetAll") || !marks || !shows("reset")) resetBtn.hidden = true
@@ -526,6 +540,7 @@ function buildPanel<S extends Schema>(
   const copied = () => {
     clearTimeout(copiedTimer)
     copyButton.dataset.copied = ""
+    flash(copyButton, wakeGpu)
     cue(root, "copy")
     announce("Copied")
     copiedTimer = setTimeout(() => {
@@ -533,12 +548,19 @@ function buildPanel<S extends Schema>(
       wakeGpu()
     }, COPIED_MS)
   }
+  // Undo and Redo flash their buttons, from a key as from a click.
   const undo = () => {
-    if (controls.canUndo) cue(root, "undo")
+    if (controls.canUndo) {
+      cue(root, "undo")
+      flash(undoButton, wakeGpu)
+    }
     controls.undo()
   }
   const redo = () => {
-    if (controls.canRedo) cue(root, "redo")
+    if (controls.canRedo) {
+      cue(root, "redo")
+      flash(redoButton, wakeGpu)
+    }
     controls.redo()
   }
   const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), undo)
@@ -901,7 +923,7 @@ function buildPanel<S extends Schema>(
     }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
-      spin(gReset, wakeGpu, syncResets)
+      turn(gReset)
       cue(root, "reset")
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
@@ -2321,7 +2343,7 @@ function buildPanel<S extends Schema>(
     const roller = groupDice.get(group)?.die
     if (!roller) return
     // The host may roll the group itself (its own seeded "Randomize <group>"): the die still tumbles.
-    if (options.groupRandom?.(group, nudge ? "mutate" : "random") === true) roller.roll(nudge)
+    if (options.groupRandom?.(group, nudge ? "mutate" : "random") === true) tumble(roller, nudge)
     else reroll(groupKeys(group), nudge, roller)
   }
 
@@ -3380,7 +3402,7 @@ function buildPanel<S extends Schema>(
     const keys = cardKeys(card) as (keyof S & string)[]
     // A group's card turns the group's ↺, as its click would.
     const gReset = card.dataset.group ? groupResetButtons.get(card.dataset.group) : undefined
-    if (gReset?.dataset.shown === "true") spin(gReset, wakeGpu, syncResets)
+    if (gReset?.dataset.shown === "true") turn(gReset)
     if (keys.length) controls.reset(keys)
   }
   const cardKeys = (card: HTMLElement) =>

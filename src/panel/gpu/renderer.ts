@@ -16,6 +16,7 @@ import {
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
 import type { PresetStrip } from "../presets.js"
+import { flashOf } from "../flash.js"
 import { spinOf } from "../spin.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { DigitPlace, Slider } from "../slider.js"
@@ -1776,6 +1777,28 @@ class GpuOverlayManager {
   }
 
   /** A circular icon button's hover/focus wash. */
+  /**
+   * A button's press flash (flash.ts) over its wash: the wash brightened toward the text colour,
+   * easing out. Returns how much is left (0 once it's over), for the ink to brighten by.
+   */
+  private drawFlash(button: Element, r: DOMRect, alpha: number, clock: number, clip?: Clip) {
+    const k = flashOf(button, clock)
+    if (k <= 0) return 0
+    const t = this.curTokens
+    this.pushPrim({
+      x: r.left,
+      y: r.top,
+      w: r.width,
+      h: r.height,
+      clip,
+      color: withAlpha(cssMix(t.text, t.surfaceHi, 0.1), alpha * k),
+      color2: t.accent,
+      radius: Math.min(r.height * 0.5, t.round),
+      kind: 1,
+    })
+    return k
+  }
+
   private drawRoundWash(r: DOMRect, alpha: number, wash: number, clip?: Clip) {
     if (wash <= 0.005) return
     const t = this.curTokens
@@ -4000,7 +4023,13 @@ class GpuOverlayManager {
             this.wash(hb.button, hovered || focused || expanded),
             clip,
           )
-          const iconColor = withAlpha(this.hot(hb.button, on, restInk), alpha)
+          const flashed = this.drawFlash(hb.button, bRect, alpha, clock, clip)
+          if (flashed) anyMoving = true
+          const hotInk = this.hot(hb.button, on, restInk)
+          const iconColor = withAlpha(
+            flashed ? cssMix(tokens.text, hotInk, flashed) : hotInk,
+            alpha,
+          )
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
           if (die) this.drawDie(die, bRect, iconColor, clip)
           else if (hb.icon === "copy") {
@@ -4455,13 +4484,16 @@ class GpuOverlayManager {
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
           this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
+          const flashed = this.drawFlash(reset, br, alpha, clock)
+          if (flashed) anyMoving = true
           const turn = spinOf(reset, clock)
           if (turn.moving) anyMoving = true
+          const ink = this.hot(reset, hovered || focused)
           this.drawIcon(
             "reset",
             tokens.iconSm,
             br,
-            withAlpha(this.hot(reset, hovered || focused), alpha * turn.alpha),
+            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, alpha * turn.alpha),
             undefined,
             bloom.scale,
             turn.angle,
@@ -4477,7 +4509,14 @@ class GpuOverlayManager {
             this.ease(button, "dim", button.disabled ? tokens.disabledOpacity : 1, 30) *
             this.missed(button, hinting)
           this.drawRoundWash(dr, dimmed, this.wash(button, on))
-          this.drawDie(die, dr, withAlpha(this.hot(button, on, tokens.dim), dimmed))
+          const flashed = this.drawFlash(button, dr, dimmed, clock)
+          if (flashed) anyMoving = true
+          const ink = this.hot(button, on, tokens.dim)
+          this.drawDie(
+            die,
+            dr,
+            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, dimmed),
+          )
         }
         this.curAlpha = headAlpha
         if (g.fold) {

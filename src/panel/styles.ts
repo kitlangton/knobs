@@ -2,6 +2,7 @@ import rolling from "./rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
 import { GRADIENT_SAMPLES } from "../core/ramp.js"
 import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
+import { FLASH_MS } from "./flash.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
@@ -289,6 +290,13 @@ const css = `
 @media(prefers-reduced-motion:reduce){
   .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:opacity .15s,visibility 0s!important}
   .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
+/* A press flash (flash.ts): from a key or a click, the button's wash brightens at once and eases
+   back to its own, its ink with it. Two names, so a second press restarts it. */
+@keyframes knobs-flash-a{from{background-color:var(--k-flash-bg);color:var(--k-text)}}
+@keyframes knobs-flash-b{from{background-color:var(--k-flash-bg);color:var(--k-text)}}
+.knobs-panel :is(header,.knobs-group-head) button{--k-flash-bg:color-mix(in srgb,var(--k-surface-hi),var(--k-text) 10%)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="a"]{animation:knobs-flash-a ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="b"]{animation:knobs-flash-b ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
 /* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
