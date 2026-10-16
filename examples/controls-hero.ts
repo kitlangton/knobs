@@ -6,7 +6,7 @@
 // without it, a CSS still of the twins stands in. A switch in the corner (or ?hero=schematic)
 // crossfades to its other face, a schematic of the same twins (controls-schematic.wgsl): the
 // same instruments in the same places, so the same hands and wires work it.
-import { choice, color, knob, point, springMotion, toggle } from "knobs"
+import { choice, color, colorHex, knob, point, springMotion, toggle } from "knobs"
 import { sound } from "knobs/panel"
 import type { SceneKit } from "./controls"
 import { gpuView, kelvinRgb, linearRgb, toLinear } from "./controls-gpu"
@@ -445,7 +445,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       finish: `FIN ${s.finish.toUpperCase()}`,
       leds: s.leds ? "PWR ON" : "PWR OFF",
       spot: `SPOT ${s.spot.x.toFixed(2)} ${s.spot.y.toFixed(2)}`,
-      accent: s.accent.startsWith("#") ? s.accent.toUpperCase() : "ACCENT",
+      accent: colorHex(s.accent).toUpperCase(),
       shadow: `SHD ${pad(s.shadow)}`,
     }
     hud.style.color = oklabCss(lab)
