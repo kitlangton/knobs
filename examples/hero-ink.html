@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs · ink</title>
+    <style>
+      /* The landing's hero box, exactly (controls.html): always dark, the title near the top, the
+         panel floating at the right and, under 900 px, below. */
+      :root {
+        --night: #101012; --page: var(--night);
+        --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+        --ease: cubic-bezier(.2, .8, .2, 1);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: var(--page); color: rgba(255, 255, 255, .92); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+      .hero { position: relative; height: clamp(560px, 82vh, 1000px); overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
+      .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+      .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
+      .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
+      .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
+      .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
+      @media (max-width: 900px) {
+        .hero { height: auto; overflow: visible; padding-bottom: 20px; }
+        .hero-stage { position: relative; height: 58vh; min-height: 360px; }
+        .hero-panel { position: static; width: auto; max-width: 420px; margin: 0 auto; padding: 0 16px; display: block; pointer-events: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero" id="hero" data-own-look>
+      <div class="hero-stage"></div>
+      <div class="hero-title"><h1>knobs</h1></div>
+      <div class="hero-panel"></div>
+    </header>
+    <script type="module">
+      import { mountHeroInk } from "./hero-ink.ts"
+      mountHeroInk(document.getElementById("hero"))
+    </script>
+  </body>
+</html>
