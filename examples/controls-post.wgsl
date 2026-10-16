@@ -86,6 +86,44 @@ fn fs_up(in: FullOut) -> @location(0) vec4f {
   return vec4f(o / 16.0, 1.0);
 }
 
+// A temporal view's history: this frame folded into the last at `params.x`. With `params.y`,
+// the last is first clipped to this frame's 3×3 neighbourhood (its mean ± `params.z` deviations,
+// in a range-compressed space so an LED can't dominate), so anything that changed or moved
+// takes its new look within a frame or two instead of ghosting; static edges keep their history.
+fn squash(c: vec3f) -> vec3f {
+  return c / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722)));
+}
+fn unsquash(c: vec3f) -> vec3f {
+  return c / max(1.0 - dot(c, vec3f(0.2126, 0.7152, 0.0722)), 1e-4);
+}
+@fragment
+fn fs_taa(in: FullOut) -> @location(0) vec4f {
+  let p = vec2i(in.pos.xy);
+  let now = textureLoad(src, p, 0).rgb;
+  let k = P.params.x;
+  if (k >= 1.0) {
+    return vec4f(now, 1.0);
+  }
+  var last = squash(textureLoad(bloomTex, p, 0).rgb);
+  let c = squash(now);
+  if (P.params.y > 0.5) {
+    let hi = vec2i(textureDimensions(src)) - 1;
+    var m1 = vec3f(0.0);
+    var m2 = vec3f(0.0);
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let s = squash(textureLoad(src, clamp(p + vec2i(x, y), vec2i(0), hi), 0).rgb);
+        m1 += s;
+        m2 += s * s;
+      }
+    }
+    let mean = m1 / 9.0;
+    let dev = sqrt(max(m2 / 9.0 - mean * mean, vec3f(0.0)));
+    last = clamp(last, mean - P.params.z * dev, mean + P.params.z * dev);
+  }
+  return vec4f(unsquash(mix(last, c, k)), 1.0);
+}
+
 // AgX (Troy Sobotka's), in Benjamin Wrensch's minimal fit: hues hold as they brighten to white.
 fn agxContrast(x: vec3f) -> vec3f {
   let x2 = x * x;
