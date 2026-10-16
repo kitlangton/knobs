@@ -1,5 +1,21 @@
-import { children, createEffect, onCleanup, untrack, type JSX } from "solid-js"
+import {
+  children,
+  createEffect,
+  createRoot,
+  getOwner,
+  onCleanup,
+  untrack,
+  type JSX,
+} from "solid-js"
+import { insert } from "solid-js/web"
+import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import {
+  optionPicker,
+  type OptionPicker as OptionPickerHandle,
+  type OptionPickerOptions,
+  type PickerOption,
+} from "./picker.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
@@ -183,3 +199,98 @@ export function Bento(props: BentoProps): JSX.Element {
   onCleanup(() => b.dispose())
   return host as unknown as JSX.Element
 }
+
+/** Each prop follows on its own, after the first run (the piece starts from them). */
+const follow = <V>(read: () => V, apply: (value: V) => void) => {
+  let first = true
+  createEffect(() => {
+    const value = read()
+    if (first) first = false
+    else untrack(() => apply(value))
+  })
+}
+
+export type ActivityProps = ActivityOptions & { onReady?: (activity: ActivityHandle) => void }
+
+/**
+ * `activity()` as a component. New `events` update it in place (rows keep their identity and
+ * glide); `selected` follows its prop; callbacks always call the latest props.
+ */
+export function Activity(props: ActivityProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const a = untrack(() =>
+    activity(host, {
+      ...props,
+      onSelect: (id, event, source) => props.onSelect?.(id, event, source),
+      onActivate: (id, event) => props.onActivate?.(id, event),
+      onToggle: (id, open) => props.onToggle?.(id, open),
+      onPlay: props.onPlay && ((id, event) => props.onPlay?.(id, event)),
+    }),
+  )
+  untrack(() => props.onReady?.(a))
+  follow(
+    () => props.events,
+    (events) => a.set(events),
+  )
+  follow(
+    () => props.selected,
+    (id) => id !== undefined && id !== a.selected && a.select(id),
+  )
+  onCleanup(() => a.destroy())
+  return host as unknown as JSX.Element
+}
+
+export type OptionPickerProps = Omit<OptionPickerOptions, "body"> & {
+  /** An option's parameters, rendered once, the first time it opens (a `KnobsPanel`, say). */
+  children?: (option: PickerOption) => JSX.Element
+  onReady?: (picker: OptionPickerHandle) => void
+}
+
+/**
+ * `optionPicker()` as a component: `children` renders an option's parameters under it, in this
+ * component's context. `options`, `selected` and `chosen` follow their props; callbacks always
+ * call the latest props.
+ */
+export function OptionPicker(props: OptionPickerProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  const owner = getOwner()
+  const p = untrack(() =>
+    optionPicker(host, {
+      ...props,
+      onSelect: (id, source) => props.onSelect?.(id, source),
+      onChoose: (id) => props.onChoose?.(id),
+      body: (option, element) => {
+        const render = props.children
+        if (!render) return
+        return createRoot((dispose) => {
+          insert(
+            element,
+            untrack(() => render(option)),
+          )
+          return dispose
+        }, owner)
+      },
+    }),
+  )
+  untrack(() => props.onReady?.(p))
+  follow(
+    () => props.options,
+    (options) => p.set(options),
+  )
+  follow(
+    () => props.selected,
+    (id) => id != null && p.select(id),
+  )
+  follow(
+    () => props.chosen,
+    (id) => p.choose(id ?? null),
+  )
+  onCleanup(() => p.destroy())
+  return host as unknown as JSX.Element
+}
+
+export type { ActivityEvent } from "./activity-model.js"
+export type { PickerOption } from "./picker.js"
