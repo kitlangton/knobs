@@ -9,12 +9,15 @@ import {
   type UiLook,
 } from "./look.js"
 import {
+  askPick,
   cardTarget,
   claimsDigit,
   digitPick,
   keepPick,
   pickDigit,
+  settleHeight,
   stepPick,
+  stillWanted,
 } from "./picker-model.js"
 
 export interface PickerOption {
@@ -54,9 +57,15 @@ export interface OptionPickerOptions extends UiLook {
 
 export interface OptionPicker {
   readonly element: HTMLElement
-  /** New options: the selection stays on its option while that's still there. */
+  /**
+   * New options: the selection stays on its option while that's still there, or goes to one
+   * `select()` asked for before it was there.
+   */
   set(options: readonly PickerOption[]): void
-  /** Opens this option's parameters (closing the last one's). Doesn't call `onSelect`. */
+  /**
+   * Opens this option's parameters (closing the last one's). Doesn't call `onSelect`. An id that
+   * isn't there yet is remembered, and picked when `set()` brings it.
+   */
   select(id: string): void
   readonly selected: string | null
   /** Marks the chosen option (`null` for none). */
@@ -86,6 +95,8 @@ interface Entry {
   body: HTMLElement
   inner: HTMLElement
   mounted: boolean
+  /** Its content has a height to aim at (false while a first mount lays out). */
+  measured: boolean
   cleanup: (() => void) | undefined
   /** The body's height while it moves; null at rest (its own height, or hidden). */
   h: Spring
@@ -114,10 +125,14 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   const doc = container.ownerDocument
   const win = doc.defaultView!
   let list = options.options
-  let selected: string | null = keepPick(
-    list.map((o) => o.id),
-    options.selected ?? null,
-  )
+  // A selection asked for before its option was there, picked when `set()` brings it.
+  let wanted: string | null = null
+  let selected: string | null = null
+  {
+    const ids = list.map((o) => o.id)
+    if (options.selected != null) wanted = askPick(ids, options.selected).wanted
+    selected = keepPick(ids, options.selected ?? null)
+  }
   let chosen: string | null = options.chosen ?? null
   const digits = options.digits ?? "focus"
 
@@ -176,6 +191,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       body,
       inner,
       mounted: false,
+      measured: true,
       cleanup: undefined,
       h: new Spring(0, OPEN.omega, OPEN.zeta, 0.05),
       o: new Spring(0, OPEN.omega, OPEN.zeta, 0.002),
@@ -233,10 +249,11 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     const index = live.findIndex((e) => e.option.id === selected)
     if (index < 0) return null
     const gap = parseFloat(win.getComputedStyle(root).rowGap) || 0
+    const e = live[index]!
     return cardTarget(
-      live.map((e) => e.head.offsetHeight),
+      live.map((x) => x.head.offsetHeight),
       index,
-      natural(live[index]!),
+      e.measured ? natural(e) : undefined,
       gap,
     )
   }
@@ -278,7 +295,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       // From rest: from its own height when open, nothing when shut.
       const from = e.body.hidden ? 0 : e.body.offsetHeight
       e.h.snap(from)
-      e.o.snap(e.body.hidden ? 0 : 1)
+      e.o.snap(from > 0.5 ? 1 : 0)
     }
     e.body.hidden = false
     e.moving = true
@@ -294,8 +311,64 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     loop.wake()
   }
 
+  /**
+   * A first open waiting for its content: mounted shut a frame ahead, so its panel lays out
+   * before the change starts, and the card aims at its real height as on every later visit.
+   */
+  let pending: {
+    was: Entry | undefined
+    now: Entry
+    last: number | undefined
+    frames: number
+  } | null = null
+  const premount = (e: Entry) => {
+    e.body.hidden = false
+    e.body.style.height = "0px"
+    e.body.dataset.moving = ""
+    e.inner.style.opacity = "0"
+    e.measured = false
+    mount(e)
+  }
+  /** A first open given up before it started (another option picked): it goes back shut. */
+  const shelve = (e: Entry) => {
+    if (e.open || e.moving) return
+    e.body.hidden = true
+    e.body.style.height = ""
+    delete e.body.dataset.moving
+    e.inner.style.opacity = ""
+    e.measured = true
+  }
+  /** The change itself: the last option's body closes, this one's opens, the card glides. */
+  const start = (was: Entry | undefined, now: Entry, animate: boolean) => {
+    now.measured = true
+    if (was && was !== now) setOpen(was, false, animate)
+    setOpen(now, true, animate)
+    if (animate && !reducedMotion(win)) {
+      tune(cardY, CARD)
+      tune(cardH, CARD)
+      gliding = true
+    }
+    loop.wake()
+  }
+  const flush = () => {
+    const p = pending
+    if (!p) return
+    pending = null
+    start(p.was, p.now, true)
+  }
+
   const loop = frameLoop(win, (dt) => {
     let moving = false
+    if (pending) {
+      const p = pending
+      const h = natural(p.now)
+      p.frames++
+      if (settleHeight(p.last, h, p.frames) !== undefined) flush()
+      else {
+        p.last = h
+        moving = true
+      }
+    }
     for (const e of [...entries.values()]) {
       if (e.moving) {
         // Opening follows the content's height as it comes (a panel that's still laying out).
@@ -333,7 +406,8 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
         } else moving = true
       }
     }
-    const t = gliding ? finalCard() : liveCard()
+    // While a first open waits, and until its height is known, the card holds where it is.
+    const t = pending ? null : gliding ? finalCard() : liveCard()
     if (t) {
       if (gliding) {
         cardY.set(t.y)
@@ -355,26 +429,34 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   /** Selects `id`: its body opens, the last one's closes, the card glides between them. */
   const pick = (id: string, animate = true) => {
     if (id === selected || !entries.has(id)) return
-    const was = selected ? entries.get(selected) : undefined
+    let was = selected ? entries.get(selected) : undefined
+    if (pending) {
+      // Picked again before a first open started: that one goes back shut, and the change runs
+      // from the option that's still open.
+      was = pending.was
+      const waiting = pending.now
+      pending = null
+      if (waiting.option.id !== id) shelve(waiting)
+    }
     selected = id
     list.forEach((o, i) => {
       const e = entries.get(o.id)
       if (e) bind(e, i)
     })
     const now = entries.get(id)!
-    const smooth = animate && !reducedMotion(win)
-    if (was) setOpen(was, false, animate)
-    setOpen(now, true, animate)
-    if (smooth) {
-      tune(cardY, CARD)
-      tune(cardH, CARD)
-      gliding = true
+    if (animate && !reducedMotion(win) && !now.mounted && options.body) {
+      premount(now)
+      pending = { was, now, last: natural(now), frames: 0 }
+      loop.wake()
+      return
     }
-    loop.wake()
+    start(was, now, animate)
   }
 
   const select = (id: string | undefined, source: "key" | "digit" | "pointer") => {
-    if (!id || id === selected) return
+    if (!id) return
+    wanted = null
+    if (id === selected) return
     // Focus inside the picker (on an option, or in the parameters that are closing) moves to
     // the option picked.
     const inside = root.contains(doc.activeElement)
@@ -385,9 +467,11 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
 
   /** Brings the entries in line with `list`, in order; new ones come in, gone ones go. */
   const sync = (animate: boolean) => {
+    flush()
     const ids = list.map((o) => o.id)
     const was = selected
-    selected = keepPick(ids, selected)
+    selected = keepPick(ids, selected, wanted)
+    wanted = stillWanted(ids, wanted)
     if (animate && was !== selected && !reducedMotion(win)) gliding = true
     const reduced = reducedMotion(win)
     const live = new Set(ids)
@@ -427,9 +511,18 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     })
     // Leaving options stay where they were until they've gone.
     const open = selected ? entries.get(selected) : undefined
+    // A first open the change brought (a select that came before its option) mounts a frame
+    // ahead too, with the last option staying open until it starts.
+    const ahead =
+      animate && !reduced && open && !open.open && !open.mounted && !!options.body
+        ? { was: was ? entries.get(was) : undefined, now: open }
+        : null
     for (const e of entries.values())
-      if (e !== open && e.open && !e.leaving) setOpen(e, false, animate)
-    if (open && !open.open) setOpen(open, true, animate)
+      if (e !== open && e !== ahead?.was && e.open && !e.leaving) setOpen(e, false, animate)
+    if (ahead) {
+      premount(ahead.now)
+      pending = { ...ahead, last: natural(ahead.now), frames: 0 }
+    } else if (open && !open.open) setOpen(open, true, animate)
     loop.wake()
   }
 
@@ -498,7 +591,11 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       list = next
       sync(true)
     },
-    select: (id) => pick(id),
+    select(id) {
+      const ask = askPick(ids(), id)
+      wanted = ask.wanted
+      if (ask.pick) pick(ask.pick)
+    },
     get selected() {
       return selected
     },

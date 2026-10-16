@@ -21,11 +21,35 @@ export function stepPick(
   return ids[Math.max(0, Math.min(ids.length - 1, i + (key === "ArrowDown" ? 1 : -1)))]
 }
 
-/** The selection after the options change: kept while its option stays, else the first. */
-export function keepPick(ids: readonly string[], selected: string | null): string | null {
+/**
+ * The selection after the options change: the option a host asked for before it was there
+ * (`wanted`) once it comes, else the selection while its option stays, else the first.
+ */
+export function keepPick(
+  ids: readonly string[],
+  selected: string | null,
+  wanted: string | null = null,
+): string | null {
+  if (wanted !== null && ids.includes(wanted)) return wanted
   if (selected !== null && ids.includes(selected)) return selected
   return ids[0] ?? null
 }
+
+/**
+ * A host's `select(id)`: picked now if its option is there; if not, remembered (`wanted`) for
+ * the `set()` that brings it, so the order a host's updates land in can't lose it. A later
+ * select replaces what was wanted.
+ */
+export function askPick(
+  ids: readonly string[],
+  id: string,
+): { pick: string | undefined; wanted: string | null } {
+  return ids.includes(id) ? { pick: id, wanted: null } : { pick: undefined, wanted: id }
+}
+
+/** What's still wanted after the options change: nothing once its option has come. */
+export const stillWanted = (ids: readonly string[], wanted: string | null): string | null =>
+  wanted !== null && ids.includes(wanted) ? null : wanted
 
 /** The digit an option shows: its place, 1–9; none past the ninth. */
 export const pickDigit = (index: number): string => (index < 9 ? String(index + 1) : "")
@@ -60,16 +84,33 @@ export function claimsDigit(event: {
  * Where the card comes to rest on the option at `index`: below the options before it with their
  * bodies shut (once a change settles only the selected option's is open), as tall as its head
  * and its body. The card aims here from the start, rather than chasing the option's top while
- * the last option's body closes above it.
+ * the last option's body closes above it. With the body not yet measured (a panel mounting for
+ * the first time) there's no target yet, and the card holds where it is.
  */
 export function cardTarget(
   heads: readonly number[],
   index: number,
-  body: number,
+  body: number | undefined,
   gap = 0,
   top = 0,
-): { y: number; h: number } {
+): { y: number; h: number } | null {
+  if (body === undefined) return null
   let y = top
   for (let i = 0; i < index; i++) y += heads[i]! + gap
   return { y, h: (heads[index] ?? 0) + body }
+}
+
+/**
+ * A first-mounted body's height once it has settled: the same reading two frames running, or
+ * whatever it reads after `limit` frames (content that never settles doesn't hold the change
+ * up). Until then undefined: it's still laying out.
+ */
+export function settleHeight(
+  previous: number | undefined,
+  now: number,
+  frames: number,
+  limit = 6,
+): number | undefined {
+  if (previous !== undefined && Math.abs(now - previous) < 0.5) return now
+  return frames >= limit ? now : undefined
 }
