@@ -91,13 +91,20 @@
 }
 
 /* ── The masthead ── */
+/* One band: the title and its copy on the left, the knob that runs the page beside them, its
+   foot on the copy's, so the title, the knob and the Swarm under them read as one header. */
 .masthead {
-  --mast: clamp(84px, 16vw, 236px);
+  --mast: clamp(84px, 14.5vw, 224px);
   max-width: 1380px;
   margin: 0 auto;
-  padding: clamp(24px, 3.6vw, 56px) clamp(20px, 4vw, 56px) clamp(30px, 3.4vw, 52px);
+  padding: clamp(20px, 3vw, 44px) clamp(20px, 4vw, 56px) clamp(26px, 2.8vw, 40px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 36%, 460px);
+  grid-template-areas: "title knob" "copy knob";
+  gap: 0 clamp(28px, 4vw, 56px);
 }
 .mast-title {
+  grid-area: title;
   position: relative;
   margin: 0;
   height: calc(var(--mast) * 0.84);
@@ -172,12 +179,9 @@
   font-family: Unbounded, system-ui, sans-serif;
 }
 
-.mast-foot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
-  gap: 22px 56px;
-  align-items: end;
-  margin-top: clamp(18px, 2.4vw, 34px);
+.mast-copy {
+  grid-area: copy;
+  margin-top: clamp(14px, 1.8vw, 26px);
 }
 .mast-sub {
   margin: 0;
@@ -200,6 +204,8 @@
 }
 /* The knob: a real panel, larger. Its rows and type are set here, so both renderers draw it so. */
 .mast-knob {
+  grid-area: knob;
+  align-self: end;
   min-width: 0;
   /* The panel's height, held before it mounts, so nothing below moves when it does. */
   min-height: 144px;
@@ -209,9 +215,11 @@
 .mast-knob .knobs-panel {
   --k-width: 100%;
 }
-@media (max-width: 720px) {
-  .mast-foot {
+@media (max-width: 820px) {
+  .masthead {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "title" "copy" "knob";
+    gap: 18px;
   }
 }
 

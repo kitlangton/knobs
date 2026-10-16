@@ -371,7 +371,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
 
   mountPanel(store, options.slot, {
     ...options.panel,
-    title: "Look",
+    title: "This page",
     header: { buttons: ["undo", "redo", "reset", "random"] },
   })
   booting = false
