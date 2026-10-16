@@ -24,12 +24,25 @@ import type {
 } from "./gpu/renderer.js"
 import { arrowOf, bigOf } from "./prefs.js"
 import { caretIcon } from "./page.js"
-import { offRow, precisionRate } from "./feel.js"
+import { giveRoom, offRow, precisionRate } from "./feel.js"
 import { clamp } from "./motion.js"
 import { fadeText, rollingReadout, rollMs } from "./reel.js"
 import { reveal } from "./reveal.js"
 import { createSlider, decimals, type Slider } from "./slider.js"
-import { band, stepList, stretched, textGive, type Band, type Steps } from "./give.js"
+import {
+  band,
+  drawStretch,
+  GIVE,
+  roomOf,
+  STRETCH_HOME_S,
+  stepList,
+  stretched,
+  textGive,
+  type Band,
+  type Steps,
+  type TextGive,
+  giveOf,
+} from "./give.js"
 import { tick } from "./haptics.js"
 import {
   curveBlur,
@@ -283,9 +296,7 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     const stops = Array.from({ length: 25 }, (_, i) => `${colorAt!(i / 24)} ${xOf(i / 24)}px`)
     track.style.background = `linear-gradient(to right,${stops.join(",")})`
   }
-  /** How far (px) a pan holds the thumb past an end. */
-  let give = 0
-  const thumbX = () => xOf(ratio(current)) + give
+  const thumbX = () => xOf(ratio(current))
   const placeThumb = (instant: boolean) => {
     if (size.w) place([thumb], instant, () => (thumb.style.left = `${thumbX()}px`))
   }
@@ -308,6 +319,18 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
   let hand: Band = { at: 0, give: 0 }
   let lastX = 0
   const room = (r: DOMRect) => Math.max(1, r.width - r.height)
+  // Past an end the strip stretches like rubber, its far end anchored (see drawStretch); it gives
+  // no further than there's room for.
+  const give = textGive(track, () => c.wake(), {
+    home: STRETCH_HOME_S,
+    draw: (px) =>
+      drawStretch(track, px, 0, { w: size.w || track.clientWidth, h: 0 }, { thin: true }),
+  })
+  let most = GIVE
+  const fit = () => {
+    const r = roomOf(track)
+    most = giveRoom(Math.min(r.left, r.right) - 1, GIVE)
+  }
   track.onpointerdown = (event) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -317,6 +340,7 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     dragging = true
     line.classList.add("knobs-active")
     lastX = event.clientX
+    fit()
     const r = dragRect
     // ⌥ starts where the value is; otherwise the value jumps under the pointer.
     hand = {
@@ -334,26 +358,17 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     const r = dragRect ?? (dragRect = track.getBoundingClientRect())
     line.classList.add("knobs-active")
     const rate = precisionRate(offRow(event.clientY, r.top, r.bottom)) * (event.altKey ? 0.1 : 1)
-    const before = hand.give
-    hand = band(hand, (event.clientX - lastX) * rate, 0, room(r))
+    hand = band(hand, (event.clientX - lastX) * rate, 0, room(r), most)
     lastX = event.clientX
-    if (stretched(before, hand.give)) tick(track, "limit")
     o.set(quantize(o.min + (hand.at / room(r)) * span, event.altKey))
-    if (give !== hand.give) {
-      give = hand.give
-      placeThumb(false)
-      c.wake()
-    }
+    if (give.give !== hand.give) give.hold(hand.give)
   }
   const release = () => {
     if (!dragging) return
     dragging = false
     dragRect = undefined
     line.classList.remove("knobs-active")
-    if (give !== 0) {
-      give = 0
-      placeThumb(false)
-    }
+    give.release()
     c.wake()
   }
   track.onpointerup = release
@@ -371,28 +386,20 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
       const room = Math.max(1, w - h)
       if (panAt === undefined) {
         panAt = { at: ratio(current) * room, give: 0 }
+        fit()
         o.start()
         line.classList.add("knobs-active")
         c.wake()
       }
-      const before = panAt.give
-      panAt = band(panAt, dx, 0, room)
-      if (stretched(before, panAt.give)) tick(track, "limit")
-      const moved = give !== panAt.give
-      give = panAt.give
+      panAt = band(panAt, dx, 0, room, most)
       o.set(quantize(o.min + (panAt.at / room) * span, false))
-      if (moved) {
-        placeThumb(false)
-        c.wake()
-      }
+      if (give.give !== panAt.give) give.hold(panAt.give)
     },
+    lift: () => give.release(),
     end() {
       panAt = undefined
       line.classList.remove("knobs-active")
-      if (give !== 0) {
-        give = 0
-        placeThumb(false)
-      }
+      give.release()
       c.wake()
     },
     step(direction) {
@@ -855,12 +862,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     const [rx, ry] = ratio(p)
     return [PAD_INSET + (size.w - PAD_INSET * 2) * rx, PAD_INSET + (size.h - PAD_INSET * 2) * ry]
   }
-  /** How far (px) a pan holds the puck past the pad's edges. */
-  let give: [number, number] = [0, 0]
-  const puckAt = (): [number, number] => {
-    const [px, py] = at(shown)
-    return [px + give[0], py + give[1]]
-  }
+  const puckAt = (): [number, number] => at(shown)
   const layout = (instant: boolean) => {
     if (!size.w) return
     const [px, py] = puckAt()
@@ -895,11 +897,38 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
       y: f.min.y + (h > 0 ? hand[1].at / h : 0.5) * (f.max.y - f.min.y),
     }
   }
-  const holdGive = () => {
-    if (give[0] === hand[0].give && give[1] === hand[1].give) return
-    give = [hand[0].give, hand[1].give]
-    layout(false)
-    c.wake()
+  // Past an edge the pad stretches like rubber that way, its far edge anchored (see
+  // drawStretch): one give across (kept on the pad) and one down (kept on its puck).
+  const stretchNow: [number, number] = [0, 0]
+  const redraw = () =>
+    drawStretch(pad, stretchNow[0], stretchNow[1], {
+      w: size.w || pad.clientWidth,
+      h: size.h || pad.clientHeight,
+    })
+  const gives = [pad, puck].map((el, i) =>
+    textGive(el, () => c.wake(), {
+      home: STRETCH_HOME_S,
+      draw: (px) => {
+        stretchNow[i] = px
+        redraw()
+      },
+    }),
+  ) as [TextGive, TextGive]
+  let most: [number, number] = [GIVE, GIVE]
+  const fit = () => {
+    const r = roomOf(pad)
+    most = [
+      giveRoom(Math.min(r.left, r.right) - 1, GIVE),
+      giveRoom(Math.min(r.top, r.bottom) - 1, GIVE),
+    ]
+  }
+  const holdGive = (b: readonly [Band, Band]) => {
+    b.forEach((d, i) => {
+      if (gives[i]!.give !== d.give) gives[i]!.hold(d.give)
+    })
+  }
+  const letGive = () => {
+    for (const give of gives) give.release()
   }
   pad.onpointerdown = (event) => {
     if (event.button !== 0) return
@@ -910,6 +939,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     const [w, h] = room(r)
     dragging = true
     last = [event.clientX, event.clientY]
+    fit()
     // ⌥ starts where the puck is; otherwise it jumps under the pointer.
     const [rx, ry] = ratio(shown)
     hand = event.altKey
@@ -930,27 +960,21 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     const r = dragRect ?? (dragRect = pad.getBoundingClientRect())
     const [w, h] = room(r)
     const k = event.altKey ? 0.1 : 1
-    const before = hand[0].give || hand[1].give
     hand = [
-      band(hand[0], (event.clientX - last[0]) * k, 0, w),
-      band(hand[1], (event.clientY - last[1]) * k, 0, h),
+      band(hand[0], (event.clientX - last[0]) * k, 0, w, most[0]),
+      band(hand[1], (event.clientY - last[1]) * k, 0, h, most[1]),
     ]
     last = [event.clientX, event.clientY]
-    if (stretched(before, hand[0].give || hand[1].give)) tick(pad, "limit")
     pad.classList.add("knobs-active")
     g.set(valueOf(r))
-    holdGive()
+    holdGive(hand)
   }
   const release = () => {
     if (!dragging) return
     dragging = false
     dragRect = undefined
     pad.classList.remove("knobs-active")
-    hand = [
-      { at: 0, give: 0 },
-      { at: 0, give: 0 },
-    ]
-    holdGive()
+    letGive()
     c.wake()
   }
   pad.onpointerup = release
@@ -972,31 +996,23 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
             { at: rx * w, give: 0 },
             { at: ry * h, give: 0 },
           ]
+          fit()
           g.start()
           pad.classList.add("knobs-active")
           c.wake()
         }
-        const before = panAt[0].give || panAt[1].give
-        panAt = [band(panAt[0], dx, 0, w), band(panAt[1], dy, 0, Math.max(0, h))]
-        if (stretched(before, panAt[0].give || panAt[1].give)) tick(pad, "limit")
-        const moved = give[0] !== panAt[0].give || give[1] !== panAt[1].give
-        give = [panAt[0].give, panAt[1].give]
+        panAt = [band(panAt[0], dx, 0, w, most[0]), band(panAt[1], dy, 0, Math.max(0, h), most[1])]
         g.set({
           x: f.min.x + (panAt[0].at / w) * (f.max.x - f.min.x),
           y: f.min.y + (h > 0 ? panAt[1].at / h : 0.5) * (f.max.y - f.min.y),
         })
-        if (moved) {
-          layout(false)
-          c.wake()
-        }
+        holdGive(panAt)
       },
+      lift: letGive,
       end() {
         panAt = undefined
         pad.classList.remove("knobs-active")
-        if (give[0] || give[1]) {
-          give = [0, 0]
-          layout(false)
-        }
+        letGive()
         c.wake()
       },
       step(direction) {
@@ -1041,6 +1057,7 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
     pad,
     puck: () => (size.w ? puckAt() : [0, 0]),
     home: () => (size.w ? at(f.value) : [0, 0]),
+    stretch: () => [giveOf(pad), giveOf(puck)],
     dragging: () => pad.classList.contains("knobs-active"),
     wave: c.wave,
     isModified: c.isModified,

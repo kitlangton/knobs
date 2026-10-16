@@ -25,7 +25,8 @@ import { rollingReadoutOf, type RollingReadout } from "../reel.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
 import { liveThumb } from "../thumb.js"
-import { giveOf, READOUT_GIVE } from "../give.js"
+import { giveOf } from "../give.js"
+import { roundOf, stretchAt, stretchOf, thinOf } from "../feel.js"
 import { rangeSmear } from "../smear.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -71,6 +72,8 @@ const MASK_FLOATS = 12
 /** An `ease` omega this high places the value at once (a 0 ms token). */
 const SNAP_OMEGA = 1e4
 type Clip = readonly [number, number, number, number]
+/** Corner radii: top left, top right, bottom right, bottom left. */
+type Corners = [number, number, number, number]
 
 /** When a row's motion starts (performance.now() ms), so a preset cascade reaches it in turn. */
 export interface RowWave {
@@ -165,8 +168,11 @@ export interface GpuPointRow {
   readonly x: GpuExpander
   readonly read: HTMLElement
   readonly pad: HTMLElement
+  /** Where the puck and the default sit at rest (px in the pad); a stretch moves them with it. */
   puck(): readonly [number, number]
   home(): readonly [number, number]
+  /** How far (px) the pad stretches past an edge across and down (see drawStretch). */
+  stretch(): readonly [number, number]
   dragging(): boolean
   readonly wave: RowWave
   isModified(): boolean
@@ -1601,7 +1607,12 @@ class GpuOverlayManager {
   }
 
   /** A row's hover wash, drawn beneath its control like the DOM row background. */
-  private drawRowHover(row: HTMLElement, rRect: DOMRect, hot: boolean) {
+  private drawRowHover(
+    row: HTMLElement,
+    rRect: DOMRect,
+    hot: boolean,
+    corners: Corners = this.rowCorners(row),
+  ) {
     const hover =
       this.ease(row, "hover", hot ? 1 : 0, this.hoverOmega(hot)) * (1 - this.curSelected)
     if (hover < 0.005) return
@@ -1611,9 +1622,54 @@ class GpuOverlayManager {
       w: rRect.width,
       h: rRect.height,
       color: withAlpha(this.curTokens.rowHover, hover),
-      corners: this.rowCorners(row),
+      corners,
       kind: 1,
     })
+  }
+
+  /**
+   * A row stretched `give` px past an end, as drawStretch scales it in the DOM: its rect (about
+   * the end that stays put, thinner across), its scale along, its corners rounding off at the
+   * stretching end, and its clip let out to the panel's on that side (past its card).
+   */
+  /**
+   * A box stretched `x` px past an end across and `y` px down or up, about the far ends, and
+   * (`thin`, stretched along x) thinner down, as drawStretch scales it in the DOM.
+   */
+  private stretchRect(r: DOMRect, x: number, y: number, thin: boolean) {
+    if (x === 0 && y === 0) return r
+    const sx = stretchOf(x, r.width)
+    const w = r.width * sx.scale
+    if (thin) {
+      const h = r.height * thinOf(sx.scale)
+      return new DOMRect(sx.anchor ? r.right - w : r.left, r.top + (r.height - h) / 2, w, h)
+    }
+    const sy = stretchOf(y, r.height)
+    const h = r.height * sy.scale
+    return new DOMRect(sx.anchor ? r.right - w : r.left, sy.anchor ? r.bottom - h : r.top, w, h)
+  }
+
+  private stretch(row: HTMLElement, r: DOMRect, give: number, clip: Clip, body: Clip) {
+    const corners = this.rowCorners(row)
+    if (give === 0 || r.width <= 0) return { rect: r, corners, clip, sx: 1 }
+    const { scale } = stretchOf(give, r.width)
+    const round = roundOf(give) * (this.curTokens.flat ? 0 : this.curTokens.radius)
+    const c: Corners = [...corners]
+    if (give > 0) {
+      c[1] = Math.max(c[1], round)
+      c[2] = Math.max(c[2], round)
+    } else {
+      c[0] = Math.max(c[0], round)
+      c[3] = Math.max(c[3], round)
+    }
+    return {
+      rect: this.stretchRect(r, give, 0, true),
+      corners: c,
+      clip: (give > 0
+        ? [clip[0], clip[1], Math.max(clip[2], body[2]), clip[3]]
+        : [Math.min(clip[0], body[0]), clip[1], clip[2], clip[3]]) as Clip,
+      sx: scale,
+    }
   }
 
   /** The hairline above every row but a card's first, and the focus wash. */
@@ -2609,12 +2665,15 @@ class GpuOverlayManager {
         clip: body,
       })
       this.readout(s.read, lineY, withAlpha(t.label, rowAlpha), body)
+      // Past an end the strip stretches like rubber, its far end anchored.
+      const give = giveOf(s.track)
+      const sr = this.stretchRect(tr, give, 0, true)
       const h = tr.height
       this.pushPrim({
-        x: tr.left,
-        y: tr.top,
-        w: tr.width,
-        h,
+        x: sr.left,
+        y: sr.top,
+        w: sr.width,
+        h: sr.height,
         clip: body,
         color: [1, 1, 1, rowAlpha],
         color2: withAlpha(t.line, rowAlpha),
@@ -2624,12 +2683,13 @@ class GpuOverlayManager {
         p1: h / 2,
         aux: [col.l, s.mode === 0 ? Math.max(col.c, 0.06) : col.c, col.h, maxC],
       })
-      const [x] = this.morph(s.track, [s.thumbX()], delay, s.dragging(), tr)
+      const [mx] = this.morph(s.track, [s.thumbX()], delay, s.dragging(), tr)
+      const x = stretchAt(mx!, give, tr.width)
       const lift = s.dragging() || this.isFocused(s.track)
       const d = (h + 2) * this.ease(s.track, "grab", lift ? 1.1 : 1, 30)
       if (shown < 0.005) continue
       this.shape({
-        x: tr.left + x! - d / 2,
+        x: tr.left + x - d / 2,
         y: lineY - d / 2,
         w: d,
         h: d,
@@ -2663,7 +2723,10 @@ class GpuOverlayManager {
     this.readout(row.read, hRect.top + hRect.height / 2, withAlpha(t.label, rowAlpha))
     if (!body) return
     this.inBody(row.x, () => {
-      const pr = this.rectOf(row.pad)
+      const rest = this.rectOf(row.pad)
+      // Past an edge the pad stretches like rubber that way, its far edge anchored.
+      const [gx, gy] = row.stretch()
+      const pr = this.stretchRect(rest, gx, gy, false)
       const radius = t.radiusMd
       const clip = intersectClip(body, [pr.left, pr.top, pr.right, pr.bottom])
       this.pushPrim({
@@ -2677,7 +2740,9 @@ class GpuOverlayManager {
         kind: 1,
       })
       const active = row.dragging()
-      const [px, py] = this.morph(row.pad, row.puck(), row.wave.at - clock, active, pr)
+      const [mx, my] = this.morph(row.pad, row.puck(), row.wave.at - clock, active, rest)
+      const px = stretchAt(mx!, gx, rest.width)
+      const py = stretchAt(my!, gy, rest.height)
       const shown = this.ease(
         row.row,
         "mixed",
@@ -2686,7 +2751,7 @@ class GpuOverlayManager {
       )
       const line = withAlpha(t.line, rowAlpha * shown)
       this.pushPrim({
-        x: pr.left + px! - 0.5,
+        x: pr.left + px - 0.5,
         y: pr.top,
         w: 1,
         h: pr.height,
@@ -2696,14 +2761,16 @@ class GpuOverlayManager {
       })
       this.pushPrim({
         x: pr.left,
-        y: pr.top + py! - 0.5,
+        y: pr.top + py - 0.5,
         w: pr.width,
         h: 1,
         clip,
         color: line,
         kind: 1,
       })
-      const [hx, hy] = row.home()
+      const [hx0, hy0] = row.home()
+      const hx = stretchAt(hx0, gx, rest.width)
+      const hy = stretchAt(hy0, gy, rest.height)
       this.shape({
         x: pr.left + hx - 3.5,
         y: pr.top + hy - 3.5,
@@ -2719,8 +2786,8 @@ class GpuOverlayManager {
       const d = 12 * this.ease(row.pad, "grab", lift ? 1.2 : 1, 30)
       if (shown < 0.005) return
       this.shape({
-        x: pr.left + px! - d / 2,
-        y: pr.top + py! - d / 2,
+        x: pr.left + px - d / 2,
+        y: pr.top + py - d / 2,
         w: d,
         h: d,
         radius: Math.min(d / 2, t.round),
@@ -3277,6 +3344,7 @@ class GpuOverlayManager {
     row: GpuRangeRow,
     rRect: DOMRect,
     cardClip: Clip,
+    bodyClip: Clip,
     rowAlpha: number,
     hovered: boolean,
     clock: number,
@@ -3284,9 +3352,13 @@ class GpuOverlayManager {
     const t = this.curTokens
     const centerY = rRect.top + rRect.height / 2
     const dragging = row.dragging() || row.row.classList.contains("knobs-active")
-    this.drawRowHover(row.row, rRect, hovered || dragging)
+    // Past an end the row stretches like rubber, past its card's edge (see drawStretch).
+    const st = this.stretch(row.row, rRect, giveOf(row.row), cardClip, bodyClip)
+    this.curClip = st.clip
+    this.drawRowHover(row.row, st.rect, hovered || dragging, st.corners)
     const shown = this.ease(row.row, "mixed", row.row.classList.contains("knobs-mixed") ? 0 : 1, 40)
-    const tr = this.rectOf(row.track)
+    // The track is the row: stretched with it.
+    const tr = st.sx === 1 ? this.rectOf(row.track) : st.rect
     const [a = 0, b = 0] = this.morph(row.track, row.ratios(), row.wave.at - clock, dragging, tr)
     const tint = mixColor(
       mixColor(
@@ -3297,7 +3369,7 @@ class GpuOverlayManager {
       t.fillActive,
       this.ease(row.row, "fill", dragging ? 1 : 0),
     )
-    const corners = this.rowCorners(row.row)
+    const corners = st.corners
     const x0 = tr.left + a * tr.width
     const x1 = tr.left + b * tr.width
     // Edge blur (--k-range-blur): each end smears by its own speed, as the DOM's does.
@@ -3346,6 +3418,7 @@ class GpuOverlayManager {
         kind: 1,
       })
     })
+    this.curClip = cardClip
     // A thumb that shows never sits on the label or readout: their text fades around it.
     this.textGaps = gaps[0]! + gaps[1]! > 0.005 ? [on(x0), on(x1), gaps[0]!, gaps[1]!] : undefined
     this.drawRowLabel(row.labelEl, row.display, false, centerY, rowAlpha)
@@ -3357,7 +3430,7 @@ class GpuOverlayManager {
       this.valueText(row.read, centerY, withAlpha(ink, rowAlpha))
     }
     this.textGaps = undefined
-    this.drawRowOverlay(row.row, rRect, cardClip)
+    this.drawRowOverlay(row.row, st.rect, st.clip)
     return false
   }
 
@@ -4756,7 +4829,10 @@ class GpuOverlayManager {
             }
           }
 
-          this.drawRowHover(row.row, rRect, hovered || dragging)
+          // Past an end the row stretches like rubber, past its card's edge (see drawStretch).
+          const st = this.stretch(row.row, rRect, giveOf(sl.element), cardClip, bodyClip)
+          this.curClip = st.clip
+          this.drawRowHover(row.row, st.rect, hovered || dragging, st.corners)
 
           // Edge blur (--k-motion-blur): a smear as wide as the edge's speed, like the DOM's.
           const edgeSpeed =
@@ -4827,17 +4903,15 @@ class GpuOverlayManager {
           if (ruler > 0.005) anyMoving = true
           const settleAge = clock - sl.settledAt
           if (settleAge < POP_MS) anyMoving = true
-          // Past an end the fill and handle give (see give.ts); the readout a little less.
-          const give = giveOf(sl.element)
 
           this.pushPrim({
-            x: rRect.left,
-            y: rRect.top,
-            w: rRect.width,
-            h: rRect.height,
+            x: st.rect.left,
+            y: st.rect.top,
+            w: st.rect.width,
+            h: st.rect.height,
             color: withAlpha(fillTint, rowAlpha * shownFill),
             color2: withAlpha(tokens.handle, rowAlpha),
-            corners: this.rowCorners(row.row),
+            corners: st.corners,
             glowOrBlur: tokens.glowStrength,
             // Rounds the handle's ends unless --k-round squares them.
             strokeWidth: tokens.round > 0 ? 1 : 0,
@@ -4845,7 +4919,7 @@ class GpuOverlayManager {
             blurX,
             // Kind 2 has no vertical blur; the slot carries the handle's inset from the fill edge.
             blurY: tokens.handleInset,
-            turn: give,
+            turn: st.sx,
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
@@ -4861,14 +4935,14 @@ class GpuOverlayManager {
             ],
           })
 
+          this.curClip = cardClip
           this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, lRect)
 
-          const readGive = give * READOUT_GIVE
           // While the value is edited, its DOM field sits over the digits; the unit stays drawn.
           const editing = sl.isEditing()
           if (mixed && !sl.isEditing()) {
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
-            const dashW = this.drawText("—", vRect.right + readGive, rowCenterY, valCol, {
+            const dashW = this.drawText("—", vRect.right, rowCenterY, valCol, {
               px: tokens.valueSize,
               weight: tokens.fontWeight,
               align: "right",
@@ -4881,7 +4955,7 @@ class GpuOverlayManager {
             if (mark > 0.005) {
               const r = 2.5 * Math.max(0, Math.min(1.2, mark))
               this.shape({
-                x: vRect.right + readGive - dashW - 6 - 2.5 - r,
+                x: vRect.right - dashW - 6 - 2.5 - r,
                 y: rowCenterY - r,
                 w: r * 2,
                 h: r * 2,
@@ -4901,7 +4975,7 @@ class GpuOverlayManager {
             const ink = mark > 0.005 ? cssMix(tokens.modified, valCol, clamp(mark, 0, 1)) : valCol
             const unitInk = withAlpha(ink, rowAlpha)
             const valPx = tokens.valueSize
-            let rightEdge = vRect.right + readGive
+            let rightEdge = vRect.right
             // The decile pop scales the whole readout about its right edge.
             const popAge = clock - sl.poppedAt
             const pop = reducedMotion ? 1 : popScale(popAge)
@@ -5011,7 +5085,7 @@ class GpuOverlayManager {
                 })
             }
           }
-          this.drawRowOverlay(row.row, rRect, cardClip)
+          this.drawRowOverlay(row.row, st.rect, st.clip)
         } else if (row.kind === "choice" && row.menu && row.row.dataset.display === "menu") {
           // The same row as a compact drop-down button.
           this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
@@ -5128,7 +5202,8 @@ class GpuOverlayManager {
         } else if (row.kind === "vec") {
           this.drawVec(row, rRect, cardClip, rowAlpha, hovered)
         } else if (row.kind === "range") {
-          anyMoving = this.drawRange(row, rRect, cardClip, rowAlpha, hovered, clock) || anyMoving
+          anyMoving =
+            this.drawRange(row, rRect, cardClip, bodyClip, rowAlpha, hovered, clock) || anyMoving
         } else if (row.kind === "angle") {
           this.drawAngle(row, rRect, cardClip, rowAlpha, hovered, clock)
         } else if (row.kind === "seed") {

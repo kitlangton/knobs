@@ -44,13 +44,17 @@ import {
   band as pushBand,
   carryAt,
   carrySteps,
+  drawStretch,
+  GIVE,
   moves,
+  roomOf,
+  STRETCH_HOME_S,
   stepBand,
   textGive,
   type Band,
   type Steps,
 } from "./give.js"
-import { offRow, precisionRate } from "./feel.js"
+import { giveRoom, offRow, precisionRate } from "./feel.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
@@ -550,7 +554,20 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   /** The held end along the track (px) and its give; for the band, how far it has been moved. */
   let hand: Band = { at: 0, give: 0 }
   let moved = 0
-  const give = textGive(read, () => c.wake())
+  // Past the track's ends the row stretches like rubber, its far end anchored (see drawStretch).
+  const card = () =>
+    row.parentElement?.classList.contains("knobs-card") ? row.parentElement : null
+  const give = textGive(row, () => c.wake(), {
+    home: STRETCH_HOME_S,
+    draw: (px) =>
+      drawStretch(row, px, 0, { w: track.clientWidth, h: 0 }, { thin: true, unclip: card() }),
+  })
+  /** The most this gesture stretches the row: less where something would clip it. */
+  let most = GIVE
+  const fit = () => {
+    const room = roomOf(row, card())
+    most = giveRoom(Math.min(room.left, room.right) - 1, GIVE)
+  }
   const valueAt = (x: number) => f().min + clamp((x - rect!.left) / rect!.width, 0, 1) * span()
   track.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.shiftKey || event.metaKey) return
@@ -571,6 +588,7 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     lastX = event.clientX
     startValue = shown
     moved = 0
+    fit()
     // ⌥ starts where the end is; otherwise it jumps under the pointer.
     hand = {
       at:
@@ -599,7 +617,7 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       g.set([lo, Number((lo + width).toPrecision(12))])
       return
     }
-    hand = pushBand(hand, dx, 0, rect.width)
+    hand = pushBand(hand, dx, 0, rect.width, most)
     g.set(
       withEnd(
         c.get() as readonly [number, number],
@@ -630,10 +648,11 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       if (panAt === undefined) {
         g.start()
         panAt = { at: ((shown[lastEnd] - f().min) / span()) * w, give: 0 }
+        fit()
         dragging = true
         row.classList.add("knobs-active")
       }
-      panAt = pushBand(panAt, dx, 0, w)
+      panAt = pushBand(panAt, dx, 0, w, most)
       g.set(
         withEnd(c.get() as readonly [number, number], lastEnd, f().min + (panAt.at / w) * span()),
       )

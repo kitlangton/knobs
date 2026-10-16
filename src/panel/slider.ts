@@ -5,6 +5,7 @@ import {
   type DetentKind,
   detentScale,
   detentsOf,
+  giveRoom,
   Notches,
   offRow,
   precisionRate,
@@ -27,7 +28,7 @@ import {
   VelocityTracker,
 } from "./motion.js"
 import { syncPlaces } from "./reel.js"
-import { band, STRETCH, STRETCH_HOME_S, textGive, type Band } from "./give.js"
+import { band, drawStretch, roomOf, STRETCH, STRETCH_HOME_S, textGive, type Band } from "./give.js"
 import { cue } from "./sound.js"
 import { onPan } from "./swipe.js"
 
@@ -145,7 +146,7 @@ export function stepValue(
  * the handle is a hairline that only shows on hover, and the label + value sit on the
  * track itself. Dragging follows the pointer exactly, slower the further the pointer strays off
  * the row (and ⌥ for 1/10 speed); detents at the default, the active preset's value and round
- * values hold it for a few px, and past an end the fill gives like a rubber band. A click snaps
+ * values hold it for a few px, and past an end the row stretches like rubber. A click snaps
  * to the nearest step (or nearest 10% when there are many steps) with a short spring-like ease.
  * A sideways trackpad pan moves it like a drag.
  */
@@ -556,7 +557,7 @@ export function createSlider(
   /**
    * The hand along the track (px) and its give past an end. A drag adds each move at its rate
    * (slower off the row, a tenth with ⌥), so a change of rate never moves the value; the give is
-   * the fill's rubber band, and the value stays clamped.
+   * the row's stretch, and the value stays clamped.
    */
   let hand: Band = { at: 0, give: 0 }
   /** The detents of the gesture in hand, the strength they're at, and where they show the value. */
@@ -568,16 +569,25 @@ export function createSlider(
   let settledAt = Number.NEGATIVE_INFINITY
   /** Whether a gesture holds the slider (`grip` until `letGo`). */
   let gripped = false
+  /** The card the row sits in: it lets the row stretch past its edge while it gives. */
+  const card = () =>
+    root.parentElement?.classList.contains("knobs-card") ? root.parentElement : null
+  // Past an end the row stretches like rubber, its far end anchored (see drawStretch).
   const give = textGive(root, () => onMotionWake?.(), {
     home: STRETCH_HOME_S,
-    draw: (px) => root.style.setProperty("--k-give", `${px.toFixed(2)}px`),
+    draw: (px) =>
+      drawStretch(root, px, 0, { w: getTrackWidth(), h: 0 }, { thin: true, unclip: card() }),
   })
+  /** The most this gesture's row may stretch: less where something would clip it. */
+  let most = STRETCH
 
   /** A gesture takes hold: its detents (none on a stepped slider, or with `detents: false`). */
   const grip = (at: number) => {
     const width = getTrackWidth()
     rebase()
     gripped = true
+    const room = roomOf(root, card())
+    most = giveRoom(Math.min(room.left, room.right) - 1, STRETCH)
     hand = { at, give: 0 }
     strength = 1
     const off = field.detents === false || root.closest('[data-detents="off"]') !== null
@@ -631,7 +641,7 @@ export function createSlider(
       hand = { at: unwarp(shownAt, hand.at, notches.list, k), give: hand.give }
       strength = k
     }
-    hand = band(hand, dx, 0, width, STRETCH)
+    hand = band(hand, dx, 0, width, most)
     const { shown, caught } = notches ? notches.move(hand.at, strength) : { shown: hand.at }
     shownAt = shown
     const on = notches && notches.held >= 0 ? notches.list[notches.held] : undefined

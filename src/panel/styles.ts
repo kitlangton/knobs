@@ -4,7 +4,6 @@ import { GRADIENT_SAMPLES } from "../core/ramp.js"
 import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 import { FLASH_MS } from "./flash.js"
 import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
-import { READOUT_GIVE } from "./give.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
@@ -389,6 +388,22 @@ const css = `
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
 .knobs-card:last-child{margin-bottom:0}
 .knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t),opacity .2s}
+/* Rubber-band ends (drawStretch in give.ts): past a limit a control stretches about its far end
+   and thins a little, its stretching corners rounding off; a row draws past its card's edge
+   meanwhile (keeping the card's corners where it has them), and its text stays put. */
+.knobs-stretching{scale:var(--k-sx) var(--k-sy);transform-origin:var(--k-sox) var(--k-soy)}
+.knobs-card[data-k-stretch]{overflow:visible}
+.knobs-card>:first-child{--k-rt:1}
+.knobs-card>:last-child{--k-rb:1}
+.knobs-card>.knobs-stretching{--k-r:var(--k-radius);border-radius:calc(var(--k-r) * var(--k-rt,0)) calc(var(--k-r) * var(--k-rt,0)) calc(var(--k-r) * var(--k-rb,0)) calc(var(--k-r) * var(--k-rb,0))}
+.knobs-card>.knobs-stretching[data-stretch="end"]{border-top-right-radius:calc(var(--k-r) * max(var(--k-rt,0),var(--k-sf)));border-bottom-right-radius:calc(var(--k-r) * max(var(--k-rb,0),var(--k-sf)))}
+.knobs-card>.knobs-stretching[data-stretch="start"]{border-top-left-radius:calc(var(--k-r) * max(var(--k-rt,0),var(--k-sf)));border-bottom-left-radius:calc(var(--k-r) * max(var(--k-rb,0),var(--k-sf)))}
+.knobs-stretching>:is(.knobs-track,.knobs-range-track){border-radius:inherit}
+.knobs-slider.knobs-stretching :is(.knobs-label,.knobs-value),.knobs-range.knobs-stretching .knobs-range-text{scale:calc(1 / var(--k-sx)) calc(1 / var(--k-sy))}
+.knobs-slider.knobs-stretching .knobs-label{transform-origin:calc(var(--k-ox) - var(--k-inset)) 0}
+.knobs-panel .knobs-slider.knobs-stretching .knobs-value{transform-origin:calc(var(--k-ox) - var(--k-w) + var(--k-inset) + 100%) 0}
+.knobs-range.knobs-stretching .knobs-range-text{transform-origin:var(--k-sox) 50%}
+.knobs-stretching>:is(.knobs-strip-thumb,.knobs-pad-puck,.knobs-pad-home){transform:scale(calc(1 / var(--k-sx)),calc(1 / var(--k-sy)))}
 .knobs-card>:hover,.knobs-card>.knobs-active{background:var(--k-row-hover)}
 .knobs-card>*+*::before{content:"";position:absolute;z-index:1;left:0;right:0;top:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--k-line);pointer-events:none;transition:opacity .15s}
 .knobs-card>::after{content:"";position:absolute;z-index:2;inset:0;background:var(--k-surface-hi);opacity:0;pointer-events:none;transition:opacity .15s,box-shadow .15s}
@@ -437,10 +452,6 @@ ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{op
 .knobs-smear .knobs-fill{background:linear-gradient(to left,transparent,var(--k-fill-tint) calc(var(--k-smear) * 1px));transform:translateX(calc(var(--k-fill) - 100% + var(--k-smear) * .5px))}
 .knobs-smear .knobs-handle::before{scale:calc(1 + var(--k-smear) / 3) 1;opacity:calc(3 / (3 + var(--k-smear)))}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,opacity .15s}
-/* Past an end the fill, handle and marks give together (--k-give, px; see give.ts), the readout
-   a little less, and spring home on release. */
-.knobs-fill,.knobs-handle,.knobs-marks>i{translate:var(--k-give,0px) 0}
-.knobs-slider .knobs-value{translate:calc(var(--k-give,0px) * ${READOUT_GIVE}) 0}
 /* The default: a short notch rising from the bottom edge, only while the row is in hand. The
    active preset's value hangs one from the top edge. */
 .knobs-marks>.knobs-notch{top:auto;bottom:0;width:1.5px;height:4px;border-radius:999px 999px 0 0;transform:translateX(-50%);background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
@@ -450,7 +461,7 @@ ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{op
 .knobs-magnet .knobs-notch:not(.knobs-base),.knobs-held-base .knobs-base{opacity:.95;height:6px}
 /* Precision by distance: a fine ruler around the handle, a level for each halving of the rate,
    each finer, shorter and fainter than the last. */
-.knobs-ruler{position:absolute;inset:0;pointer-events:none;translate:var(--k-give,0px) 0;--k-ruler-w:linear-gradient(to right,transparent calc(var(--k-fill) - ${RULER_FADE}px),#000 calc(var(--k-fill) - ${RULER_NEAR}px),#000 calc(var(--k-fill) + ${RULER_NEAR}px),transparent calc(var(--k-fill) + ${RULER_FADE}px));-webkit-mask:var(--k-ruler-w);mask:var(--k-ruler-w)}
+.knobs-ruler{position:absolute;inset:0;pointer-events:none;--k-ruler-w:linear-gradient(to right,transparent calc(var(--k-fill) - ${RULER_FADE}px),#000 calc(var(--k-fill) - ${RULER_NEAR}px),#000 calc(var(--k-fill) + ${RULER_NEAR}px),transparent calc(var(--k-fill) + ${RULER_FADE}px));-webkit-mask:var(--k-ruler-w);mask:var(--k-ruler-w)}
 .knobs-ruler>i{position:absolute;left:0;right:0;top:50%;opacity:0;translate:-.5px 0;transition:opacity .18s var(--k-ease)}
 ${RULER.map(([n, h, a], i) => `.knobs-ruler>i:nth-child(${i + 1}){height:${h}px;margin-top:${-h / 2}px;background:repeating-linear-gradient(to right,color-mix(in srgb,var(--k-accent) ${a * 100}%,transparent) 0 1px,transparent 1px calc(100% / ${n}))}`).join("\n")}
 /* The handle is a full-width layer moved by the fill (translate's % is its own width, the track's). */
@@ -662,7 +673,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 /* Rows as separate bars (--k-row-gap above 0): each row carries its own surface, no hairlines.
    A spring stacks its curve over its two sliders. */
 .knobs-panel[data-rows] .knobs-card{display:flex;flex-direction:column;gap:var(--k-row-gap);background:transparent;overflow:visible}
-.knobs-panel[data-rows] .knobs-card>*{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden}
+.knobs-panel[data-rows] .knobs-card>*{background:var(--k-surface);border-radius:var(--k-radius);overflow:hidden;--k-rt:1;--k-rb:1}
 .knobs-panel[data-rows] .knobs-card>:is(:hover,.knobs-active){background:color-mix(in srgb,var(--k-surface-hi) 50%,var(--k-surface))}
 .knobs-panel[data-rows] :is(.knobs-card>*,.knobs-sub)::before{display:none}
 .knobs-panel[data-rows] .knobs-card>.knobs-subhead{background:transparent}
