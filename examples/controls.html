@@ -42,7 +42,6 @@
       .top { grid-area: top; display: flex; align-items: center; gap: 4px; padding: 0 14px 0 18px; }
       .top .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 600; font-size: 13px; margin-right: 10px; }
       .top .brand::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text); background: conic-gradient(from 210deg, var(--text) 0 4%, transparent 4%); }
-      .top .brand span { color: var(--dim); font-weight: 500; }
       .top .spacer { flex: 1; }
       .top .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; color: var(--label); transition: background-color .15s, color .15s; }
       .top .btn:hover, .top .btn:focus-visible { background: var(--surface); color: var(--text); }
@@ -70,7 +69,7 @@
 
       /* The hero: hardware twins in the dark, always dark (in light mode too), its panel floating
          over the plate's right edge; below 900 px the panel sits under the plate. */
-      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 96px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
+      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 64px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
       .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
       .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
       .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
@@ -95,7 +94,7 @@
       .hero-css .hero-fader i { position: absolute; left: -14px; width: 34px; height: 18px; margin-top: -9px; border-radius: 4px; background: #1c1c1f; box-shadow: 0 6px 12px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .08); }
 
       .cathead { margin: 72px 0 0; padding-bottom: 12px; color: var(--dim); font: 600 11px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; }
-      .cathead:first-of-type { margin-top: 40px; }
+      .cathead:first-child { margin-top: 2px; }
 
       section.demo { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px 24px; padding: 28px 0 36px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
       section.demo > header { grid-column: 1 / -1; }
@@ -106,6 +105,8 @@
       section.demo .slot .knobs-panel { --k-width: 100%; }
       section.demo.wide { grid-template-columns: minmax(0, 1fr); }
       .side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+      .side:empty { display: none; }
+      .note { margin: 0; color: var(--label); font-size: 12px; }
       .shows { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
       .shows code { padding: 1px 6px; border-radius: 5px; background: var(--surface); color: var(--dim); font: 500 10.5px/1.6 var(--mono); }
 
@@ -114,10 +115,12 @@
       .side > .stage { flex: 1 1 auto; }
       section.demo.scene .stage { min-height: 540px; }
       .stage .caption { position: absolute; left: 12px; bottom: 9px; color: var(--dim); font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; }
-      .stage[data-replay] { cursor: pointer; }
       .stage:focus-visible { background: var(--surface-hi); }
       .stage code, .side code { font: 11.5px var(--mono); color: var(--label); }
       .abs { position: absolute; left: 0; top: 0; will-change: transform; }
+      .catalog-pin { width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dim); display: grid; place-items: center; opacity: 0; cursor: pointer; transition: opacity .15s, color .15s; }
+      .catalog-pin[data-pinned] { opacity: 1; color: var(--text); }
+      .knobs-row:hover .catalog-pin, .knobs-row:focus-within .catalog-pin { opacity: 1; }
 
       /* The looks: three like tiles, each a stand-in for the app around its panel. knobs' own look
          brings its card; labPreset and the flat frame sit straight on the tile, as on an app's column. */

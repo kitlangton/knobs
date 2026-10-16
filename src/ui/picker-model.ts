@@ -58,16 +58,19 @@ export const pickDigit = (index: number): string => (index < 9 ? String(index + 
  * Whether a key event goes to the picker's digits: a bare 1–9 that nothing focused claimed (a
  * panel row picking its own options, a text field) and that isn't typed into a field.
  */
-export function claimsDigit(event: {
-  readonly key: string
-  readonly defaultPrevented: boolean
-  readonly metaKey: boolean
-  readonly ctrlKey: boolean
-  readonly altKey: boolean
-  readonly shiftKey: boolean
-  readonly repeat: boolean
-  readonly typing: boolean
-}): boolean {
+export function claimsDigit(
+  event: {
+    readonly key: string
+    readonly defaultPrevented: boolean
+    readonly metaKey: boolean
+    readonly ctrlKey: boolean
+    readonly altKey: boolean
+    readonly shiftKey: boolean
+    readonly repeat: boolean
+    readonly typing?: boolean
+  },
+  typing = false,
+): boolean {
   return (
     /^[1-9]$/.test(event.key) &&
     !event.defaultPrevented &&
@@ -76,7 +79,8 @@ export function claimsDigit(event: {
     !event.altKey &&
     !event.shiftKey &&
     !event.repeat &&
-    !event.typing
+    !event.typing &&
+    !typing
   )
 }
 

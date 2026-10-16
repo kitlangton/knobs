@@ -1778,11 +1778,6 @@ class GpuOverlayManager {
     })
   }
 
-  /** A circular icon button's hover/focus wash. */
-  /**
-   * A button's press flash (flash.ts) over its wash: the wash brightened toward the text colour,
-   * easing out. Returns how much is left (0 once it's over), for the ink to brighten by.
-   */
   /** Panels whose DOM overlays `cutUnderHead` has cut, to restore once nothing is under. */
   private readonly headCuts = new WeakSet<HTMLElement>()
 
@@ -1807,9 +1802,21 @@ class GpuOverlayManager {
     }
   }
 
-  private drawFlash(button: Element, r: DOMRect, alpha: number, clock: number, clip?: Clip) {
+  /**
+   * A button's press flash (flash.ts) over its wash: the wash brightened toward the text colour,
+   * easing out. Returns `ink` brightened toward the text colour while the flash lasts.
+   */
+  private drawFlash(
+    button: Element,
+    r: DOMRect,
+    alpha: number,
+    ink: Rgba,
+    clock: number,
+    clip?: Clip,
+  ): Rgba {
     const k = flashOf(button, clock)
-    if (k <= 0) return 0
+    if (k <= 0) return ink
+    this.easeMoving = true
     const t = this.curTokens
     this.pushPrim({
       x: r.left,
@@ -1822,9 +1829,10 @@ class GpuOverlayManager {
       radius: Math.min(r.height * 0.5, t.round),
       kind: 1,
     })
-    return k
+    return cssMix(t.text, ink, k)
   }
 
+  /** A circular icon button's hover/focus wash. */
   private drawRoundWash(r: DOMRect, alpha: number, wash: number, clip?: Clip) {
     if (wash <= 0.005) return
     const t = this.curTokens
@@ -4048,13 +4056,15 @@ class GpuOverlayManager {
             this.wash(hb.button, hovered || focused || expanded),
             clip,
           )
-          const flashed = this.drawFlash(hb.button, bRect, alpha, clock, clip)
-          if (flashed) anyMoving = true
-          const hotInk = this.hot(hb.button, on, restInk)
-          const iconColor = withAlpha(
-            flashed ? cssMix(tokens.text, hotInk, flashed) : hotInk,
+          const hotInk = this.drawFlash(
+            hb.button,
+            bRect,
             alpha,
+            this.hot(hb.button, on, restInk),
+            clock,
+            clip,
           )
+          const iconColor = withAlpha(hotInk, alpha)
           const die = panel.headerDie?.button === hb.button ? panel.headerDie.die : undefined
           if (die) this.drawDie(die, bRect, iconColor, clip)
           else if (hb.icon === "copy") {
@@ -4566,16 +4576,14 @@ class GpuOverlayManager {
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
           this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
-          const flashed = this.drawFlash(reset, br, alpha, clock)
-          if (flashed) anyMoving = true
+          const ink = this.drawFlash(reset, br, alpha, this.hot(reset, hovered || focused), clock)
           const turn = spinOf(reset, clock)
           if (turn.moving) anyMoving = true
-          const ink = this.hot(reset, hovered || focused)
           this.drawIcon(
             "reset",
             tokens.iconSm,
             br,
-            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, alpha * turn.alpha),
+            withAlpha(ink, alpha * turn.alpha),
             undefined,
             bloom.scale,
             turn.angle,
@@ -4591,14 +4599,8 @@ class GpuOverlayManager {
             this.ease(button, "dim", button.disabled ? tokens.disabledOpacity : 1, 30) *
             this.missed(button, hinting)
           this.drawRoundWash(dr, dimmed, this.wash(button, on))
-          const flashed = this.drawFlash(button, dr, dimmed, clock)
-          if (flashed) anyMoving = true
-          const ink = this.hot(button, on, tokens.dim)
-          this.drawDie(
-            die,
-            dr,
-            withAlpha(flashed ? cssMix(tokens.text, ink, flashed) : ink, dimmed),
-          )
+          const ink = this.drawFlash(button, dr, dimmed, this.hot(button, on, tokens.dim), clock)
+          this.drawDie(die, dr, withAlpha(ink, dimmed))
         }
         this.curAlpha = headAlpha
         if (g.fold) {
