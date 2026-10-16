@@ -557,9 +557,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     if (i) tickSchematic()
   }
   if (scheme) {
+    const asked = new URLSearchParams(location.search).get("hero")
     root.append(toggleEl)
     show(variant.target)
-    const asked = new URLSearchParams(location.search).get("hero")
     if (isAlt(asked) && !matchMedia("(max-width: 900px)").matches) showAlt(asked)
   }
 
