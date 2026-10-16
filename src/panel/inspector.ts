@@ -45,6 +45,7 @@ import {
   type Band,
   type Steps,
 } from "./give.js"
+import { offRow, precisionRate } from "./feel.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
@@ -159,21 +160,24 @@ interface ScrubOptions {
   move(dx: number, fine: boolean, coarse: boolean): void
   end(moved: boolean, event: PointerEvent): void
 }
-/** A horizontal drag: a press that moves 3 px becomes a scrub; one that doesn't is a click. */
+/**
+ * A horizontal drag: a press that moves 3 px becomes a scrub; one that doesn't is a click. Each
+ * move counts at its rate: slower the further the pointer strays off the row (precision by
+ * distance) and a tenth with ⌥, so changing either never moves the value.
+ */
 function scrub(target: HTMLElement, row: HTMLElement, o: ScrubOptions) {
   let at: number | undefined
   let moved = false
-  let base = 0
+  let last = 0
   let carried = 0
-  let fine = false
+  let rect: DOMRect | undefined
   target.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.shiftKey || event.metaKey) return
     event.preventDefault()
     target.setPointerCapture(event.pointerId)
     target.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    at = base = event.clientX
+    at = last = event.clientX
     carried = 0
-    fine = event.altKey
     moved = false
   })
   target.addEventListener("pointermove", (event) => {
@@ -181,21 +185,21 @@ function scrub(target: HTMLElement, row: HTMLElement, o: ScrubOptions) {
     if (!moved && Math.abs(event.clientX - at) < 3) return
     if (!moved) {
       moved = true
-      base = event.clientX
+      last = event.clientX
+      rect = row.getBoundingClientRect()
       row.classList.add("knobs-active")
       o.start()
     }
-    // ⌥ toggling mid-drag keeps the value where it is and changes the rate from there.
-    if (event.altKey !== fine) {
-      carried += (event.clientX - base) * (fine ? 0.1 : 1)
-      base = event.clientX
-      fine = event.altKey
-    }
-    o.move(carried + (event.clientX - base) * (fine ? 0.1 : 1), fine, event.shiftKey)
+    const r = rect!
+    const rate = precisionRate(offRow(event.clientY, r.top, r.bottom)) * (event.altKey ? 0.1 : 1)
+    carried += (event.clientX - last) * rate
+    last = event.clientX
+    o.move(carried, event.altKey, event.shiftKey)
   })
   const release = (event: PointerEvent) => {
     if (at === undefined) return
     at = undefined
+    rect = undefined
     row.classList.remove("knobs-active")
     o.end(moved, event)
   }
@@ -551,13 +555,16 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     place(instant)
   }
   // Pointer: the nearer thumb follows the pointer; a press well inside the band moves the band.
+  // Each move counts at its rate (slower off the row, a tenth with ⌥), and past the track's ends
+  // the readout gives, as a pan's does.
   let grab: 0 | 1 | 2 = 0
-  let startX = 0
   let startValue: readonly [number, number] = shown
   let rect: DOMRect | undefined
-  let fine = false
-  let fineAt = 0
-  let fineValue = 0
+  let lastX = 0
+  /** The held end along the track (px) and its give; for the band, how far it has been moved. */
+  let hand: Band = { at: 0, give: 0 }
+  let moved = 0
+  const give = textGive(read, () => c.wake())
   const valueAt = (x: number) => f().min + clamp((x - rect!.left) / rect!.width, 0, 1) * span()
   track.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.shiftKey || event.metaKey) return
@@ -575,40 +582,53 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       preventScroll: true,
       focusVisible: false,
     } as FocusOptions)
-    startX = event.clientX
+    lastX = event.clientX
     startValue = shown
-    fine = event.altKey
-    fineAt = event.clientX
-    fineValue = grab === 2 ? 0 : shown[grab]
+    moved = 0
+    // ⌥ starts where the end is; otherwise it jumps under the pointer.
+    hand = {
+      at:
+        grab === 2 || event.altKey
+          ? ratio(shown[grab === 2 ? 0 : grab]) * rect.width
+          : clamp(x, 0, rect.width),
+      give: 0,
+    }
     dragging = true
     row.classList.add("knobs-active")
     g.start()
-    if (grab !== 2 && !fine) g.set(withEnd(shown, grab, valueAt(event.clientX)))
+    if (grab !== 2 && !event.altKey) g.set(withEnd(shown, grab, valueAt(event.clientX)))
     c.wake()
   })
   track.addEventListener("pointermove", (event) => {
     if (!dragging || !rect) return
+    const rate =
+      precisionRate(offRow(event.clientY, rect.top, rect.bottom)) * (event.altKey ? 0.1 : 1)
+    const dx = (event.clientX - lastX) * rate
+    lastX = event.clientX
     if (grab === 2) {
+      moved += dx
       const width = startValue[1] - startValue[0]
-      const by = ((event.clientX - startX) / rect.width) * span() * (event.altKey ? 0.1 : 1)
+      const by = (moved / rect.width) * span()
       const lo = clamp(quant(startValue[0] + by, event.altKey), f().min, f().max - width)
       g.set([lo, Number((lo + width).toPrecision(12))])
       return
     }
-    if (event.altKey !== fine) {
-      fine = event.altKey
-      fineAt = event.clientX
-      fineValue = shown[grab]
-    }
-    const v = fine
-      ? fineValue + ((event.clientX - fineAt) / rect.width) * span() * 0.1
-      : valueAt(event.clientX)
-    g.set(withEnd(c.get() as readonly [number, number], grab, v, fine))
+    hand = pushBand(hand, dx, 0, rect.width)
+    g.set(
+      withEnd(
+        c.get() as readonly [number, number],
+        grab,
+        f().min + (hand.at / rect.width) * span(),
+        event.altKey,
+      ),
+    )
+    if (hand.give !== give.give) give.hold(hand.give)
   })
   const release = () => {
     if (!dragging) return
     dragging = false
     rect = undefined
+    give.release()
     row.classList.remove("knobs-active")
     c.wake()
   }
@@ -616,7 +636,6 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   track.addEventListener("pointercancel", release)
   // A pan moves the last-held end like a drag; past the track's ends the readout gives a little.
   let panAt: Band | undefined
-  const give = textGive(read, () => c.wake())
   onPan(track, {
     accept: () => !dragging,
     move(dx) {
@@ -790,7 +809,7 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
   let startX = 0
   let startValue = 0
   let carried = 0
-  let fine = false
+  let rowRect: DOMRect | undefined
   let centre = [0, 0]
   let moved = false
   const angleAt = (x: number, y: number) =>
@@ -807,7 +826,6 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
     startX = event.clientX
     startValue = value
     carried = 0
-    fine = event.altKey
     moved = false
     dragging = true
     g.start()
@@ -829,15 +847,15 @@ export function angleRow(c: RowContext<AngleField>): EditorRow {
     if (!moved) {
       moved = true
       startX = event.clientX
+      rowRect = row.getBoundingClientRect()
       row.classList.add("knobs-active")
     }
-    if (event.altKey !== fine) {
-      carried += (event.clientX - startX) * (fine ? 0.1 : 1)
-      startX = event.clientX
-      fine = event.altKey
-    }
-    const dx = carried + (event.clientX - startX) * (fine ? 0.1 : 1)
-    g.set(snapTo(startValue + dx * f().step, event.shiftKey))
+    // Each move counts at its rate: slower off the row (precision by distance), a tenth with ⌥.
+    const r = rowRect!
+    const rate = precisionRate(offRow(event.clientY, r.top, r.bottom)) * (event.altKey ? 0.1 : 1)
+    carried += (event.clientX - startX) * rate
+    startX = event.clientX
+    g.set(snapTo(startValue + carried * f().step, event.shiftKey))
   })
   const editor = inlineEdit(
     c.doc,

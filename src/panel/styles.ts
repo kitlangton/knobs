@@ -3,6 +3,8 @@ import { presetCss, type TokenPreset } from "../core/theme.js"
 import { GRADIENT_SAMPLES } from "../core/ramp.js"
 import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 import { FLASH_MS } from "./flash.js"
+import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
+import { READOUT_GIVE } from "./give.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
@@ -435,12 +437,22 @@ ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{op
 .knobs-smear .knobs-fill{background:linear-gradient(to left,transparent,var(--k-fill-tint) calc(var(--k-smear) * 1px));transform:translateX(calc(var(--k-fill) - 100% + var(--k-smear) * .5px))}
 .knobs-smear .knobs-handle::before{scale:calc(1 + var(--k-smear) / 3) 1;opacity:calc(3 / (3 + var(--k-smear)))}
 .knobs-animate .knobs-fill,.knobs-animate .knobs-handle{transition:--k-fill ${SLIDE_T} ${DELAY},--k-fill-mix .15s,opacity .15s}
-.knobs-settle .knobs-fill,.knobs-settle .knobs-handle{transition:--k-fill .1s cubic-bezier(.25,1,.5,1),--k-fill-mix .12s,opacity .15s}
-/* The default: a short notch rising from the bottom edge, only while the row is in hand. */
+/* Past an end the fill, handle and marks give together (--k-give, px; see give.ts), the readout
+   a little less, and spring home on release. */
+.knobs-fill,.knobs-handle,.knobs-marks>i{translate:var(--k-give,0px) 0}
+.knobs-slider .knobs-value{translate:calc(var(--k-give,0px) * ${READOUT_GIVE}) 0}
+/* The default: a short notch rising from the bottom edge, only while the row is in hand. The
+   active preset's value hangs one from the top edge. */
 .knobs-marks>.knobs-notch{top:auto;bottom:0;width:1.5px;height:4px;border-radius:999px 999px 0 0;transform:translateX(-50%);background:var(--k-accent);opacity:0;transition:opacity .2s,height .15s var(--k-ease)}
+.knobs-marks>.knobs-base{top:0;bottom:auto;border-radius:0 0 999px 999px}
 .knobs-slider:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.38}
-.knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch{opacity:.55}
-.knobs-magnet .knobs-notch{opacity:.95;height:6px}
+.knobs-slider.knobs-modified:is(:hover,.knobs-active,:has(:focus-visible)) .knobs-notch:not(.knobs-base){opacity:.55}
+.knobs-magnet .knobs-notch:not(.knobs-base),.knobs-held-base .knobs-base{opacity:.95;height:6px}
+/* Precision by distance: a fine ruler around the handle, a level for each halving of the rate,
+   each finer, shorter and fainter than the last. */
+.knobs-ruler{position:absolute;inset:0;pointer-events:none;translate:var(--k-give,0px) 0;--k-ruler-w:linear-gradient(to right,transparent calc(var(--k-fill) - ${RULER_FADE}px),#000 calc(var(--k-fill) - ${RULER_NEAR}px),#000 calc(var(--k-fill) + ${RULER_NEAR}px),transparent calc(var(--k-fill) + ${RULER_FADE}px));-webkit-mask:var(--k-ruler-w);mask:var(--k-ruler-w)}
+.knobs-ruler>i{position:absolute;left:0;right:0;top:50%;opacity:0;translate:-.5px 0;transition:opacity .18s var(--k-ease)}
+${RULER.map(([n, h, a], i) => `.knobs-ruler>i:nth-child(${i + 1}){height:${h}px;margin-top:${-h / 2}px;background:repeating-linear-gradient(to right,color-mix(in srgb,var(--k-accent) ${a * 100}%,transparent) 0 1px,transparent 1px calc(100% / ${n}))}`).join("\n")}
 /* The handle is a full-width layer moved by the fill (translate's % is its own width, the track's). */
 .knobs-handle{position:absolute;inset:0;pointer-events:none;transform:translateX(var(--k-fill));opacity:var(--k-handle-rest);transition:opacity .15s}
 .knobs-handle::before{content:"";position:absolute;left:0;top:50%;width:3px;height:calc(var(--k-row) - 12px);margin-top:calc(6px - var(--k-row) / 2);translate:calc(-50% - var(--k-handle-inset)) 0;border-radius:var(--k-round);background:var(--k-handle);

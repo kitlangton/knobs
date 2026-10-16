@@ -8,8 +8,13 @@ import { Spring } from "./motion.js"
 
 /** The most a control gives past an end (px). */
 export const GIVE = 6
-/** The spring a text readout's give goes home on: snappy, .25 s with no bounce. */
-const HOME = { omega: (2 * Math.PI) / 0.25, zeta: 1 }
+/** The most a slider's fill gives past an end (px), dragged or panned alike. */
+export const STRETCH = 14
+/** How long (s) a give takes to spring home, with no bounce: a readout's, and a slider's. */
+export const HOME_S = 0.25
+export const STRETCH_HOME_S = 0.35
+/** The readout's share of a slider's give past an end (it stays clear of the row's edge). */
+export const READOUT_GIVE = 0.6
 
 /** The give `over` px of push past an end makes: 1:1 at first, never reaching `max`. */
 export const rubber = (over: number, max = GIVE) =>
@@ -159,16 +164,26 @@ export const giveOf = (el: Element) => gives.get(el) ?? 0
  * pan puts it; let go, it springs home on one loop that both renderers read: the DOM as a
  * `translate`, the GPU through `giveOf`.
  */
-export function textGive(el: HTMLElement | SVGElement, wake: () => void) {
-  const spring = new Spring(0, HOME.omega, HOME.zeta, 0.02)
+export function textGive(
+  el: HTMLElement | SVGElement,
+  wake: () => void,
+  o: {
+    /** Seconds to spring home (`HOME_S` by default). */
+    readonly home?: number
+    /** Draws the give in the DOM (a `translate` by default; not called while the GPU draws). */
+    readonly draw?: (px: number) => void
+  } = {},
+) {
+  const spring = new Spring(0, (2 * Math.PI) / (o.home ?? HOME_S), 1, 0.02)
   let frame = 0
   let last = 0
   const win = el.ownerDocument.defaultView
+  const draw = o.draw ?? ((px: number) => (el.style.translate = px === 0 ? "" : `${px}px 0`))
   const write = (px: number) => {
     if (px === 0) gives.delete(el)
     else gives.set(el, px)
     const gpu = el.closest('[data-gpu-active="true"]') !== null
-    el.style.translate = px === 0 || gpu ? "" : `${px}px 0`
+    draw(gpu ? 0 : px)
     wake()
   }
   const step = (now: number) => {

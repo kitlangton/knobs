@@ -222,6 +222,7 @@ function buildPanel<S extends Schema>(
     options.toggleKey !== undefined ? options.toggleKey : page ? false : controls.toggleKey
   if (options.restored) root.dataset.restored = ""
   if (options.haptics === false) root.dataset.haptics = "off"
+  if (options.detents === false) root.dataset.detents = "off"
   const soundOptions = resolveSound(options.sound)
   if (soundOptions) {
     soundPanel(root, soundOptions)
@@ -1420,7 +1421,9 @@ function buildPanel<S extends Schema>(
       }
     }
     if (field.kind === "knob") {
-      const slider = createSlider(doc, key, field, set, () => wakeGpu())
+      const slider = createSlider(doc, key, field, set, () => wakeGpu(), {
+        base: () => (controls.baseValues() as Record<string, unknown>)[key] as number | undefined,
+      })
       slider.element.dataset.field = key
       if (field.shortcut) slider.track.setAttribute("aria-keyshortcuts", field.shortcut)
       slider.element.ondblclick = (event) => {

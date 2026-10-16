@@ -11,6 +11,7 @@ import {
   numeral,
   POP_MS,
   popScale,
+  settleScale,
   Spring,
   trailScale,
 } from "../motion.js"
@@ -24,7 +25,7 @@ import { rollingReadoutOf, type RollingReadout } from "../reel.js"
 import type { TabStrip } from "../tabs.js"
 import { livePill } from "../swipe.js"
 import { liveThumb } from "../thumb.js"
-import { giveOf } from "../give.js"
+import { giveOf, READOUT_GIVE } from "../give.js"
 import { rangeSmear } from "../smear.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
@@ -1107,6 +1108,7 @@ class GpuOverlayManager {
     p3?: number
     aux?: readonly [number, number, number, number]
     aux2?: Rgba
+    more?: readonly [number, number, number, number]
   }) {
     if (this.primCount >= MAX_PRIMS) return
     // Boxes land on whole device pixels, as Chrome snaps layout boxes when it paints them.
@@ -1166,6 +1168,11 @@ class GpuOverlayManager {
     d[b + 37] = c3 ? c3[1] : 1
     d[b + 38] = c3 ? c3[2] : 1
     d[b + 39] = (c3 ? c3[3] : 0) * this.curAlpha
+    const more = o.more
+    d[b + 40] = more ? more[0] : 0
+    d[b + 41] = more ? more[1] : 0
+    d[b + 42] = more ? more[2] : 0
+    d[b + 43] = more ? more[3] : 0
   }
 
   /** --k-rim-width in CSS px, on whole device pixels (at least one), so hairlines stay crisp. */
@@ -4813,6 +4820,28 @@ class GpuOverlayManager {
             22,
           )
 
+          // The active preset's notch: as the default's, in the same states, but always unlike it.
+          const baseRatio = sl.baseRatio
+          const baseNotch = this.ease(
+            row.row,
+            "baseNotch",
+            baseRatio === undefined
+              ? 0
+              : sl.heldDetent() === "base"
+                ? 0.95
+                : !(hovered || focused || dragging)
+                  ? 0
+                  : 0.38,
+            22,
+          )
+          // The fine ruler of precision by distance: the depth eases as the DOM's levels fade.
+          const ruler = this.ease(row.row, "ruler", sl.rulerDepth(), 26)
+          if (ruler > 0.005) anyMoving = true
+          const settleAge = clock - sl.settledAt
+          if (settleAge < POP_MS) anyMoving = true
+          // Past an end the fill and handle give (see give.ts); the readout a little less.
+          const give = giveOf(sl.element)
+
           this.pushPrim({
             x: rRect.left,
             y: rRect.top,
@@ -4828,6 +4857,7 @@ class GpuOverlayManager {
             blurX,
             // Kind 2 has no vertical blur; the slot carries the handle's inset from the fill edge.
             blurY: tokens.handleInset,
+            turn: give,
             p0: sl.fillSpring.x,
             p1: sl.handleSpring.x,
             p2: sl.tickCount,
@@ -4835,17 +4865,22 @@ class GpuOverlayManager {
               this.ease(row.row, "ticks", dragging ? 1 : hovered || focused ? 0.7 : 0) * shownFill,
             aux: [zone, sl.notchRatio, notch * shownFill, labelEnd - rRect.left],
             aux2: withAlpha(tokens.accent, rowAlpha),
+            more: [
+              ruler * shownFill,
+              reducedMotion ? 1 : settleScale(settleAge),
+              baseRatio ?? 0,
+              baseNotch * shownFill,
+            ],
           })
 
           this.drawRowLabel(sl.label, row.display, false, rowCenterY, rowAlpha, lRect)
 
-          // Past an end the readout gives a little (see give.ts).
-          const give = giveOf(sl.valueButton)
+          const readGive = give * READOUT_GIVE
           // While the value is edited, its DOM field sits over the digits; the unit stays drawn.
           const editing = sl.isEditing()
           if (mixed && !sl.isEditing()) {
             const valCol = withAlpha(this.hot(sl.valueButton, dragging || focused), rowAlpha)
-            const dashW = this.drawText("—", vRect.right + give, rowCenterY, valCol, {
+            const dashW = this.drawText("—", vRect.right + readGive, rowCenterY, valCol, {
               px: tokens.valueSize,
               weight: tokens.fontWeight,
               align: "right",
@@ -4858,7 +4893,7 @@ class GpuOverlayManager {
             if (mark > 0.005) {
               const r = 2.5 * Math.max(0, Math.min(1.2, mark))
               this.shape({
-                x: vRect.right + give - dashW - 6 - 2.5 - r,
+                x: vRect.right + readGive - dashW - 6 - 2.5 - r,
                 y: rowCenterY - r,
                 w: r * 2,
                 h: r * 2,
@@ -4878,7 +4913,7 @@ class GpuOverlayManager {
             const ink = mark > 0.005 ? cssMix(tokens.modified, valCol, clamp(mark, 0, 1)) : valCol
             const unitInk = withAlpha(ink, rowAlpha)
             const valPx = tokens.valueSize
-            let rightEdge = vRect.right + give
+            let rightEdge = vRect.right + readGive
             // The decile pop scales the whole readout about its right edge.
             const popAge = clock - sl.poppedAt
             const pop = reducedMotion ? 1 : popScale(popAge)
