@@ -410,7 +410,8 @@ fn sampleAtlasAlpha(p: Prim, local: vec2f, size: vec2f) -> f32 {
   return textureSampleLevel(labels, smp, uv, 0.0).a;
 }
 
-// kind 5: Native-rasterized atlas text & hint badges with directional motion blur
+// kind 5: Native-rasterized atlas text & hint badges with directional motion blur (or, for a
+// glyph, look.z of round blur)
 fn shadeText(p: Prim, rectLocal: vec2f, rectSize: vec2f, fragPos: vec2f) -> vec4f {
   // A turning glyph (motion.z, clockwise) sits in a quad √2 its size, sampled turned back.
   var local = rectLocal;
@@ -425,7 +426,18 @@ fn shadeText(p: Prim, rectLocal: vec2f, rectSize: vec2f, fragPos: vec2f) -> vec4
   let blur = p.motion.xy;
   let len = length(blur);
   var a = 0.0;
-  if (len < 0.45) {
+  if (p.look.z > 0.05) {
+    // A glyph blooming out of its slot is blurred as the DOM's filter does (look.z is its
+    // σ, px): a disc twice that wide, in jittered taps.
+    let j = hash21(fragPos) * 6.2831853;
+    for (var k = 0; k < 12; k++) {
+      let f = f32(k);
+      let r = p.look.z * 2.0 * sqrt((f + 0.5) / 12.0);
+      let t = f * 2.3999632 + j;
+      a += sampleAtlasAlpha(p, local + vec2f(cos(t), sin(t)) * r, size);
+    }
+    a = a / 12.0;
+  } else if (len < 0.45) {
     a = sampleAtlasAlpha(p, local, size);
   } else {
     let n = clamp(i32(len / 1.5) + 3, 4, 12);

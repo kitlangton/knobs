@@ -1,4 +1,5 @@
-// Every control in knobs, down one scrolling page. First a few scenes, each one panel of several
+// knobs' home page: every control, down one scrolling page. A hero first (a dial on a field of
+// light, with the knobs that drive it round its edges); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
@@ -68,6 +69,7 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
+import { heroScene } from "./controls-hero"
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
@@ -292,6 +294,10 @@ export interface SceneKit {
   readonly theme: () => "dark" | "light"
 }
 const kit: SceneKit = { section, define, mount, h, theme: () => theme }
+
+// ── Hero ─────────────────────────────────────────────────────────────────────────────────────
+
+heroScene(kit, document.getElementById("hero")!)
 
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
@@ -1463,6 +1469,16 @@ for (const cat of cats) {
     links.set(sec.id, a)
   }
 }
+// The brand goes back up to the hero.
+document.getElementById("brand")!.addEventListener("click", (e) => {
+  e.preventDefault()
+  scroller.scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" })
+  history.replaceState(null, "", location.pathname + location.search)
+})
+// The Lab, the dense editor this page used to sit beside.
+index.append(Object.assign(h("div", "cat"), { textContent: "More" }))
+index.append(Object.assign(h("a"), { textContent: "Lab", href: "lab.html" }))
+strip.append(Object.assign(h("a"), { textContent: "Lab", href: "lab.html" }))
 let active = ""
 const markActive = (id: string) => {
   if (id === active) return

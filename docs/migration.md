@@ -342,6 +342,13 @@ A few things to watch:
   Return `true` when the host rolled the group (the die still tumbles) and knobs leaves its values
   alone; return anything else to let knobs roll it. The Lab's Emitter group in `examples/lab.ts`
   works this way.
+- **The header's order.** Since `liquid-morph` the header reads Undo · Redo, Reset, Copy, Random
+  (in the corner), then `?` and close; before, it was Random, Reset, Copy, Undo · Redo. Undo, Redo
+  and Reset keep their slots while they're away instead of folding out: such a button stays in the
+  DOM with `data-shown="false"` and `disabled`, hidden (`visibility`) from the accessibility tree.
+  Find header buttons by `aria-label` rather than position, and check `data-shown` (or
+  `disabled`) rather than `hidden` or the old `.knobs-head-history[data-shown]` when the Lab asks
+  whether one is showing. A group's reset already worked this way.
 - **What stays in Arcade.** The `data-lab-flash` highlight is the Lab's own.
 
 ### The workspace: `panels.ts` and `outliner.ts`

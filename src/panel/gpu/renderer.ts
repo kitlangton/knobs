@@ -1656,6 +1656,24 @@ class GpuOverlayManager {
     })
   }
 
+  /**
+   * A header or group button that blooms in and out of its slot (`data-shown`): its opacity, scale
+   * and blur (σ, px) from the DOM's transition while one runs, else simply there or not.
+   */
+  private bloomOf(button: HTMLElement) {
+    const shown = button.dataset.shown !== "false"
+    if (!button.getAnimations().length)
+      return { alpha: shown ? 1 : 0, scale: 1, blur: 0, moving: false }
+    const cs = getComputedStyle(button)
+    const blur = /blur\(([\d.]+)px\)/.exec(cs.filter)
+    return {
+      alpha: Number(cs.opacity) || 0,
+      scale: parseFloat(cs.scale) || 1,
+      blur: blur ? Number(blur[1]) : 0,
+      moving: true,
+    }
+  }
+
   private drawIcon(
     icon: IconName | (string & {}),
     px: number,
@@ -1664,6 +1682,7 @@ class GpuOverlayManager {
     clip?: Clip,
     scale = 1,
     turn = 0,
+    blur = 0,
   ) {
     const entry = this.atlas.icon(iconPath(icon), px, this.curScale)
     // Turning (radians, clockwise), the quad is √2 the glyph so its corners stay inside it.
@@ -1680,6 +1699,7 @@ class GpuOverlayManager {
       color,
       kind: 5,
       turn,
+      glowOrBlur: blur,
     })
   }
 
@@ -3951,36 +3971,26 @@ class GpuOverlayManager {
         const restInk = cssMix(
           tokens.label,
           tokens.dim,
-          this.ease(panel.header, "lit", lit ? 1 : 0, this.hoverOmega(lit)),
+          this.ease(panel.header, "lit", lit ? 1 : 0, this.hoverOmega(false)),
         )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue
-          // Read fresh: undo and redo fold in and out, moving the buttons beside them.
+          // Undo, Redo and Reset bloom in and out of their slots; the rest stay, dimmed when off.
+          const blooms = hb.button.dataset.shown !== undefined
+          const bloom = blooms ? this.bloomOf(hb.button) : undefined
+          if (bloom?.moving) anyMoving = true
+          if (bloom && bloom.alpha <= 0.002) continue
+          // Read fresh: a blooming button's box scales with it.
           const bRect = hb.button.getBoundingClientRect()
           const hovered = !hb.button.disabled && this.isHovered(hb.button)
           if (hovered) this.curSubHovered = false
           const focused = this.isFocused(hb.button)
           const expanded = hb.button.getAttribute("aria-expanded") === "true"
-          let alpha = this.ease(
-            hb.button,
-            "dim",
-            hb.button.disabled ? tokens.disabledOpacity : 1,
-            30,
-          )
-          let scale = 1
-          let clip = panelClip
-          const fold = hb.button.parentElement!
-          if (fold.classList.contains("knobs-head-history")) {
-            const shown = fold.dataset.shown === "true"
-            if (fold.getAnimations({ subtree: true }).length) {
-              anyMoving = true
-              const cs = getComputedStyle(hb.button)
-              alpha *= (Number(cs.opacity) || 0) / (hb.button.disabled ? tokens.disabledOpacity : 1)
-              scale = parseFloat(cs.scale) || 1
-              const f = fold.getBoundingClientRect()
-              clip = intersectClip(panelClip, [f.left, f.top, f.right, f.bottom])
-            } else if (!shown) continue
-          }
+          const alpha = bloom
+            ? bloom.alpha
+            : this.ease(hb.button, "dim", hb.button.disabled ? tokens.disabledOpacity : 1, 30)
+          const scale = bloom?.scale ?? 1
+          const clip = panelClip
           const copied = "copied" in hb.button.dataset
           const on = hovered || focused || expanded || copied
           this.drawRoundWash(
@@ -4002,7 +4012,7 @@ class GpuOverlayManager {
             const turn = spinOf(hb.button, clock)
             if (turn.moving) anyMoving = true
             const ink = turn.alpha === 1 ? iconColor : withAlpha(iconColor, turn.alpha)
-            this.drawIcon(hb.icon, tokens.iconSize, box, ink, clip, scale, turn.angle)
+            this.drawIcon(hb.icon, tokens.iconSize, box, ink, clip, scale, turn.angle, bloom?.blur)
           }
         }
       }
@@ -4433,12 +4443,14 @@ class GpuOverlayManager {
             false,
           )
         }
-        // The reset fades and scales on its GPU spring, matching the DOM transition.
+        // The reset blooms in and out of its slot as the header's do, from the DOM's transition.
         const reset = g.reset
-        const resetShown = this.ease(reset, "shown", reset.dataset.shown === "true" ? 1 : 0, 28)
-        const alpha = resetShown * this.missed(reset, hinting)
+        const bloom = this.bloomOf(reset)
+        if (bloom.moving) anyMoving = true
+        const alpha = bloom.alpha * this.missed(reset, hinting)
         if (alpha > 0.005 && ctlShown) {
-          const br = this.rectOf(reset)
+          // While it blooms its box scales with it (the cached rect wouldn't).
+          const br = bloom.moving ? reset.getBoundingClientRect() : this.rectOf(reset)
           const hovered = !reset.disabled && this.isHovered(reset)
           const focused = this.isFocused(reset)
           this.drawRoundWash(br, alpha, this.wash(reset, hovered || focused))
@@ -4450,8 +4462,9 @@ class GpuOverlayManager {
             br,
             withAlpha(this.hot(reset, hovered || focused), alpha * turn.alpha),
             undefined,
-            0.55 + 0.45 * resetShown,
+            bloom.scale,
             turn.angle,
+            bloom.blur,
           )
         }
         // The group's die: quiet (dim) until hovered or focused.

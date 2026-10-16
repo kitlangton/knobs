@@ -12,7 +12,6 @@
         --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
         --page: #141518; --card: #191a1e; --dock: #0c0d0f; --field: #0e0f11; --line: #23252a;
         --text: #d8dbe0; --text2: #babdc2; --label: #8b9098; --dim: #5b6068; --blue: #4d8dff;
-        --chip: #2c3747; --chip-line: #517097;
         color-scheme: dark;
       }
       * { box-sizing: border-box; }
@@ -51,14 +50,9 @@
       .viewport { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 55% 45%, #2a2019 0%, #17130f 45%, #0d0c0d 80%); }
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .dock { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.25fr) minmax(260px, 1.25fr); gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
-      .dock-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-      .dock .live { padding: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
+      .dock .live { padding: 0; min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
       .dock .live .knobs-panel { --k-width: 100%; }
       [data-pane="dock"] { background: var(--dock); }
-      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-      .chips button { border: 1px solid var(--line); color: var(--text2); }
-      .chips button kbd { font: 10px var(--mono); color: var(--dim); margin-right: 5px; }
-      .chips button.on { background: var(--chip); border-color: var(--chip-line); color: var(--text); }
       .details { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 6px; }
       .details .knobs-panel { --k-width: 100%; }
       .details .row { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; }
@@ -136,12 +130,6 @@
       html[data-look="knobs"] .card a { font-weight: 500; }
       html[data-look="knobs"] .viewport .tag { top: 10px; left: 10px; padding: 3px 9px; border: 0; border-radius: 6px; background: rgba(0, 0, 0, .42); color: #fff; font-family: var(--sans); font-weight: 500; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
       html[data-look="knobs"] .dock { gap: 8px; padding: 2px 8px 8px; }
-      html[data-look="knobs"] .dock-side { gap: 8px; }
-      html[data-look="knobs"] .chips { gap: 4px; }
-      html[data-look="knobs"] .chips button { height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: var(--field); color: var(--text2); }
-      html[data-look="knobs"] .chips button:hover { background: var(--surface-hi); }
-      html[data-look="knobs"] .chips button kbd { font: 500 10px var(--sans); color: var(--dim); }
-      html[data-look="knobs"] .chips button.on { background: var(--pill); color: var(--text); box-shadow: var(--lift); }
       html[data-look="knobs"] .card.live { background: transparent; padding: 0; }
       html[data-look="knobs"] :is(.dock .live, .details) .knobs-panel { --k-chrome: 0; }
       html[data-look="knobs"] .details { gap: 0; padding: 0 0 8px; }
@@ -200,16 +188,7 @@
           <span class="tag">Weather</span>
         </section>
         <div class="dock" id="dock">
-          <div class="dock-side">
-            <div class="card">
-              <div class="cap">Variants</div>
-              <div class="chips" data-hint-group><button data-hint="Rain"><kbd>⇧1</kbd>Rain</button><button data-hint="Drizzle"><kbd>⇧2</kbd>Drizzle</button><button class="on" data-hint="Storm"><kbd>⇧3</kbd>Storm</button><button data-hint="Fog"><kbd>⇧4</kbd>Fog</button><button data-hint="Snow"><kbd>⇧5</kbd>Snow</button></div>
-            </div>
-            <div class="card">
-              <div class="cap">Compare</div>
-              <div class="chips" data-hint-group><button data-hint>A/B wipe</button><button data-hint="Grid">⊞ Grid</button></div>
-            </div>
-          </div>
+          <div class="card live" id="sets"></div>
           <div class="card live" id="live"></div>
           <div class="card live" id="diag"></div>
         </div>

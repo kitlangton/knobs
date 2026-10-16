@@ -198,7 +198,8 @@ export function startScene(host: SceneHost) {
   const liveLook = new Look(inputs())
   let snapshot: Look | null = null
   const gridLooks = new Map<string, Look>()
-  let compare: "none" | "wipe" | "grid" = "none"
+  type CompareMode = "none" | "wipe" | "grid"
+  let compare: CompareMode = "none"
   const wipe = new Spring(1, CALM)
   const grid = new Spring(0, SMOOTH)
   let lastPreset = liveLook.status()
@@ -1220,15 +1221,25 @@ export function startScene(host: SceneHost) {
     wipe.snap(Math.min(0.98, Math.max(0.02, wipe.target + by * (e.shiftKey ? 0.1 : 0.02))))
     wake()
   })
-  const chipSets = [...document.querySelectorAll<HTMLElement>(".dock .chips")]
-  const variantChips = [...(chipSets[0]?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
-  const compareChips = [...(chipSets[1]?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
-  const setCompare = (mode: "wipe" | "grid") => {
-    if (compare === mode) {
+  // The dock's Compare segments and Variants buttons (lab-live.ts).
+  /** The mode as the segments show it: one gliding out already reads as off. */
+  const shown = (): CompareMode =>
+    compare === "wipe" && wipe.target > 0
+      ? "wipe"
+      : compare === "grid" && grid.target > 0
+        ? "grid"
+        : "none"
+  const setCompare = (mode: CompareMode) => {
+    if (mode === shown()) return
+    if (mode === "none") {
       // Out: the wipe slides to the left edge (live everywhere), the grid's live cell grows back.
-      if (mode === "wipe") wipe.set(0)
+      if (compare === "wipe") wipe.set(0)
       else grid.set(0)
-      live.event("info", `Compare: ${mode === "wipe" ? "A/B wipe" : "grid"} off`)
+      live.event("info", `Compare: ${compare === "wipe" ? "A/B wipe" : "grid"} off`)
+    } else if (mode === compare) {
+      // Back before it had gone: the same spring turns round.
+      if (mode === "wipe") wipe.set(0.5)
+      else grid.set(1)
     } else {
       if (compare !== "none") {
         snapshot = null
@@ -1251,36 +1262,13 @@ export function startScene(host: SceneHost) {
     wake()
   }
   function syncCompareUi() {
-    compareChips[0]?.classList.toggle("on", compare === "wipe" && wipe.target > 0)
-    compareChips[1]?.classList.toggle("on", compare === "grid" && grid.target > 0)
-    compareChips.forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))))
+    if (live.sets.get().compare !== shown()) live.sets.sync({ compare: shown() })
   }
-  compareChips[0]?.addEventListener("click", () => setCompare("wipe"))
-  compareChips[1]?.addEventListener("click", () => setCompare("grid"))
+  live.sets.subscribe(() => setCompare(live.sets.get().compare))
   syncCompareUi()
-
-  const variantNames = variantChips.map((b) => b.textContent!.replace(/^⇧\d/, "").trim())
-  const applyVariant = (name: string) => {
+  live.onVariant((name) => {
     const v = VARIANTS[name]
     if (v) host.apply(v)
-  }
-  variantChips.forEach((b, i) => b.addEventListener("click", () => applyVariant(variantNames[i]!)))
-  const syncVariants = () => {
-    const preset = String(host.settings().preset)
-    variantChips.forEach((b, i) => {
-      b.classList.toggle("on", variantNames[i] === preset)
-      b.setAttribute("aria-pressed", String(variantNames[i] === preset))
-    })
-  }
-  host.subscribe(syncVariants)
-  syncVariants()
-  document.addEventListener("keydown", (e) => {
-    const m = /^Digit([1-5])$/.exec(e.code)
-    if (!m || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
-    const t = e.target as HTMLElement
-    if (t.closest("input, textarea, [contenteditable]")) return
-    e.preventDefault()
-    applyVariant(variantNames[Number(m[1]) - 1]!)
   })
 
   // ——— picking: a click in the viewport selects what's under it ———

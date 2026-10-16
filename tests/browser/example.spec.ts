@@ -163,8 +163,8 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   await presetStrip.getByRole("radio", { name: "Variant 2" }).click()
   await page.keyboard.press("Backspace")
   await expect(presetStrip.getByRole("radio", { name: "Variant 2" })).toHaveCount(0)
-  // Nothing differs from the defaults, so there is nothing to reset.
-  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
+  // Nothing differs from the defaults, so there is nothing to reset: Reset has left its slot.
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeHidden()
 
   const count = panel.getByRole("slider", { name: "count", exact: true })
   await count.focus()
@@ -475,18 +475,25 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   const seed = panel.getByRole("slider", { name: "seed", exact: true })
   const random = panel.getByRole("button", { name: "Random", exact: true })
 
-  // Random, Reset and Copy are Phosphor icons in the header with undo/redo and close; undo and
-  // redo fold in once there's history
+  // Undo · Redo, Reset, Copy and Random (in the corner) are Phosphor icons in the header, then
+  // close; Undo, Redo and Reset keep their slots, showing only once there's something to do
   await expect(
     panel.locator(
       "header button:not([hidden]) :is(.knobs-icon, .knobs-die-icon):not(.knobs-check)",
     ),
   ).toHaveCount(6)
   await expect(panel.locator(".knobs-actions")).toHaveCount(0)
-  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeDisabled()
-  const history = panel.locator(".knobs-head-history")
-  await expect(history).toHaveAttribute("data-shown", "false")
-  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBe(0)
+  const undo = panel.getByRole("button", { name: "Undo", exact: true })
+  const redo = panel.getByRole("button", { name: "Redo", exact: true })
+  for (const name of ["Reset", "Undo", "Redo"])
+    await expect(panel.getByRole("button", { name, exact: true })).toBeHidden()
+  const pinned = () =>
+    panel
+      .locator(".knobs-head-actions")
+      .evaluate((a) =>
+        [...a.querySelectorAll("button")].map((b) => Math.round(b.getBoundingClientRect().left)),
+      )
+  const slots = await pinned()
 
   // ↑/↓ walk presets → rows, wrapping (no custom actions here)
   const grain = panel.getByRole("switch", { name: "grain" })
@@ -498,12 +505,12 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   await page.keyboard.press("ArrowDown")
   await expect(strip).toBeFocused()
 
-  // Tab wraps inside the floating panel; disabled Reset/Undo/Redo are skipped
+  // Tab wraps inside the floating panel; Reset, Undo and Redo are skipped while they're away
   await grain.focus()
   await page.keyboard.press("Tab")
-  await expect(random).toBeFocused()
-  await page.keyboard.press("Tab")
   await expect(panel.getByRole("button", { name: "Copy", exact: true })).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(random).toBeFocused()
   await page.keyboard.press("Shift+Tab")
   await page.keyboard.press("Shift+Tab")
   await expect(grain).toBeFocused()
@@ -511,10 +518,11 @@ test("keyboard reaches everything; drags and scrubs are single undo steps", asyn
   // ⇧R resets everything; ⇧S saves a preset; ⌫ on the strip deletes it; export lives in "?"
   await seed.focus()
   await page.keyboard.press("ArrowRight")
-  await expect(history).toHaveAttribute("data-shown", "true")
-  await expect.poll(async () => (await history.boundingBox())?.width ?? 0).toBeGreaterThan(40)
-  await expect(panel.getByRole("button", { name: "Undo", exact: true })).toBeEnabled()
-  await expect(panel.getByRole("button", { name: "Redo", exact: true })).toBeDisabled()
+  await expect(undo).toBeEnabled()
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeEnabled()
+  await expect(redo).toBeHidden()
+  // They bloomed in their own slots: no button moved.
+  expect(await pinned()).toEqual(slots)
   await page.keyboard.press("Shift+R")
   await expect(strip).toHaveAttribute("data-active-preset", "p:default")
   await page.keyboard.press("ArrowRight")
@@ -1688,15 +1696,15 @@ test("design-system geometry contracts: left/right column alignment, concentric 
           ...Array.from(panel.querySelectorAll(".knobs-strip-read"), R),
           R(panel.querySelector(".knobs-pad")!),
           R(panel.querySelector(".knobs-ease")!),
-          // The last header button (undo and redo are folded away, with no history yet); a close
-          // X is nudged a tenth of its size right, so its ink ends with the digits'.
+          // The last header button (Random's die, in the corner); a close X is nudged a tenth of its
+          // size right, so its ink ends with the digits'.
           panel.querySelector(".knobs-close")
             ? R(panel.querySelector(".knobs-close > .knobs-icon")!) +
               parseFloat(getComputedStyle(panel).getPropertyValue("--k-icon-size")) * 0.1
             : R(
                 [
                   ...panel.querySelectorAll<HTMLElement>(
-                    ".knobs-head-actions > button:not([hidden]) > .knobs-icon",
+                    ".knobs-head-actions > button:not([hidden]) > :is(.knobs-icon, .knobs-die-icon)",
                   ),
                 ].at(-1)!,
               ),
@@ -2218,7 +2226,8 @@ test("Reset's ↺ turns once per reset, additively, and blinks instead with redu
     await page.reload()
     const panel = await openStudy(page, "halftone")
     await expect(panel).not.toHaveAttribute("data-morphing")
-    const reset = panel.getByRole("button", { name: "Reset", exact: true })
+    // By its label: it leaves its slot (and the accessibility tree) once it has stopped.
+    const reset = panel.locator('header button[aria-label="Reset"]')
     const track = panel.getByRole("slider", { name: "cells" })
     // Every frame's turn and opacity, from here on.
     const record = () =>
@@ -2272,7 +2281,7 @@ test("Reset's ↺ turns once per reset, additively, and blinks instead with redu
     const two = await seen()
     expect(two.min).toBeGreaterThanOrEqual(-721)
     expect(two.max).toBe(0)
-    await expect(reset).toBeDisabled()
+    await expect(reset).toBeHidden()
     // ⇧R turns it too.
     await track.focus()
     await page.keyboard.press("ArrowRight")
