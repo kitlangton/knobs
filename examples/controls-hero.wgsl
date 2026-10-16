@@ -1,8 +1,8 @@
-// The hero: a matte-black faceplate in the dark under one soft overhead spot, with six hardware
-// twins of the panel's rows on it: a knurled rotary knob in a ring of LEDs (Key light), a three-
+// The hero: a dark desk under one soft overhead spot, with six hardware twins of the panel's rows
+// set into it, each in its own chamfered well: a knurled rotary knob in a ring of LEDs (Key light), a three-
 // position selector (Finish), a chrome toggle (LEDs), a fader in a lit slot (Shadow), a joystick on
 // a gimbal (Spot) and a knob whose top is a glowing colour wheel (Accent). Ray-marched SDFs inside
-// one bounding box over an analytic floor, so pixels outside the plate cost one floor sample. The
+// one bounding box round the controls; past it the desk is an analytic plane, one sample. The
 // spot is a disc light pointing down: a cone that falls off into black, soft shadows from its size
 // and a contact shadow; the finish morphs between powder-coat, brushed (anisotropic) and anodised
 // metal. LEDs are HDR emitters into the bloom. A spinning knob is rendered at several instants
@@ -16,12 +16,12 @@
 // shadow first refines for SHADOW_N frames (its soft edge is noisy by design), then holds. So a
 // change to the light's level or colour, the finish or the LEDs costs a few steps a pixel.
 //
-// Everything unlit is exactly the page colour: the room's ambient brings a surface to it, the
-// floor is it, less a soft contact shadow, plus whatever light lands there, and every edge of the
-// frame fades to it. Detail finer than a pixel fades out (knurling at grazing angles, grain and
+// Everything unlit is exactly the page colour: the room's ambient brings a surface to it, so the
+// desk is seen only where the spot falls, and the light fades out round the composition before
+// any edge of the frame (u.v[15–16]). Detail finer than a pixel fades out (knurling at grazing angles, grain and
 // brushing, the edges of dots and lines), so a single sample doesn't sparkle.
 //
-// World: y up, the plate's top at y = 0, x right, z toward the viewer. Screen lengths are CSS px.
+// World: y up, the desk's top at y = 0, x right, z toward the viewer. Screen lengths are CSS px.
 // u.v[0]  principal point (px), focal (px), the still's sample (its noise seed)
 // u.v[1]  camera position, entrance (0 → 1)
 // u.v[2]  camera right, LEDs (0 → 1)
@@ -38,10 +38,13 @@
 // u.v[13] page colour (linear)
 // u.v[14] the light moved (1), the controls whose pose changed (bits: key 1, colour 2,
 //         selector 4, toggle 8, fader 16, joystick 32)
+// u.v[15] the composition's centre on screen (px), its reach left and right (px)
+// u.v[16] its reach up and down (px)
 // u.v[62].x the cache holds last frame (controls-gpu)
 
-const PT = 0.32;
-const PLATE = vec2f(3.0, 2.05);
+/** How far the controls sit down in their wells; the toggle's is shallower. */
+const WELL = 0.08;
+const WELL_T = 0.05;
 const K = vec2f(-1.85, -0.8);
 const S = vec2f(0.0, -0.8);
 const T = vec2f(1.85, -0.8);
@@ -53,8 +56,8 @@ const FADER_L = 0.72;
 const LENS = 0.34;
 const ARC = 2.35619449;
 const LED_N = 25.0;
-const BOX_MIN = vec3f(-3.05, -0.34, -2.1);
-const BOX_MAX = vec3f(3.05, 1.05, 2.1);
+const BOX_MIN = vec3f(-2.8, -0.16, -1.7);
+const BOX_MAX = vec3f(2.8, 1.05, 1.95);
 
 var<private> rotK: f32;
 var<private> rotC: f32;
@@ -107,10 +110,6 @@ fn rot2(p: vec2f, a: f32) -> vec2f {
 fn ang(q: vec2f) -> f32 {
   return atan2(q.x, -q.y);
 }
-fn sdRoundRect(p: vec2f, b: vec2f, r: f32) -> f32 {
-  let q = abs(p) - b + r;
-  return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r;
-}
 /** Distance to a bound: a cylinder of radius `r` up to height `h` (open below). */
 fn bound(q: vec3f, r: f32, h: f32) -> f32 {
   let d = vec2f(length(q.xz) - r, q.y - h);
@@ -152,6 +151,34 @@ fn sdKnob(q: vec3f, r: f32, h: f32, n: f32, a: f32) -> f32 {
   return min(body, skirt);
 }
 
+/** A round well `r` wide and `d` deep, its rim chamfered at 45° (a bound, so scaled down). */
+fn well(q: vec3f, r: f32, d: f32) -> f32 {
+  let rr = r + max(q.y + 0.05, 0.0);
+  return max(length(q.xz) - rr, -(q.y + d)) * 0.7;
+}
+
+/** The desk: its top, the wells and the fader's slot. */
+fn desk(p: vec3f) -> f32 {
+  var d = p.y;
+  let x = vec2f(p.x, p.z);
+  if (length(x - K) < 0.86) {
+    d = max(d, -well(p - vec3f(K.x, 0.0, K.y), 0.74, WELL));
+  }
+  if (length(x - C) < 0.76) {
+    d = max(d, -well(p - vec3f(C.x, 0.0, C.y), 0.64, WELL));
+  }
+  if (length(x - S) < 0.74) {
+    d = max(d, -well(p - vec3f(S.x, 0.0, S.y), 0.62, WELL));
+  }
+  if (length(x - T) < 0.48) {
+    d = max(d, -well(p - vec3f(T.x, 0.0, T.y), 0.36, WELL_T));
+  }
+  if (length(x - J) < 0.74) {
+    d = max(d, -well(p - vec3f(J.x, 0.0, J.y), 0.62, WELL));
+  }
+  return max(d, -sdBox(p - vec3f(F.x, 0.0, F.y), vec3f(0.055, 0.11, FADER_L + 0.06), 0.03));
+}
+
 /** The joystick's stick direction. */
 fn stickDir() -> vec3f {
   return normalize(vec3f(tan(u.v[10].z), 1.0, tan(u.v[10].w)));
@@ -160,16 +187,13 @@ fn stickDir() -> vec3f {
 /** Distance and material: 0 plate, 1 finish, 2 chrome, 3 rubber, 4 gloss black, 6 colour knob,
  *  7 key knob, 8 selector, 9 fader cap. */
 fn map(p: vec3f) -> vec2f {
-  // The plate, with the fader's slot cut into it.
-  let w = vec2f(sdRoundRect(p.xz, PLATE, 0.32) + 0.04, abs(p.y + PT * 0.5) - PT * 0.5 + 0.04);
-  var plate = min(max(w.x, w.y), 0.0) + length(max(w, vec2f(0.0))) - 0.04;
-  plate = max(plate, -sdBox(p - vec3f(F.x, 0.0, F.y), vec3f(0.055, 0.11, FADER_L + 0.06), 0.03));
-  var res = vec2f(plate, 0.0);
+  let top = desk(p);
+  var res = vec2f(top, 0.0);
   if (p.y > 0.95) {
-    return vec2f(min(plate, p.y - 0.9), 0.0);
+    return vec2f(min(top, p.y - 0.9), 0.0);
   }
   // Each twin inside its own bound: outside it, the bound's distance stands in.
-  var q = p - vec3f(K.x, 0.0, K.y);
+  var q = p - vec3f(K.x, -WELL, K.y);
   var b = bound(q, 0.78, 0.6);
   if (b < 0.05) {
     let d = sdKnob(q, 0.6, 0.52, 54.0, rotK);
@@ -179,7 +203,7 @@ fn map(p: vec3f) -> vec2f {
   } else {
     res.x = min(res.x, b);
   }
-  q = p - vec3f(C.x, 0.0, C.y);
+  q = p - vec3f(C.x, -WELL, C.y);
   b = bound(q, 0.66, 0.5);
   if (b < 0.05) {
     let d = sdKnob(q, 0.5, 0.44, 48.0, rotC);
@@ -189,7 +213,7 @@ fn map(p: vec3f) -> vec2f {
   } else {
     res.x = min(res.x, b);
   }
-  q = p - vec3f(S.x, 0.0, S.y);
+  q = p - vec3f(S.x, -WELL, S.y);
   b = bound(q, 0.62, 0.5);
   if (b < 0.05) {
     let base = sdCyl(q, 0.5, 0.17, 0.05);
@@ -205,7 +229,7 @@ fn map(p: vec3f) -> vec2f {
   } else {
     res.x = min(res.x, b);
   }
-  q = p - vec3f(T.x, 0.0, T.y);
+  q = p - vec3f(T.x, -WELL_T, T.y);
   b = bound(q, 0.5, 0.95);
   if (b < 0.05) {
     let washer = sdCyl(q, 0.32, 0.04, 0.014);
@@ -235,7 +259,7 @@ fn map(p: vec3f) -> vec2f {
   } else {
     res.x = min(res.x, b);
   }
-  q = p - vec3f(J.x, 0.0, J.y);
+  q = p - vec3f(J.x, -WELL, J.y);
   b = bound(q, 0.66, 0.95);
   if (b < 0.05) {
     let ring = max(sdCyl(q, 0.57, 0.07, 0.025), -(length(q.xz) - 0.44));
@@ -288,10 +312,12 @@ fn shadow(p: vec3f, l: vec3f, dist: f32) -> f32 {
   var ph = 1e10;
   var t = max(bh.x, 0.0) + 0.012 + 0.08 * jit;
   for (var i = 0; i < 56; i++) {
-    if (t > end) {
+    // Past the end, or above everything (the tallest part, the toggle's tip, stops short of 0.9).
+    let q = p + l * t;
+    if (t > end || q.y > 0.9) {
       break;
     }
-    let h = map(p + l * t).x;
+    let h = map(q).x;
     let y = h * h / (2.0 * ph);
     let d = sqrt(max(h * h - y * y, 0.0));
     res = min(res, k * d / max(t - y, 1e-4));
@@ -374,7 +400,16 @@ fn light(m: Mat, p: vec3f, n: vec3f, v: vec3f, sp: Light, sh: f32, ao: f32) -> v
   let ay = sqrt(m.ay * m.ay + widen);
   let fr = m.f0 + (vec3f(1.0) - m.f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
   let spec = fr * ggxAniso(n, h, m.t, ax, ay) / (4.0 * nv);
-  let col = (m.albedo * ndl + spec * ndl) * sp.e * sh;
+  var col = (m.albedo * ndl + spec * ndl) * sp.e * sh;
+  // Metal mirrors what's below it: the desk where the spot lights it, blurred by its roughness.
+  let metal = max(m.f0.r, max(m.f0.g, m.f0.b));
+  let r = reflect(-v, n);
+  if (metal > 0.2 && r.y < -0.05) {
+    let below = p + r * (max(p.y, 0.002) / -r.y);
+    let fr2 = m.f0 + (vec3f(1.0) - m.f0) * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    let blur = 1.0 - 0.6 * sat(sqrt(m.ax * m.ay) * 2.0);
+    col += fr2 * spotAt(below).e * 0.035 * blur * ao;
+  }
   // The room is the page: a surface the spot doesn't reach is the page colour, a little darker
   // in its creases and on walls turned from the room.
   let room = u.v[13].rgb * (0.5 + 0.5 * ao) * (0.8 + 0.2 * max(n.y, 0.0));
@@ -383,6 +418,10 @@ fn light(m: Mat, p: vec3f, n: vec3f, v: vec3f, sp: Light, sh: f32, ao: f32) -> v
 
 fn finishes(p: vec3f, n: vec3f, top: bool, centre: vec2f) -> array<Mat, 3> {
   let grain = (vnoise(p.xz * 80.0) - 0.5) * detail(80.0);
+  // Wear: broad, faint variation in tone and sheen, the kind a spotlight finds on a real desk.
+  let wear = vnoise(p.xz * 1.1 + vec2f(3.1, 7.7)) * 0.65 + vnoise(p.xz * 3.7) * 0.35;
+  let tone = 0.88 + 0.24 * wear;
+  let sheen = 0.85 + 0.3 * (1.0 - wear);
   let accent = u.v[7].rgb;
   let tint = accent / max(max(accent.r, max(accent.g, accent.b)), 1e-4);
   var t = vec3f(1.0, 0.0, 0.0);
@@ -391,13 +430,15 @@ fn finishes(p: vec3f, n: vec3f, top: bool, centre: vec2f) -> array<Mat, 3> {
     t = normalize(vec3f(-r.y, 0.0, r.x) + vec3f(1e-4, 0.0, 0.0));
   }
   let e = vec3f(0.0);
-  let matte = Mat(vec3f(0.022) * (1.0 + 0.12 * grain), vec3f(0.035), 0.5, 0.5, t, e);
+  let matte = Mat(vec3f(0.022) * tone * (1.0 + 0.12 * grain), vec3f(0.035), 0.5 * sheen, 0.5 * sheen, t, e);
   // Brushing: fine streaks along the stroke, each octave only while it's wider than a pixel.
   let along = vec2f(select(p.z, length(p.xz - centre), top), 3.7);
   let line = (vnoise(along * vec2f(70.0, 1.0)) - 0.5) * detail(70.0) +
     (vnoise(along * vec2f(210.0, 1.0)) - 0.5) * 0.6 * detail(210.0);
-  let brushed = Mat(vec3f(0.0), vec3f(0.6, 0.61, 0.63) * (1.0 + 0.1 * line), 0.08, 0.42, t, e);
-  let anod = Mat(vec3f(0.0), tint * 0.5 + vec3f(0.03), 0.22, 0.32, t, e);
+  let brushed = Mat(vec3f(0.0), vec3f(0.6, 0.61, 0.63) * (1.0 + 0.1 * line) * (0.94 + 0.06 * tone),
+    0.08 * sheen, 0.42 * sheen, t, e);
+  let anod = Mat(vec3f(0.0), (tint * 0.5 + vec3f(0.03)) * (0.94 + 0.06 * tone), 0.22 * sheen,
+    0.32 * sheen, t, e);
   return array<Mat, 3>(matte, brushed, anod);
 }
 
@@ -483,20 +524,10 @@ fn plateDecal(p: vec3f, m: Mat) -> Mat {
   }
   q = pa - J;
   r = length(q);
-  if (r > 0.64 && r < 0.84) {
+  if (r > 0.71 && r < 0.86) {
     let a = ang(q);
     let near = abs(a - round(a / (PI * 0.5)) * PI * 0.5) * r;
     mm = mixMat(mm, paint(), lineMask(near, 0.011) * 0.8);
-  }
-  // Screws in the corners.
-  let sc = abs(pa) - vec2f(2.68, 1.73);
-  let sd = length(sc);
-  if (sd < 0.12) {
-    let head = Mat(vec3f(0.02), vec3f(0.35), 0.25, 0.25, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
-    let hole = Mat(vec3f(0.004), vec3f(0.02), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
-    mm = mixMat(mm, hole, dotMask(sd, 0.12));
-    mm = mixMat(mm, head, dotMask(sd, 0.085));
-    mm = mixMat(mm, hole, dotMask(sd, 0.028));
   }
   return mm;
 }
@@ -526,19 +557,19 @@ fn surface(fin: Mat, id: f32, p: vec3f, n: vec3f) -> Mat {
     } else if (up) {
       m = plateDecal(p, m);
     }
-  } else if (id > 0.5 && id < 1.5 && up && p.y > 0.03 && length(p.xz - J) < 0.6) {
+  } else if (id > 0.5 && id < 1.5 && up && p.y > -0.04 && length(p.xz - J) < 0.6) {
     // The joystick's base: a ring of light, brightest the way the stick leans.
     let q = p.xz - J;
     let tilt = u.v[10].zw;
     let lean = max(dot(q / max(length(q), 1e-4), tilt / max(length(tilt), 1e-4)), 0.0);
     let bright = 0.12 + 0.3 * lean * min(length(tilt) / 0.3, 1.0);
     m = mixMat(m, led(u.v[2].w * u.v[12].x * bright), lineMask(abs(length(q) - 0.5), 0.012));
-  } else if (id > 6.5 && id < 7.5 && up && p.y > 0.4) {
+  } else if (id > 6.5 && id < 7.5 && up && p.y > 0.34) {
     // The key knob's pointer line.
     let lq = rot2(p.xz - K, -rotK);
     let k = lineMask(abs(lq.x), 0.02) * soft(-0.52, lq.y) * (1.0 - soft(-0.24, lq.y));
     m = mixMat(m, paint(), k);
-  } else if (id > 7.5 && id < 8.5 && up && p.y > 0.3) {
+  } else if (id > 7.5 && id < 8.5 && up && p.y > 0.24) {
     let lq = rot2(p.xz - S, -rotS);
     let k = lineMask(abs(lq.x), 0.018) * soft(-0.32, lq.y) * (1.0 - soft(-0.14, lq.y));
     m = mixMat(m, paint(), k);
@@ -580,9 +611,29 @@ fn shadowWith(known: vec4f, s: f32) -> f32 {
   return s;
 }
 
-/** Shades a hit, with what's known of its shadow (see shadowWith). */
-fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
-  let n = normalAt(p);
+/** How much a point on the desk is tucked in at a well's rim: darkest at the edge. */
+fn rim(p: vec3f) -> f32 {
+  let x = vec2f(p.x, p.z);
+  var d = length(x - K) - 0.79;
+  d = min(d, length(x - C) - 0.69);
+  d = min(d, length(x - S) - 0.67);
+  d = min(d, length(x - T) - 0.41);
+  d = min(d, length(x - J) - 0.67);
+  let f = abs(x - F) - vec2f(0.085, FADER_L + 0.09);
+  d = min(d, length(max(f, vec2f(0.0))) + min(max(f.x, f.y), 0.0));
+  // Gone before the controls' bounds, where the open desk (no occlusion) takes over.
+  return exp(-max(d, 0.0) / 0.05) * (1.0 - smoothstep(0.05, 0.1, d)) * step(-0.01, p.y);
+}
+
+/**
+ * Shades a hit, with what's known of its shadow (see shadowWith). `flat`: the open desk, past the
+ * controls' bounds, facing straight up with nothing round it.
+ */
+fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f, flat: bool) -> vec3f {
+  var n = vec3f(0.0, 1.0, 0.0);
+  if (!flat) {
+    n = normalAt(p);
+  }
   let v = -rd;
   let sp = spotAt(p);
   var sh = known.x;
@@ -594,13 +645,22 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
     }
     sh = shadowWith(known, s);
   }
-  let ao = occlusion(p, n);
+  var ao = 1.0;
+  if (!flat) {
+    // The desk's top is open but for its wells' rims (so it meets the open desk past the
+    // bounds without a seam); in the wells and on the twins, what's round them.
+    if (id < 0.5 && p.y > -0.01) {
+      ao = 1.0 - 0.45 * rim(p);
+    } else {
+      ao = occlusion(p, n);
+    }
+  }
   usedSh = sh;
   var col = vec3f(0.0);
   if (id > 1.5 && id < 2.5) {
     // The lever's tip: a frosted lens, lit in the accent while the LEDs are on.
     let a = u.v[10].x;
-    let tip = vec3f(T.x, 0.24 + 0.58 * cos(a), T.y + 0.58 * sin(a));
+    let tip = vec3f(T.x, 0.24 - WELL_T + 0.58 * cos(a), T.y + 0.58 * sin(a));
     if (length(p - tip) < 0.1) {
       let lens = Mat(vec3f(0.03), vec3f(0.05), 0.25, 0.25, vec3f(1.0, 0.0, 0.0),
         u.v[7].rgb * 1.4 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
@@ -619,7 +679,7 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
   if (id > 3.5 && id < 4.5) {
     return light(Mat(vec3f(0.01), vec3f(0.05), 0.12, 0.12, vec3f(1.0, 0.0, 0.0), vec3f(0.0)), p, n, v, sp, sh, ao);
   }
-  if (id > 5.5 && id < 6.5 && n.y > 0.85 && p.y > 0.38 && length(p.xz - C) < LENS) {
+  if (id > 5.5 && id < 6.5 && n.y > 0.85 && p.y > 0.3 && length(p.xz - C) < LENS) {
     // The wheel under a glossy lens.
     let lens = Mat(vec3f(0.0), vec3f(0.04), 0.06, 0.06, vec3f(1.0, 0.0, 0.0), wheel(p));
     return light(lens, p, n, v, sp, sh, ao);
@@ -654,30 +714,6 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
   return col;
 }
 
-fn floorShade(p: vec3f, rd: vec3f, known: vec4f) -> vec3f {
-  let n = vec3f(0.0, 1.0, 0.0);
-  let sp = spotAt(p);
-  var sh = known.x;
-  usedN = known.y;
-  if (abs(known.z - 1.0) > 0.5) {
-    var s = 1.0;
-    if (sp.cone > 0.0) {
-      s = shadow(p + n * 0.004, sp.l, sp.dist);
-    }
-    sh = shadowWith(known, s);
-  }
-  usedSh = sh;
-  // The floor is the page, less a contact shadow darkest under the plate's edge and gone within
-  // a few centimetres, plus the light that lands on it.
-  let edge = max(sdRoundRect(p.xz, PLATE, 0.32), 0.0);
-  let contact = exp(-edge / 0.09);
-  let m = Mat(vec3f(0.065), vec3f(0.03), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
-  let lit = light(m, p, n, -rd, sp, sh * (1.0 - 0.6 * contact), 1.0) - u.v[13].rgb;
-  // The pool stays close round the plate, dissolving long before the frame's edge.
-  let near = exp(-sq(edge / 0.45)) * (1.0 - smoothstep(0.55, 1.0, edge));
-  return u.v[13].rgb * (1.0 - 0.7 * contact) + lit * near;
-}
-
 /** Where the ray enters a box, or never (1e9). */
 fn enter(ro: vec3f, rd: vec3f, lo: vec3f, hi: vec3f) -> f32 {
   let inv = 1.0 / rd;
@@ -691,12 +727,12 @@ fn enter(ro: vec3f, rd: vec3f, lo: vec3f, hi: vec3f) -> f32 {
 /** Each twin's bounds over its whole travel: key, colour, selector, toggle, fader, joystick. */
 fn twinBox(i: u32) -> array<vec3f, 2> {
   switch i {
-    case 0u: { return array(vec3f(K.x - 0.8, -0.01, K.y - 0.8), vec3f(K.x + 0.8, 0.62, K.y + 0.8)); }
-    case 1u: { return array(vec3f(C.x - 0.68, -0.01, C.y - 0.68), vec3f(C.x + 0.68, 0.52, C.y + 0.68)); }
-    case 2u: { return array(vec3f(S.x - 0.64, -0.01, S.y - 0.64), vec3f(S.x + 0.64, 0.52, S.y + 0.64)); }
-    case 3u: { return array(vec3f(T.x - 0.5, -0.01, T.y - 0.75), vec3f(T.x + 0.5, 0.97, T.y + 0.75)); }
+    case 0u: { return array(vec3f(K.x - 0.8, -0.1, K.y - 0.8), vec3f(K.x + 0.8, 0.62, K.y + 0.8)); }
+    case 1u: { return array(vec3f(C.x - 0.68, -0.1, C.y - 0.68), vec3f(C.x + 0.68, 0.52, C.y + 0.68)); }
+    case 2u: { return array(vec3f(S.x - 0.64, -0.1, S.y - 0.64), vec3f(S.x + 0.64, 0.52, S.y + 0.64)); }
+    case 3u: { return array(vec3f(T.x - 0.5, -0.1, T.y - 0.75), vec3f(T.x + 0.5, 0.97, T.y + 0.75)); }
     case 4u: { return array(vec3f(F.x - 0.34, -0.13, F.y - FADER_L - 0.22), vec3f(F.x + 0.34, 0.32, F.y + FADER_L + 0.22)); }
-    default: { return array(vec3f(J.x - 0.68, -0.01, J.y - 0.68), vec3f(J.x + 0.68, 0.97, J.y + 0.68)); }
+    default: { return array(vec3f(J.x - 0.68, -0.1, J.y - 0.68), vec3f(J.x + 0.68, 0.97, J.y + 0.68)); }
   }
 }
 
@@ -790,7 +826,7 @@ fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
         } else if (!primary && abs(prim.z - h.y) < 0.5) {
           known = vec4f(prim.x, prim.y, 1.0, 0.0);
         }
-        let col = shade(p, rd, h.y, known);
+        let col = shade(p, rd, h.y, known, false);
         if (primary) {
           cacheOut = vec4f(t, usedSh, usedN, h.y);
         }
@@ -802,17 +838,19 @@ fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
       }
     }
   }
-  let tf = (-PT - cam.y) / rd.y;
+  // Past the controls: the open desk.
+  let tf = -cam.y / min(rd.y, -1e-4);
   pixw = tf * pixA;
+  let p = cam + rd * tf;
   var known = vec4f(0.0);
-  if (cached && c0.w < -0.5 && c0.w > -1.5) {
+  if (cached && abs(c0.w) < 0.5 && abs(c0.x - tf) < 0.03) {
     known = vec4f(c0.y, c0.z, select(3.0, select(2.0, 1.0, c0.z >= SHADOW_N), !moved), 0.0);
   }
-  let col = floorShade(cam + rd * tf, rd, known);
+  let col = shade(p, rd, 0.0, known, true);
   if (primary) {
-    cacheOut = vec4f(tf, usedSh, usedN, -1.0);
+    cacheOut = vec4f(tf, usedSh, usedN, 0.0);
   }
-  return vec4f(col, -1.0);
+  return vec4f(col, 0.0);
 }
 
 fn scene(px: vec2f) -> vec3f {
@@ -821,8 +859,12 @@ fn scene(px: vec2f) -> vec3f {
   let p = (px + u.v[12].zw) / dpr;
   // Whatever the light does, every edge of the frame is the page colour.
   let size = u.frame.xy / dpr;
-  let edge = smoothstep(0.0, 48.0, p.x) * smoothstep(0.0, 48.0, size.x - p.x) *
+  var edge = smoothstep(0.0, 48.0, p.x) * smoothstep(0.0, 48.0, size.x - p.x) *
     smoothstep(0.0, 0.08 * size.y, p.y) * smoothstep(0.0, 0.1 * size.y, size.y - p.y);
+  // And the light dies away round the composition, whatever the spot does, before any edge.
+  let dc = p - u.v[15].xy;
+  let reach = vec2f(select(u.v[15].w, u.v[15].z, dc.x < 0.0), select(u.v[16].y, u.v[16].x, dc.y < 0.0));
+  edge *= 1.0 - smoothstep(0.75, 1.0, length(dc / max(reach, vec2f(1.0))));
   let page = u.v[13].rgb;
   return page + (frame(px, p, dpr) - page) * edge;
 }
