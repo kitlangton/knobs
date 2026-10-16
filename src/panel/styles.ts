@@ -14,6 +14,12 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 // Slider fills run on the spring itself, as the GPU's fill spring does (--k-blur stretches only the
 // editor morphs, like the GPU's morph spring).
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
+// Header and group buttons that come and go bloom in place on Kit's "snappy" spring (.25 s,
+// bounce 0), leaving on one a fifth shorter. Copy's glyph comes back on the same spring.
+const snappy = springEasing((2 * Math.PI) / 0.25, 1)
+const snappyOut = springEasing((2 * Math.PI) / 0.2, 1)
+const BLOOM_IN = `${snappy.ms}ms ${snappy.easing}`
+const BLOOM_OUT = `${snappyOut.ms}ms ${snappyOut.easing}`
 const DELAY = "var(--k-delay,0ms)"
 /**
  * A panel whose rows the pointer is on (has.ts keeps `data-k-row-hover`), unless keys have taken
@@ -284,9 +290,9 @@ const css = `
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
 .knobs-panel header .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
-  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .32s cubic-bezier(.34,1.45,.64,1) .08s,--k-check 0s .18s,--k-check-a .16s ease-in}
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy ${BLOOM_IN} .04s,--k-check 0s .1s,--k-check-a .1s cubic-bezier(.4,0,1,1)}
 .knobs-panel header .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--k-text);
-  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .14s ease-in,--k-check .28s cubic-bezier(.3,.7,.2,1) .06s,--k-check-a .05s linear .06s}
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .1s cubic-bezier(.4,0,1,1),--k-check .18s cubic-bezier(.2,.8,.2,1) .03s,--k-check-a .04s linear .03s}
 .knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
 .knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
 /* (Over .knobs-icon>path's fill: the check is a stroke, 16 of 256 wide like Phosphor's regular icons.) */

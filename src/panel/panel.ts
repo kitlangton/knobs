@@ -138,8 +138,8 @@ export interface PanelSearch {
   readonly chips: readonly string[]
 }
 let layer = 2147480001
-/** How long Copy holds its check before turning back. */
-const COPIED_MS = 1200
+/** How long Copy holds its check (drawn by about 0.2 s) before turning back. */
+const COPIED_MS = 1000
 /** The tab each panel last showed, by controls id, so a panel mounted again opens on it. */
 const lastTab = new Map<string, string>()
 /** A highlight's reveal waits this long (ms) after the user last scrolled, typed or touched. */
