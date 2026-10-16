@@ -15,7 +15,7 @@ import {
   trailScale,
 } from "../motion.js"
 import type { MorphFrame } from "../morph.js"
-import type { PresetStrip } from "../presets.js"
+import { DRIFTED_PILL, type PresetStrip } from "../presets.js"
 import { spinOf } from "../spin.js"
 import { getRevealVersion, isAnyRevealing, isRevealing, isRevealingIn } from "../reveal.js"
 import type { DigitPlace, Slider } from "../slider.js"
@@ -4076,7 +4076,8 @@ class GpuOverlayManager {
             pe.to(left, right, 0, trailScale(tokens.blurStrength))
             ps.pillY.set(top)
           }
-          ps.pillAlpha.set(1)
+          // Off the active preset's values, its pill softens (see DRIFTED_PILL).
+          ps.pillAlpha.set(activeState.drifted ? DRIFTED_PILL : 1)
         } else {
           ps.pillAlpha.set(0)
         }
@@ -4115,6 +4116,23 @@ class GpuOverlayManager {
           const isActive = i === activeState.activeIndex
           const chipHovered = this.isHovered(btn)
           if (chipHovered) this.curSubHovered = false
+          // The active preset's modified mark in the chip's corner, as .knobs-preset-chip::after.
+          const mark = this.ease(btn, "dot", btn.hasAttribute("data-drifted") ? 1 : 0)
+          if (mark > 0.01) {
+            const size = 4 * (0.4 + 0.6 * mark)
+            this.pushPrim({
+              x: br.right - 6 - size / 2,
+              y: br.top + 6 - size / 2,
+              w: size,
+              h: size,
+              clip: stripClip,
+              color: withAlpha(tokens.modified, 0.95 * mark),
+              glowOrBlur: 0.5,
+              kind: 7,
+            })
+          }
+          // While it's being named, its DOM field draws the name over the chip.
+          if (btn.hasAttribute("data-naming")) continue
           this.drawText(
             btn.textContent ?? "",
             br.left + br.width * 0.5,
