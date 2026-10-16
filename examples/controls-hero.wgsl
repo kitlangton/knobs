@@ -831,13 +831,10 @@ fn frame(px: vec2f, p: vec2f, dpr: f32) -> vec3f {
   let first = render(p, 0.0, true, vec3f(0.0));
   let prim = vec3f(usedSh, usedN, first.w);
   // Spinning twins (key 7, colour 6, selector 8) take the shutter's samples.
-  var n = 1;
   let id = first.w;
   let spin = (id > 6.5 && id < 7.5 && u.v[9].y != 0.0) || (id > 5.5 && id < 6.5 && u.v[9].z != 0.0) ||
     (id > 7.5 && id < 8.5 && u.v[9].w != 0.0);
-  if (spin) {
-    n = max(n, i32(u.v[6].w));
-  }
+  let n = select(1, i32(u.v[6].w), spin);
   if (n <= 1) {
     return first.rgb;
   }
@@ -848,12 +845,8 @@ fn frame(px: vec2f, p: vec2f, dpr: f32) -> vec3f {
     let fi = f32(i);
     let a = fi * 2.39996 + j * 6.2831853;
     let off = vec2f(cos(a), sin(a)) * sqrt(fi / f32(n)) * 0.5 / dpr;
-    var tau = 0.0;
-    var w = 1.0;
-    if (spin) {
-      tau = (fi + hash12(px.yx + fi) - 0.5) / f32(n) - 0.5;
-      w = 0.64 + 0.36 * cos(tau * 6.2831853);
-    }
+    let tau = (fi + hash12(px.yx + fi) - 0.5) / f32(n) - 0.5;
+    let w = 0.64 + 0.36 * cos(tau * 6.2831853);
     c += w * render(p + off, tau, false, prim).rgb;
     ws += w;
   }

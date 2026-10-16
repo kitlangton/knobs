@@ -23,6 +23,17 @@ import {
 import type { SceneKit } from "./controls"
 import { blurFor, clamp01, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
 
+function findById<T extends { id: string; children?: T[] }>(
+  list: readonly T[],
+  id: string,
+): T | undefined {
+  for (const item of list) {
+    if (item.id === id) return item
+    const child = item.children && findById(item.children, id)
+    if (child) return child
+  }
+}
+
 export function uiSections({
   section,
   h,
@@ -33,6 +44,14 @@ export function uiSections({
 }: Pick<SceneKit, "section" | "h" | "theme" | "define" | "mount"> & {
   panelOptions: () => MountPanelOptions
 }) {
+  const chip = (row: HTMLElement, label: string, run?: (e: MouseEvent) => void, cls = "quiet") => {
+    const b = h("button", cls ? `chip ${cls}` : "chip")
+    b.textContent = label
+    if (run) b.addEventListener("click", run)
+    row.append(b)
+    return b
+  }
+
   // ── split ──
   {
     const s = section({
@@ -105,15 +124,9 @@ export function uiSections({
     })
     on((v) => build(v))
     const row = h("div", "chips")
-    const btn = (label: string, run: () => void) => {
-      const b = h("button", "chip quiet")
-      b.textContent = label
-      b.addEventListener("click", run)
-      row.append(b)
-    }
-    btn("Toggle files", () => sp?.collapse("files"))
-    btn("Toggle inspector", () => sp?.collapse("inspector"))
-    btn("Reset", () => sp?.reset())
+    chip(row, "Toggle files", () => sp?.collapse("files"))
+    chip(row, "Toggle inspector", () => sp?.collapse("inspector"))
+    chip(row, "Reset", () => sp?.reset())
     s.side.prepend(row)
     const panel = h("div")
     s.side.append(panel)
@@ -161,17 +174,8 @@ export function uiSections({
     const box = h("div", "ui-box")
     box.style.cssText += ";height:236px;padding:4px 0"
     s.slot.append(box)
-    const picked = h("p")
-    picked.style.cssText = "margin:0;color:var(--label);font-size:12px"
-    picked.textContent = "Nothing selected"
+    const picked = h("p", "note", "Nothing selected")
     s.side.prepend(picked)
-    const find = (id: string, list: Node[] = items): Node | undefined => {
-      for (const n of list) {
-        if (n.id === id) return n
-        const c = n.children && find(id, n.children)
-        if (c) return c
-      }
-    }
     const outline = tree<Node>(box, {
       theme: theme(),
       items,
@@ -192,7 +196,7 @@ export function uiSections({
       ],
       onSelect: (ids) => {
         picked.textContent = ids.length
-          ? `Selected: ${ids.map((id) => find(id)?.label ?? id).join(", ")}`
+          ? `Selected: ${ids.map((id) => findById(items, id)?.label ?? id).join(", ")}`
           : "Nothing selected"
       },
       onMove: (move) => {
@@ -200,7 +204,7 @@ export function uiSections({
         outline.update(items)
       },
       onRename: (id, label) => {
-        const n = find(id)
+        const n = findById(items, id)
         if (n) n.label = label
         outline.update(items)
       },
@@ -289,18 +293,10 @@ export function uiSections({
     const box = h("div", "ui-box")
     box.style.cssText += ";height:340px;padding:2px 0"
     s.slot.append(box)
-    const status = h("p")
-    status.style.cssText = "margin:0;color:var(--label);font-size:12px;min-height:18px"
-    status.textContent = "Nothing selected"
-    const find = (id: string, list: Ev[] = story): Ev | undefined => {
-      for (const e of list) {
-        if (e.id === id) return e
-        const c = e.children && find(id, e.children)
-        if (c) return c
-      }
-    }
+    const status = h("p", "note", "Nothing selected")
+    status.style.minHeight = "18px"
     const describe = (id: string) => {
-      const e = find(id)
+      const e = findById(story, id)
       return e
         ? [e.actor, e.title ?? `${e.children?.length ?? 0} updates`].filter(Boolean).join(" · ")
         : id
@@ -334,19 +330,13 @@ export function uiSections({
     ] as const
     let n = 0
     const row = h("div", "chips")
-    const btn = (label: string, run: () => void) => {
-      const b = h("button", "chip quiet")
-      b.textContent = label
-      b.addEventListener("click", run)
-      row.append(b)
-    }
-    btn("Add event", () => {
+    chip(row, "Add event", () => {
       const e = next[n++ % next.length]!
       const added = { ...e, id: `new-${n}`, ago: 0 }
       story = top ? [added, ...story] : [...story, added]
       update()
     })
-    btn("Add to group", () => {
+    chip(row, "Add to group", () => {
       story = story.map((e) =>
         e.id === "work"
           ? {
@@ -361,12 +351,12 @@ export function uiSections({
       )
       update()
     })
-    btn("Remove last", () => {
+    chip(row, "Remove last", () => {
       story = top ? story.slice(1) : story.slice(0, -1)
       update()
     })
     // The same rail, reversed in place: every row glides to its new place.
-    btn("Newest on top", () => {
+    chip(row, "Newest on top", () => {
       top = !top
       story = [...story].reverse()
       rail.update({ events: view(), newest: top ? "top" : "bottom" })
@@ -420,20 +410,20 @@ export function uiSections({
     ]
     const stores = new Map(variants.map((v) => [v.id, define(`picker-${v.id}`, v.label, v.schema)]))
     const stage = s.stage
-    const chip = h("div")
-    chip.style.cssText =
+    const tile = h("div")
+    tile.style.cssText =
       "width:72px;height:72px;border-radius:10px;background:linear-gradient(135deg,var(--cool),#5e5ce6);transition:all .45s cubic-bezier(.2,.8,.2,1)"
     const caption = h("div", "caption")
-    stage.append(chip, caption)
+    stage.append(tile, caption)
     let current = "bars"
     let chosen: string | null = null
     const paint = () => {
       const v = (stores.get(current)?.store.get() ?? {}) as Record<string, number>
       const size = v.size ?? 56
-      chip.style.width = chip.style.height = `${size}px`
-      chip.style.borderRadius = `${v.radius ?? 4}px`
-      chip.style.transform = `rotate(${v.tilt ?? 0}deg)`
-      chip.style.opacity = String(0.45 + (v.glow ?? 100) / 180)
+      tile.style.width = tile.style.height = `${size}px`
+      tile.style.borderRadius = `${v.radius ?? 4}px`
+      tile.style.transform = `rotate(${v.tilt ?? 0}deg)`
+      tile.style.opacity = String(0.45 + (v.glow ?? 100) / 180)
       const label = variants.find((x) => x.id === current)?.label ?? ""
       caption.textContent = `${label}${chosen === current ? " · chosen" : ""}`
     }
@@ -462,14 +452,16 @@ export function uiSections({
     })
     paint()
     const row = h("div", "chips")
-    const choose = h("button", "chip")
-    choose.textContent = "Choose"
-    choose.addEventListener("click", () => {
-      chosen = picker.selected
-      picker.choose(chosen)
-      paint()
-    })
-    row.append(choose)
+    chip(
+      row,
+      "Choose",
+      () => {
+        chosen = picker.selected
+        picker.choose(chosen)
+        paint()
+      },
+      "",
+    )
     s.side.prepend(row)
   }
 
@@ -582,16 +574,18 @@ export function uiSections({
       },
     ]
     contextMenu(card, () => items(), { label: "Card" })
-    const open = h("button", "chip")
-    open.textContent = "Options ▾"
-    open.setAttribute("aria-haspopup", "menu")
-    let m: ReturnType<typeof menu> | null = null
-    open.addEventListener("click", (e) => {
-      if (m?.open) return void m.close()
-      m = menu(open, items(), { label: "Options", keyboard: e.detail === 0 })
-    })
     const row = h("div", "chips")
-    row.append(open)
+    let m: ReturnType<typeof menu> | null = null
+    const open = chip(
+      row,
+      "Options ▾",
+      (e) => {
+        if (m?.open) return void m.close()
+        m = menu(open, items(), { label: "Options", keyboard: e.detail === 0 })
+      },
+      "",
+    )
+    open.setAttribute("aria-haspopup", "menu")
     s.side.prepend(row)
   }
 
@@ -602,6 +596,7 @@ export function uiSections({
       title: "Popover",
       sub: "A popover that stays in view, and tooltips.",
       shows: ["popover()", "tooltip()"],
+      wide: true,
     })
     const wrap = h("div")
     wrap.style.cssText = "display:flex;flex-direction:column;gap:14px;padding:4px 0"
@@ -613,35 +608,37 @@ export function uiSections({
       ["Code", "Inline code", "Mod+E"],
       ["Clear", "Clear formatting", "Mod+\\"],
     ] as const) {
-      const b = h("button", "chip quiet")
-      b.textContent = label
+      const b = chip(tips, label)
       b.dataset.tip = tip
       b.dataset.tipShortcut = key
-      tips.append(b)
     }
-    const share = h("button", "chip")
-    share.textContent = "Share…"
+    const shareRow = h("div", "chips")
+    let pop: ReturnType<typeof popover> | null = null
+    const share = chip(
+      shareRow,
+      "Share…",
+      () => {
+        if (pop?.open) return void pop.close()
+        const content = h("div")
+        content.style.cssText =
+          "display:flex;flex-direction:column;gap:10px;padding:12px;width:220px;font:12.5px/1.45 var(--k-font,system-ui)"
+        content.innerHTML = `<div style="font-weight:600">Share this panel</div>
+        <div style="opacity:.7">Anyone with the link sees the same values.</div>`
+        chip(
+          content,
+          "Copy link",
+          () => {
+            void pop?.close()
+            toast("Copied the link")
+          },
+          "",
+        )
+        pop = popover(share, content, { placement: "bottom-start", label: "Share", role: "dialog" })
+      },
+      "",
+    )
     share.setAttribute("aria-haspopup", "dialog")
     tooltip(share, { text: () => (pop?.open ? "Close" : "Share this panel"), placement: "top" })
-    let pop: ReturnType<typeof popover> | null = null
-    share.addEventListener("click", () => {
-      if (pop?.open) return void pop.close()
-      const content = h("div")
-      content.style.cssText =
-        "display:flex;flex-direction:column;gap:10px;padding:12px;width:220px;font:12.5px/1.45 var(--k-font,system-ui)"
-      content.innerHTML = `<div style="font-weight:600">Share this panel</div>
-        <div style="opacity:.7">Anyone with the link sees the same values.</div>`
-      const copy = h("button", "chip")
-      copy.textContent = "Copy link"
-      copy.addEventListener("click", () => {
-        void pop?.close()
-        toast("Copied the link")
-      })
-      content.append(copy)
-      pop = popover(share, content, { placement: "bottom-start", label: "Share", role: "dialog" })
-    })
-    const shareRow = h("div", "chips")
-    shareRow.append(share)
     wrap.append(tips, shareRow)
     s.slot.append(wrap)
   }
@@ -654,12 +651,11 @@ export function uiSections({
       sub: "Every section and control on this page.",
       tip: "Press ⌘K anywhere.",
       shows: ["commandPalette()", "commandsFrom()"],
+      wide: true,
     })
-    const open = h("button", "chip")
-    open.innerHTML = "Open the palette <kbd>⌘K</kbd>"
-    open.addEventListener("click", () => document.getElementById("palette")?.click())
     const row = h("div", "chips")
-    row.append(open)
+    const open = chip(row, "", () => document.getElementById("palette")?.click(), "")
+    open.innerHTML = "Open the palette <kbd>⌘K</kbd>"
     s.slot.append(row)
   }
 
@@ -670,37 +666,44 @@ export function uiSections({
       title: "Confirm & toast",
       sub: "A modal question and a status pill.",
       shows: ["confirm()", "toast()"],
+      wide: true,
     })
     const row = h("div", "chips")
-    const btn = (label: string, cls: string, run: () => void) => {
-      const b = h("button", `chip ${cls}`)
-      b.textContent = label
-      b.addEventListener("click", run)
-      row.append(b)
-    }
-    btn("Delete “Barrier”…", "danger", async () => {
-      const ok = await confirm({
-        title: "Delete “Barrier”?",
-        body: "It leaves the scene, with anything inside it.",
-        confirm: "Delete",
-        destructive: true,
-      })
-      if (ok)
-        toast("Deleted Barrier", { action: { label: "Undo", run: () => toast("Barrier is back") } })
-    })
-    btn("Publish…", "", async () => {
-      if (
-        await confirm({
-          title: "Publish these values?",
-          body: "The shipped constants change for everyone.",
-          confirm: "Publish",
+    chip(
+      row,
+      "Delete “Barrier”…",
+      async () => {
+        const ok = await confirm({
+          title: "Delete “Barrier”?",
+          body: "It leaves the scene, with anything inside it.",
+          confirm: "Delete",
+          destructive: true,
         })
-      )
-        toast("Published")
-    })
-    btn("Saved", "quiet", () => toast("Saved"))
-    btn("Warning", "quiet", () => toast("Frame over budget", { tone: "warn" }))
-    btn("Error", "quiet", () => toast("Couldn't reach the device", { tone: "error" }))
+        if (ok)
+          toast("Deleted Barrier", {
+            action: { label: "Undo", run: () => toast("Barrier is back") },
+          })
+      },
+      "danger",
+    )
+    chip(
+      row,
+      "Publish…",
+      async () => {
+        if (
+          await confirm({
+            title: "Publish these values?",
+            body: "The shipped constants change for everyone.",
+            confirm: "Publish",
+          })
+        )
+          toast("Published")
+      },
+      "",
+    )
+    chip(row, "Saved", () => toast("Saved"))
+    chip(row, "Warning", () => toast("Frame over budget", { tone: "warn" }))
+    chip(row, "Error", () => toast("Couldn't reach the device", { tone: "error" }))
     s.slot.append(row)
   }
 }

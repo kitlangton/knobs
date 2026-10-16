@@ -774,8 +774,7 @@ const SKIES = {
   const solo = readout(sparkline({ label: "FPS", decimals: 0, min: 0 }), { theme })
   const soloRow = h("div")
   soloRow.style.cssText = "display:flex;flex-direction:column;gap:6px"
-  const soloNote = h("div", "", "<code>readout()</code>, outside a panel")
-  soloNote.style.cssText = "color:var(--dim);font-size:12px"
+  const soloNote = h("p", "note", "<code>readout()</code>, outside a panel")
   solo.element.style.cssText += ";max-width:300px"
   soloRow.append(soloNote, solo.element)
   s.side.append(soloRow)
@@ -830,9 +829,6 @@ const SKIES = {
 
 category("Panel")
 
-let structureSide!: HTMLElement
-let rowsSide!: HTMLElement
-
 {
   const s = section({
     id: "structure",
@@ -841,7 +837,6 @@ let rowsSide!: HTMLElement
     tip: "⌥1, ⌥2 and ⌥3 switch tabs.",
     shows: ["tab", "subsection", "folded", "keybind()"],
   })
-  structureSide = s.side
   const { store } = define("tabs", "Tabs", {
     position: vec3(
       { x: 0, y: 1.2, z: -4 },
@@ -910,12 +905,10 @@ let rowsSide!: HTMLElement
     ],
     tab: "transform",
   })
-}
 
-{
-  const s = { slot: h("div", "slot") }
-  structureSide.prepend(s.slot)
-  const { store } = define("folds", "Folding groups", {
+  const right = h("div", "slot")
+  s.side.prepend(right)
+  const { store: folds } = define("folds", "Folding groups", {
     radius: knob(14, { min: 0, max: 32, step: 1, unit: "px", label: "Radius", group: "Shape" }),
     padding: knob(16, { min: 0, max: 40, step: 1, unit: "px", label: "Padding", group: "Shape" }),
     offset: vec2(
@@ -927,7 +920,7 @@ let rowsSide!: HTMLElement
     glow: toggle(false, { label: "Glow", group: "Glow", folded: true }),
     glowColor: color("#7cc4ff", { label: "Colour", group: "Glow" }),
   })
-  mount(store, s.slot, { title: "Card" })
+  mount(folds, right, { title: "Card" })
 }
 
 {
@@ -1079,7 +1072,6 @@ let rowsSide!: HTMLElement
     sub: "Disabled, read-only and mixed rows, and accessories of your own.",
     shows: ["disabled", "readOnly", "setMixed", "rowAccessory"],
   })
-  rowsSide = s.side
   const { store } = define("gates", "Gates", {
     lock: toggle(false, { label: "Lock size", group: "Size" }),
     size: knob(48, {
@@ -1125,14 +1117,12 @@ let rowsSide!: HTMLElement
   })
   mount(store, s.slot, { title: "Layer" })
   store.setMixed(["opacity", "blend"], true)
-}
 
-{
-  const s = { slot: h("div", "slot") }
-  rowsSide.prepend(s.slot)
+  const right = h("div", "slot")
+  s.side.prepend(right)
   const pinned = new Set(["gravity"])
   const SPAWN = new Set(["count", "spread"])
-  const { store } = define("accessories", "Row accessories", {
+  const { store: accessories } = define("accessories", "Row accessories", {
     count: knob(240, {
       min: 0,
       max: 1000,
@@ -1146,16 +1136,15 @@ let rowsSide!: HTMLElement
     wind: knob(1.5, { min: 0, max: 10, step: 0.1, label: "Wind", group: "spawn" }),
     mode: choice("burst", ["burst", "stream", "trail"], { label: "Mode", group: "spawn" }),
   })
-  const pinned$ = h("p", "", "")
-  pinned$.style.cssText = "margin:0;color:var(--label);font-size:12px"
+  const pinned$ = h("p", "note")
   const showPins = () => {
     pinned$.textContent = pinned.size
-      ? `Pinned: ${[...pinned].map((k) => store.schema[k as keyof typeof store.schema]?.label ?? k).join(", ")}`
+      ? `Pinned: ${[...pinned].map((k) => accessories.schema[k as keyof typeof accessories.schema]?.label ?? k).join(", ")}`
       : "Nothing pinned"
   }
-  s.slot.after(pinned$)
+  right.after(pinned$)
   showPins()
-  mount(store, s.slot, {
+  mount(accessories, right, {
     title: "Emitter",
     rowAccessory: (key) => {
       const wrap = document.createElement("span")
@@ -1181,11 +1170,6 @@ let rowsSide!: HTMLElement
       return wrap
     },
   })
-  const style = document.createElement("style")
-  style.textContent = `.catalog-pin{width:16px;height:16px;padding:0;border:0;border-radius:4px;background:none;color:var(--dim);display:grid;place-items:center;opacity:0;cursor:pointer;transition:opacity .15s,color .15s}
-  .catalog-pin[data-pinned]{opacity:1;color:var(--text)}
-  .knobs-row:hover .catalog-pin,.knobs-row:focus-within .catalog-pin{opacity:1}`
-  document.head.append(style)
 }
 
 {
@@ -1384,20 +1368,19 @@ category("Matching your app")
     rebake: action("Rebake lighting", { group: "Place" }),
   })
   const looks = h("div", "looks")
-  const cell = (title: string, cls: string) => {
+  const cell = (title: string, cls = "") => {
     const c = h("div")
     c.append(Object.assign(h("h3"), { textContent: title }))
-    const host = h("div", `host ${cls}`)
+    const host = h("div", cls ? `host ${cls}` : "host")
     c.append(host)
     looks.append(c)
     return host
   }
-  const a = cell("knobs", "knobs-host")
+  const a = cell("knobs")
   const b = cell("labPreset", "lab-host")
   const c = cell("knobs · flat frame", "flat-host")
   b.dataset.ownLook = ""
-  s.slot.replaceWith(looks)
-  s.el.append(s.side)
+  s.slot.append(looks)
   // No header: each tile is titled above it, and the cards' own dice and resets stay.
   const opts: MountPanelOptions = { header: false }
   mount(store, a, opts)

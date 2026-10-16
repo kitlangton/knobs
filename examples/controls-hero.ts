@@ -12,7 +12,6 @@ import heroWgsl from "./controls-hero.wgsl?raw"
 import {
   ColorVal,
   clamp01,
-  FEEL,
   type How,
   oklab,
   oklabCss,
@@ -184,6 +183,14 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const [x, y] = project1(p)
     return [layout.pp[0] + layout.focal * x, layout.pp[1] + layout.focal * y]
   }
+  /** A twin on screen: its centre and its radii across and up the screen. */
+  const disc = (k: Key) => {
+    const t = TWINS[k]
+    const c = project(t.at)
+    const rx = Math.abs(project([t.at[0] + t.r, t.at[1], t.at[2]])[0] - c[0])
+    const ry = Math.abs(project([t.at[0], t.at[1], t.at[2] + t.r])[1] - c[1])
+    return { c, rx, ry }
+  }
   const fit = () => {
     const w = stage.width || stageEl.clientWidth
     const hh = stage.height || stageEl.clientHeight
@@ -253,7 +260,6 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
         k,
         ledOn,
         rotK: rotK.x,
-        finish: fin.map((v) => v.x),
         spot: [spotX.x, spotY.x],
         css: oklabCss(lab),
         on: leds.target > 0.5,
@@ -398,6 +404,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   const accent = new ColorVal(stage, "#ffa53d")
   const rotC = stage.val(0, 0.0005)
 
+  const wrap = (a: number) =>
+    ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
+
   // ── Rows → hardware ──
   /** Under the hand it follows; from anything else (Random, a preset, undo, a peer) it glides. */
   const go = (val: Val, to: number, how: How, feel: Parameters<Val["to"]>[1] = "calm") =>
@@ -420,12 +429,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     accent.go(v.accent, how, "calm")
     // The colour knob turns to the hue, the short way round from wherever it's heading.
     const [, a, b] = oklab(v.accent)
-    const target = -Math.atan2(b, a)
-    const turn =
-      rotC.target +
-      ((((target - rotC.target + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) -
-      Math.PI
-    go(rotC, turn, how)
+    go(rotC, rotC.target + wrap(-Math.atan2(b, a) - rotC.target), how)
   })
   // The entrance: the spot fades up out of the dark and each twin's LEDs arrive after it.
   if (reduced()) intro.snap(1)
@@ -435,10 +439,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   let hover: Key | null = null
   let drag: Key | null = null
   let focus: Key | null = null
-  const screenR = (k: Key) => {
-    const t = TWINS[k]
-    return Math.hypot(...sub2(project([t.at[0] + t.r, t.at[1], t.at[2]]), project(t.at)))
-  }
+  const screenR = (k: Key) => disc(k).rx
   const faderEnds = () => {
     const t = TWINS.shadow.at
     return [project([t[0], 0.1, t[2] + FADER_L]), project([t[0], 0.1, t[2] - FADER_L])] as const
@@ -474,8 +475,6 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const c = project(TWINS[k].at)
     return Math.atan2(x - c[0], -(y - c[1]))
   }
-  const wrap = (a: number) =>
-    ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
   let first = true
   const set = (patch: Partial<ReturnType<typeof store.get>>) => {
     store.set(patch, { coalesce: !first })
@@ -666,14 +665,6 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const row = panelEl()?.querySelector<HTMLElement>(`[data-field="${k}"]`)
     return row?.querySelector<HTMLElement>(".knobs-x-head") ?? row ?? null
   }
-  /** A twin on screen: its centre and its radii across and up the screen. */
-  const disc = (k: Key) => {
-    const t = TWINS[k]
-    const c = project(t.at)
-    const rx = Math.abs(project([t.at[0] + t.r, t.at[1], t.at[2]])[0] - c[0])
-    const ry = Math.abs(project([t.at[0], t.at[1], t.at[2] + t.r])[1] - c[1])
-    return { c, rx, ry }
-  }
   const wires = new Stage(wireBox, () => {
     const panel = layout.panel
     wireBox.style.display = panel ? "" : "none"
@@ -748,16 +739,11 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   narrow.addEventListener("change", () => stage.paint())
 }
 
-const sub2 = (a: [number, number], b: [number, number]): [number, number] => [
-  a[0] - b[0],
-  a[1] - b[1],
-]
 function segDist(p: [number, number], a: readonly [number, number], b: readonly [number, number]) {
-  const ab = sub2(b as [number, number], a as [number, number])
-  const t = clamp01(
-    ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / Math.max(1e-6, ab[0] ** 2 + ab[1] ** 2),
-  )
-  return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t)
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const t = clamp01(((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / Math.max(1e-6, dx * dx + dy * dy))
+  return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t)
 }
 
 interface StillFrame {
@@ -765,7 +751,6 @@ interface StillFrame {
   k: number
   ledOn: number
   rotK: number
-  finish: number[]
   spot: [number, number]
   css: string
   on: boolean
