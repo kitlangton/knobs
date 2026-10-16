@@ -55,3 +55,21 @@ export function claimsDigit(event: {
     !event.typing
   )
 }
+
+/**
+ * Where the card comes to rest on the option at `index`: below the options before it with their
+ * bodies shut (once a change settles only the selected option's is open), as tall as its head
+ * and its body. The card aims here from the start, rather than chasing the option's top while
+ * the last option's body closes above it.
+ */
+export function cardTarget(
+  heads: readonly number[],
+  index: number,
+  body: number,
+  gap = 0,
+  top = 0,
+): { y: number; h: number } {
+  let y = top
+  for (let i = 0; i < index; i++) y += heads[i]! + gap
+  return { y, h: (heads[index] ?? 0) + body }
+}

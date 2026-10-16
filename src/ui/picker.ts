@@ -8,7 +8,14 @@ import {
   syncFrame,
   type UiLook,
 } from "./look.js"
-import { claimsDigit, digitPick, keepPick, pickDigit, stepPick } from "./picker-model.js"
+import {
+  cardTarget,
+  claimsDigit,
+  digitPick,
+  keepPick,
+  pickDigit,
+  stepPick,
+} from "./picker-model.js"
 
 export interface PickerOption {
   readonly id: string
@@ -211,14 +218,27 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     if (typeof out === "function") e.cleanup = out
   }
 
-  // The card: at rest it sits exactly on the selected option; after a change it glides there on
-  // a spring, following the option's live height as the bodies open and close.
+  // The card: at rest it sits exactly on the selected option (and follows its content as a
+  // panel folds a group). After a change it glides once, straight to where the option will be
+  // when the bodies have settled.
   const cardY = new Spring(0, CARD.omega, CARD.zeta, 0.05)
   const cardH = new Spring(0, CARD.omega, CARD.zeta, 0.05)
   let gliding = false
-  const cardTarget = () => {
+  const liveCard = () => {
     const e = selected ? entries.get(selected) : undefined
     return e && !e.leaving ? { y: e.el.offsetTop, h: e.el.offsetHeight } : null
+  }
+  const finalCard = () => {
+    const live = list.map((o) => entries.get(o.id)).filter((e): e is Entry => !!e && !e.leaving)
+    const index = live.findIndex((e) => e.option.id === selected)
+    if (index < 0) return null
+    const gap = parseFloat(win.getComputedStyle(root).rowGap) || 0
+    return cardTarget(
+      live.map((e) => e.head.offsetHeight),
+      index,
+      natural(live[index]!),
+      gap,
+    )
   }
   const placeCard = () => {
     card.style.transform = `translate3d(0,${Math.round(cardY.x * 2) / 2}px,0)`
@@ -313,7 +333,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
         } else moving = true
       }
     }
-    const t = cardTarget()
+    const t = gliding ? finalCard() : liveCard()
     if (t) {
       if (gliding) {
         cardY.set(t.y)
@@ -464,7 +484,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   })
 
   sync(false)
-  const first = cardTarget()
+  const first = liveCard()
   if (first) {
     cardY.snap(first.y)
     cardH.snap(first.h)

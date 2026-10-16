@@ -143,6 +143,20 @@ export function navigateActivity(
 }
 
 /**
+ * Whether the rail takes a key it navigated: ↑/↓ and Home/End whenever there are rows (at an end
+ * they hold the selection), ← and → only when they open, close or step. A ← or → that does
+ * nothing is left to the page (a review stage stepping frames, say).
+ */
+export function takesActivityKey(
+  key: ActivityKey,
+  result: { select?: string; toggle?: unknown },
+  rows: number,
+): boolean {
+  if (result.select !== undefined || result.toggle !== undefined) return true
+  return rows > 0 && key !== "ArrowLeft" && key !== "ArrowRight"
+}
+
+/**
  * Where the selection goes when its row leaves the rows on show: to its group when that closed
  * over it, else nowhere.
  */
@@ -232,6 +246,26 @@ export function railSegments(
     if (bottom - top > 0.25) out.push([top, bottom])
   }
   return out
+}
+
+/**
+ * The scroll while a change takes the content from height `h0` to `h1` (now at `height`): it goes
+ * from `from` to where it has to end (no further down than the shorter content allows) in step
+ * with the height, and the space stays tall enough for it meanwhile. Closing a group at the
+ * scroll's end, the rows above glide down with the drawer instead of dropping in a frame.
+ */
+export function holdScroll(
+  hold: { readonly from: number; readonly h0: number; readonly h1: number },
+  height: number,
+  view: number,
+): { scroll: number; space: number } {
+  // Not scrolled (or not a scroller: a rail as tall as its content): nothing to hold.
+  if (hold.from <= 0) return { scroll: 0, space: height }
+  const end = Math.min(hold.from, Math.max(0, hold.h1 - view))
+  const span = hold.h1 - hold.h0
+  const p = Math.abs(span) < 0.5 ? 1 : Math.min(1, Math.max(0, (height - hold.h0) / span))
+  const scroll = hold.from + (end - hold.from) * p
+  return { scroll, space: Math.max(height, scroll + view) }
 }
 
 /** "0:32", "4:05", "1:02:03"; text passes through as it is. */
