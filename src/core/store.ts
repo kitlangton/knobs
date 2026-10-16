@@ -204,6 +204,12 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly hints?: "page" | "panel"
   /**
+   * The key that shows and hides every panel and chip on the page that listens for it, outside
+   * text fields and without modifiers; remembered per store. The store's `toggleKey` by default
+   * (a backtick), `false` on a full page (`mountPage`). `false`: this panel always shows.
+   */
+  readonly toggleKey?: string | false
+  /**
    * `false` hides what says a value differs from its default: modified dots and readout marks,
    * group reset icons and the header's Reset. For panels whose values belong to someone else
    * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
@@ -353,6 +359,12 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   /** The chip `attach` shows: its label, when it shows and the knobs-mode key (see `ChipOptions`). */
   chip?: ChipOptions
   /**
+   * The key that shows and hides this store's panels and chips, with every other panel on the
+   * page that listens for it (see `MountPanelOptions.toggleKey`). A backtick by default; `false`
+   * for a shipped store (`ship`), whose panels are product UI. `false`: always shown.
+   */
+  toggleKey?: string | false
+  /**
    * The longest (ms) a key changed here outranks incoming values for it (see `sync`), so an echo
    * of an older value still in flight can't pull it back. The hold ends early once the remote
    * reports the value that was sent (for numbers, within half a step). 0 by default; remote
@@ -420,6 +432,8 @@ export interface Controls<S extends Schema = Schema> {
   readonly marks: boolean
   /** The chip's options, with `reveal` and `shortcut` resolved. */
   readonly chip: ChipOptions & { readonly reveal: RevealMode; readonly shortcut: string }
+  /** The key that shows and hides its panels and chips, or `false` (see `ControlsOptions.toggleKey`). */
+  readonly toggleKey: string | false
   /** How page cards show group presets (`groupPresetDisplay`, `auto` by default). */
   readonly groupPresetDisplay: GroupPresetDisplay
   /** A group's display label (`groupLabels`, else its fields' `groupLabel`), if it has one. */
@@ -1304,9 +1318,10 @@ export function defineControls<const S extends Schema>(
     marks: options.marks !== false,
     chip: Object.freeze({
       ...options.chip,
-      reveal: options.chip?.reveal ?? (devBuild() ? "hover" : "shortcut"),
+      reveal: options.chip?.reveal ?? (devBuild() || !options.ship ? "hover" : "shortcut"),
       shortcut: options.chip?.shortcut ?? "Alt+Shift+D",
     }),
+    toggleKey: options.toggleKey ?? (options.ship ? false : "`"),
     groupPresetDisplay: options.groupPresetDisplay ?? "auto",
     groupLabel: (group) => options.groupLabels?.[group] ?? fieldLabels().group.get(group),
     sectionLabel: (section) =>

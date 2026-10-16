@@ -203,6 +203,7 @@ const values = createRoot(() =>
 
 const params = createRemoteControls("parameters", [], {
   nullDefaults: false,
+  toggleKey: false,
   storage: null,
   onSet: (key, value) => {
     note(`set ${key} = ${value}`)
@@ -302,6 +303,7 @@ const prototypeSettings = createRemoteControls("prototype-settings", [], {
   nullDefaults: false,
   // The prototype's values aren't "modified" from anything: no dots, no resets.
   marks: false,
+  toggleKey: false,
   storage: null,
   onSet: (id, value) => {
     note(`board:setting ${id} = ${value}`)

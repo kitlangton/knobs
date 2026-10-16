@@ -102,6 +102,8 @@ import {
 import { foldMemory, type FoldMemory } from "./folds.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
+import { createPresence } from "./presence.js"
+import { toggleLayer } from "./toggle.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
@@ -215,6 +217,9 @@ function buildPanel<S extends Schema>(
     root.dataset.preset = options.preset.name
   }
   const titleText = options.title === undefined ? controls.id : options.title
+  // The page's show/hide key (toggle.ts). A full page is the whole tool, so it stays unless asked.
+  const toggleKey =
+    options.toggleKey !== undefined ? options.toggleKey : page ? false : controls.toggleKey
   if (options.restored) root.dataset.restored = ""
   if (options.haptics === false) root.dataset.haptics = "off"
   const soundOptions = resolveSound(options.sound)
@@ -435,6 +440,7 @@ function buildPanel<S extends Schema>(
     ...(showVariants && bound("save") ? [[show("save"), "Save and name a preset"]] : []),
     ...(pair("undo", "redo", "Undo / Redo") as [string, string][]),
     ...(bound("undo") && !bound("redo") ? [[show("undo"), "Undo"]] : []),
+    ...(toggleKey ? [[keyLabel(toggleKey), "Show / hide the page's panels"]] : []),
     ...(close
       ? [["Esc", "Up a level: row, card, panel, close"]]
       : page || (inline && keys.leave.includes("Escape"))
@@ -4418,6 +4424,25 @@ function buildPanel<S extends Schema>(
     }
   }
 
+  // Shown and hidden with the page's toggle key; a reload puts it back as it was left, at once.
+  const presence = createPresence(root, { inline, wake: () => wakeGpu() })
+  const toggled = toggleKey
+    ? toggleLayer(doc).register({
+        id: controls.id,
+        key: toggleKey,
+        storage: () => controls.storage,
+        root,
+        show: (shown, animate) => {
+          if (!shown) {
+            menu?.close(false)
+            hintCtrl.stop()
+          }
+          presence.set(shown, animate)
+        },
+      })
+    : undefined
+  if (toggled && !toggled.shown) presence.set(false, false)
+
   const gpuBinding: GpuPanelBinding = {
     id: controls.id,
     root,
@@ -4435,7 +4460,7 @@ function buildPanel<S extends Schema>(
     rows: gpuRows,
     actionButtons: gpuActionButtons,
     isPopoverOpen: () => !popover.hidden,
-    morph: morph?.frame,
+    morph: (now) => morph?.frame(now) ?? presence.frame(now),
     presence: () => presenceRuns > 0 || shifting.size > 0,
     landing: () => "landing" in root.dataset,
     ...(layout
@@ -4599,6 +4624,8 @@ function buildPanel<S extends Schema>(
       doc.defaultView?.removeEventListener("blur", endCompare)
       controls.compare(false)
       morph?.dispose()
+      toggled?.dispose()
+      presence.dispose()
       untrackHas()
       unsubscribeSound()
       optionKeys.dispose()

@@ -198,6 +198,8 @@ export interface RemoteControlsOptions {
   readonly enabled?: boolean | (() => boolean)
   /** Ships the panel as product UI, live in production: `() => import("knobs/panel")` (see `ControlsOptions.ship`). */
   readonly ship?: () => Promise<PanelModule>
+  /** The key that shows and hides its panels with the page's others (see `ControlsOptions.toggleKey`). */
+  readonly toggleKey?: string | false
   /** How long (ms) a key changed here outranks incoming values for it; 600 by default. */
   readonly echo?: number
   /**
@@ -630,6 +632,7 @@ export function createRemoteControls(
   const controls = defineControls(id, fromDescriptors(frozenDescriptors), {
     enabled: options.enabled ?? true,
     ship: options.ship,
+    toggleKey: options.toggleKey,
     echo: options.echo ?? ECHO_MS,
     storage: options.storage ?? null,
     persist: options.persist,

@@ -192,7 +192,7 @@ const css = `
 .knobs-panel,.knobs-chip,.knobs-menu{letter-spacing:normal;word-spacing:normal;text-transform:none;text-indent:0;text-shadow:none;text-decoration:none;font-style:normal;font-variant:normal;font-feature-settings:normal;font-kerning:auto;white-space:normal;direction:ltr;margin:0;float:none}
 :where(.knobs-panel,.knobs-chip) :where(*,*::before,*::after){box-sizing:border-box}
 .knobs-panel .rn-slot{box-sizing:content-box}
-.knobs-panel [hidden],.knobs-chip[hidden]{display:none!important}
+.knobs-panel [hidden],.knobs-panel[hidden],.knobs-chip[hidden]{display:none!important}
 .knobs-mono{font-family:var(--k-mono);font-variant-numeric:tabular-nums}
 
 /* The chip: a round cog button, or a capsule with a label beside the cog. */

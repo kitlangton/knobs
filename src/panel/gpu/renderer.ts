@@ -3874,7 +3874,9 @@ class GpuOverlayManager {
           (revealVer % 100)) |
         0
       const opening = clock < (this.openUntil.get(panel) ?? 0)
-      const leaving = panel.root.dataset.leaving === "true"
+      // Fading out or in with the page's toggle key (presence.ts), or closing without a chip.
+      const leaving =
+        panel.root.dataset.leaving === "true" || panel.root.dataset.presence !== undefined
       const panelRevealing = revealing && isRevealingIn(panel.root)
       const bodyRevealing = panelRevealing && isRevealingIn(panel.body)
       const pageMoving = pageB?.moving?.() ?? false
