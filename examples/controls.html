@@ -96,6 +96,12 @@
       .hero-variant button:hover { color: rgba(255, 255, 255, .75); }
       .hero-variant button[aria-pressed="true"] { color: rgba(255, 255, 255, .9); background: rgba(255, 255, 255, .08); }
       .hero-variant button:focus-visible { outline: 1.5px solid rgba(255, 255, 255, .5); outline-offset: 1px; }
+      .hero-variant { z-index: 2; }
+      /* A simulation hero, in a layer of its own over the twins, crossfading in and out. */
+      .hero-alt { position: absolute; inset: 0; z-index: 1; overflow: hidden; background: var(--night); opacity: 0; transition: opacity .7s var(--ease); }
+      .hero-alt.on { opacity: 1; }
+      @media (max-width: 900px) { .hero-variant .alt, .hero-alt { display: none; } }
+      @media (prefers-reduced-motion: reduce) { .hero-alt { transition-duration: .2s; } }
       .hero-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
       .hero-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
       /* Without WebGPU: a CSS still of the plate. */

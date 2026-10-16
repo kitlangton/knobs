@@ -41,6 +41,18 @@ const SNAP = springMotion({ duration: 0.22, bounce: 0.25 })
 /** Hardware ↔ schematic. */
 const SWITCH = springMotion({ duration: 0.9, bounce: 0 })
 const VARIANTS = ["Hardware", "Schematic"] as const
+/** The other heroes: simulations of their own, each loaded when chosen into a layer over the twins. */
+const ALTS = {
+  magi: { name: "MAGI", load: () => import("./hero-magi").then((m) => m.mountHeroMagi) },
+  slime: { name: "Slime", load: () => import("./hero-slime").then((m) => m.mountHeroSlime) },
+  ink: { name: "Ink", load: () => import("./hero-ink").then((m) => m.mountHeroInk) },
+  attractor: {
+    name: "Attractor",
+    load: () => import("./hero-attractor").then((m) => m.mountHeroAttractor),
+  },
+} as const
+type Alt = keyof typeof ALTS
+const isAlt = (id: string | null): id is Alt => id !== null && id in ALTS
 /**
  * Every frame is jittered and folded into a history. While anything changes, each new frame
  * counts MOVING of it (the rest clipped to what's on screen now); at rest, REST more frames
@@ -483,20 +495,72 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     toggleEl.append(b)
     return b
   })
+  // A simulation hero sits in a layer of its own over the twins, which go inert under it. Leaving
+  // it fades the layer out and then disposes it.
+  const own = [...root.children]
+  let alt: { id: Alt; layer: HTMLElement; dispose?: () => void; gone?: boolean } | null = null
+  const leave = (layer: { layer: HTMLElement; dispose?: () => void; gone?: boolean }) => {
+    layer.gone = true
+    layer.layer.classList.remove("on")
+    layer.layer.inert = true
+    setTimeout(() => {
+      layer.dispose?.()
+      layer.layer.remove()
+    }, 800)
+  }
+  const altButtons = (Object.keys(ALTS) as Alt[]).map((id) => {
+    const b = h("button", "alt")
+    b.type = "button"
+    b.textContent = ALTS[id].name
+    b.addEventListener("click", () => showAlt(id))
+    toggleEl.append(b)
+    return b
+  })
+  const press = (hw: number | null, id: Alt | null) => {
+    buttons.forEach((b, j) => b.setAttribute("aria-pressed", String(hw === j)))
+    altButtons.forEach((b, j) =>
+      b.setAttribute("aria-pressed", String(id === Object.keys(ALTS)[j])),
+    )
+    const url = new URL(location.href)
+    if (id) url.searchParams.set("hero", id)
+    else if (hw) url.searchParams.set("hero", "schematic")
+    else url.searchParams.delete("hero")
+    history.replaceState(history.state, "", url)
+  }
+  const showAlt = (id: Alt) => {
+    if (alt?.id === id) return
+    press(null, id)
+    if (alt) leave(alt)
+    for (const el of own) if (el !== toggleEl) (el as HTMLElement).inert = true
+    const layer = h("div", "hero-alt")
+    layer.append(h("div", "hero-stage"))
+    const title = h("div", "hero-title")
+    title.append(Object.assign(h("h1", ""), { textContent: "knobs" }))
+    layer.append(title, h("div", "hero-panel"))
+    root.insertBefore(layer, toggleEl)
+    const next: NonNullable<typeof alt> = { id, layer }
+    alt = next
+    void ALTS[id].load().then((mount) => {
+      if (next.gone) return
+      next.dispose = mount(layer).dispose
+      requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add("on")))
+    })
+  }
   const show = (i: number) => {
-    buttons.forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)))
-    if (variant.target !== i) {
-      variant.to(i, SWITCH)
-      const url = new URL(location.href)
-      if (i) url.searchParams.set("hero", "schematic")
-      else url.searchParams.delete("hero")
-      history.replaceState(history.state, "", url)
+    press(i, null)
+    if (alt) {
+      leave(alt)
+      alt = null
+      for (const el of own) (el as HTMLElement).inert = false
     }
+    if (variant.target !== i) variant.to(i, SWITCH)
     if (i) tickSchematic()
   }
   if (scheme) {
     root.append(toggleEl)
     show(variant.target)
+    const asked = new URLSearchParams(location.search).get("hero")
+    if (isAlt(asked) && !matchMedia("(max-width: 900px)").matches) showAlt(asked)
   }
 
   // ── Frames: jittered, with what changed since the last one, into the history ──
