@@ -198,7 +198,7 @@ export function mountHeroInk(host: HTMLElement): { dispose(): void } {
     session: false,
     variants: false,
     haptics: false,
-    sound: false,
+    sound: true,
   })
   // The Current pad starts open: it's what the hand sets.
   slot

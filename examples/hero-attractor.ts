@@ -542,6 +542,7 @@ export function mountHeroAttractor(host: HTMLElement): { dispose(): void } {
     session: false,
     variants: false,
     haptics: false,
+    sound: true,
   })
   apply(store.get(), "init")
   if (reducedQuery.matches) intro.snap(1)

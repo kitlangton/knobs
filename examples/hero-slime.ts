@@ -236,7 +236,7 @@ export function mountHeroSlime(host: HTMLElement): { dispose(): void } {
     session: false,
     variants: false,
     haptics: false,
-    sound: false,
+    sound: true,
   })
   const panelEl = () => slot.querySelector<HTMLElement>(".knobs-panel")
   // The Food pad starts open: it's the pointer's twin.
