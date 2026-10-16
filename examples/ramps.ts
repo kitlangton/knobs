@@ -1,6 +1,6 @@
 // Gradients and curves in two inline panels: the Lab's square, flat, compact look, and the default
 // theme built from remote descriptors. `?gpu` draws both with the WebGPU overlay. Used by
-// tests/browser/ramps.spec.ts and scripts/ramps-shots.ts.
+// tests/browser/ramps.spec.ts.
 import {
   createRemoteControls,
   curve,
