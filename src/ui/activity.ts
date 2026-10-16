@@ -19,7 +19,17 @@ import {
   type ActivityRow,
   type RailNode,
 } from "./activity-model.js"
-import { applyLook, frameLoop, ICONS, reducedMotion, svg, syncFrame, type UiLook } from "./look.js"
+import {
+  applyLook,
+  frameLoop,
+  ICONS,
+  isTypingTarget,
+  reducedMotion,
+  svg,
+  syncFrame,
+  tune,
+  type UiLook,
+} from "./look.js"
 
 export interface ActivityOptions extends UiLook {
   readonly events: readonly ActivityEvent[]
@@ -111,11 +121,6 @@ const PAD = 6
 const SLIDE = 8
 
 type Motion = { omega: number; zeta: number }
-const tune = (s: Spring, m: Motion) => {
-  s.omega = m.omega
-  s.zeta = m.zeta
-  return s
-}
 
 interface View {
   id: string
@@ -605,8 +610,8 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     hl.hidden = !selected
     empty.hidden = rows.length > 0
     empty.textContent = options.empty ?? "Nothing yet"
-    root.setAttribute("aria-activedescendant", selected ? domId(selected) : "")
-    if (!selected) root.removeAttribute("aria-activedescendant")
+    if (selected) root.setAttribute("aria-activedescendant", domId(selected))
+    else root.removeAttribute("aria-activedescendant")
     // Only new events at the newest end pin the rail there; a group opening doesn't.
     following = following || (following0 && cause === "set" && fresh.size > 0)
     scrollHold =
@@ -738,18 +743,10 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
   const onPointer = () => setShowing("pointer")
   if (keysFrom === "page") win.addEventListener("pointerdown", onPointer, true)
 
-  const typing = (t: EventTarget | null) =>
-    t instanceof HTMLElement &&
-    (t.isContentEditable ||
-      t instanceof HTMLSelectElement ||
-      t instanceof HTMLTextAreaElement ||
-      (t instanceof HTMLInputElement &&
-        !t.readOnly &&
-        !["range", "checkbox", "radio", "button"].includes(t.type)))
   const onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
     if (keysFrom === "page") {
-      if (e.target !== root && (typing(e.target) || !root.getClientRects().length)) return
+      if (e.target !== root && (isTypingTarget(e.target) || !root.getClientRects().length)) return
       // A focused widget that takes arrows (a panel's row, a tree, a slider) keeps them.
       const t = e.target as Element | null
       if (
@@ -801,10 +798,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
   const handle: Activity = {
     element: root,
     set(next) {
-      events = next
-      index = indexActivity(events)
-      for (const id of [...expanded]) if (!index.has(id)) expanded.delete(id)
-      sync("set")
+      handle.update({ events: next })
     },
     add(event) {
       handle.set(newest === "bottom" ? [...events, event] : [event, ...events])

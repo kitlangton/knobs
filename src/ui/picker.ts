@@ -2,10 +2,12 @@ import { Spring, springMotion } from "../core/spring.js"
 import {
   applyLook,
   frameLoop,
+  isTypingTarget,
   notifyLayout,
   reducedMotion,
   svg,
   syncFrame,
+  tune,
   type UiLook,
 } from "./look.js"
 import {
@@ -107,12 +109,6 @@ interface Entry {
   /** Coming in (0 → 1) or going (→ 0) as options change. */
   presence: Spring
   leaving: boolean
-}
-
-const tune = (s: Spring, m: { omega: number; zeta: number }) => {
-  s.omega = m.omega
-  s.zeta = m.zeta
-  return s
 }
 
 /**
@@ -426,6 +422,13 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     return moving
   })
 
+  const rebind = () => {
+    list.forEach((o, i) => {
+      const e = entries.get(o.id)
+      if (e) bind(e, i)
+    })
+  }
+
   /** Selects `id`: its body opens, the last one's closes, the card glides between them. */
   const pick = (id: string, animate = true) => {
     if (id === selected || !entries.has(id)) return
@@ -439,10 +442,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       if (waiting.option.id !== id) shelve(waiting)
     }
     selected = id
-    list.forEach((o, i) => {
-      const e = entries.get(o.id)
-      if (e) bind(e, i)
-    })
+    rebind()
     const now = entries.get(id)!
     if (animate && !reducedMotion(win) && !now.mounted && options.body) {
       premount(now)
@@ -527,17 +527,9 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   }
 
   // Keys: ↑/↓, Home/End on an option; Enter chooses; digits from the picker or the page.
-  const typing = (t: EventTarget | null) =>
-    t instanceof HTMLElement &&
-    (t.isContentEditable ||
-      t instanceof HTMLSelectElement ||
-      t instanceof HTMLTextAreaElement ||
-      (t instanceof HTMLInputElement &&
-        !t.readOnly &&
-        !["range", "checkbox", "radio", "button"].includes(t.type)))
   const ids = () => list.map((o) => o.id).filter((id) => !entries.get(id)?.leaving)
   const onDigit = (e: KeyboardEvent) => {
-    if (!claimsDigit({ ...pickKeys(e), typing: typing(e.target) })) return
+    if (!claimsDigit(e, isTypingTarget(e.target))) return
     if (!root.getClientRects().length) return
     const id = digitPick(ids(), e.key)
     if (!id) return
@@ -601,10 +593,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     },
     choose(id) {
       chosen = id
-      list.forEach((o, i) => {
-        const e = entries.get(o.id)
-        if (e) bind(e, i)
-      })
+      rebind()
     },
     get chosen() {
       return chosen
@@ -624,13 +613,3 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   }
   return handle
 }
-
-const pickKeys = (e: KeyboardEvent) => ({
-  key: e.key,
-  defaultPrevented: e.defaultPrevented,
-  metaKey: e.metaKey,
-  ctrlKey: e.ctrlKey,
-  altKey: e.altKey,
-  shiftKey: e.shiftKey,
-  repeat: e.repeat,
-})
