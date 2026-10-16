@@ -273,6 +273,13 @@ function listenForShortcut(win: Window, shortcut: string, theme: string): () => 
   return () => win.removeEventListener("keydown", onKey, true)
 }
 
+/** A brief status at the bottom of the page, as knobs mode's "knobs on" ("knobs unlocked"). */
+export function status(text: string, doc: Document = document) {
+  injectStyles(doc)
+  const light = doc.defaultView?.matchMedia("(prefers-color-scheme: light)").matches
+  showStatus(doc, text, light ? "light" : "dark")
+}
+
 const statusTimers = new WeakMap<Document, ReturnType<typeof setTimeout>>()
 
 /** A small transient status at the bottom of the page. */

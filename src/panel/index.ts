@@ -1,4 +1,4 @@
-export { attach } from "./attach.js"
+export { attach, status } from "./attach.js"
 export { toggleLayer, type ToggleLayer, type ToggleSurface } from "./toggle.js"
 export {
   getGpuOverlayManager,
