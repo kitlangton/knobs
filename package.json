@@ -1,6 +1,6 @@
 {
   "name": "@kitlangton/knobs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Per-component tuning controls. Explore in development, ship constants.",
   "type": "module",
   "license": "MIT",
