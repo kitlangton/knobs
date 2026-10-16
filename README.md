@@ -1113,6 +1113,66 @@ const clock = timeline(dock, {
 
 **`timeline(container, options)`** is a scrubber for time-based work. The ruler counts in seconds or frames (`units`) with ticks that thin out as it zooms (`⌘` wheel, a pinch, `+`/`-`, `0` fits) and pans with the wheel or a trackpad. The playhead follows the hand 1:1, pulls softly toward markers and lands on frames (`snap`). Markers can be added (`M`), dragged, renamed (`Enter`) and removed, and `[`/`]` jump between them; `I` and `O` set a loop range. `Space` plays on one rAF clock that sleeps when nothing moves, and `←`/`→` step a frame (`⇧` ten). A right-click on the ruler, a marker or a range opens a context menu. It reports `onSeek(time, source)` (`"scrub" | "key" | "marker" | "play" | "code"`), `onPlay`, `onMarkers`, `onRanges` and `onCross(marker)`. The handle has `time`, `playing`, `markers`, `ranges`, `view`, `seek`, `play`, `pause`, `toggle`, `update`, `fit`, `zoom`, `focus` and `dispose`. `Timeline` in `knobs/ui/react` and `knobs/ui/solid` follows its props. The Lab's scene clock and Boom retrigger run from one under the viewport.
 
+### Activity
+
+```ts
+import { activity } from "knobs/ui"
+
+const rail = activity(container, {
+  ...look,
+  events: [
+    { id: "asked", kind: "you", actor: "You", title: "Make this a knobs component", time: "48m" },
+    {
+      id: "work",
+      kind: "agent",
+      actor: "Agent", // a group: "Agent · 3 updates", opening in place
+      children: [{ id: "read", title: "Read the task" }, { id: "sketch", title: "Sketched the API" }],
+    },
+    { id: "review", kind: "review", actor: "Review", title: "Walkthrough", duration: 32, current: true },
+  ],
+  selected: "review",
+  onSelect: (id, event, source) => stage.show(id), // keys and clicks
+  onActivate: (id) => open(id), // Enter
+})
+rail.add({ id: "pr", kind: "pr", actor: "GitHub", title: "#412 Activity rail", time: "now" })
+```
+
+**`activity(container, options)`** is a vertical rail of what happened: one row per event, each with its kind's icon on one continuous line, who did it, a one-line title that fades at its end when cut off (`knobs-scroll-fade-x`), and optional trailing thumbnails (`thumbs`, four at most), a duration chip (`duration`, seconds or text, "▶ 0:32") and a `time`. The built-in kinds are `you`, `agent`, `proposal`, `review`, `pr`, `build`, `blocked` and `shipped`; any other `kind` takes `icons` and `tints` from the options, and an event can bring its own `icon` (SVG markup, a glyph or a node) and `tint`. `current` puts a quiet ring on the node (the live or latest step), `dimmed` quiets a row, and the selected row's node takes a soft disc in its tint.
+
+An event with `children` is a group ("Agent · 3 updates" when it has no `title`) that opens in place. Its children sit on the same line as smaller dots, not indented into it, and slide out from under their group with the rows below like a drawer (.22 s open, .18 s close, no bounce). The line is one path drawn between the nodes, stopping clear of each, from the first node to the last, so nothing breaks it and it ends at the last dot; its ends glide as rows come and go, so it grows with the content.
+
+`set(events)` takes new events: ids keep their identity, so rows that stay glide to their places (.4 s), new ones bloom in from the newest side (a slide of 8px, scale .97 and a 3px blur, .3 s) and gone ones soften out where they are. `newest: "top"` puts the newest first (`add(event)` puts it there); with `follow` (on by default) the rail stays pinned to its newest end when that was in view. Nothing animates on the first paint, times and durations roll when they change, and under reduced motion rows only fade.
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, `Home` / `End` | Move the selection (`onSelect(id, event, "key")`) |
+| `→` / `←` | Open a group, then step into it / close it, or step out of a child |
+| `Enter` | `onActivate(id, event)`; on a group with no `onActivate`, open or close it |
+
+The selection shows as a tint gliding between rows only once keys move it (by distance, .3 s or .42 s); a click selects with no ring and the tint leaves in 100 ms. Hover washes come in at once and fade out over 100 ms. Keys come from the rail while it has focus, or with `keys: "page"` from anywhere a focused field or widget doesn't take them. The handle has `set`, `add`, `select(id)` (opens its group; doesn't call `onSelect`), `selected`, `expand`, `isExpanded`, `focus` and `destroy`; `Activity` in `knobs/ui/react` and `knobs/ui/solid` follows `events` and `selected`. `--k-activity-line`, `--k-activity-select`, `--k-activity-row`, `--k-activity-gutter` and one `--k-activity-<kind>` per kind tune it, in dark and light. The pure parts are exported: `flattenActivity`, `navigateActivity`, `railSegments`, `stackRows`, `diffActivity`, `showsSelection`, `formatDuration`.
+
+### Option picker
+
+```tsx
+import { OptionPicker } from "knobs/ui/solid"
+import { KnobsPanel } from "knobs/solid"
+
+<OptionPicker
+  options={variations().map((v) => ({ id: v.id, label: v.name, suggested: v.id === suggested() }))}
+  selected={variation()}
+  chosen={chosen()}
+  onSelect={(id) => setVariation(id)}
+  onChoose={(id) => choose(id)}
+  digits="page"
+>
+  {(option) => <KnobsPanel controls={paramsOf(option.id)} header={false} variants={false} />}
+</OptionPicker>
+```
+
+**`optionPicker(container, options)`** lists a proposal's options (1–n), each with its name, a "Suggested" mark (`suggested`, worded by `suggestedLabel`) and a check on the `chosen` one, which blooms in. The selected option sits on a card that glides between options (.3 s), and its parameters open under it in place while the last option's close (.22 s open, .18 s close, the content fading and drifting with the edge). `↑`/`↓` and `Home`/`End` move between options, `1`–`9` pick one, `Enter` calls `onChoose(id)` and `Tab` goes into the parameters. Digits come from the picker and its parameters while focus is inside (`digits: "page"` takes them from anywhere; `false` for none); a focused row that picks its own options with digits, and text fields, keep theirs.
+
+The parameters are real knobs panels: `body(option, element)` mounts whatever an option needs into `element` the first time it opens and returns a cleanup, and it stays mounted while closed, so a panel keeps its state. The picker is plain DOM chrome in `knobs/ui` and the panels come from `knobs/panel`, so `knobs/ui` stays free of the panel, and the parameters draw with the DOM or the WebGPU renderer as any panel does (nothing around them makes a stacking context at rest). `OptionPicker` in `knobs/ui/solid` and `knobs/ui/react` renders `children(option)` there instead, in the component's context. The handle has `set(options)`, `select(id)`, `selected`, `choose(id)`, `chosen`, `focus()` and `destroy()`.
+
 ### Ideas grid (bento)
 
 ```ts
@@ -1303,6 +1363,8 @@ The package has two core exports selected through the standard `development` con
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
 | `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
 | `timeline(container, { duration, time?, fps?, units?, markers?, ranges?, snap?, onSeek?, … })` | A zoomable ruler and playhead with markers, loop ranges and playback. |
+| `activity(container, { events, selected?, onSelect?, onActivate?, onToggle?, onPlay?, newest?, follow?, keys?, icons?, tints? })` | A rail of events on one continuous line, with groups that open in place; `{ set, add, select, expand, focus, destroy }`. |
+| `optionPicker(container, { options, selected?, chosen?, onSelect?, onChoose?, body?, digits? })` | Options 1–n on a gliding card, the selected one's parameters (a panel) open under it. |
 | `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
 | `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
