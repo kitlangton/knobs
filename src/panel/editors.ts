@@ -23,6 +23,7 @@ import type {
   RowWave,
 } from "./gpu/renderer.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { offRow, precisionRate } from "./feel.js"
 import { clamp } from "./motion.js"
 import { fadeText, rollingReadout, rollMs } from "./reel.js"
 import { reveal } from "./reveal.js"
@@ -304,17 +305,13 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
       o.max,
     )
   }
-  let anchorX = 0
-  let anchorValue = 0
-  let fine = false
-  const valueAt = (clientX: number, r = dragRect ?? track.getBoundingClientRect()) => {
-    if (fine)
-      return anchorValue + ((clientX - anchorX) / Math.max(1, r.width - r.height)) * span * 0.1
-    return (
-      o.min +
-      clamp((clientX - r.left - r.height / 2) / Math.max(1, r.width - r.height), 0, 1) * span
-    )
-  }
+  /**
+   * The hand along the strip (px from the first stop) and its give past an end. A drag adds each
+   * move at its rate (slower off the strip, a tenth with ⌥), as a slider's does.
+   */
+  let hand: Band = { at: 0, give: 0 }
+  let lastX = 0
+  const room = (r: DOMRect) => Math.max(1, r.width - r.height)
   track.onpointerdown = (event) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -323,28 +320,44 @@ export function strip(c: RowContext<unknown>, o: StripOptions) {
     dragRect = track.getBoundingClientRect()
     dragging = true
     line.classList.add("knobs-active")
-    fine = event.altKey
-    anchorX = event.clientX
-    anchorValue = current
+    lastX = event.clientX
+    const r = dragRect
+    // ⌥ starts where the value is; otherwise the value jumps under the pointer.
+    hand = {
+      at: event.altKey
+        ? ratio(current) * room(r)
+        : clamp(event.clientX - r.left - r.height / 2, 0, room(r)),
+      give: 0,
+    }
     o.start()
-    if (!fine) o.set(quantize(valueAt(event.clientX, dragRect), false))
+    if (!event.altKey) o.set(quantize(o.min + (hand.at / room(r)) * span, false))
     c.wake()
   }
   track.onpointermove = (event) => {
     if (!dragging) return
-    if (event.altKey !== fine) {
-      fine = event.altKey
-      anchorX = event.clientX
-      anchorValue = current
-    }
+    const r = dragRect ?? (dragRect = track.getBoundingClientRect())
     line.classList.add("knobs-active")
-    o.set(quantize(valueAt(event.clientX, dragRect), fine))
+    const rate = precisionRate(offRow(event.clientY, r.top, r.bottom)) * (event.altKey ? 0.1 : 1)
+    const before = hand.give
+    hand = band(hand, (event.clientX - lastX) * rate, 0, room(r))
+    lastX = event.clientX
+    if (stretched(before, hand.give)) tick(track, "limit")
+    o.set(quantize(o.min + (hand.at / room(r)) * span, event.altKey))
+    if (give !== hand.give) {
+      give = hand.give
+      placeThumb(false)
+      c.wake()
+    }
   }
   const release = () => {
     if (!dragging) return
     dragging = false
     dragRect = undefined
     line.classList.remove("knobs-active")
+    if (give !== 0) {
+      give = 0
+      placeThumb(false)
+    }
     c.wake()
   }
   track.onpointerup = release
@@ -865,56 +878,83 @@ export function pointRow(c: RowContext<PointField>): EditorRow {
   }
   const size = measure(pad, () => layout(true))
   const g = gesture(c)
-  let fine = false
   let dragRect: DOMRect | undefined
-  let anchor: [number, number] = [0, 0]
-  let anchorValue = shown
-  const valueAt = (event: PointerEvent, r = dragRect ?? pad.getBoundingClientRect()): Point => {
-    const spanX = f.max.x - f.min.x
-    const spanY = f.max.y - f.min.y
-    if (fine)
-      return {
-        x: anchorValue.x + ((event.clientX - anchor[0]) / (r.width - PAD_INSET * 2)) * spanX * 0.1,
-        y: anchorValue.y + ((event.clientY - anchor[1]) / (r.height - PAD_INSET * 2)) * spanY * 0.1,
-      }
+  /**
+   * The hand over the pad (px from the first corner) and its give past each edge: a drag follows
+   * the pointer (a tenth as fast with ⌥) and, past an edge, the puck gives as a pan's does.
+   */
+  let hand: [Band, Band] = [
+    { at: 0, give: 0 },
+    { at: 0, give: 0 },
+  ]
+  let last: [number, number] = [0, 0]
+  const room = (r: DOMRect): [number, number] => [
+    Math.max(1, r.width - PAD_INSET * 2),
+    Math.max(0, r.height - PAD_INSET * 2),
+  ]
+  const valueOf = (r: DOMRect): Point => {
+    const [w, h] = room(r)
     return {
-      x:
-        f.min.x +
-        clamp((event.clientX - r.left - PAD_INSET) / (r.width - PAD_INSET * 2), 0, 1) * spanX,
-      y:
-        f.min.y +
-        clamp((event.clientY - r.top - PAD_INSET) / (r.height - PAD_INSET * 2), 0, 1) * spanY,
+      x: f.min.x + (hand[0].at / w) * (f.max.x - f.min.x),
+      y: f.min.y + (h > 0 ? hand[1].at / h : 0.5) * (f.max.y - f.min.y),
     }
+  }
+  const holdGive = () => {
+    if (give[0] === hand[0].give && give[1] === hand[1].give) return
+    give = [hand[0].give, hand[1].give]
+    layout(false)
+    c.wake()
   }
   pad.onpointerdown = (event) => {
     if (event.button !== 0) return
     event.preventDefault()
     pad.setPointerCapture(event.pointerId)
     pad.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    dragRect = pad.getBoundingClientRect()
+    const r = (dragRect = pad.getBoundingClientRect())
+    const [w, h] = room(r)
     dragging = true
-    fine = event.altKey
-    anchor = [event.clientX, event.clientY]
-    anchorValue = shown
+    last = [event.clientX, event.clientY]
+    // ⌥ starts where the puck is; otherwise it jumps under the pointer.
+    const [rx, ry] = ratio(shown)
+    hand = event.altKey
+      ? [
+          { at: rx * w, give: 0 },
+          { at: ry * h, give: 0 },
+        ]
+      : [
+          { at: clamp(event.clientX - r.left - PAD_INSET, 0, w), give: 0 },
+          { at: clamp(event.clientY - r.top - PAD_INSET, 0, h), give: 0 },
+        ]
     g.start()
-    if (!fine) g.set(valueAt(event, dragRect))
+    if (!event.altKey) g.set(valueOf(r))
     c.wake()
   }
   pad.onpointermove = (event) => {
     if (!dragging) return
-    if (event.altKey !== fine) {
-      fine = event.altKey
-      anchor = [event.clientX, event.clientY]
-      anchorValue = shown
-    }
+    const r = dragRect ?? (dragRect = pad.getBoundingClientRect())
+    const [w, h] = room(r)
+    const k = event.altKey ? 0.1 : 1
+    const before = hand[0].give || hand[1].give
+    hand = [
+      band(hand[0], (event.clientX - last[0]) * k, 0, w),
+      band(hand[1], (event.clientY - last[1]) * k, 0, h),
+    ]
+    last = [event.clientX, event.clientY]
+    if (stretched(before, hand[0].give || hand[1].give)) tick(pad, "limit")
     pad.classList.add("knobs-active")
-    g.set(valueAt(event, dragRect))
+    g.set(valueOf(r))
+    holdGive()
   }
   const release = () => {
     if (!dragging) return
     dragging = false
     dragRect = undefined
     pad.classList.remove("knobs-active")
+    hand = [
+      { at: 0, give: 0 },
+      { at: 0, give: 0 },
+    ]
+    holdGive()
     c.wake()
   }
   pad.onpointerup = release
