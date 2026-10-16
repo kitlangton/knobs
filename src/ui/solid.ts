@@ -8,6 +8,7 @@ import {
   type JSX,
 } from "solid-js"
 import { insert } from "solid-js/web"
+import { follower } from "./follow.js"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
 import {
@@ -19,6 +20,18 @@ import {
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
+
+/**
+ * A prop that follows into the piece made from it: later values go to `apply`, and so does a
+ * value that changed in the same update that mounted the component (see `follower`).
+ */
+const follow = <V>(read: () => V, apply: (value: V) => void) => {
+  const changed = follower(untrack(read))
+  createEffect(() => {
+    const value = read()
+    if (changed(value)) untrack(() => apply(value))
+  })
+}
 
 export type SplitProps = SplitOptions & {
   /** One element per pane, in the panes' order; each goes into its pane's body. */
@@ -80,15 +93,6 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
     }),
   )
   untrack(() => props.onReady?.(t))
-  // Each prop follows on its own, after the first run (the tree starts from them).
-  const follow = <V>(read: () => V, apply: (value: V) => void) => {
-    let first = true
-    createEffect(() => {
-      const value = read()
-      if (first) first = false
-      else untrack(() => apply(value))
-    })
-  }
   follow(
     () => props.items,
     (items) => t.update(items),
@@ -127,24 +131,18 @@ export function Timeline(props: TimelineProps): JSX.Element {
     }),
   )
   untrack(() => props.onReady?.(t))
-  const follow = <K extends keyof TimelineOptions>(key: K) => {
-    let first = true
-    createEffect(() => {
-      const value = props[key]
-      if (first) {
-        first = false
-        return
-      }
-      untrack(() => {
+  const follow1 = <K extends keyof TimelineOptions>(key: K) =>
+    follow(
+      () => props[key],
+      (value) => {
         if (value === undefined) return
         if (key === "time" && Math.abs((value as number) - t.time) < 1e-6) return
         if (key === "playing" && value === t.playing) return
         if ((key === "markers" && value === t.markers) || (key === "ranges" && value === t.ranges))
           return
         t.update({ [key]: value })
-      })
-    })
-  }
+      },
+    )
   for (const key of [
     "time",
     "playing",
@@ -155,7 +153,7 @@ export function Timeline(props: TimelineProps): JSX.Element {
     "units",
     "speed",
   ] as const)
-    follow(key)
+    follow1(key)
   onCleanup(() => t.dispose())
   return host as unknown as JSX.Element
 }
@@ -180,14 +178,6 @@ export function Bento(props: BentoProps): JSX.Element {
     }),
   )
   untrack(() => props.onReady?.(b))
-  const follow = <V>(read: () => V, apply: (value: V) => void) => {
-    let first = true
-    createEffect(() => {
-      const value = read()
-      if (first) first = false
-      else untrack(() => apply(value))
-    })
-  }
   follow(
     () => props.items,
     (items) => b.update(items),
@@ -198,16 +188,6 @@ export function Bento(props: BentoProps): JSX.Element {
   )
   onCleanup(() => b.dispose())
   return host as unknown as JSX.Element
-}
-
-/** Each prop follows on its own, after the first run (the piece starts from them). */
-const follow = <V>(read: () => V, apply: (value: V) => void) => {
-  let first = true
-  createEffect(() => {
-    const value = read()
-    if (first) first = false
-    else untrack(() => apply(value))
-  })
 }
 
 export type ActivityProps = ActivityOptions & { onReady?: (activity: ActivityHandle) => void }
