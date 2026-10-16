@@ -564,9 +564,14 @@ fn wheel(p: vec3f) -> vec3f {
 
 /**
  * This frame's shadow, given what's known: `known` is (a shadow, its samples, how to use it:
- * 0 ignore it, 1 keep it, 2 average a new sample into it).
+ * 0 ignore it, 1 keep it, 2 average a new sample into it, 3 move it 40% toward the new one,
+ * for a light or a part that's moving: it follows in a few frames without the new one's grain).
  */
 fn shadowWith(known: vec4f, s: f32) -> f32 {
+  if (known.z > 2.5) {
+    usedN = 1.0;
+    return mix(known.x, s, 0.4);
+  }
   if (known.z > 1.5) {
     usedN = known.y + 1.0;
     return mix(known.x, s, 1.0 / usedN);
@@ -598,7 +603,7 @@ fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
     let tip = vec3f(T.x, 0.24 + 0.58 * cos(a), T.y + 0.58 * sin(a));
     if (length(p - tip) < 0.1) {
       let lens = Mat(vec3f(0.03), vec3f(0.05), 0.25, 0.25, vec3f(1.0, 0.0, 0.0),
-        u.v[7].rgb * 2.2 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
+        u.v[7].rgb * 1.4 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
       return light(lens, p, n, v, sp, sh, ao);
     }
     let chrome = Mat(vec3f(0.0), vec3f(0.9, 0.9, 0.92), 0.07, 0.07, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
@@ -777,10 +782,11 @@ fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
       let h = map(p);
       if (h.x < 0.0006 * t) {
         var known = vec4f(0.0);
-        // The same surface as last frame, under the same light, nothing moving beside it.
-        if (cached && abs(c0.w - h.y) < 0.5 && abs(c0.x - t) < 0.03 && !moved &&
-          !nearDirty(p, mask, 1.0)) {
-          known = vec4f(c0.y, c0.z, select(2.0, 1.0, c0.z >= SHADOW_N), 0.0);
+        // The same surface as last frame: under the same light with nothing moving beside it,
+        // its shadow holds (or refines); otherwise it follows.
+        if (cached && abs(c0.w - h.y) < 0.5 && abs(c0.x - t) < 0.03) {
+          let still = !moved && !nearDirty(p, mask, 1.0);
+          known = vec4f(c0.y, c0.z, select(3.0, select(2.0, 1.0, c0.z >= SHADOW_N), still), 0.0);
         } else if (!primary && abs(prim.z - h.y) < 0.5) {
           known = vec4f(prim.x, prim.y, 1.0, 0.0);
         }
@@ -799,8 +805,8 @@ fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
   let tf = (-PT - cam.y) / rd.y;
   pixw = tf * pixA;
   var known = vec4f(0.0);
-  if (cached && c0.w < -0.5 && c0.w > -1.5 && !moved) {
-    known = vec4f(c0.y, c0.z, select(2.0, 1.0, c0.z >= SHADOW_N), 0.0);
+  if (cached && c0.w < -0.5 && c0.w > -1.5) {
+    known = vec4f(c0.y, c0.z, select(3.0, select(2.0, 1.0, c0.z >= SHADOW_N), !moved), 0.0);
   }
   let col = floorShade(cam + rd * tf, rd, known);
   if (primary) {
