@@ -266,6 +266,10 @@ export function Activity(props: ActivityProps) {
     a.select(props.selected)
   }, [props.selected])
   useEffect(() => {
+    if (first.current || !props.newest) return
+    handle.current?.update({ newest: props.newest })
+  }, [props.newest])
+  useEffect(() => {
     first.current = false
   }, [])
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />

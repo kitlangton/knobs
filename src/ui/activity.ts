@@ -5,6 +5,7 @@ import {
   flattenActivity,
   formatDuration,
   groupTitle,
+  holdScroll,
   indexActivity,
   isActivityKey,
   keepSelection,
@@ -12,6 +13,7 @@ import {
   railSegments,
   showsSelection,
   stackRows,
+  takesActivityKey,
   type ActivityEvent,
   type ActivityInput,
   type ActivityRow,
@@ -60,6 +62,11 @@ export interface Activity {
   set(events: readonly ActivityEvent[]): void
   /** One more event at the newest end. */
   add(event: ActivityEvent): void
+  /**
+   * New events and where the newest are, in one change: rows glide to their new places, as with
+   * `set` (flipping `newest` with the events reversed reverses the rail in place).
+   */
+  update(next: { events?: readonly ActivityEvent[]; newest?: "top" | "bottom" }): void
   /** Selects (opening its group); `null` clears. Doesn't call `onSelect`. */
   select(id: string | null): void
   readonly selected: string | null
@@ -144,7 +151,7 @@ interface View {
 export function activity(container: HTMLElement, options: ActivityOptions): Activity {
   const doc = container.ownerDocument
   const win = doc.defaultView!
-  const newest = options.newest ?? "bottom"
+  let newest = options.newest ?? "bottom"
   const keysFrom = options.keys ?? "focus"
   let events = options.events
   let index = indexActivity(events)
@@ -380,6 +387,12 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
   const hlH = new Spring(0, REFLOW.omega, REFLOW.zeta, 0.05)
   const height = new Spring(0, REFLOW.omega, REFLOW.zeta, 0.05)
   let following = false
+  /**
+   * A change's hold on the scroll: from where it was, released along the content's height spring
+   * (with the space reserved until then), so rows above a group closing at the scroll's end glide
+   * down with the drawer rather than dropping as the browser clamps the scroll.
+   */
+  let scrollHold: { from: number; h0: number; h1: number } | null = null
 
   const place = (v: View, reduced: boolean) => {
     const p = Math.max(0, Math.min(1, v.p.x))
@@ -447,9 +460,16 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     }
     drawLine()
     placeHighlight()
-    space.style.height = `${Math.max(0, height.x).toFixed(1)}px`
+    if (scrollHold && !following) {
+      const { scroll, space: reserved } = holdScroll(scrollHold, height.x, root.clientHeight)
+      space.style.height = `${Math.max(0, reserved).toFixed(1)}px`
+      root.scrollTop = scroll
+    } else space.style.height = `${Math.max(0, height.x).toFixed(1)}px`
     if (following) root.scrollTop = newest === "bottom" ? root.scrollHeight : 0
-    if (!moving) following = false
+    if (!moving) {
+      following = false
+      scrollHold = null
+    }
     return moving
   })
 
@@ -587,7 +607,12 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     empty.textContent = options.empty ?? "Nothing yet"
     root.setAttribute("aria-activedescendant", selected ? domId(selected) : "")
     if (!selected) root.removeAttribute("aria-activedescendant")
-    if (following0 && fresh.size) following = true
+    // Only new events at the newest end pin the rail there; a group opening doesn't.
+    following = following || (following0 && cause === "set" && fresh.size > 0)
+    scrollHold =
+      animate && !following && !reduced
+        ? { from: root.scrollTop, h0: height.x, h1: height.target }
+        : null
     for (const v of views.values()) place(v, reduced)
     drawLine()
     placeHighlight()
@@ -595,12 +620,16 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     loop.wake()
   }
 
-  /** The tint goes to the selected row: gliding while it shows, placed while it doesn't. */
+  /**
+   * The tint goes to the selected row, gliding (or placed, with no `motion`) while it shows. While
+   * it's hidden or fading out after a click it stays where it is; keys place it before it shows.
+   */
   const moveHighlight = (motion: Motion | null) => {
+    if (!showing) return
     const y = selected ? targets.get(selected) : undefined
     if (y === undefined) return
     const h = heights[rows.find((r) => r.id === selected)?.depth ?? 0]
-    if (!motion || !showing) {
+    if (!motion) {
       hlY.snap(y)
       hlH.snap(h)
       return
@@ -657,7 +686,10 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
           : springMotion({ duration: far ? 0.42 : 0.3, bounce: 0 }),
       )
       root.setAttribute("aria-activedescendant", domId(id))
-      if (source === "key") reveal(id)
+      if (source === "key") {
+        scrollHold = null
+        reveal(id)
+      }
       const event = index.get(id)?.event
       if (event && source !== "code") options.onSelect?.(id, event, source)
     } else root.removeAttribute("aria-activedescendant")
@@ -696,6 +728,13 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
       options.onPlay(id, event)
     }
   })
+  // A hand on the scroll takes it back from a change that's holding it.
+  const release = () => {
+    scrollHold = null
+    following = false
+  }
+  root.addEventListener("wheel", release, { passive: true })
+  root.addEventListener("touchstart", release, { passive: true })
   const onPointer = () => setShowing("pointer")
   if (keysFrom === "page") win.addEventListener("pointerdown", onPointer, true)
 
@@ -722,6 +761,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     let handled = true
     if (isActivityKey(e.key) && !e.shiftKey) {
       const r = navigateActivity(rows, selected, e.key)
+      if (!takesActivityKey(e.key, r, rows.length)) return
       if (r.toggle) {
         setShowing("key")
         toggle(r.toggle.id, r.toggle.expanded)
@@ -768,6 +808,15 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     },
     add(event) {
       handle.set(newest === "bottom" ? [...events, event] : [event, ...events])
+    },
+    update(next) {
+      if (next.newest) newest = next.newest
+      if (next.events) {
+        events = next.events
+        index = indexActivity(events)
+        for (const id of [...expanded]) if (!index.has(id)) expanded.delete(id)
+      }
+      sync("set")
     },
     select(id) {
       if (id !== null) {

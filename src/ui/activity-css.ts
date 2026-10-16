@@ -9,7 +9,7 @@ const open = springEasing((2 * Math.PI) / 0.22, 1)
 export const activityCss = `
 :where(.knobs-activity,.knobs-activity *){box-sizing:border-box}
 :where(.knobs-activity){color-scheme:dark}
-.knobs-ui.knobs-activity{position:relative;display:block;height:100%;overflow:auto;outline:none;scrollbar-width:thin;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;
+.knobs-ui.knobs-activity{position:relative;display:block;height:100%;overflow:auto;overflow-anchor:none;outline:none;scrollbar-width:thin;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;
   font:var(--ku-font-weight) var(--ku-font-size)/1.35 var(--ku-font);color:var(--ku-text);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased;
   --ka-gutter:var(--k-activity-gutter,28px);--ka-row:var(--k-activity-row,var(--ku-row));--ka-row-child:var(--k-activity-row-child,calc(var(--ka-row) - 6px));
   --ka-line:var(--k-activity-line,var(--ku-line-hi));--ka-select:var(--k-activity-select,var(--ku-wash-hi));--ka-hover:var(--k-activity-hover,var(--ku-wash));

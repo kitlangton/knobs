@@ -255,7 +255,8 @@ export function uiSections({
         current: e.id === last,
         ...(children ? { children: live(children, undefined) } : {}),
       }))
-    const view = () => live(story, story[story.length - 1]?.id)
+    let top = false
+    const view = () => live(story, (top ? story[0] : story[story.length - 1])?.id)
     const box = h("div", "ui-box")
     box.style.cssText += ";height:340px;padding:2px 0"
     s.slot.append(box)
@@ -275,7 +276,7 @@ export function uiSections({
         ? [e.actor, e.title ?? `${e.children?.length ?? 0} updates`].filter(Boolean).join(" · ")
         : id
     }
-    let rail = activity(box, {
+    const rail = activity(box, {
       theme: theme(),
       events: view(),
       label: "Activity",
@@ -312,7 +313,8 @@ export function uiSections({
     }
     btn("Add event", () => {
       const e = next[n++ % next.length]!
-      story = [...story, { ...e, id: `new-${n}`, ago: 0 }]
+      const added = { ...e, id: `new-${n}`, ago: 0 }
+      story = top ? [added, ...story] : [...story, added]
       update()
     })
     btn("Add to group", () => {
@@ -331,25 +333,14 @@ export function uiSections({
       update()
     })
     btn("Remove last", () => {
-      story = story.slice(0, -1)
+      story = top ? story.slice(1) : story.slice(0, -1)
       update()
     })
+    // The same rail, reversed in place: every row glides to its new place.
     btn("Newest on top", () => {
-      const top = rail.element.dataset.newest !== "top"
-      const selected = rail.selected
-      rail.destroy()
+      top = !top
       story = [...story].reverse()
-      rail = activity(box, {
-        theme: theme(),
-        events: view(),
-        selected,
-        newest: top ? "top" : "bottom",
-        label: "Activity",
-        onSelect: (id) => (status.textContent = describe(id)),
-        onActivate: (id) => toast(`Opened ${describe(id)}`),
-        onPlay: (id) => toast(`Playing ${describe(id)}`),
-      })
-      if (top) rail.element.dataset.newest = "top"
+      rail.update({ events: view(), newest: top ? "top" : "bottom" })
     })
     s.side.prepend(row, status)
   }

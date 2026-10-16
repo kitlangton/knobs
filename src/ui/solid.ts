@@ -218,6 +218,10 @@ export function Activity(props: ActivityProps): JSX.Element {
     () => props.selected,
     (id) => id !== undefined && id !== a.selected && a.select(id),
   )
+  follow(
+    () => props.newest,
+    (newest) => newest && a.update({ newest }),
+  )
   onCleanup(() => a.destroy())
   return host as unknown as JSX.Element
 }
