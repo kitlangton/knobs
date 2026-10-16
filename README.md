@@ -4,7 +4,7 @@ Embeddable, keyboard-first tuning controls for React, Solid, and plain DOM.
 
 Give a component a few knobs. Hover it to reveal a tiny cog and open a floating panel, or mount an inline panel directly into a sidebar or tuning dashboard. Explore a seed, a spring curve, a spacing, or a layout variant. Save the good variations. Copy constants back into your source and ship zero tuning UI in production.
 
-Each panel's header carries **Undo · Redo · Reset · Copy · Random** as icon buttons, quiet until the pointer or keyboard is in the panel. Random holds the corner with Copy beside it; they're always there. Undo shows while there's history, Redo while there's something to redo and Reset while anything differs from the defaults, each in a slot of its own that waits empty meanwhile, so they bloom in and out in place and nothing else in the header ever moves. Copy turns into a check for a moment once it has copied, and Reset's ↺ turns once each time it resets before it leaves (a press mid-turn adds another; with reduced motion it blinks instead). Hover washes come in at once and fade out. The header has no `?` button: `?` opens the shortcuts, as the title's tooltip says (`header: { buttons: [..., "help"] }` brings the button back, past Random with the close X). It sits above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die in its header's corner, with a reset icon beside it that shows (in its own slot, as the header's does) while the group differs from its defaults. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip, `⌫` on the strip deletes a saved one, and the `?` popover exports/imports them as JSON.
+Each panel's header carries **Undo · Redo · Reset · Copy · Random** as icon buttons, quiet until the pointer or keyboard is in the panel. Random holds the corner with Copy beside it; they're always there. Undo shows while there's history, Redo while there's something to redo and Reset while it has somewhere to go (back to the active preset, else the defaults), each in a slot of its own that waits empty meanwhile, so they bloom in and out in place and nothing else in the header ever moves. Copy turns into a check for a moment once it has copied, and Reset's ↺ turns once each time it resets before it leaves (a press mid-turn adds another; with reduced motion it blinks instead). Hover washes come in at once and fade out. The header has no `?` button: `?` opens the shortcuts, as the title's tooltip says (`header: { buttons: [..., "help"] }` brings the button back, past Random with the close X). It sits above a preset strip and inset-grouped cards of rows. Random is a die that tumbles when it rolls; `⌥`-click it (or press `⌥R`) to **mutate** instead: small changes around the current values, with a quarter turn of the die. Each group has its own quieter die in its header's corner, with a reset icon beside it that shows (in its own slot, as the header's does) while the group differs from its preset or defaults. **Lock** a row (`⇧L`, or the row's context menu) to keep it out of Random and Mutate; a small lock sits just left of its value. Hold **`\`** to see the values from before your last change, in the panel and your app alike. Shipped presets and your saved variants live together in that strip: `+` (or `⇧S`) saves the current values as a new chip and lets you type its name, `F2`, `Enter` or a double-click renames a saved one, `⌫` on the strip deletes one, and the `?` popover exports/imports them as JSON. The preset you applied last is the **base**: Reset goes back to it, and Random explores around it (see [Presets](#presets-names-and-the-base)).
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
@@ -273,7 +273,7 @@ Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle
 `axes`. Each kind takes
 `disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
 
-Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve).
+Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve). Switches sit out of Random and Mutate unless a field says `random: true`: they usually show or hide things (a view, a scene's part), and a roll that hides the page isn't a new take on it.
 
 ### Readouts: live values, sparklines, graphs, meters, tables and logs
 
@@ -317,6 +317,20 @@ live.watch("events", { level: "warn", text: "Gutter drip over budget" })
 
 Readouts cost nothing at rest. They draw on one shared clock, only while on screen and only when something arrived, so a paused feed lets the page, and the GPU overlay, sleep. Graphics are canvases redrawn from a list of drawing ops (the GPU overlay draws the same ops). Text changes at most `hz` times a second (4 by default), in boxes that only grow, so nothing reflows as numbers change. Scales snap to round steps (1, 2 or 5 × 10ⁿ) and ease there on a spring, in log space, so a spike rescales smoothly. The store keeps each readout's history, so a panel mounted later starts with it. On their own, outside a panel: `readout(sparkline({ unit: "ms" }), { preset })` from `knobs/ui` returns `{ element, push(value), value, dispose() }`.
 
+## Presets: names and the base
+
+The strip holds the schema's `presets` (and `default`) beside the variants you save. Saving (`+` or `⇧S`) puts a field where the new chip goes, its name ("Variant 3") selected so typing replaces it; `Enter` keeps what you typed, `Esc` keeps "Variant 3", and the field opens out to the chip's width without moving anything else. `F2` or `Enter` on the strip, or a double-click, renames a saved one the same way (`controls.variants.rename(id, name)`); names are kept with the variants in the store's storage. The schema's presets keep their names.
+
+The preset you apply last (a chip, `[` / `]`, a pan, `controls.preset(id)`, `variants.load(id)`, or a page card's preset for its group) becomes the **active preset**, the base for its scope:
+
+- **Reset climbs a ladder.** `⇧R`, the header's ↺, a group's ↺ and a row's reset go back to the active preset's values while anything differs from them; from there, the next reset goes to the defaults. Reaching the defaults with everything forgets the preset (so does applying Default); a group's reset forgets the group's own preset. With no active preset, Reset goes to the defaults, as always. Each reset icon shows while its reset has somewhere to go.
+- **Modified means off the base.** Rows' dots, the readout marks, the "Modified" filter and fold summaries compare with the active preset. Its chip stays selected; once the values drift from it the pill softens and a small dot in the chip's corner marks it modified. Clicking the chip again brings its values back.
+- **Random explores around it.** With an active preset, Random (`r`, the dice, `g`) draws near its values instead of anywhere: a number lands in a window 35% of its range wide, centred on the preset's value and slid inward at an end so it keeps that width. That's far enough to be a new take and near enough to stay recognisably that preset (Mutate moves 8–12% from the current values; a free roll covers all of it). Choices (and switches that opt in) keep the preset's pick 70% of the time; colours keep their family (hue within ±20°, lightness ±.06, chroma ±15% of what the hue can hold); springs, points, vectors, ranges, angles, easings, gradients and curves stay as near; seeds roll freely. A group preset is the base for its own keys; the others roll freely. Mutate still nudges the current values. `AROUND` (exported from `knobs`) holds the numbers.
+- **The `?` popover says so:** "Random around Storm / Back to Storm", then "Reset all to defaults" once you're there.
+- **Undo covers it:** applying a preset, each reset and each roll is one undo step, and undoing restores the active preset with the values. The active preset is kept with the values in storage.
+
+`controls.activePreset()` returns `{ kind: "preset" | "variant", id }` or null, `controls.activeGroupPreset(group)` the group's index or -1, `controls.baseValues()` what Reset returns to first, and `controls.canReset(keys?)` whether a reset would change anything. A reset back to a preset reaches `onChange` with `source: "reset"` and `base: true`; remote controls send its values with `onSet` (nulls only for a reset to the defaults), or call `onPreset` again for a group whose peer applies its own presets.
+
 ## Keyboard
 
 Panels and switchers are keyboard-first:
@@ -341,7 +355,7 @@ Panels and switchers are keyboard-first:
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply). With other panels or `knobs/ui` pieces on the page, it labels all of them (see [Hint mode across the page](#hint-mode-across-the-page)) |
 | `Tab` / `⇧Tab` | Next/previous control, wrapping inside floating panels |
 | `f` | Focus first row |
-| `r` / `⇧R` | Randomize / reset to defaults, scoped to focus: the selection, else the focused row, else the focused card (its group), else every field. Locked fields and `random: false` keep their values on Random, not on Reset. The header's die and reset icon always act on everything. A reset icon shows while what it resets differs from its defaults (the header's: anything; a group's: that group), and ⇧R on a group's card turns that group's ↺ as a click would |
+| `r` / `⇧R` | Randomize / reset, scoped to focus: the selection, else the focused row, else the focused card (its group), else every field. With an active preset, Random lands near it and Reset goes back to it, then to the defaults (see [Presets](#presets-names-and-the-base)). Locked fields, switches and `random: false` keep their values on Random, not on Reset. The header's die and reset icon always act on everything. A reset icon shows while its reset has somewhere to go (the header's: anything; a group's: that group), and ⇧R on a group's card turns that group's ↺ as a click would |
 | `⌥R` | Mutate, scoped the same way: nudge every unlocked value a little (numbers and points 8–12% of their range, colours a few degrees of hue and a touch of chroma and lightness, springs and curves slightly; choices and switches change about 15% of the time) |
 | `g` / `⌥G` | Randomize / mutate the focused row's whole group from any row in it (also the die beside each group's reset icon; `⌥`-click mutates) |
 | `⇧L` | Lock or unlock the focused row (or the selection) from Random and Mutate |
@@ -349,7 +363,8 @@ Panels and switchers are keyboard-first:
 | Right-click / `⇧F10` / `ContextMenu` | Menu for the row or selection: Lock from Random, Randomize, Reset, Copy; `↑↓`, a letter, `Enter`, `Esc` |
 | Hold `\` | Compare: show the values from before the last change while held (the title dims); nothing is recorded |
 | `⇧C` | Copy the current values (or the selected fields) as code |
-| `⇧S` | Save the current values as a new preset chip |
+| `⇧S` | Save the current values as a new preset chip and type its name (`Enter` keeps it, `Esc` keeps "Variant N") |
+| `F2` / `Enter` on the strip, double-click a chip | Rename a saved preset |
 | `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
 | `Esc` | Close the shortcuts popover; on a focused floating panel (nothing deeper focused), close it and restore focus to its chip |
@@ -1210,6 +1225,8 @@ const die = defineControls("die", schema, {
 })
 ```
 
+A reset that went back to the active preset rather than the defaults carries `base: true` in the third argument.
+
 `patch` holds only the fields that changed. The die page (`examples/die.ts`) rolls its demo dice this way.
 
 ## Explore in development. Ship constants.
@@ -1229,7 +1246,7 @@ The package has two core exports selected through the standard `development` con
 | --- | --- |
 | `knob(value, { min, max, step?, unit?, shortcut?, label?, group?, groupLabel?, section?, sectionLabel? })` | Numeric slider control with rolling readout and inline editor. |
 | `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
-| `toggle(value, { label?, group?, shortcut? }?)` | Boolean switch control. |
+| `toggle(value, { label?, group?, shortcut?, random? }?)` | Boolean switch control. Out of Random and Mutate unless `random: true`. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
 | `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |
 | `point({ x, y }, { min, max, step?, ...meta })` | 2D pad; bounds and step take a number or `{ x, y }`. |
@@ -1249,7 +1266,7 @@ The package has two core exports selected through the standard `development` con
 | `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
-| Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate; `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
+| Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
 | `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
@@ -1273,19 +1290,20 @@ The package has two core exports selected through the standard `development` con
 - `controls.action(key, item?)` — press an action row, or a toolbar's item
 - `controls.shortcut(key, item?)` / `controls.rebind(key, combo, item?)` — an action's (or toolbar button's) shortcut in force, and a rebinding saved with the values (`""` none, `undefined` back to the declared one)
 - `controls.watch(key, value)` / `controls.watched(key)` — push to a readout row (`null` clears it); the latest value
-- `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`
-- `controls.isModified(key?)` / `controls.modified()`
+- `controls.reset(keys?)` / `controls.resetKey(key)` / `controls.resetGroup(group)`: back to the active preset, else the defaults
+- `controls.isModified(key?)` (off the active preset, else the defaults) / `controls.canReset(keys?)` / `controls.modified()` (off the defaults)
 - `controls.undo()` / `controls.redo()` / `controls.canUndo` / `controls.canRedo`
 - `controls.randomize(keys?)` / `controls.mutate(keys?)`: skip locked fields; one undo step each
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
-- `controls.preset(id)` / `controls.matchingPreset()`
+- `controls.preset(id, { coalesce? })` / `controls.matchingPreset()`
+- `controls.activePreset()` / `controls.activeGroupPreset(group)` / `controls.baseValues()`: the base Reset returns to and Random explores around
 - `controls.groupPresets` / `controls.groupPreset(group, index, { coalesce? })` / `controls.matchingGroupPreset(group)` / `controls.groupPresetDisplay`
 - `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
 - `controls.groupDescription(group): string | undefined` / `controls.sectionDescription(section): string | undefined`: `groupDescriptions` / `sectionDescriptions`, else the fields' `groupDescription` / `sectionDescription`
 - `controls.groupFolded` / `controls.sectionFolded`: how groups and a page's sections start, as given to `defineControls` or `createRemoteControls` (`groupFolded?: Record<string, boolean>`, `sectionFolded?: SectionFolded`); mounts read them under their own
 - `controls.code("ts" | "json" | "jsx", values?)`
-- `controls.variants.list()` / `.save(name?)` / `.load(id)` / `.remove(id)` / `.export()` / `.import(json)`
+- `controls.variants.list()` / `.save(name?)` / `.load(id, { coalesce? })` / `.rename(id, name)` / `.remove(id)` / `.export()` / `.import(json)`
 - `controls.attach(element, chip?)` — floating chip + anchored panel; `chip` (`{ label?, reveal?, shortcut? }`) overrides the store's `chip` option
 - `controls.mount(container, options?)` — inline panel
 

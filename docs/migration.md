@@ -421,3 +421,27 @@ The outliner's type-ahead took the canvas's single-key shortcuts while it had fo
 typeahead: (key) => !"fgp".includes(key.toLowerCase()) })` leaves `F`, `G` and `P` to the window
 (`false` leaves every letter); a letter typed right after a jump still carries on its run, so
 "sig" still finds "Signpost". `examples/lab-workspace.ts` does this.
+
+### Changed defaults: switches out of Random, presets as the base
+
+Two defaults changed after `pan-everything`. Check them when syncing:
+
+- **Switches sit out of Random and Mutate.** A `toggle()` (and a `kind: "toggle"` or `"bool"`
+  descriptor) is now `random: false` unless it says `random: true`, as seeds and key combinations
+  already were. Switches usually show or hide things, and a roll that hides the scene isn't a new
+  take on it. The Lab's view switches (Invert look Y and the like) need nothing. Give
+  `random: true` to the switches a roll should try (a scene's part such as stars or fog), and drop
+  any `random: false` written only to keep a switch out. `tunable` still applies on top.
+- **The applied preset is the base.** Applying a preset (`preset(id)`, `variants.load(id)`, a
+  card's `groupPreset`) makes it the active preset. Reset (`reset`, `resetKey`, `resetGroup`, the
+  ↺ icons and ⇧R) goes back to its values first and to the defaults only from there; a reset to
+  the defaults of everything forgets it. `isModified` compares with it (`modified()` and `swift()`
+  still compare with the defaults), and Random draws near it (see `AROUND`). A reset back to a
+  preset reaches `onSet` as values with `meta.source === "reset"` and `meta.base === true`, not as
+  nulls, and `onReset` isn't called for it; a card whose group preset is the base calls `onPreset`
+  again instead when `onPreset` is given. The Lab's facade that read `onReset` as "back to
+  defaults" should check `meta.base`. `canReset(keys?)` says whether a reset would do anything;
+  `activePreset()`, `activeGroupPreset(group)` and `baseValues()` read the base. It's kept with the
+  values (`persist: "all"`) and undo restores it with them.
+- **Saved presets have names.** `variants.rename(id, name)`; the strip types a name on save and
+  renames on F2, Enter or a double-click.

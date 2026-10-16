@@ -624,7 +624,8 @@ const SKIES = {
     sky: gradient(SKIES.Clear, { label: "Sky by hour", presets: SKIES }),
     hour: knob(17.5, { min: 0, max: 24, step: 0.25, unit: "h", label: "Hour" }),
     clouds: knob(0.45, { min: 0, max: 1, step: 0.01, label: "Clouds" }),
-    stars: toggle(true, { label: "Stars" }),
+    // Stars are part of the look a roll should try, so this switch opts in to Random.
+    stars: toggle(true, { label: "Stars", random: true }),
   })
   mount(store, s.slot, { title: "Sky" })
   s.stage.style.display = "block"
@@ -978,9 +979,9 @@ let rowsSide!: HTMLElement
   const s = section({
     id: "presets",
     title: "Presets",
-    sub: "Presets for the whole panel and for one group.",
-    tip: "[ and ] step through them.",
-    shows: ["presets", "groupPresets"],
+    sub: "The preset you apply is the base: Reset comes back to it, Random plays around it.",
+    tip: "[ and ] step through. ⇧S saves one and names it; F2 or a double-click renames it.",
+    shows: ["presets", "groupPresets", "activePreset()", "variants.rename()"],
     stage: true,
   })
   const { store, on } = define(

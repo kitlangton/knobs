@@ -39,8 +39,8 @@ export function lampScene({ section, define, mount, h }: SceneKit) {
     scene: true,
   })
   const { store, on } = define("lamp", "Lamp", {
-    // Out of Random, so a roll never switches the lamp off.
-    on: toggle(true, { label: "Light", group: "bulb", groupLabel: "Bulb", random: false }),
+    // A switch sits out of Random, so a roll never switches the lamp off.
+    on: toggle(true, { label: "Light", group: "bulb", groupLabel: "Bulb" }),
     brightness: knob(800, {
       min: 0,
       max: 1600,
