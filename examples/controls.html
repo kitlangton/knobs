@@ -13,7 +13,7 @@
          .scroller, under a fixed top bar, so the WebGPU overlay clips panels at its edge. Nothing
          that holds a panel makes a stacking context (no transform, opacity or z-index on it). */
       :root {
-        --page: #101012; --card: #1c1c1e; --surface: rgba(255, 255, 255, .045); --surface-hi: rgba(255, 255, 255, .09);
+        --night: #101012; --page: var(--night); --card: #1c1c1e; --surface: rgba(255, 255, 255, .045); --surface-hi: rgba(255, 255, 255, .09);
         --line: rgba(255, 255, 255, .075); --text: rgba(255, 255, 255, .92); --label: rgba(255, 255, 255, .62);
         --dim: rgba(255, 255, 255, .4); --faint: rgba(255, 255, 255, .16); --accent: #fff; --pill: rgba(255, 255, 255, .13);
         --lift: 0 1px 2px rgba(0, 0, 0, .16); --warm: #ffb35c; --cool: #7cc4ff;
@@ -70,7 +70,7 @@
 
       /* The hero: hardware twins in the dark, always dark (in light mode too), its panel floating
          over the plate's right edge; below 900 px the panel sits under the plate. */
-      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 96px; overflow: hidden; background: #101012; color: rgba(255, 255, 255, .9); }
+      .hero { position: relative; height: clamp(560px, 82vh, 1000px); margin-bottom: 96px; overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
       .hero-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
       .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
       .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }

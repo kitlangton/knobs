@@ -37,7 +37,8 @@ const ENTRANCE = springMotion({ duration: 1.3, bounce: 0 })
 const WARM = springMotion({ duration: 0.28, bounce: 0 })
 const COOL = springMotion({ duration: 0.6, bounce: 0 })
 const SNAP = springMotion({ duration: 0.22, bounce: 0.25 })
-const PAGE = [16, 16, 18].map((c) => toLinear(c / 255))
+/** The refined still: this many jittered samples, averaged, once everything is at rest. */
+const STILL_SAMPLES = 24
 
 type V3 = readonly [number, number, number]
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -66,53 +67,19 @@ const project1 = (p: V3): [number, number] => {
   return [dot(d, RIGHT) / z, -dot(d, UP) / z]
 }
 
-/** Each twin: where it sits, how big it is, where its wire leaves it and which way it runs. */
-const TWINS: Record<
-  Key,
-  { at: V3; r: number; wire: V3; route: "up" | "down" | "out"; lane: number; cursor: string }
-> = {
-  keyLight: {
-    at: [-1.85, 0.3, -0.8],
-    r: 0.66,
-    wire: [-1.85, 0, -1.78],
-    route: "up",
-    lane: 2,
-    cursor: "grab",
-  },
-  finish: {
-    at: [0, 0.22, -0.8],
-    r: 0.58,
-    wire: [0, 0, -1.62],
-    route: "up",
-    lane: 1,
-    cursor: "pointer",
-  },
-  leds: {
-    at: [1.85, 0.25, -0.8],
-    r: 0.42,
-    wire: [2.3, 0, -0.8],
-    route: "out",
-    lane: 0,
-    cursor: "pointer",
-  },
-  spot: { at: [0, 0.3, 0.95], r: 0.62, wire: [0, 0, 1.86], route: "down", lane: 1, cursor: "move" },
-  shadow: {
-    at: [-1.9, 0.1, 0.95],
-    r: 0.36,
-    wire: [-1.9, 0, 1.86],
-    route: "down",
-    lane: 2,
-    cursor: "ns-resize",
-  },
-  accent: {
-    at: [1.85, 0.25, 0.95],
-    r: 0.56,
-    wire: [2.45, 0, 0.95],
-    route: "out",
-    lane: 0,
-    cursor: "grab",
-  },
-}
+/**
+ * Each twin: where it sits, how big it is and which side of it its wire leaves from. The sides
+ * (and the panel's row order) are the ones whose straight wires don't cross.
+ */
+const TWINS: Record<Key, { at: V3; r: number; side: "right" | "top" | "bottom"; cursor: string }> =
+  {
+    keyLight: { at: [-1.85, 0.3, -0.8], r: 0.66, side: "right", cursor: "grab" },
+    finish: { at: [0, 0.22, -0.8], r: 0.58, side: "right", cursor: "pointer" },
+    leds: { at: [1.85, 0.25, -0.8], r: 0.42, side: "bottom", cursor: "pointer" },
+    spot: { at: [0, 0.3, 0.95], r: 0.62, side: "top", cursor: "move" },
+    accent: { at: [1.85, 0.25, 0.95], r: 0.56, side: "right", cursor: "grab" },
+    shadow: { at: [-1.9, 0.1, 0.95], r: 0.36, side: "right", cursor: "ns-resize" },
+  }
 const KEYS = Object.keys(TWINS) as Key[]
 const FADER_L = 0.72
 
@@ -129,8 +96,8 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       finish: choice("Matte", FINISHES, { label: "Finish", display: "segmented" }),
       leds: toggle(true, { label: "LEDs" }),
       spot: point({ x: 0.42, y: 0.6 }, { min: 0, max: 1, step: 0.01, label: "Spot" }),
-      shadow: knob(45, { min: 0, max: 100, step: 1, unit: "%", label: "Shadow" }),
       accent: color("#ffa53d", { label: "Accent" }),
+      shadow: knob(45, { min: 0, max: 100, step: 1, unit: "%", label: "Shadow" }),
     },
     {
       defaultLabel: "Amber",
@@ -169,12 +136,23 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     .querySelector<HTMLElement>('[data-field="spot"] .knobs-x-head[aria-expanded="false"]')
     ?.click()
 
+  // The page's own dark, exactly: everything the light doesn't reach is this colour.
+  const night = getComputedStyle(document.documentElement).getPropertyValue("--night").trim()
+  const hex = /^#([0-9a-f]{6})$/i.exec(night)?.[1] ?? "101012"
+  const page = [0, 2, 4].map((i) => toLinear(parseInt(hex.slice(i, i + 2), 16) / 255)) as [
+    number,
+    number,
+    number,
+  ]
   const view = gpuView(stageEl, {
     wgsl: heroWgsl,
     label: "hero",
     tone: "neutral",
     bloom: 0.12,
     maxDpr: 1.5,
+    restDpr: 2,
+    base: page,
+    edge: 0.07,
   })
   const still = view ? null : cssStill(stageEl, h)
 
@@ -193,17 +171,14 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   const fit = () => {
     const w = stage.width || stageEl.clientWidth
     const hh = stage.height || stageEl.clientHeight
-    const hero = stageEl.getBoundingClientRect()
-    const pr = panelEl()?.getBoundingClientRect()
-    const panel =
-      pr && !narrow.matches
-        ? new DOMRect(pr.left - hero.left, pr.top - hero.top, pr.width, pr.height)
-        : null
-    // Left of the panel, passing 30 px under it; below the title, with room for the pool beneath.
-    const right = panel ? panel.left + 56 : w - Math.max(20, w * 0.05)
-    const left = Math.max(panel ? 40 : 20, right - (panel ? 820 : w))
-    const top = hh * (panel ? 0.16 : 0.1)
-    const bottom = hh * (panel ? 0.84 : 0.92)
+    const beside = !narrow.matches && !!panelEl()
+    // The plate below the title, with room for its pool; beside the panel, the two together are
+    // centred, the plate's right edge passing under the panel.
+    const pw = beside ? slot.offsetWidth : 0
+    const overlap = beside ? 56 : 0
+    const margin = beside ? 64 : 20
+    const top = hh * (beside ? 0.13 : 0.1)
+    const bottom = hh * (beside ? 0.81 : 0.86)
     let x0 = Infinity
     let x1 = -Infinity
     let y0 = Infinity
@@ -217,16 +192,25 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
           y0 = Math.min(y0, sy)
           y1 = Math.max(y1, sy)
         }
-    const focal = Math.min((right - left) / (x1 - x0), (bottom - top) / (y1 - y0))
+    const room = w - 2 * margin - pw + overlap
+    const focal = Math.min(room / (x1 - x0), (bottom - top) / (y1 - y0), beside ? 1900 : Infinity)
+    const plateW = focal * (x1 - x0)
+    const left = Math.max(margin, (w - (plateW + pw - overlap)) / 2)
     layout.focal = focal
-    layout.pp = [
-      // Beside the panel, its right edge passes under it; alone, it's centred.
-      panel ? right - focal * x1 : (left + right) / 2 - (focal * (x0 + x1)) / 2,
-      (top + bottom) / 2 - (focal * (y0 + y1)) / 2,
-    ]
+    layout.pp = [left - focal * x0, (top + bottom) / 2 - (focal * (y0 + y1)) / 2]
     layout.w = w
     layout.h = hh
-    layout.panel = panel
+    layout.panel = null
+    if (!beside) {
+      slot.style.right = ""
+      return
+    }
+    const panelLeft = left + plateW - overlap
+    const right = `${Math.round(w - panelLeft - pw)}px`
+    if (slot.style.right !== right) slot.style.right = right
+    const hero = stageEl.getBoundingClientRect()
+    const pr = panelEl()!.getBoundingClientRect()
+    layout.panel = new DOMRect(pr.left - hero.left, pr.top - hero.top, pr.width, pr.height)
   }
 
   // ── The springs ──
@@ -280,7 +264,7 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const data = view.data
     const v = (i: number, a: number, b: number, c: number, d: number) =>
       data.set([a, b, c, d], 4 + i * 4)
-    v(0, layout.pp[0], layout.pp[1], layout.focal, stage.active ? 1 : 3)
+    v(0, layout.pp[0], layout.pp[1], layout.focal, 0)
     v(1, CAM[0], CAM[1], CAM[2], clamp01(intro.x))
     v(2, RIGHT[0], RIGHT[1], RIGHT[2], ledOn)
     v(3, UP[0], UP[1], UP[2], k)
@@ -299,9 +283,47 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     v(10, toggleA.x, clamp01(shadowV.x), (spotX.x - 0.5) * 2 * TILT, (spotY.x - 0.5) * 2 * TILT)
     v(11, arrive[0]!, arrive[1]!, arrive[2]!, arrive[3]!)
     v(12, arrive[4]!, arrive[5]!, 0, 0)
-    v(13, PAGE[0]!, PAGE[1]!, PAGE[2]!, 0)
-    view.render()
+    v(13, page[0], page[1], page[2], 0)
+    // Moving: one quick sample a frame. At rest: the still, refined over the next frames.
+    cancelAnimationFrame(refining)
+    refining = 0
+    if (stage.active) {
+      sample = STILL_SAMPLES
+      view.render()
+    } else {
+      // From the next frame, so a draw that lands mid-change (a paint) doesn't start one.
+      sample = 0
+      refining = requestAnimationFrame(refine)
+    }
   })
+  // ── The still: jittered samples averaged at the full pixel ratio, then nothing ──
+  let sample = STILL_SAMPLES
+  let refining = 0
+  const inView = () => {
+    const r = stageEl.getBoundingClientRect()
+    return !document.hidden && r.bottom > 0 && r.top < innerHeight
+  }
+  const refine = () => {
+    refining = 0
+    if (!view || sample >= STILL_SAMPLES || !inView()) return
+    // R2 offsets (Roberts' low-discrepancy sequence) over the pixel, the first at its centre.
+    const jx = sample ? ((0.5 + sample * 0.7548776662) % 1) - 0.5 : 0
+    const jy = sample ? ((0.5 + sample * 0.569840291) % 1) - 0.5 : 0
+    view.data[4 + 3] = sample
+    view.data[4 + 12 * 4 + 2] = jx
+    view.data[4 + 12 * 4 + 3] = jy
+    if (view.render({ rest: true, sample })) sample++
+    if (sample < STILL_SAMPLES) refining = requestAnimationFrame(refine)
+  }
+  // Scrolled away or hidden mid-refinement: it carries on when it's back.
+  const resume = () => {
+    if (sample > 0 && sample < STILL_SAMPLES && !refining && inView())
+      refining = requestAnimationFrame(refine)
+  }
+  new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && resume()).observe(
+    stageEl,
+  )
+  document.addEventListener("visibilitychange", resume)
   const intro = stage.val(0, 0.001)
   const key = stage.val(0.7, 0.0005)
   const rotK = stage.val(-ARC + 2 * ARC * 0.7, 0.0005)
@@ -566,11 +588,28 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   wireBox.setAttribute("aria-hidden", "true")
   wireBox.append(svg)
   root.insertBefore(wireBox, slot)
+  // The wires pass under the other twins: a mask with a hole for each.
+  const SVG = "http://www.w3.org/2000/svg"
+  const mask = document.createElementNS(SVG, "mask")
+  mask.id = "hero-wire-mask"
+  mask.setAttribute("maskUnits", "userSpaceOnUse")
+  const maskBg = document.createElementNS(SVG, "rect")
+  maskBg.setAttribute("fill", "#fff")
+  const holes = KEYS.map(() => {
+    const e = document.createElementNS(SVG, "ellipse")
+    e.setAttribute("fill", "#000")
+    return e
+  })
+  mask.append(maskBg, ...holes)
+  const defs = document.createElementNS(SVG, "defs")
+  defs.append(mask)
+  svg.append(defs)
   const lines = KEYS.map(() => {
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g")
-    const halo = document.createElementNS("http://www.w3.org/2000/svg", "path")
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path")
-    const ends = [0, 1].map(() => document.createElementNS("http://www.w3.org/2000/svg", "circle"))
+    const g = document.createElementNS(SVG, "g")
+    const halo = document.createElementNS(SVG, "path")
+    const line = document.createElementNS(SVG, "path")
+    const ends = [0, 1].map(() => document.createElementNS(SVG, "circle"))
+    g.setAttribute("mask", "url(#hero-wire-mask)")
     halo.setAttribute("class", "halo")
     for (const c of ends) c.setAttribute("r", "2.2")
     g.append(halo, line, ...ends)
@@ -581,6 +620,14 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const row = panelEl()?.querySelector<HTMLElement>(`[data-field="${k}"]`)
     return row?.querySelector<HTMLElement>(".knobs-x-head") ?? row ?? null
   }
+  /** A twin on screen: its centre and its radii across and up the screen. */
+  const disc = (k: Key) => {
+    const t = TWINS[k]
+    const c = project(t.at)
+    const rx = Math.abs(project([t.at[0] + t.r, t.at[1], t.at[2]])[0] - c[0])
+    const ry = Math.abs(project([t.at[0], t.at[1], t.at[2] + t.r])[1] - c[1])
+    return { c, rx, ry }
+  }
   const wires = new Stage(wireBox, () => {
     const panel = layout.panel
     wireBox.style.display = panel ? "" : "none"
@@ -588,11 +635,17 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const hero = stageEl.getBoundingClientRect()
     const fade = clamp01((intro.x - 0.45) / 0.45)
     const css = oklabCss(accent.lab)
-    // Lanes above and below the plate for the twins whose straight line would cross others.
-    const top = Math.min(...[-3, 3].map((x) => project([x, 0, -2.05])[1]))
-    const bottom = Math.max(...[-3, 3].map((x) => project([x, -PT, 2.05])[1]))
+    maskBg.setAttribute("width", String(layout.w))
+    maskBg.setAttribute("height", String(layout.h))
     KEYS.forEach((k, i) => {
-      const t = TWINS[k]
+      const { c, rx, ry } = disc(k)
+      const hole = holes[i]!
+      hole.setAttribute("cx", c[0].toFixed(1))
+      hole.setAttribute("cy", c[1].toFixed(1))
+      hole.setAttribute("rx", (rx * 0.97).toFixed(1))
+      hole.setAttribute("ry", (ry * 0.97).toFixed(1))
+    })
+    KEYS.forEach((k, i) => {
       const row = rowFor(k)?.getBoundingClientRect()
       const parts = lines[i]!
       if (!row) {
@@ -600,31 +653,23 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
         return
       }
       parts.g.style.display = ""
+      const { c, rx, ry } = disc(k)
+      const side = TWINS[k].side
+      const start: [number, number] =
+        side === "right" ? [c[0] + rx, c[1]] : [c[0], c[1] + (side === "top" ? -ry : ry)]
       const end: [number, number] = [panel.left, row.top - hero.top + row.height / 2]
-      const start = project(t.wire)
-      const pts: [number, number][] = [start]
-      if (t.route === "out") {
-        const mid = start[0] + (end[0] - start[0]) * 0.5
-        pts.push([mid, start[1]], [mid, end[1]])
-      } else {
-        const lane = t.route === "up" ? top - 6 - 12 * t.lane : bottom + 6 + 12 * t.lane
-        // The outer lane turns nearer the panel, so no two lines cross.
-        const turn = panel.left - 16 - 18 * (t.route === "up" ? 3 - t.lane : t.lane)
-        pts.push([start[0], lane], [turn, lane], [turn, end[1]])
-      }
-      pts.push(end)
-      const d = rounded(pts, 9)
+      const d = `M${start[0].toFixed(1)} ${start[1].toFixed(1)} L${end[0].toFixed(1)} ${end[1].toFixed(1)}`
       const glow = clamp01(glows[i]!.x)
       parts.line.setAttribute("d", d)
       parts.halo.setAttribute("d", d)
       parts.g.style.color = css
       parts.line.style.opacity = ((0.2 + 0.8 * glow) * fade).toFixed(3)
       parts.halo.style.opacity = (0.35 * glow * fade).toFixed(3)
-      parts.ends[0]!.setAttribute("cx", px(start[0]).slice(0, -2))
-      parts.ends[0]!.setAttribute("cy", px(start[1]).slice(0, -2))
-      parts.ends[1]!.setAttribute("cx", px(end[0]).slice(0, -2))
-      parts.ends[1]!.setAttribute("cy", px(end[1]).slice(0, -2))
-      for (const c of parts.ends) c.style.opacity = ((0.35 + 0.65 * glow) * fade).toFixed(3)
+      parts.ends[0]!.setAttribute("cx", start[0].toFixed(1))
+      parts.ends[0]!.setAttribute("cy", start[1].toFixed(1))
+      parts.ends[1]!.setAttribute("cx", end[0].toFixed(1))
+      parts.ends[1]!.setAttribute("cy", end[1].toFixed(1))
+      for (const e of parts.ends) e.style.opacity = ((0.35 + 0.65 * glow) * fade).toFixed(3)
     })
   })
   const glows = KEYS.map(() => wires.val(0, 0.002))
@@ -677,27 +722,6 @@ function segDist(p: [number, number], a: readonly [number, number], b: readonly 
     ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / Math.max(1e-6, ab[0] ** 2 + ab[1] ** 2),
   )
   return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t)
-}
-
-/** A polyline with its corners rounded by up to `r`. */
-function rounded(pts: readonly [number, number][], r: number) {
-  const f = (n: number) => n.toFixed(1)
-  let d = `M${f(pts[0]![0])} ${f(pts[0]![1])}`
-  for (let i = 1; i < pts.length - 1; i++) {
-    const [px0, py0] = pts[i - 1]!
-    const [x, y] = pts[i]!
-    const [nx, ny] = pts[i + 1]!
-    const a = Math.hypot(x - px0, y - py0)
-    const b = Math.hypot(nx - x, ny - y)
-    const k = Math.min(r, a / 2, b / 2)
-    if (k < 0.5) {
-      d += ` L${f(x)} ${f(y)}`
-      continue
-    }
-    d += ` L${f(x + ((px0 - x) / a) * k)} ${f(y + ((py0 - y) / a) * k)} Q${f(x)} ${f(y)} ${f(x + ((nx - x) / b) * k)} ${f(y + ((ny - y) / b) * k)}`
-  }
-  const last = pts[pts.length - 1]!
-  return `${d} L${f(last[0])} ${f(last[1])}`
 }
 
 interface StillFrame {

@@ -6,10 +6,16 @@
 // spot is a disc light pointing down: a cone that falls off into black, soft shadows from its size
 // and a contact shadow; the finish morphs between powder-coat, brushed (anisotropic) and anodised
 // metal. LEDs are HDR emitters into the bloom. A spinning knob is rendered at several instants
-// across Argon's shutter and averaged; at rest a few sub-pixel samples anti-alias the frame.
+// across Argon's shutter and averaged. At rest the page refines the still: one jittered sample a
+// frame, averaged (controls-gpu's `render({ rest, sample })`).
+//
+// Everything unlit is exactly the page colour: the room's ambient brings a surface to it, the
+// floor is it, less a soft contact shadow, plus whatever light lands there, and every edge of the
+// frame fades to it. Detail finer than a pixel fades out (knurling at grazing angles, grain and
+// brushing, the edges of dots and lines), so a single sample doesn't sparkle.
 //
 // World: y up, the plate's top at y = 0, x right, z toward the viewer. Screen lengths are CSS px.
-// u.v[0]  principal point (px), focal (px), samples at rest
+// u.v[0]  principal point (px), focal (px), the still's sample (its noise seed)
 // u.v[1]  camera position, entrance (0 → 1)
 // u.v[2]  camera right, LEDs (0 → 1)
 // u.v[3]  camera up, key knob's value (0–1)
@@ -21,7 +27,7 @@
 // u.v[9]  key knob angle, and the angle each of key, colour and selector turns in a shutter
 // u.v[10] toggle angle (rad), fader value (0–1), joystick tilt x, z (rad)
 // u.v[11] each twin's LEDs arriving: key, selector, toggle, fader
-// u.v[12] joystick's and colour knob's LEDs arriving, unused, unused
+// u.v[12] joystick's and colour knob's LEDs arriving, the sample's jitter (device px)
 // u.v[13] page colour (linear)
 
 const PT = 0.32;
@@ -44,9 +50,37 @@ var<private> rotK: f32;
 var<private> rotC: f32;
 var<private> rotS: f32;
 var<private> jit: f32;
+/** The camera ray, and the world size of a device pixel where it is now. */
+var<private> rdir: vec3f;
+var<private> pixw: f32;
 
 fn sq(x: f32) -> f32 {
   return x * x;
+}
+/** Smooth value noise: band-limited, unlike a hash per cell. */
+fn vnoise(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let w = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash12(i), hash12(i + vec2f(1.0, 0.0)), w.x),
+    mix(hash12(i + vec2f(0.0, 1.0)), hash12(i + vec2f(1.0, 1.0)), w.x),
+    w.y,
+  );
+}
+/** How much of a detail `scale` cycles per unit survives at this pixel: none finer than ~2 px. */
+fn detail(scale: f32) -> f32 {
+  return 1.0 - smoothstep(0.22, 0.5, pixw * scale);
+}
+/** A line `hw` wide either side, its edge a pixel soft. */
+fn lineMask(d: f32, hw: f32) -> f32 {
+  let aw = max(0.003, pixw * 0.75);
+  return 1.0 - smoothstep(hw - aw, hw + aw, d);
+}
+/** 1 past `edge`, its step a pixel soft. */
+fn soft(edge: f32, x: f32) -> f32 {
+  let aw = max(0.002, pixw * 0.6);
+  return smoothstep(edge - aw, edge + aw, x);
 }
 fn rot2(p: vec2f, a: f32) -> vec2f {
   let c = cos(a);
@@ -91,7 +125,12 @@ fn sdHex(p: vec3f, r: f32, h: f32) -> f32 {
 /** A knurled knob: radius `r`, `h` tall, its grip a band of `n` ridges, turned by `a`. */
 fn sdKnob(q: vec3f, r: f32, h: f32, n: f32, a: f32) -> f32 {
   let band = smoothstep(0.07, 0.11, q.y) * (1.0 - smoothstep(h - 0.1, h - 0.06, q.y));
-  let grip = 0.016 * band * (0.5 + 0.5 * cos((ang(q.xz) - a) * n));
+  // The ridges crowd together toward the silhouette; once closer than a few pixels they smooth out.
+  let tang = vec3f(q.z, 0.0, -q.x) / max(length(q.xz), 1e-4);
+  let tv = dot(tang, rdir);
+  let period = 6.2831853 * r / n * sqrt(max(1.0 - tv * tv, 0.0));
+  let fine = smoothstep(2.5, 5.0, period / max(pixw, 1e-5));
+  let grip = 0.016 * band * fine * (0.5 + 0.5 * cos((ang(q.xz) - a) * n));
   let body = sdCyl(q, r - grip, h, 0.05);
   let skirt = sdCyl(q, r + 0.06, 0.05, 0.02);
   return min(body, skirt);
@@ -213,7 +252,8 @@ fn boxHit(ro: vec3f, rd: vec3f) -> vec2f {
 }
 
 fn normalAt(p: vec3f) -> vec3f {
-  let e = vec2f(0.0012, -0.0012);
+  let k = max(0.0012, 0.35 * pixw);
+  let e = vec2f(k, -k);
   return normalize(
     e.xyy * map(p + e.xyy).x + e.yyx * map(p + e.yyx).x + e.yxy * map(p + e.yxy).x + e.xxx * map(p + e.xxx).x,
   );
@@ -317,16 +357,15 @@ fn light(m: Mat, p: vec3f, n: vec3f, v: vec3f, sp: Light, sh: f32, ao: f32) -> v
   let ay = sqrt(m.ay * m.ay + widen);
   let fr = m.f0 + (vec3f(1.0) - m.f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
   let spec = fr * ggxAniso(n, h, m.t, ax, ay) / (4.0 * nv);
-  var col = (m.albedo * ndl + spec * ndl) * sp.e * sh;
-  // The room: almost black, a little of the page and the spot's own spill.
-  let page = u.v[13].rgb;
-  let amb = page * 1.6 + u.v[6].rgb * u.v[5].w * u.v[1].w * 0.0002;
-  col += (m.albedo + m.f0 * 0.5) * amb * ao * (0.6 + 0.4 * n.y);
-  return col + m.emit;
+  let col = (m.albedo * ndl + spec * ndl) * sp.e * sh;
+  // The room is the page: a surface the spot doesn't reach is the page colour, a little darker
+  // in its creases and on walls turned from the room.
+  let room = u.v[13].rgb * (0.5 + 0.5 * ao) * (0.8 + 0.2 * max(n.y, 0.0));
+  return col + room + m.emit;
 }
 
 fn finishes(p: vec3f, n: vec3f, top: bool, centre: vec2f) -> array<Mat, 3> {
-  let grain = hash12(floor(p.xz * 420.0)) - 0.5;
+  let grain = (vnoise(p.xz * 80.0) - 0.5) * detail(80.0);
   let accent = u.v[7].rgb;
   let tint = accent / max(max(accent.r, max(accent.g, accent.b)), 1e-4);
   var t = vec3f(1.0, 0.0, 0.0);
@@ -335,9 +374,12 @@ fn finishes(p: vec3f, n: vec3f, top: bool, centre: vec2f) -> array<Mat, 3> {
     t = normalize(vec3f(-r.y, 0.0, r.x) + vec3f(1e-4, 0.0, 0.0));
   }
   let e = vec3f(0.0);
-  let matte = Mat(vec3f(0.022) * (1.0 + 0.08 * grain), vec3f(0.035), 0.5, 0.5, t, e);
-  let line = hash12(vec2f(select(floor(p.z * 900.0), floor(length(p.xz - centre) * 900.0), top), 3.0)) - 0.5;
-  let brushed = Mat(vec3f(0.0), vec3f(0.6, 0.61, 0.63) * (1.0 + 0.12 * line), 0.08, 0.42, t, e);
+  let matte = Mat(vec3f(0.022) * (1.0 + 0.12 * grain), vec3f(0.035), 0.5, 0.5, t, e);
+  // Brushing: fine streaks along the stroke, each octave only while it's wider than a pixel.
+  let along = vec2f(select(p.z, length(p.xz - centre), top), 3.7);
+  let line = (vnoise(along * vec2f(70.0, 1.0)) - 0.5) * detail(70.0) +
+    (vnoise(along * vec2f(210.0, 1.0)) - 0.5) * 0.6 * detail(210.0);
+  let brushed = Mat(vec3f(0.0), vec3f(0.6, 0.61, 0.63) * (1.0 + 0.1 * line), 0.08, 0.42, t, e);
   let anod = Mat(vec3f(0.0), tint * 0.5 + vec3f(0.03), 0.22, 0.32, t, e);
   return array<Mat, 3>(matte, brushed, anod);
 }
@@ -351,8 +393,10 @@ fn led(lit: f32) -> Mat {
   return Mat(vec3f(0.012), vec3f(0.05), 0.1, 0.1, vec3f(1.0, 0.0, 0.0), u.v[7].rgb * 9.0 * lit);
 }
 
+/** A disc of radius `r`: its edge a quarter of it soft, and never less than a pixel. */
 fn dotMask(d: f32, r: f32) -> f32 {
-  return 1.0 - smoothstep(r * 0.75, r, d);
+  let w = max(r * 0.25, pixw * 1.2);
+  return 1.0 - smoothstep(r - w * 0.5, r + w * 0.5, d);
 }
 
 /** Markings, LEDs and screws on the plate's top; `base` is the plate's own finish. */
@@ -405,7 +449,7 @@ fn plateDecal(p: vec3f, m: Mat) -> Mat {
     let i = round((q.y + FADER_L) / (FADER_L / 4.0));
     let dz = abs(q.y + FADER_L - i * FADER_L / 4.0);
     let major = i - 2.0 * floor(i / 2.0) < 0.5;
-    let k = (1.0 - smoothstep(0.008, 0.014, dz)) * select(step(abs(q.x), 0.3), 1.0, major);
+    let k = lineMask(dz, 0.011) * select(1.0 - soft(0.3, abs(q.x)), 1.0, major);
     mm = mixMat(mm, paint(), k * 0.8);
   }
   q = pa - J;
@@ -413,7 +457,7 @@ fn plateDecal(p: vec3f, m: Mat) -> Mat {
   if (r > 0.64 && r < 0.84) {
     let a = ang(q);
     let near = abs(a - round(a / (PI * 0.5)) * PI * 0.5) * r;
-    mm = mixMat(mm, paint(), (1.0 - smoothstep(0.008, 0.014, near)) * 0.8);
+    mm = mixMat(mm, paint(), lineMask(near, 0.011) * 0.8);
   }
   // Screws in the corners.
   let sc = abs(pa) - vec2f(2.68, 1.73);
@@ -456,16 +500,16 @@ fn surface(fin: Mat, id: f32, p: vec3f, n: vec3f) -> Mat {
   } else if (id > 6.5 && id < 7.5 && up && p.y > 0.4) {
     // The key knob's pointer line.
     let lq = rot2(p.xz - K, -rotK);
-    let k = (1.0 - smoothstep(0.016, 0.024, abs(lq.x))) * step(-0.52, lq.y) * step(lq.y, -0.24);
+    let k = lineMask(abs(lq.x), 0.02) * soft(-0.52, lq.y) * (1.0 - soft(-0.24, lq.y));
     m = mixMat(m, paint(), k);
   } else if (id > 7.5 && id < 8.5 && up && p.y > 0.3) {
     let lq = rot2(p.xz - S, -rotS);
-    let k = (1.0 - smoothstep(0.014, 0.022, abs(lq.x))) * step(-0.44, lq.y) * step(lq.y, -0.2);
+    let k = lineMask(abs(lq.x), 0.018) * soft(-0.44, lq.y) * (1.0 - soft(-0.2, lq.y));
     m = mixMat(m, paint(), k);
   } else if (id > 8.5 && up) {
     let capZ = F.y + FADER_L - 2.0 * FADER_L * u.v[10].y;
-    let k = 1.0 - smoothstep(0.012, 0.02, abs(p.z - capZ));
-    m = mixMat(m, paint(), k * step(abs(p.x - F.x), 0.19));
+    let k = lineMask(abs(p.z - capZ), 0.016);
+    m = mixMat(m, paint(), k * (1.0 - soft(0.19, abs(p.x - F.x))));
   }
   return m;
 }
@@ -539,26 +583,33 @@ fn floorShade(p: vec3f, rd: vec3f) -> vec3f {
   if (max(sp.e.r, max(sp.e.g, sp.e.b)) > 1e-4) {
     sh = shadow(p + n * 0.004, sp.l, sp.dist);
   }
-  // A contact shadow tucked under the plate's edge.
-  let edge = sdRoundRect(p.xz, PLATE, 0.32);
-  let contact = 0.5 + 0.5 * smoothstep(0.0, 0.25, edge);
+  // The floor is the page, less a contact shadow darkest under the plate's edge and gone within
+  // a few centimetres, plus the light that lands on it.
+  let edge = max(sdRoundRect(p.xz, PLATE, 0.32), 0.0);
+  let contact = exp(-edge / 0.09);
   let m = Mat(vec3f(0.065), vec3f(0.03), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
-  return u.v[13].rgb * contact + light(m, p, n, -rd, sp, sh * contact, contact);
+  let lit = light(m, p, n, -rd, sp, sh * (1.0 - 0.6 * contact), 1.0) - u.v[13].rgb;
+  // The pool stays close round the plate, dissolving long before the frame's edge.
+  let near = exp(-sq(edge / 0.45)) * (1.0 - smoothstep(0.55, 1.0, edge));
+  return u.v[13].rgb * (1.0 - 0.7 * contact) + lit * near;
 }
 
 fn render(px: vec2f, tau: f32) -> vec4f {
-  jit = hash12(px * 3.1 + tau);
+  jit = hash12(px * 3.1 + tau + u.v[0].w * 17.13);
   rotK = u.v[9].x + u.v[9].y * tau;
   rotC = u.v[7].w + u.v[9].z * tau;
   rotS = u.v[8].w + u.v[9].w * tau;
   let cam = u.v[1].xyz;
   let d = px - u.v[0].xy;
   let rd = normalize(d.x * u.v[2].xyz - d.y * u.v[3].xyz + u.v[0].z * u.v[4].xyz);
+  rdir = rd;
+  let pixA = 1.0 / (u.v[0].z * u.frame.z);
   let bh = boxHit(cam, rd);
   if (bh.x < bh.y && bh.y > 0.0) {
     var t = max(bh.x, 0.0);
     for (var i = 0; i < 110; i++) {
       let p = cam + rd * t;
+      pixw = t * pixA;
       let h = map(p);
       if (h.x < 0.0006 * t) {
         return vec4f(shade(p, rd, h.y), h.y);
@@ -570,22 +621,25 @@ fn render(px: vec2f, tau: f32) -> vec4f {
     }
   }
   let tf = (-PT - cam.y) / rd.y;
+  pixw = tf * pixA;
   return vec4f(floorShade(cam + rd * tf, rd), -1.0);
 }
 
 fn scene(px: vec2f) -> vec3f {
   let dpr = u.frame.z;
-  let p = px / dpr;
-  // The hero fades to the page colour at its top and bottom, so it meets the page seamlessly.
+  let p = (px + u.v[12].zw) / dpr;
+  // Whatever the light does, every edge of the frame is the page colour.
   let size = u.frame.xy / dpr;
-  let edge = smoothstep(0.0, 0.1 * size.y, p.y) * smoothstep(0.0, 0.14 * size.y, size.y - p.y);
-  return mix(u.v[13].rgb, frame(px, p, dpr), edge);
+  let edge = smoothstep(0.0, 48.0, p.x) * smoothstep(0.0, 48.0, size.x - p.x) *
+    smoothstep(0.0, 0.08 * size.y, p.y) * smoothstep(0.0, 0.1 * size.y, size.y - p.y);
+  let page = u.v[13].rgb;
+  return page + (frame(px, p, dpr) - page) * edge;
 }
 
 fn frame(px: vec2f, p: vec2f, dpr: f32) -> vec3f {
   let first = render(p, 0.0);
-  // Spinning twins (key 7, colour 6, selector 8) take the shutter's samples; at rest, the frame's.
-  var n = i32(u.v[0].w);
+  // Spinning twins (key 7, colour 6, selector 8) take the shutter's samples.
+  var n = 1;
   let id = first.w;
   let spin = (id > 6.5 && id < 7.5 && u.v[9].y != 0.0) || (id > 5.5 && id < 6.5 && u.v[9].z != 0.0) ||
     (id > 7.5 && id < 8.5 && u.v[9].w != 0.0);

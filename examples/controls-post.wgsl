@@ -2,12 +2,14 @@
 // 13-tap filter down, Karis-weighted on the first level so a hot pixel can't flicker; a 3×3 tent
 // up, added onto the level above by the blend state), then exposure, a tone curve and blue-noise
 // dither into the canvas. AgX for lit scenes; for flat UI scenes a curve that leaves everything
-// under 0.8 exactly as drawn and only rolls highlights off.
+// under 0.8 exactly as drawn and only rolls highlights off. A scene on a base colour (its page)
+// has its bloom fade out before the canvas's edge, and no dither where it's exactly that colour.
 
 struct Post {
   texel: vec4f,  // the source's texel size (xy)
   params: vec4f, // x: 1 on the first level down, y: upsample radius, z: bloom mix, w: exposure
-  look: vec4f,   // x: tone (0 AgX, 1 neutral), y: vignette, z: saturation
+  look: vec4f,   // x: tone (0 AgX, 1 neutral), y: vignette, z: saturation, w: 1 with a base
+  base: vec4f,   // the base colour (linear), w: the edge the bloom fades over (fraction of a side)
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -132,7 +134,13 @@ fn fs_composite(in: FullOut) -> @location(0) vec4f {
   let scene = textureSampleLevel(src, samp, in.uv, 0.0).rgb;
   // Five levels were summed into the first, so a flat field blooms to itself: no veil.
   let bloom = textureSampleLevel(bloomTex, samp, in.uv, 0.0).rgb * 0.2;
-  var c = mix(scene, bloom, P.params.z) * P.params.w;
+  var c = mix(scene, bloom, P.params.z);
+  if (P.look.w > 0.5) {
+    let e = P.base.w;
+    let m = smoothstep(vec2f(0.0), vec2f(e), in.uv) * smoothstep(vec2f(0.0), vec2f(e), 1.0 - in.uv);
+    c = mix(scene, c, m.x * m.y);
+  }
+  c *= P.params.w;
   let d = in.uv - 0.5;
   c *= 1.0 - P.look.y * dot(d, d) * 1.6;
   if (P.look.x < 0.5) {
@@ -150,6 +158,12 @@ fn fs_composite(in: FullOut) -> @location(0) vec4f {
     textureLoad(noise, (p + vec2i(23, 41)) % 64, 0).r,
     textureLoad(noise, (p + vec2i(47, 11)) % 64, 0).r,
   );
-  o += (n - 0.5) / 255.0;
+  var amount = 1.0;
+  if (P.look.w > 0.5) {
+    // Flat page stays its exact code value; the dither comes in as the signal leaves it.
+    let d = abs(o - toSrgb(P.base.rgb));
+    amount = smoothstep(0.25 / 255.0, 2.0 / 255.0, max(d.r, max(d.g, d.b)));
+  }
+  o += (n - 0.5) / 255.0 * amount;
   return vec4f(o, 1.0);
 }
