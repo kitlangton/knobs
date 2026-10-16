@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { commandScope, digitHints, digitOption, escapeTo, scopeLabel } from "../src/panel/scope.js"
+import {
+  commandScope,
+  crumbTrail,
+  digitHints,
+  digitOption,
+  escapeTo,
+  escTarget,
+  fitCrumbs,
+  scopeLabel,
+  scopeTargets,
+} from "../src/panel/scope.js"
 
 describe("Esc's ladder", () => {
   it("climbs a level a press: row, card, panel, then out", () => {
@@ -57,5 +67,54 @@ describe("digits on a row with options", () => {
     expect(digitHints(14, false)).toEqual(["1–9"])
     expect(digitHints(1, false)).toEqual(["1"])
     expect(digitHints(0, true)).toEqual([])
+  })
+})
+
+describe("what a scoped command lights", () => {
+  const at = { selection: ["a", "b"], row: "row", card: "card", panel: "panel" }
+  it("lights the selection, the row, the card or the panel", () => {
+    expect(scopeTargets("selection", at)).toEqual(["a", "b"])
+    expect(scopeTargets("row", at)).toEqual(["row"])
+    expect(scopeTargets("group", at)).toEqual(["card"])
+    expect(scopeTargets("all", at)).toEqual(["panel"])
+  })
+  it("falls back to the panel when the level isn't there", () => {
+    expect(scopeTargets("row", { panel: "p" })).toEqual(["p"])
+    expect(scopeTargets("group", { panel: "p" })).toEqual(["p"])
+    expect(scopeTargets("selection", { selection: [], panel: "p" })).toEqual(["p"])
+  })
+})
+
+describe("the scope line", () => {
+  it("names each focused level in order, the deepest last", () => {
+    expect(crumbTrail({ card: "Shape", row: "Cohesion" })).toEqual([
+      { level: "card", label: "Shape" },
+      { level: "row", label: "Cohesion" },
+    ])
+    expect(crumbTrail({ card: "Shape", row: "Tint", editor: "Hue" }).map((c) => c.label)).toEqual([
+      "Shape",
+      "Tint",
+      "Hue",
+    ])
+    expect(crumbTrail({})).toEqual([])
+    expect(crumbTrail({ card: " ", row: "Cohesion" })).toEqual([
+      { level: "row", label: "Cohesion" },
+    ])
+  })
+  it("says where Esc goes: the crumb above, else the panel, nothing at the panel", () => {
+    expect(escTarget(crumbTrail({ card: "Shape", row: "Cohesion" }), "Swarm")).toBe("Shape")
+    expect(escTarget(crumbTrail({ card: "Shape" }), "Swarm")).toBe("Swarm")
+    expect(escTarget(crumbTrail({ card: "Shape" }), "")).toBe("panel")
+    expect(escTarget([], "Swarm")).toBeUndefined()
+  })
+  it("folds the first crumbs into … when the trail doesn't fit, keeping the deepest", () => {
+    expect(fitCrumbs([40, 50], 200, 10, 8)).toEqual({ from: 0, hint: false })
+    expect(fitCrumbs([40, 50, 30], 110, 10, 8)).toEqual({ from: 1, hint: false })
+    expect(fitCrumbs([40, 50, 30], 20, 10, 8)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([], 100, 10, 8)).toEqual({ from: 0, hint: false })
+  })
+  it("shows the Esc hint only when it fits too", () => {
+    expect(fitCrumbs([40], 100, 10, 8, 50)).toEqual({ from: 0, hint: true })
+    expect(fitCrumbs([40], 90, 10, 8, 50)).toEqual({ from: 0, hint: false })
   })
 })
