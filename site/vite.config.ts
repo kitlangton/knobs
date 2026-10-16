@@ -6,7 +6,7 @@ const siteDir = import.meta.dirname
 const rootDir = resolve(siteDir, "..")
 const examplesDir = resolve(rootDir, "examples")
 const port = Number(process.env.PORT) || 5196
-const examples = ["studies", "meta", "die", "contracts", "tune", "problems"]
+const examples = ["controls", "lab", "studies", "meta", "die", "contracts", "tune", "problems"]
 
 // `/examples/<page>.html` serves the example page from `examples/` unchanged: the stub in
 // site/examples names the page, and its script resolves to the source through `/@examples/`.
@@ -32,7 +32,7 @@ function examplePages(): Plugin {
     // those in public/_redirects.
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const page = req.url?.match(/^\/(meta|die|contracts|tune|problems)\.html/)?.[1]
+        const page = req.url?.match(/^\/(controls|lab|meta|die|contracts|tune|problems)\.html/)?.[1]
         if (!page) return next()
         res.statusCode = 302
         res.setHeader("Location", `/examples/${page}.html`)
@@ -85,6 +85,9 @@ export default defineConfig({
       { find: /^knobs\/solid$/, replacement: resolve(rootDir, "src/solid/index.ts") },
       { find: /^knobs\/panel$/, replacement: resolve(rootDir, "src/panel/index.ts") },
       { find: /^knobs\/themes$/, replacement: resolve(rootDir, "src/themes/index.ts") },
+      { find: /^knobs\/ui$/, replacement: resolve(rootDir, "src/ui/index.ts") },
+      { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "src/ui/react.tsx") },
+      { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "src/ui/solid.ts") },
     ],
   },
   plugins: [examplePages()],
