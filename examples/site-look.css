@@ -72,16 +72,6 @@
   inherits: true;
   initial-value: 1;
 }
-@property --plate {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-@property --plate-r {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
 
 :root {
   --kicker: var(--dim);
@@ -90,18 +80,25 @@
   --cat-track: 0.05em;
 }
 
-/* ── The masthead ── */
-/* One band: the title and its copy on the left, the knob that runs the page beside them, its
-   foot on the copy's, so the title, the knob and the Swarm under them read as one header. */
+/* ── The masthead: the page's front door ── */
+/* The title over its copy on the left, the panel that runs the page on the right, its top on the
+   title's and the copy's foot on its own, all over one rule. The title is sized from its column
+   (the masthead is a container), so no face, size or width setting can push it under the panel. */
 .masthead {
-  --mast: clamp(84px, 14.5vw, 224px);
-  max-width: 1380px;
-  margin: 0 auto;
-  padding: clamp(20px, 3vw, 44px) clamp(20px, 4vw, 56px) clamp(26px, 2.8vw, 40px);
+  --knob-w: clamp(400px, 34cqi, 460px);
+  --gap: clamp(28px, 4vw, 64px);
+  --col: calc(100cqi - var(--knob-w) - var(--gap));
+  --mast: clamp(72px, calc(var(--col) * 0.29), 236px);
+  container-type: inline-size;
+  max-width: calc(var(--page-w, 1180px) + 200px);
+  margin: 0 auto calc(8px * var(--density, 1));
+  padding: clamp(24px, 3.4vw, 52px) clamp(20px, 4vw, 56px) clamp(28px, 3vw, 44px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(360px, 36%, 460px);
+  grid-template-columns: minmax(0, 1fr) clamp(400px, 34%, 460px);
+  grid-template-rows: auto 1fr;
   grid-template-areas: "title knob" "copy knob";
-  gap: 0 clamp(28px, 4vw, 56px);
+  gap: 0 var(--gap);
+  border-bottom: var(--rule, 1px) solid var(--line);
 }
 .mast-title {
   grid-area: title;
@@ -142,7 +139,9 @@
   translate: calc(var(--t-align) * -100%) 0;
   white-space: nowrap;
   mix-blend-mode: plus-lighter;
-  font-size: calc(var(--t-size) * 1em);
+  /* As large as the look asks, but never wider than the column: each face is capped by its own
+     widest (weight 900, tracking at its most open), so it's continuous in every setting. */
+  font-size: min(calc(var(--t-size) * 1em), calc(var(--col) / var(--widest)));
   font-weight: var(--t-weight);
   letter-spacing: var(--t-track);
   font-kerning: normal;
@@ -153,12 +152,14 @@
     color-mix(in srgb, var(--accent) calc(var(--t-glow) * 55%), transparent);
 }
 .mast-ink > [data-font="sans"] {
+  --widest: 3.04;
   opacity: var(--f-sans);
   -webkit-mask-image: var(--m-sans, none);
   mask-image: var(--m-sans, none);
   font-family: system-ui, -apple-system, "SF Pro Display", "Segoe UI", sans-serif;
 }
 .mast-ink > [data-font="serif"] {
+  --widest: 2.73;
   opacity: var(--f-serif);
   -webkit-mask-image: var(--m-serif, none);
   mask-image: var(--m-serif, none);
@@ -166,6 +167,7 @@
   font-optical-sizing: auto;
 }
 .mast-ink > [data-font="mono"] {
+  --widest: 3.09;
   opacity: var(--f-mono);
   -webkit-mask-image: var(--m-mono, none);
   mask-image: var(--m-mono, none);
@@ -173,6 +175,7 @@
   text-transform: uppercase;
 }
 .mast-ink > [data-font="wide"] {
+  --widest: 4.12;
   opacity: var(--f-wide);
   -webkit-mask-image: var(--m-wide, none);
   mask-image: var(--m-wide, none);
@@ -181,14 +184,17 @@
 
 .mast-copy {
   grid-area: copy;
-  margin-top: clamp(14px, 1.8vw, 26px);
+  align-self: end;
+  padding-top: clamp(18px, 2vw, 28px);
 }
 .mast-sub {
   margin: 0;
-  max-width: 34ch;
+  max-width: 36ch;
   color: var(--label);
-  font-size: 15px;
+  font-size: calc(16px * var(--bs, 1));
   line-height: 1.45;
+  letter-spacing: var(--body-track, 0em);
+  text-wrap: pretty;
 }
 .mast-now::before {
   content: var(--look-name, "Night");
@@ -202,24 +208,27 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* The knob: a real panel, larger. Its rows and type are set here, so both renderers draw it so. */
+/* The panel: a real one, a little larger. Its rows and type are set here, so both renderers draw
+   it so. It holds the height of its tallest tab, before it mounts too, so nothing below moves. */
 .mast-knob {
   grid-area: knob;
-  align-self: end;
+  align-self: start;
   min-width: 0;
-  /* The panel's height, held before it mounts, so nothing below moves when it does. */
-  min-height: 144px;
-  --k-row: 44px;
-  --k-font-size: 14px;
+  min-height: 366px;
+  --k-row: 38px;
+  --k-font-size: 13px;
 }
 .mast-knob .knobs-panel {
   --k-width: 100%;
 }
 @media (max-width: 820px) {
   .masthead {
+    --col: 100cqi;
+    --mast: clamp(64px, 26cqi, 180px);
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
     grid-template-areas: "title" "copy" "knob";
-    gap: 18px;
+    gap: 22px;
   }
 }
 
@@ -254,6 +263,7 @@
   --k-glass-tone: inherit;
   --k-shadow: inherit;
   --k-shadow-strength: inherit;
+  --k-lift: inherit;
   color-scheme: inherit;
 }
 /* The loop writes every frame: nothing else eases behind it. */
@@ -271,13 +281,49 @@
   --k-hover-t: 0s;
 }
 
-/* The Swarm sits on its own night, as a plate inset from the page where the look asks. */
-:root[data-site-look] .hero {
+/* The page: its width, its body's size and tracking, and grain on its ground (under everything,
+   so cards show it only through their washes). */
+:root[data-site-look] body {
   background: transparent;
+  font-size: var(--body, 13px);
 }
-:root[data-site-look] .hero-stage {
-  background: var(--night);
-  clip-path: inset(var(--plate) round var(--plate-r));
+:root[data-site-look] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: calc(var(--grain, 0) * 0.32);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 2.2 -.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-site-look] .layout {
+  max-width: var(--page-w, 1180px);
+  letter-spacing: var(--body-track, 0em);
+}
+:root[data-site-look] section.demo header p {
+  font-size: calc(13px * var(--bs, 1));
+}
+:root[data-site-look] :is(.note, .index a, .strip a) {
+  font-size: calc(12.5px * var(--bs, 1));
+}
+:root[data-site-look] .cathead {
+  font-size: calc(11px * var(--bs, 1));
+}
+
+/* The surface: raised cards on a soft shadow, or flat ones drawn by a hairline. */
+:root[data-site-look] :is(.stage, .ui-box, .host) {
+  box-shadow:
+    0 calc(var(--raise, 0) * 14px) calc(var(--raise, 0) * 34px) calc(var(--raise, 0) * -12px)
+    rgb(0 0 0 / calc(var(--raise, 0) * 0.34)),
+    0 calc(var(--raise, 0) * 1px) calc(var(--raise, 0) * 2px)
+    rgb(0 0 0 / calc(var(--raise, 0) * 0.08)),
+    inset 0 0 0 calc(var(--flat, 0) * 1px + var(--raise, 0) * 0.5px) var(--line);
+}
+:root[data-site-look] .host {
+  box-shadow:
+    0 calc(var(--raise, 0) * 14px) calc(var(--raise, 0) * 34px) calc(var(--raise, 0) * -12px)
+    rgb(0 0 0 / calc(var(--raise, 0) * 0.34)),
+    inset 0 0 0 1px var(--line);
 }
 
 /* The catalog's chrome: rhythm, rules, headings, corners. */
@@ -286,7 +332,7 @@
   border-top-width: var(--rule);
 }
 :root[data-site-look] section.demo h2 {
-  font-size: calc(17px * var(--h-size));
+  font-size: calc(17px * var(--h-size) * var(--bs, 1));
   font-weight: var(--h-weight);
   letter-spacing: var(--h-track);
 }

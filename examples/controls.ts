@@ -1,5 +1,5 @@
-// knobs' home page: every control, down one scrolling page. A hero first (Swarm: a GPU flock read by
-// a tactical display and steered by the panel beside it, hero-swarm.ts); then a few scenes, each one panel of several
+// knobs' home page: every control, down one scrolling page. A header first, whose panel runs the
+// page itself (site-look.ts); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
@@ -72,7 +72,6 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
-import { mountHeroSwarm } from "./hero-swarm"
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
@@ -300,10 +299,6 @@ export interface SceneKit {
   readonly theme: () => "dark" | "light"
 }
 const kit: SceneKit = { section, define, mount, h, theme: () => theme }
-
-// ── Hero ─────────────────────────────────────────────────────────────────────────────────────
-
-const swarm = mountHeroSwarm(document.getElementById("hero")!)
 
 // ── Scenes ───────────────────────────────────────────────────────────────────────────────────
 
@@ -1441,13 +1436,12 @@ function syncRendererLinks() {
 }
 syncRendererLinks()
 
-// The header's knob: the whole page's look. The top bar's toggle glides it to the nearest theme
-// of the other polarity, and crossing between light and dark restyles as the toggle did.
+// The header's panel: the whole page's settings. The top bar's toggle glides its theme to the
+// nearest one of the other polarity, and crossing between light and dark restyles as the toggle did.
 const look = mountSiteLook({
   slot: document.getElementById("look")!,
   title: document.querySelector<HTMLElement>(".mast-ink"),
   panel: panelOptions(),
-  swarm,
   onPolarity: (dark) => setTheme(dark ? "dark" : "light"),
 })
 
