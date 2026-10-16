@@ -1,9 +1,10 @@
-// The Lab's Live dock: readouts fed by the viewport's WebGPU scene (examples/lab-scene.ts). A frame
-// graph, live values, sparklines, budget meters, a pass table and an event log, in two knobs panels
-// (DOM, or ?gpu for the overlay). ❚❚ in the top bar pauses the scene and its feed; paused, every
-// readout sleeps.
+// The Lab's dock, three knobs panels (DOM, or ?gpu for the overlay) whose groups are its sections:
+// Variants and Compare, which the viewport's WebGPU scene answers (examples/lab-scene.ts), and
+// readouts it feeds: a frame graph, live values, sparklines, budget meters, a pass table and an
+// event log. ❚❚ in the top bar pauses the scene and its feed; paused, every readout sleeps.
 // ?sparks=20 adds twenty more sparklines (the perf check).
 import {
+  choice,
   type Controls,
   defineControls,
   graph,
@@ -12,10 +13,12 @@ import {
   type Schema,
   sparkline,
   table,
+  toolbar,
   watch,
 } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { lookOptions } from "./lab-look"
+import { VARIANTS } from "./lab-scene-params"
 
 const params = new URLSearchParams(location.search)
 const gpu = params.has("gpu")
@@ -26,6 +29,29 @@ const sparks = Object.fromEntries(
     `spark${i}`,
     sparkline({ label: `Emitter ${i + 1}`, unit: "k", group: "emitters", groupLabel: "Emitters" }),
   ]),
+)
+let applyVariant: (name: string) => void = () => {}
+/** Variants are one-shot applies, so buttons with ⇧1–⇧5 caps; Compare is a mode, so segments. */
+export const sets = defineControls(
+  "lab-sets",
+  {
+    variants: toolbar(
+      Object.keys(VARIANTS).map((name, i) => ({
+        id: name,
+        label: name,
+        shortcut: `Shift+${i + 1}`,
+        global: true,
+      })),
+      { label: "Variants", group: "variants", groupLabel: "Variants" },
+    ),
+    compare: choice("none", ["none", "wipe", "grid"], {
+      label: "Mode",
+      labels: { none: "Off", wipe: "A/B wipe", grid: "Grid" },
+      group: "compare",
+      groupLabel: "Compare",
+    }),
+  },
+  { storage: null, enabled: true, onAction: (name) => applyVariant(name) },
 )
 export const live = defineControls(
   "lab-live",
@@ -132,12 +158,17 @@ let running = !params.has("paused")
 let driver: LiveDriver | null = null
 let nextTable = 0
 
-export function startLive(liveHost: HTMLElement, diagHost: HTMLElement) {
-  const panels = [mount(live, liveHost), mount(diag, diagHost)]
+export function startLive(setsHost: HTMLElement, liveHost: HTMLElement, diagHost: HTMLElement) {
+  const panels = [mount(sets, setsHost), mount(live, liveHost), mount(diag, diagHost)]
   return {
     panels,
+    sets,
     live,
     diag,
+    /** What a Variants button (or its ⇧digit) does: the scene applies the set. */
+    onVariant(f: (name: string) => void) {
+      applyVariant = f
+    },
     get running() {
       return running
     },

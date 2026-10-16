@@ -350,6 +350,7 @@ const moveTo = (ids: readonly string[], parent: string) => {
 export const sceneTime = startTimeline(center.pane("timeline").body)
 
 export const liveFeed = startLive(
+  document.getElementById("sets")!,
   document.getElementById("live")!,
   document.getElementById("diag")!,
 )
