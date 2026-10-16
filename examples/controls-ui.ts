@@ -1,12 +1,17 @@
 // The catalog's knobs/ui sections: a split with collapsing panes, an outliner,
 // menus and a context menu, a popover and tooltips, the command palette, confirms
 // and toasts.
+import { type Knob, knob, type MountPanelOptions } from "knobs"
+import { mountPanel } from "knobs/panel"
 import {
+  activity,
+  type ActivityEvent,
   applyMove,
   confirm,
   contextMenu,
   type MenuEntry,
   menu,
+  optionPicker,
   popover,
   split,
   toast,
@@ -16,7 +21,15 @@ import {
 import type { SceneKit } from "./controls"
 import { blurFor, clamp01, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
 
-export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h" | "theme">) {
+export function uiSections({
+  section,
+  h,
+  theme,
+  define,
+  panelOptions,
+}: Pick<SceneKit, "section" | "h" | "theme" | "define"> & {
+  panelOptions: () => MountPanelOptions
+}) {
   // ── split ──
   {
     const s = section({
@@ -163,6 +176,281 @@ export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h"
         outline.update(items)
       },
     })
+  }
+
+  // ── activity ──
+  {
+    const s = section({
+      id: "activity",
+      title: "Activity",
+      sub: "A rail of what happened, on one continuous line.",
+      tip: "Click it, then ↑↓ to move, ←→ to fold a group, Enter.",
+      shows: ["activity()"],
+    })
+    const thumb = (a: string, b: string) =>
+      `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="36" height="36" fill="url(#g)"/></svg>`)}`
+    type Ev = Omit<ActivityEvent, "children" | "time"> & { ago: number; children?: Ev[] }
+    let story: Ev[] = [
+      {
+        id: "asked",
+        kind: "you",
+        actor: "You",
+        title: "This can just be a knobs component, some kind of action timeline",
+        ago: 48,
+      },
+      { id: "picked", kind: "agent", actor: "Agent", title: "Picked it up", ago: 46, dimmed: true },
+      {
+        id: "work",
+        kind: "agent",
+        actor: "Agent",
+        ago: 40,
+        children: [
+          { id: "w1", kind: "agent", title: "Read the task page and its rail", ago: 44 },
+          { id: "w2", kind: "agent", title: "Sketched the API from the call site", ago: 42 },
+          { id: "w3", kind: "agent", title: "Drew the line as one path", ago: 40 },
+        ],
+      },
+      {
+        id: "proposal",
+        kind: "proposal",
+        actor: "Proposal",
+        title: "Three rails: hairline, beads, branch",
+        ago: 31,
+        thumbs: [
+          thumb("#5e5ce6", "#bf5af2"),
+          thumb("#64d2ff", "#0a84ff"),
+          thumb("#ffd60a", "#ff9f0a"),
+        ],
+      },
+      {
+        id: "review",
+        kind: "review",
+        actor: "Review",
+        title: "Walkthrough of the beads rail",
+        duration: 32,
+        ago: 28,
+      },
+      {
+        id: "reply",
+        kind: "you",
+        actor: "You",
+        title: "Beads. Children on the same rail, smaller.",
+        duration: 12,
+        ago: 20,
+      },
+      { id: "build", kind: "build", actor: "Build", title: "typecheck · tests · build", ago: 12 },
+      {
+        id: "pr",
+        kind: "pr",
+        actor: "GitHub",
+        title: "#412 Activity rail and option picker",
+        ago: 6,
+      },
+    ]
+    const age = (m: number) => (m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`)
+    const live = (list: Ev[], last: string | undefined): ActivityEvent[] =>
+      list.map(({ ago, children, ...e }) => ({
+        ...e,
+        time: age(ago),
+        current: e.id === last,
+        ...(children ? { children: live(children, undefined) } : {}),
+      }))
+    const view = () => live(story, story[story.length - 1]?.id)
+    const box = h("div", "ui-box")
+    box.style.cssText += ";height:340px;padding:2px 0"
+    s.slot.append(box)
+    const status = h("p")
+    status.style.cssText = "margin:0;color:var(--label);font-size:12px;min-height:18px"
+    status.textContent = "Nothing selected"
+    const find = (id: string, list: Ev[] = story): Ev | undefined => {
+      for (const e of list) {
+        if (e.id === id) return e
+        const c = e.children && find(id, e.children)
+        if (c) return c
+      }
+    }
+    const describe = (id: string) => {
+      const e = find(id)
+      return e
+        ? [e.actor, e.title ?? `${e.children?.length ?? 0} updates`].filter(Boolean).join(" · ")
+        : id
+    }
+    let rail = activity(box, {
+      theme: theme(),
+      events: view(),
+      label: "Activity",
+      expanded: [],
+      onSelect: (id) => (status.textContent = describe(id)),
+      onActivate: (id) => toast(`Opened ${describe(id)}`),
+      onPlay: (id) => toast(`Playing ${describe(id)}`),
+    })
+    const update = () => rail.set(view())
+    // A minute passes every few seconds: the times roll, and nothing else moves.
+    setInterval(() => {
+      const tick = (list: Ev[]) =>
+        list.forEach((e) => {
+          e.ago++
+          if (e.children) tick(e.children)
+        })
+      tick(story)
+      update()
+    }, 4000)
+    const next = [
+      { kind: "agent", actor: "Agent", title: "Answered the review: the line grows with the rows" },
+      { kind: "you", actor: "You", title: "Ship it", duration: 4 },
+      { kind: "build", actor: "Build", title: "Deploy preview · 41s" },
+      { kind: "blocked", actor: "Agent", title: "Waiting on a token for the preview" },
+      { kind: "shipped", actor: "Shipped", title: "Activity rail and option picker" },
+    ] as const
+    let n = 0
+    const row = h("div", "chips")
+    const btn = (label: string, run: () => void) => {
+      const b = h("button", "chip quiet")
+      b.textContent = label
+      b.addEventListener("click", run)
+      row.append(b)
+    }
+    btn("Add event", () => {
+      const e = next[n++ % next.length]!
+      story = [...story, { ...e, id: `new-${n}`, ago: 0 }]
+      update()
+    })
+    btn("Add to group", () => {
+      story = story.map((e) =>
+        e.id === "work"
+          ? {
+              ...e,
+              ago: 0,
+              children: [
+                ...(e.children ?? []),
+                { id: `w-${++n}`, kind: "agent", title: `Update ${n}`, ago: 0 },
+              ],
+            }
+          : e,
+      )
+      update()
+    })
+    btn("Remove last", () => {
+      story = story.slice(0, -1)
+      update()
+    })
+    btn("Newest on top", () => {
+      const top = rail.element.dataset.newest !== "top"
+      const selected = rail.selected
+      rail.destroy()
+      story = [...story].reverse()
+      rail = activity(box, {
+        theme: theme(),
+        events: view(),
+        selected,
+        newest: top ? "top" : "bottom",
+        label: "Activity",
+        onSelect: (id) => (status.textContent = describe(id)),
+        onActivate: (id) => toast(`Opened ${describe(id)}`),
+        onPlay: (id) => toast(`Playing ${describe(id)}`),
+      })
+      if (top) rail.element.dataset.newest = "top"
+    })
+    s.side.prepend(row, status)
+  }
+
+  // ── option picker ──
+  {
+    const s = section({
+      id: "picker",
+      title: "Option picker",
+      sub: "A proposal's options, each tuned by its own panel.",
+      tip: "Focus it: ↑↓ or 1–5 pick, Enter chooses, Tab tunes.",
+      shows: ["optionPicker()", "mountPanel()"],
+      stage: true,
+    })
+    const sizeK = (v: number) => knob(v, { min: 24, max: 120, step: 1, unit: "px", label: "Size" })
+    const radiusK = (v: number) =>
+      knob(v, { min: 0, max: 60, step: 1, unit: "px", label: "Radius" })
+    const tiltK = (v: number) => knob(v, { min: -30, max: 30, step: 1, unit: "°", label: "Tilt" })
+    const glowK = (v: number) => knob(v, { min: 0, max: 100, step: 5, unit: "%", label: "Glow" })
+    const variants: {
+      id: string
+      label: string
+      suggested?: boolean
+      schema: Record<string, Knob>
+    }[] = [
+      {
+        id: "bars",
+        label: "Rising Bars",
+        suggested: true,
+        schema: { size: sizeK(72), radius: radiusK(10), tilt: tiltK(0) },
+      },
+      {
+        id: "dial",
+        label: "Arc Dial",
+        schema: { size: sizeK(88), radius: radiusK(44), tilt: tiltK(-12), glow: glowK(60) },
+      },
+      {
+        id: "iris",
+        label: "Concentric Iris",
+        schema: { size: sizeK(96), radius: radiusK(48), glow: glowK(80) },
+      },
+      {
+        id: "orb",
+        label: "Dot-Matrix Orb",
+        schema: { size: sizeK(64), radius: radiusK(22), tilt: tiltK(8), glow: glowK(40) },
+      },
+      { id: "planes", label: "Stacked Planes", schema: {} },
+    ]
+    const stores = new Map(variants.map((v) => [v.id, define(`picker-${v.id}`, v.label, v.schema)]))
+    const stage = s.stage
+    const chip = h("div")
+    chip.style.cssText =
+      "width:72px;height:72px;border-radius:10px;background:linear-gradient(135deg,var(--cool),#5e5ce6);transition:all .45s cubic-bezier(.2,.8,.2,1)"
+    const caption = h("div", "caption")
+    stage.append(chip, caption)
+    let current = "bars"
+    let chosen: string | null = null
+    const paint = () => {
+      const v = (stores.get(current)?.store.get() ?? {}) as Record<string, number>
+      const size = v.size ?? 56
+      chip.style.width = chip.style.height = `${size}px`
+      chip.style.borderRadius = `${v.radius ?? 4}px`
+      chip.style.transform = `rotate(${v.tilt ?? 0}deg)`
+      chip.style.opacity = String(0.45 + (v.glow ?? 100) / 180)
+      const label = variants.find((x) => x.id === current)?.label ?? ""
+      caption.textContent = `${label}${chosen === current ? " · chosen" : ""}`
+    }
+    for (const [id, { on }] of stores) on(() => id === current && paint())
+    const picker = optionPicker(s.slot, {
+      theme: theme(),
+      label: "Options",
+      options: variants.map(({ id, label, suggested }) => ({ id, label, suggested })),
+      selected: current,
+      onSelect: (id) => {
+        current = id
+        paint()
+      },
+      onChoose: (id) => {
+        chosen = id
+        picker.choose(id)
+        paint()
+        toast(`Chose ${variants.find((x) => x.id === id)?.label}`)
+      },
+      body: (option, el) => {
+        const store = stores.get(option.id)?.store
+        if (!store || !Object.keys(variants.find((x) => x.id === option.id)!.schema).length) return
+        const panel = mountPanel(store, el, { ...panelOptions(), header: false, title: false })
+        return () => panel.dispose()
+      },
+    })
+    paint()
+    const row = h("div", "chips")
+    const choose = h("button", "chip")
+    choose.textContent = "Choose"
+    choose.addEventListener("click", () => {
+      chosen = picker.selected
+      picker.choose(chosen)
+      paint()
+    })
+    row.append(choose)
+    s.side.prepend(row)
   }
 
   // ── menu & contextMenu ──

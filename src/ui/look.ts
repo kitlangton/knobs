@@ -1,7 +1,10 @@
 import { springEasing } from "../core/spring.js"
+import rollingCss from "../panel/rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
+import { activityCss } from "./activity-css.js"
 import { bentoCss } from "./bento-css.js"
 import { overlayCss } from "./overlay-css.js"
+import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
 
 export type UiTheme = "dark" | "light" | "auto"
@@ -316,7 +319,8 @@ export function injectUiStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-ui]")) return
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
-  style.textContent = css + readoutCss + overlayCss + bentoCss
+  style.textContent =
+    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + rollingCss
   doc.head.append(style)
 }
 

@@ -9,7 +9,14 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
+import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import {
+  optionPicker,
+  type OptionPicker as OptionPickerHandle,
+  type OptionPickerOptions,
+  type PickerOption,
+} from "./picker.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
@@ -216,3 +223,113 @@ export function Bento(props: BentoProps) {
   }, [])
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
+
+export type ActivityProps = ActivityOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (activity: ActivityHandle) => void
+}
+
+/**
+ * `activity()` as a component. New `events` update it in place (rows keep their identity and
+ * glide); `selected` follows its prop; callbacks always call the latest props.
+ */
+export function Activity(props: ActivityProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<ActivityHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const p = latest.current
+    const a = activity(ref.current!, {
+      ...p,
+      onSelect: (id, event, source) => latest.current.onSelect?.(id, event, source),
+      onActivate: (id, event) => latest.current.onActivate?.(id, event),
+      onToggle: (id, open) => latest.current.onToggle?.(id, open),
+      onPlay: p.onPlay && ((id, event) => latest.current.onPlay?.(id, event)),
+    })
+    handle.current = a
+    p.onReady?.(a)
+    return () => {
+      a.destroy()
+      handle.current = null
+    }
+  }, [])
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) return
+    handle.current?.set(props.events)
+  }, [props.events])
+  useEffect(() => {
+    const a = handle.current
+    if (first.current || !a || props.selected === undefined || props.selected === a.selected) return
+    a.select(props.selected)
+  }, [props.selected])
+  useEffect(() => {
+    first.current = false
+  }, [])
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type OptionPickerProps = Omit<OptionPickerOptions, "body"> & {
+  /** An option's parameters, portalled under it the first time it opens (a `<Knobs>` panel, say). */
+  children?: (option: PickerOption) => ReactNode
+  className?: string
+  style?: CSSProperties
+  onReady?: (picker: OptionPickerHandle) => void
+}
+
+/**
+ * `optionPicker()` as a component: `children` renders each opened option's parameters into its
+ * place through a portal, so context and state carry through. `options`, `selected` and
+ * `chosen` follow their props; callbacks always call the latest props.
+ */
+export function OptionPicker(props: OptionPickerProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<OptionPickerHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  const [bodies, setBodies] = useState<readonly { option: PickerOption; el: HTMLElement }[]>([])
+  useLayoutEffect(() => {
+    const p = optionPicker(ref.current!, {
+      ...latest.current,
+      onSelect: (id, source) => latest.current.onSelect?.(id, source),
+      onChoose: (id) => latest.current.onChoose?.(id),
+      body: (option, el) => {
+        setBodies((all) => [...all, { option, el }])
+        return () => setBodies((all) => all.filter((b) => b.el !== el))
+      },
+    })
+    handle.current = p
+    latest.current.onReady?.(p)
+    return () => {
+      p.destroy()
+      handle.current = null
+    }
+  }, [])
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) return
+    handle.current?.set(props.options)
+  }, [props.options])
+  useEffect(() => {
+    if (first.current || props.selected == null) return
+    handle.current?.select(props.selected)
+  }, [props.selected])
+  useEffect(() => {
+    if (first.current) return
+    handle.current?.choose(props.chosen ?? null)
+  }, [props.chosen])
+  useEffect(() => {
+    first.current = false
+  }, [])
+  return (
+    <div ref={ref} className={props.className} style={props.style}>
+      {props.children &&
+        bodies.map(({ option, el }) => createPortal(props.children!(option), el, option.id))}
+    </div>
+  )
+}
+
+export type { ActivityEvent } from "./activity-model.js"
+export type { PickerOption } from "./picker.js"

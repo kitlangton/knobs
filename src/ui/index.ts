@@ -128,3 +128,32 @@ export {
   type BentoPlan,
   type BentoRect,
 } from "./bento-model.js"
+export {
+  activity,
+  type Activity,
+  type ActivityOptions,
+} from "./activity.js"
+export {
+  diffActivity,
+  flattenActivity,
+  formatDuration,
+  indexActivity,
+  keepSelection as keepActivitySelection,
+  navigateActivity,
+  railSegments,
+  showsSelection,
+  stackRows,
+  type ActivityEvent,
+  type ActivityInput,
+  type ActivityKey,
+  type ActivityKind,
+  type ActivityRow,
+  type RailNode,
+} from "./activity-model.js"
+export {
+  optionPicker,
+  type OptionPicker,
+  type OptionPickerOptions,
+  type PickerOption,
+} from "./picker.js"
+export { claimsDigit, digitPick, keepPick, stepPick } from "./picker-model.js"
