@@ -68,7 +68,7 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   o.half = half;
   let fast = smoothstep(0.55, 1.15, length(a.zw) / (cruise(P) * 2.2));
   var c = mix(P.pal1.rgb, P.pal0.rgb, fast);
-  c = mix(c, P.pal2.rgb * 1.3, sat(aux[ii].x * 1.4));
+  c = mix(c, P.pal2.rgb, sat(aux[ii].x * 1.4));
   // A long streak spreads the same light thinner; each frame adds what the trail lets fade, so
   // an agent holds its brightness and a moving one leaves a tail.
   o.col = c * 0.3 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);

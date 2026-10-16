@@ -134,15 +134,15 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
         signal: "Red",
         lure: { x: 0.24, y: 0.7 },
       },
-      Lattice: {
-        cohesion: 64,
-        alignment: 0,
-        separation: 100,
-        speed: 12,
+      Vortex: {
+        cohesion: 26,
+        alignment: 96,
+        separation: 46,
+        speed: 64,
         predators: 0,
-        containment: 70,
-        signal: "Amber",
-        lure: { x: 0.86, y: 0.16 },
+        containment: 86,
+        signal: "Emerald",
+        lure: { x: 0.5, y: 0.5 },
       },
     },
     onChange(_patch, _values, meta) {
@@ -741,12 +741,20 @@ async function createGpu(
   const noise = noiseTex.createView()
 
   // ── Timing: the GPU's own clock where there is one ──
-  const query = timing ? device.createQuerySet({ type: "timestamp", count: 2 }) : null
-  const queryBuf = query ? buf(16, GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC) : null
-  const queryRead = query ? buf(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST) : null
+  // Six stamps: the simulation's start and end, then the ends of the trail, the display, the
+  // bloom and the composite (which can wait on the page's drawable, so it's reported apart).
+  const STAMPS = 6
+  const query = timing ? device.createQuerySet({ type: "timestamp", count: STAMPS }) : null
+  const queryBuf = query
+    ? buf(STAMPS * 8, GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC)
+    : null
+  const queryRead = query
+    ? buf(STAMPS * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST)
+    : null
   let queryBusy = false
-  let gpuMs = 0
-  const gpuSamples: number[] = []
+  const PARTS = ["sim", "trail", "display", "bloom", "composite"] as const
+  const sums = PARTS.map(() => 0)
+  let samples = 0
 
   // ── Size-dependent targets ──
   interface Targets {
@@ -856,7 +864,15 @@ async function createGpu(
     enc.clearBuffer(grid)
     const timed = query && !queryBusy
     const cp = enc.beginComputePass(
-      timed ? { timestampWrites: { querySet: query!, beginningOfPassWriteIndex: 0 } } : {},
+      timed
+        ? {
+            timestampWrites: {
+              querySet: query!,
+              beginningOfPassWriteIndex: 0,
+              endOfPassWriteIndex: 1,
+            },
+          }
+        : {},
     )
     cp.setBindGroup(0, b0)
     const run = (p: GPUComputePipeline, g1: GPUBindGroup, x: number, y = 1) => {
@@ -875,6 +891,7 @@ async function createGpu(
     // The trail: last frame's fades, this frame's agents add on.
     let rp = enc.beginRenderPass({
       colorAttachments: [{ view: t.trail.createView(), loadOp: "load", storeOp: "store" }],
+      ...(timed ? { timestampWrites: { querySet: query!, endOfPassWriteIndex: 2 } } : {}),
     })
     rp.setBindGroup(0, rb0)
     const decay = 0.5 ** (dt / TRAIL_HALF)
@@ -884,12 +901,14 @@ async function createGpu(
     rp.setPipeline(pAgent)
     rp.draw(6, AGENTS)
     rp.end()
-    const pass = (view: GPUTextureView, load: GPULoadOp, last = false) =>
+    const pass = (view: GPUTextureView, load: GPULoadOp, stamp = -1) =>
       enc.beginRenderPass({
         colorAttachments: [{ view, loadOp: load, storeOp: "store", clearValue: [0, 0, 0, 1] }],
-        ...(last && timed ? { timestampWrites: { querySet: query!, endOfPassWriteIndex: 1 } } : {}),
+        ...(stamp >= 0 && timed
+          ? { timestampWrites: { querySet: query!, endOfPassWriteIndex: stamp } }
+          : {}),
       })
-    rp = pass(t.hdr.createView(), "clear")
+    rp = pass(t.hdr.createView(), "clear", 3)
     rp.setPipeline(pHud)
     rp.setBindGroup(0, rb0)
     rp.setBindGroup(1, t.rb1)
@@ -904,20 +923,20 @@ async function createGpu(
     }
     for (let k = 0; k < LEVELS - 1; k++) {
       // The clock stops after the bloom: the composite waits on the page's drawable.
-      rp = pass(t.levels[LEVELS - 2 - k]!.createView(), "load", k === LEVELS - 2)
+      rp = pass(t.levels[LEVELS - 2 - k]!.createView(), "load", k === LEVELS - 2 ? 4 : -1)
       rp.setPipeline(pUp)
       rp.setBindGroup(0, t.post[LEVELS + k]!)
       rp.draw(3)
       rp.end()
     }
-    rp = pass(ctx.getCurrentTexture().createView(), "clear")
+    rp = pass(ctx.getCurrentTexture().createView(), "clear", 5)
     rp.setPipeline(pComposite)
     rp.setBindGroup(0, t.post[LEVELS * 2 - 1]!)
     rp.draw(3)
     rp.end()
     if (timed) {
-      enc.resolveQuerySet(query!, 0, 2, queryBuf!, 0)
-      enc.copyBufferToBuffer(queryBuf!, 0, queryRead!, 0, 16)
+      enc.resolveQuerySet(query!, 0, STAMPS, queryBuf!, 0)
+      enc.copyBufferToBuffer(queryBuf!, 0, queryRead!, 0, STAMPS * 8)
     }
     // The numbers for the readouts, a few times a second.
     const r = readIdx
@@ -932,13 +951,13 @@ async function createGpu(
       queryRead!.mapAsync(GPUMapMode.READ).then(
         () => {
           const ts = new BigInt64Array(queryRead!.getMappedRange())
-          const ms = Number(ts[1]! - ts[0]!) / 1e6
+          const ms = (a: number, b: number) => Number(ts[b]! - ts[a]!) / 1e6
+          const parts = [ms(0, 1), ms(1, 2), ms(2, 3), ms(3, 4), ms(4, 5)]
           queryRead!.unmap()
           queryBusy = false
-          if (ms > 0 && ms < 100) {
-            gpuSamples.push(ms)
-            if (gpuSamples.length > 60) gpuSamples.shift()
-            gpuMs = gpuSamples.reduce((a, b) => a + b, 0) / gpuSamples.length
+          if (parts.every((x) => x >= 0 && x < 50)) {
+            parts.forEach((x, i) => (sums[i]! += x))
+            samples++
           }
         },
         () => {
@@ -980,13 +999,12 @@ async function createGpu(
       const wall = (performance.now() - t0) / frames
       await new Promise((r) => setTimeout(r, 300))
       const t = fitTargets()
-      return {
-        queueMs: +wall.toFixed(2),
-        gpuMs: +gpuMs.toFixed(2),
-        w: t.w,
-        h: t.h,
-        timestamps: timing ? 1 : 0,
-      }
+      const out: Record<string, number> = { queueMs: +wall.toFixed(2), w: t.w, h: t.h, samples }
+      PARTS.forEach((name, i) => (out[name] = +(sums[i]! / Math.max(1, samples)).toFixed(3)))
+      out.beforeComposite = +[0, 1, 2, 3]
+        .reduce((a, i) => a + sums[i]! / Math.max(1, samples), 0)
+        .toFixed(3)
+      return out
     },
     destroy() {
       device.destroy()
