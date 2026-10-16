@@ -8,7 +8,7 @@ import {
   type JSX,
 } from "solid-js"
 import { insert } from "solid-js/web"
-import { follower } from "./follow.js"
+import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
 import {
@@ -22,14 +22,16 @@ import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from 
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
 
 /**
- * A prop that follows into the piece made from it: later values go to `apply`, and so does a
- * value that changed in the same update that mounted the component (see `follower`).
+ * Props that follow into the piece made from them, in one effect: whichever changed (since the
+ * piece was made, at first) go to `apply` together, which applies them in its own order. Solid
+ * runs effects in the order their sources change, so one effect per prop could select an option
+ * before the options that hold it arrived.
  */
-const follow = <V>(read: () => V, apply: (value: V) => void) => {
-  const changed = follower(untrack(read))
+const follow = <P extends object>(read: () => P, apply: (changed: Partial<P>) => void) => {
+  const changes = propChanges(untrack(read))
   createEffect(() => {
-    const value = read()
-    if (changed(value)) untrack(() => apply(value))
+    const changed = changes(read())
+    if (anyChanged(changed)) untrack(() => apply(changed))
   })
 }
 
@@ -94,16 +96,12 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
   )
   untrack(() => props.onReady?.(t))
   follow(
-    () => props.items,
-    (items) => t.update(items),
-  )
-  follow(
-    () => props.selection,
-    (selection) => selection && t.select(selection),
-  )
-  follow(
-    () => props.filter,
-    (filter) => t.filter(filter),
+    () => ({ items: props.items, filter: props.filter, selection: props.selection }),
+    (c) => {
+      if ("items" in c) t.update(c.items!)
+      if ("filter" in c) t.filter(c.filter)
+      if (c.selection) t.select(c.selection)
+    },
   )
   onCleanup(() => t.dispose())
   return host as unknown as JSX.Element
@@ -131,29 +129,22 @@ export function Timeline(props: TimelineProps): JSX.Element {
     }),
   )
   untrack(() => props.onReady?.(t))
-  const follow1 = <K extends keyof TimelineOptions>(key: K) =>
-    follow(
-      () => props[key],
-      (value) => {
-        if (value === undefined) return
-        if (key === "time" && Math.abs((value as number) - t.time) < 1e-6) return
-        if (key === "playing" && value === t.playing) return
-        if ((key === "markers" && value === t.markers) || (key === "ranges" && value === t.ranges))
-          return
-        t.update({ [key]: value })
-      },
-    )
-  for (const key of [
-    "time",
-    "playing",
-    "markers",
-    "ranges",
-    "duration",
-    "fps",
-    "units",
-    "speed",
-  ] as const)
-    follow1(key)
+  follow(
+    () => ({
+      duration: props.duration,
+      fps: props.fps,
+      units: props.units,
+      speed: props.speed,
+      markers: props.markers,
+      ranges: props.ranges,
+      time: props.time,
+      playing: props.playing,
+    }),
+    (c) => {
+      const next = timelineChanges(t, c)
+      if (anyChanged(next)) t.update(next)
+    },
+  )
   onCleanup(() => t.dispose())
   return host as unknown as JSX.Element
 }
@@ -179,12 +170,11 @@ export function Bento(props: BentoProps): JSX.Element {
   )
   untrack(() => props.onReady?.(b))
   follow(
-    () => props.items,
-    (items) => b.update(items),
-  )
-  follow(
-    () => props.picks,
-    (picks) => picks && b.pick(picks),
+    () => ({ items: props.items, picks: props.picks }),
+    (c) => {
+      if ("items" in c) b.update(c.items!)
+      if (c.picks) b.pick(c.picks)
+    },
   )
   onCleanup(() => b.dispose())
   return host as unknown as JSX.Element
@@ -211,16 +201,11 @@ export function Activity(props: ActivityProps): JSX.Element {
   )
   untrack(() => props.onReady?.(a))
   follow(
-    () => props.events,
-    (events) => a.set(events),
-  )
-  follow(
-    () => props.selected,
-    (id) => id !== undefined && id !== a.selected && a.select(id),
-  )
-  follow(
-    () => props.newest,
-    (newest) => newest && a.update({ newest }),
+    () => ({ events: props.events, newest: props.newest, selected: props.selected }),
+    (c) => {
+      if (c.events || c.newest) a.update({ events: c.events, newest: c.newest })
+      if (c.selected !== undefined && c.selected !== a.selected) a.select(c.selected)
+    },
   )
   onCleanup(() => a.destroy())
   return host as unknown as JSX.Element
@@ -261,16 +246,12 @@ export function OptionPicker(props: OptionPickerProps): JSX.Element {
   )
   untrack(() => props.onReady?.(p))
   follow(
-    () => props.options,
-    (options) => p.set(options),
-  )
-  follow(
-    () => props.selected,
-    (id) => id != null && p.select(id),
-  )
-  follow(
-    () => props.chosen,
-    (id) => p.choose(id ?? null),
+    () => ({ options: props.options, selected: props.selected, chosen: props.chosen }),
+    (c) => {
+      if ("options" in c) p.set(c.options!)
+      if (c.selected != null) p.select(c.selected)
+      if ("chosen" in c) p.choose(c.chosen ?? null)
+    },
   )
   onCleanup(() => p.destroy())
   return host as unknown as JSX.Element

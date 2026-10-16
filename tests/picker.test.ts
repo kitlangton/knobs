@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  askPick,
   cardTarget,
   claimsDigit,
   digitPick,
@@ -7,6 +8,7 @@ import {
   pickDigit,
   settleHeight,
   stepPick,
+  stillWanted,
 } from "../src/ui/picker-model"
 
 describe("option picker", () => {
@@ -69,5 +71,74 @@ describe("the card's target", () => {
     expect(settleHeight(123, 123, 3)).toBe(123)
     expect(settleHeight(0, 0, 1)).toBe(0)
     expect(settleHeight(100, 140, 6)).toBe(140)
+  })
+})
+
+describe("a host's select for an option that isn't there yet", () => {
+  // The picker's handle, as it keeps its selection.
+  const picker = () => {
+    let ids: readonly string[] = []
+    let selected = keepPick(ids, null)
+    let wanted: string | null = null
+    return {
+      set(next: readonly string[]) {
+        ids = next
+        selected = keepPick(ids, selected, wanted)
+        wanted = stillWanted(ids, wanted)
+      },
+      select(id: string) {
+        const ask = askPick(ids, id)
+        wanted = ask.wanted
+        if (ask.pick) selected = ask.pick
+      },
+      get selected() {
+        return selected
+      },
+    }
+  }
+  test("select before set: the set that brings it picks it", () => {
+    const p = picker()
+    p.select("B")
+    expect(p.selected).toBeNull()
+    p.set(["A", "B"])
+    expect(p.selected).toBe("B")
+  })
+  test("set before select: picked at once", () => {
+    const p = picker()
+    p.set(["A", "B"])
+    expect(p.selected).toBe("A")
+    p.select("B")
+    expect(p.selected).toBe("B")
+  })
+  test("a later select replaces what was wanted", () => {
+    const p = picker()
+    p.select("B")
+    p.select("C")
+    p.set(["A", "B", "C"])
+    expect(p.selected).toBe("C")
+    const q = picker()
+    q.set(["A"])
+    q.select("B")
+    q.select("A")
+    q.set(["A", "B"])
+    expect(q.selected).toBe("A")
+  })
+  test("wanted until it comes, and only once", () => {
+    const p = picker()
+    p.select("C")
+    p.set(["A", "B"])
+    expect(p.selected).toBe("A")
+    p.set(["A", "B", "C"])
+    expect(p.selected).toBe("C")
+    p.select("A")
+    p.set(["A", "B", "C", "D"])
+    expect(p.selected).toBe("A")
+  })
+  test("keepPick prefers what was wanted, then the selection, then the first", () => {
+    expect(keepPick(["A", "B"], "A", "B")).toBe("B")
+    expect(keepPick(["A", "B"], "A", "C")).toBe("A")
+    expect(keepPick(["A", "B"], "X", "C")).toBe("A")
+    expect(askPick(["A"], "A")).toEqual({ pick: "A", wanted: null })
+    expect(askPick(["A"], "B")).toEqual({ pick: undefined, wanted: "B" })
   })
 })

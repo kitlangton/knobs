@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import {
   optionPicker,
   type OptionPicker as OptionPickerHandle,
@@ -20,6 +21,20 @@ import {
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
+
+/**
+ * Props that follow into the piece made from them, in one effect after each render: whichever
+ * changed (since the piece was made, at first) go to `apply` together, which applies them in its
+ * own order (options before the selection among them).
+ */
+function useFollow<P extends object>(values: P, apply: (changed: Partial<P>) => void) {
+  const changes = useRef<((next: P) => Partial<P>) | null>(null)
+  changes.current ??= propChanges(values)
+  useEffect(() => {
+    const changed = changes.current!(values)
+    if (anyChanged(changed)) apply(changed)
+  })
+}
 
 export type SplitProps = SplitOptions & {
   /** One child per pane, in the panes' order; each renders into its pane's body. */
@@ -102,22 +117,13 @@ export function Tree<T>(props: TreeProps<T>) {
       handle.current = null
     }
   }, [])
-  const first = useRef(true)
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.update(props.items)
-  }, [props.items])
-  useEffect(() => {
-    if (first.current || !props.selection) return
-    handle.current?.select(props.selection)
-  }, [props.selection])
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.filter(props.filter)
-  }, [props.filter])
-  useEffect(() => {
-    first.current = false
-  }, [])
+  useFollow({ items: props.items, filter: props.filter, selection: props.selection }, (c) => {
+    const t = handle.current
+    if (!t) return
+    if ("items" in c) t.update(c.items!)
+    if ("filter" in c) t.filter(c.filter)
+    if (c.selection) t.select(c.selection)
+  })
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
@@ -153,30 +159,23 @@ export function Timeline(props: TimelineProps) {
       handle.current = null
     }
   }, [])
-  const first = useRef(true)
-  const follow = <K extends keyof TimelineOptions>(key: K) =>
-    // biome-ignore lint/correctness/useExhaustiveDependencies: one prop each
-    useEffect(() => {
+  useFollow(
+    {
+      duration: props.duration,
+      fps: props.fps,
+      units: props.units,
+      speed: props.speed,
+      markers: props.markers,
+      ranges: props.ranges,
+      time: props.time,
+      playing: props.playing,
+    },
+    (c) => {
       const t = handle.current
-      const value = props[key]
-      if (first.current || !t || value === undefined) return
-      if (key === "time" && Math.abs((value as number) - t.time) < 1e-6) return
-      if (key === "playing" && value === t.playing) return
-      if (key === "markers" && value === t.markers) return
-      if (key === "ranges" && value === t.ranges) return
-      t.update({ [key]: value })
-    }, [props[key]])
-  follow("time")
-  follow("playing")
-  follow("markers")
-  follow("ranges")
-  follow("duration")
-  follow("fps")
-  follow("units")
-  follow("speed")
-  useEffect(() => {
-    first.current = false
-  }, [])
+      const next = t && timelineChanges(t, c)
+      if (t && next && anyChanged(next)) t.update(next)
+    },
+  )
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
@@ -209,18 +208,12 @@ export function Bento(props: BentoProps) {
       handle.current = null
     }
   }, [])
-  const first = useRef(true)
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.update(props.items)
-  }, [props.items])
-  useEffect(() => {
-    if (first.current || !props.picks) return
-    handle.current?.pick(props.picks)
-  }, [props.picks])
-  useEffect(() => {
-    first.current = false
-  }, [])
+  useFollow({ items: props.items, picks: props.picks }, (c) => {
+    const b = handle.current
+    if (!b) return
+    if ("items" in c) b.update(c.items!)
+    if (c.picks) b.pick(c.picks)
+  })
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
@@ -255,23 +248,12 @@ export function Activity(props: ActivityProps) {
       handle.current = null
     }
   }, [])
-  const first = useRef(true)
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.set(props.events)
-  }, [props.events])
-  useEffect(() => {
+  useFollow({ events: props.events, newest: props.newest, selected: props.selected }, (c) => {
     const a = handle.current
-    if (first.current || !a || props.selected === undefined || props.selected === a.selected) return
-    a.select(props.selected)
-  }, [props.selected])
-  useEffect(() => {
-    if (first.current || !props.newest) return
-    handle.current?.update({ newest: props.newest })
-  }, [props.newest])
-  useEffect(() => {
-    first.current = false
-  }, [])
+    if (!a) return
+    if (c.events || c.newest) a.update({ events: c.events, newest: c.newest })
+    if (c.selected !== undefined && c.selected !== a.selected) a.select(c.selected)
+  })
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
@@ -311,22 +293,13 @@ export function OptionPicker(props: OptionPickerProps) {
       handle.current = null
     }
   }, [])
-  const first = useRef(true)
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.set(props.options)
-  }, [props.options])
-  useEffect(() => {
-    if (first.current || props.selected == null) return
-    handle.current?.select(props.selected)
-  }, [props.selected])
-  useEffect(() => {
-    if (first.current) return
-    handle.current?.choose(props.chosen ?? null)
-  }, [props.chosen])
-  useEffect(() => {
-    first.current = false
-  }, [])
+  useFollow({ options: props.options, selected: props.selected, chosen: props.chosen }, (c) => {
+    const p = handle.current
+    if (!p) return
+    if ("options" in c) p.set(c.options!)
+    if (c.selected != null) p.select(c.selected)
+    if ("chosen" in c) p.choose(c.chosen ?? null)
+  })
   return (
     <div ref={ref} className={props.className} style={props.style}>
       {props.children &&

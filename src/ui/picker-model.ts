@@ -21,11 +21,35 @@ export function stepPick(
   return ids[Math.max(0, Math.min(ids.length - 1, i + (key === "ArrowDown" ? 1 : -1)))]
 }
 
-/** The selection after the options change: kept while its option stays, else the first. */
-export function keepPick(ids: readonly string[], selected: string | null): string | null {
+/**
+ * The selection after the options change: the option a host asked for before it was there
+ * (`wanted`) once it comes, else the selection while its option stays, else the first.
+ */
+export function keepPick(
+  ids: readonly string[],
+  selected: string | null,
+  wanted: string | null = null,
+): string | null {
+  if (wanted !== null && ids.includes(wanted)) return wanted
   if (selected !== null && ids.includes(selected)) return selected
   return ids[0] ?? null
 }
+
+/**
+ * A host's `select(id)`: picked now if its option is there; if not, remembered (`wanted`) for
+ * the `set()` that brings it, so the order a host's updates land in can't lose it. A later
+ * select replaces what was wanted.
+ */
+export function askPick(
+  ids: readonly string[],
+  id: string,
+): { pick: string | undefined; wanted: string | null } {
+  return ids.includes(id) ? { pick: id, wanted: null } : { pick: undefined, wanted: id }
+}
+
+/** What's still wanted after the options change: nothing once its option has come. */
+export const stillWanted = (ids: readonly string[], wanted: string | null): string | null =>
+  wanted !== null && ids.includes(wanted) ? null : wanted
 
 /** The digit an option shows: its place, 1–9; none past the ninth. */
 export const pickDigit = (index: number): string => (index < 9 ? String(index + 1) : "")

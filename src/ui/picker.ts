@@ -9,6 +9,7 @@ import {
   type UiLook,
 } from "./look.js"
 import {
+  askPick,
   cardTarget,
   claimsDigit,
   digitPick,
@@ -16,6 +17,7 @@ import {
   pickDigit,
   settleHeight,
   stepPick,
+  stillWanted,
 } from "./picker-model.js"
 
 export interface PickerOption {
@@ -55,9 +57,15 @@ export interface OptionPickerOptions extends UiLook {
 
 export interface OptionPicker {
   readonly element: HTMLElement
-  /** New options: the selection stays on its option while that's still there. */
+  /**
+   * New options: the selection stays on its option while that's still there, or goes to one
+   * `select()` asked for before it was there.
+   */
   set(options: readonly PickerOption[]): void
-  /** Opens this option's parameters (closing the last one's). Doesn't call `onSelect`. */
+  /**
+   * Opens this option's parameters (closing the last one's). Doesn't call `onSelect`. An id that
+   * isn't there yet is remembered, and picked when `set()` brings it.
+   */
   select(id: string): void
   readonly selected: string | null
   /** Marks the chosen option (`null` for none). */
@@ -117,10 +125,14 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   const doc = container.ownerDocument
   const win = doc.defaultView!
   let list = options.options
-  let selected: string | null = keepPick(
-    list.map((o) => o.id),
-    options.selected ?? null,
-  )
+  // A selection asked for before its option was there, picked when `set()` brings it.
+  let wanted: string | null = null
+  let selected: string | null = null
+  {
+    const ids = list.map((o) => o.id)
+    if (options.selected != null) wanted = askPick(ids, options.selected).wanted
+    selected = keepPick(ids, options.selected ?? null)
+  }
   let chosen: string | null = options.chosen ?? null
   const digits = options.digits ?? "focus"
 
@@ -442,7 +454,9 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
   }
 
   const select = (id: string | undefined, source: "key" | "digit" | "pointer") => {
-    if (!id || id === selected) return
+    if (!id) return
+    wanted = null
+    if (id === selected) return
     // Focus inside the picker (on an option, or in the parameters that are closing) moves to
     // the option picked.
     const inside = root.contains(doc.activeElement)
@@ -456,7 +470,8 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     flush()
     const ids = list.map((o) => o.id)
     const was = selected
-    selected = keepPick(ids, selected)
+    selected = keepPick(ids, selected, wanted)
+    wanted = stillWanted(ids, wanted)
     if (animate && was !== selected && !reducedMotion(win)) gliding = true
     const reduced = reducedMotion(win)
     const live = new Set(ids)
@@ -496,9 +511,18 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     })
     // Leaving options stay where they were until they've gone.
     const open = selected ? entries.get(selected) : undefined
+    // A first open the change brought (a select that came before its option) mounts a frame
+    // ahead too, with the last option staying open until it starts.
+    const ahead =
+      animate && !reduced && open && !open.open && !open.mounted && !!options.body
+        ? { was: was ? entries.get(was) : undefined, now: open }
+        : null
     for (const e of entries.values())
-      if (e !== open && e.open && !e.leaving) setOpen(e, false, animate)
-    if (open && !open.open) setOpen(open, true, animate)
+      if (e !== open && e !== ahead?.was && e.open && !e.leaving) setOpen(e, false, animate)
+    if (ahead) {
+      premount(ahead.now)
+      pending = { ...ahead, last: natural(ahead.now), frames: 0 }
+    } else if (open && !open.open) setOpen(open, true, animate)
     loop.wake()
   }
 
@@ -567,7 +591,11 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       list = next
       sync(true)
     },
-    select: (id) => pick(id),
+    select(id) {
+      const ask = askPick(ids(), id)
+      wanted = ask.wanted
+      if (ask.pick) pick(ask.pick)
+    },
     get selected() {
       return selected
     },
