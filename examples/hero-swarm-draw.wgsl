@@ -451,7 +451,7 @@ fn fs_hud(in: FullOut) -> @location(0) vec4f {
   }
   // The trail, or (as far as the scheme asks) its density through a heat ramp.
   let tr = textureLoad(trail, vec2i(in.pos.xy), 0).rgb;
-  col += mix(tr, heat(dot(tr, vec3f(0.3, 0.5, 0.2)) * 1.6), P.pal4.w);
+  col += mix(tr, heat(dot(tr, vec3f(0.3, 0.5, 0.2)) * 1.1), P.pal4.w);
   // Every edge of the frame is the page.
   let size = P.scr0.xy / dpr;
   let edge = smoothstep(0.0, 40.0, p.x) * smoothstep(0.0, 40.0, size.x - p.x) *
