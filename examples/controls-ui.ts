@@ -1,6 +1,7 @@
 // The catalog's knobs/ui sections: a split with collapsing panes, an outliner,
 // menus and a context menu, a popover and tooltips, the command palette, confirms
 // and toasts.
+import { choice, knob } from "knobs"
 import {
   applyMove,
   confirm,
@@ -8,6 +9,8 @@ import {
   type MenuEntry,
   menu,
   popover,
+  type Split,
+  type SplitFold,
   split,
   toast,
   tooltip,
@@ -16,14 +19,20 @@ import {
 import type { SceneKit } from "./controls"
 import { blurFor, clamp01, ColorVal, DirBlur, reduced, rolling, Stage } from "./controls-motion"
 
-export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h" | "theme">) {
+export function uiSections({
+  section,
+  h,
+  theme,
+  define,
+  mount,
+}: Pick<SceneKit, "section" | "h" | "theme" | "define" | "mount">) {
   // ── split ──
   {
     const s = section({
       id: "split",
       title: "Split",
       sub: "Resizable panes that collapse to a rail.",
-      shows: ["split()"],
+      shows: ["split()", "fold"],
       wide: true,
     })
     const box = h("div", "ui-box")
@@ -39,32 +48,55 @@ export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h"
     canvas.style.cssText =
       "position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);font-size:12px"
     canvas.textContent = "Canvas"
-    const sp = split(box, {
-      theme: theme(),
-      storage: null,
-      panes: [
-        {
-          id: "files",
-          size: 170,
-          min: 120,
-          max: 260,
-          collapsible: true,
-          title: "Files",
-          count: 3,
-          element: note("index.ts · scene.ts · look.ts"),
-        },
-        { id: "canvas", min: 160, element: canvas },
-        {
-          id: "inspector",
-          size: 190,
-          min: 140,
-          max: 300,
-          collapsible: true,
-          title: "Inspector",
-          element: note("Panels mount in panes, and stay drawn through a drag or a collapse."),
-        },
-      ],
+    // How the panes fold, to compare live: each change makes the split again, as it was.
+    let sp: Split | undefined
+    const build = (fold: SplitFold) => {
+      const shut = sp?.layout().collapsed ?? {}
+      sp?.dispose()
+      sp = split(box, {
+        theme: theme(),
+        storage: null,
+        fold,
+        panes: [
+          {
+            id: "files",
+            size: 170,
+            min: 120,
+            max: 260,
+            collapsible: true,
+            collapsed: shut.files,
+            title: "Files",
+            count: 3,
+            element: files,
+          },
+          { id: "canvas", min: 160, element: canvas },
+          {
+            id: "inspector",
+            size: 190,
+            min: 140,
+            max: 300,
+            collapsible: true,
+            collapsed: shut.inspector,
+            title: "Inspector",
+            element: inspector,
+          },
+        ],
+      })
+    }
+    const files = note("index.ts · scene.ts · look.ts")
+    const inspector = note("Panels mount in panes, and stay drawn through a drag or a collapse.")
+    const { store, on } = define("split-fold", "Split fold", {
+      chevron: choice("flip", ["flip", "turn"], {
+        label: "Chevron",
+        labels: { flip: "Flip", turn: "Turn" },
+      }),
+      title: choice("travel", ["travel", "fade"], {
+        label: "Title",
+        labels: { travel: "Travel", fade: "Fade" },
+      }),
+      duration: knob(0.3, { min: 0.15, max: 0.6, step: 0.01, unit: "s", label: "Fold" }),
     })
+    on((v) => build(v))
     const row = h("div", "chips")
     const btn = (label: string, run: () => void) => {
       const b = h("button", "chip quiet")
@@ -72,10 +104,13 @@ export function uiSections({ section, h, theme }: Pick<SceneKit, "section" | "h"
       b.addEventListener("click", run)
       row.append(b)
     }
-    btn("Toggle files", () => sp.collapse("files"))
-    btn("Toggle inspector", () => sp.collapse("inspector"))
-    btn("Reset", () => sp.reset())
+    btn("Toggle files", () => sp?.collapse("files"))
+    btn("Toggle inspector", () => sp?.collapse("inspector"))
+    btn("Reset", () => sp?.reset())
     s.side.prepend(row)
+    const panel = h("div")
+    s.side.append(panel)
+    mount(store, panel, { title: "Fold" })
   }
 
   // ── tree ──
