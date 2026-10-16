@@ -72,11 +72,11 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   o.local = local;
   o.half = half;
   let fast = smoothstep(0.55, 1.15, length(a.zw) / (cruise(P) * 2.2));
-  var c = mix(P.pal1.rgb, P.pal0.rgb, fast);
+  var c = mix(P.pal1.rgb, P.pal3.rgb, fast);
   c = mix(c, P.pal2.rgb, sat(aux[ii].x * 1.4));
   // A long streak spreads the same light thinner; each frame adds what the trail lets fade, so
   // an agent holds its brightness and a moving one leaves a tail.
-  o.col = c * 0.2 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
+  o.col = c * P.pal1.w * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
   return o;
 }
 
@@ -254,9 +254,10 @@ fn hud(p: vec2f) -> vec3f {
     let wing = smoothstep(-0.7, -0.82, cos(ang)) * smoothstep(1.22, 1.32, rn) * smoothstep(1.62, 1.5, rn) *
       smoothstep(R * 1.15, R * 0.95, abs(q.y)) * smoothstep(colRight + 6.0, colRight + 46.0, p.x);
     let pulse = 0.5 + 0.5 * sin(t * 2.0 + h * 9.0 - length(id) * 0.2);
-    var cc = mix(sec, prim, step(0.55, h)) * 0.1;
+    let tint = P.pal4.rgb;
+    var cc = mix(tint, prim, step(0.55, h)) * 0.1;
     if (h < order * 0.4 + 0.04) {
-      cc = mix(sec, prim, step(0.5, h)) * (0.3 + 0.6 * pulse);
+      cc = mix(tint, prim, step(0.5, h)) * (0.3 + 0.6 * pulse);
     }
     if (h > 1.0 - fear * 0.6) {
       cc = alert * (0.5 + 0.7 * pulse);
@@ -423,6 +424,16 @@ fn hud(p: vec2f) -> vec3f {
   return col;
 }
 
+/** Black through deep red, red, orange and yellow, then on into white-hot. */
+fn heat(x: f32) -> vec3f {
+  let s = sat(x) * 4.0;
+  var c = mix(vec3f(0.0), vec3f(0.3, 0.0, 0.008), sat(s));
+  c = mix(c, vec3f(1.0, 0.1, 0.0), sat(s - 1.0));
+  c = mix(c, vec3f(1.0, 0.45, 0.02), sat(s - 2.0));
+  c = mix(c, vec3f(1.0, 0.92, 0.3), sat(s - 3.0));
+  return c * (1.0 + max(x - 1.0, 0.0));
+}
+
 @fragment
 fn fs_hud(in: FullOut) -> @location(0) vec4f {
   let dpr = P.scr0.z;
@@ -438,7 +449,9 @@ fn fs_hud(in: FullOut) -> @location(0) vec4f {
   if (P.scr3.y < 0.5 || p.x < P.scr3.x + 1.0) {
     col = hud(p) * shown;
   }
-  col += textureLoad(trail, vec2i(in.pos.xy), 0).rgb;
+  // The trail, or (as far as the scheme asks) its density through a heat ramp.
+  let tr = textureLoad(trail, vec2i(in.pos.xy), 0).rgb;
+  col += mix(tr, heat(dot(tr, vec3f(0.3, 0.5, 0.2)) * 1.6), P.pal4.w);
   // Every edge of the frame is the page.
   let size = P.scr0.xy / dpr;
   let edge = smoothstep(0.0, 40.0, p.x) * smoothstep(0.0, 40.0, size.x - p.x) *
