@@ -76,7 +76,7 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   c = mix(c, P.pal2.rgb, sat(aux[ii].x * 1.4));
   // A long streak spreads the same light thinner; each frame adds what the trail lets fade, so
   // an agent holds its brightness and a moving one leaves a tail.
-  o.col = c * 0.23 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
+  o.col = c * 0.2 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
   return o;
 }
 

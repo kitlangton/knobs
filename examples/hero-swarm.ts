@@ -525,7 +525,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         if (disposed) return g?.destroy()
         if (!g) return fallback()
         gpu = g
-        Object.assign(window, { __swarm: { bench: g.bench } })
+        Object.assign(window, { __swarm: { bench: g.bench, layout: lay } })
         wake()
       })
       .catch((e) => {

@@ -32,7 +32,8 @@
 /** Fixed point for the grid and the statistics. */
 const FIX = 256.0;
 const STAT = 1000.0;
-// stats: 0–1 summed heading, 2 speed, 3 fear, 4 candidates, 5 the next track's id, 6 frames
+// stats: 0 summed local order, 1 unused, 2 speed, 3 fear, 4 candidates, 5 the next track's id,
+// 6 frames
 const S_CANDS = 4u;
 const S_SERIAL = 5u;
 const S_FRAME = 6u;
@@ -292,8 +293,10 @@ fn advance(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_i
     x.x = max(fear, x.x - dt * 1.2);
     agents[i] = vec4f(q, v);
     aux[i] = x;
+    // Its order: how nearly it heads the way the swarm round it does.
     let h = v / max(length(v), 1e-5);
-    out = vec4f(h, length(v) / (cruise(P) * 2.2), x.x);
+    let around = select(h, m / max(ml, 1e-5), ml > 1e-4);
+    out = vec4f(dot(h, around), 0.0, length(v) / (cruise(P) * 2.2), x.x);
   }
   // The frame's statistics, summed in the group, then added once.
   red[li] = out;
@@ -347,14 +350,16 @@ fn maxima(@builtin(global_invocation_id) id: vec3u) {
   }
 }
 
+/** The tracks as this frame left them, read once (the tracker runs on one thread). */
+var<private> held: array<vec4f, 12>;
 fn alive(t: i32) -> bool {
-  return t >= 0 && tracks[2u * u32(t) + 1u].x > 0.5;
+  return t >= 0 && held[2 * t + 1].x > 0.5;
 }
 fn mass(t: i32) -> f32 {
-  return tracks[2u * u32(t)].z;
+  return held[2 * t].z;
 }
 /** The heaviest live track other than `not`, or `held` while it's alive and not far lighter. */
-fn pick(not: i32, held: i32) -> i32 {
+fn pick(not: i32, kept: i32) -> i32 {
   var best = -1;
   var bm = 0.0;
   for (var t = 0; t < i32(TRACKS); t++) {
@@ -363,8 +368,8 @@ fn pick(not: i32, held: i32) -> i32 {
       best = t;
     }
   }
-  if (held != not && alive(held) && mass(held) > bm * 0.7) {
-    return held;
+  if (kept != not && alive(kept) && mass(kept) > bm * 0.7) {
+    return kept;
   }
   return best;
 }
@@ -374,7 +379,7 @@ fn bracketEnd(t: i32) -> vec2f {
   if (t < 0) {
     return c;
   }
-  let tp = tracks[2u * u32(t)];
+  let tp = held[2 * t];
   return c + tp.xy * P.scr1.z + vec2f(bracketSize(tp) + 2.0, 0.0);
 }
 /** A wire end follows its goal exactly, after a short glide whenever the goal changes. */
@@ -462,7 +467,7 @@ fn track() {
   }
   // The statistics: now, and into the history every other frame.
   let count = max(P.sim3.x, 1.0);
-  let order = length(vec2f(f32(atomicLoad(&stats[0])), f32(atomicLoad(&stats[1])))) / STAT / count;
+  let order = max(f32(atomicLoad(&stats[0])) / STAT / count, 0.0);
   let speed = f32(atomicLoad(&stats[2])) / STAT / count;
   let fear = f32(atomicLoad(&stats[3])) / STAT / count;
   let clusters = live / f32(TRACKS);
@@ -477,6 +482,9 @@ fn track() {
   let was = hist[HIST + 1u];
   let ks = 1.0 - exp(-dt * 2.0);
   hist[HIST + 1u] = vec4f(live, f32(n), mix(was.z, order, ks), mix(was.w, speed, ks));
+  for (var k = 0u; k < TRACKS * 2u; k++) {
+    held[k] = tracks[k];
+  }
   // The wires' moving ends: Cohesion's on the heaviest cluster, Separation's on the next,
   // Predators' on the first one hunting (else where it waits). A choice holds until its cluster
   // is lost or well outweighed.
