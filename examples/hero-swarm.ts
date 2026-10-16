@@ -47,7 +47,7 @@ const ICE = [0.5, 0.81, 1.0]
 const PALETTES: Record<Signal, readonly (readonly number[])[]> = {
   Amber: [AMBER, BONE, ICE],
   Ice: [ICE, BONE, AMBER],
-  Bone: [BONE, [0.64, 0.61, 0.56], [1.0, 0.5, 0.2]],
+  Bone: [BONE, [0.64, 0.61, 0.56], AMBER],
 }
 
 // The rows run top to bottom in the order their wires land round the ring, so they barely cross.
