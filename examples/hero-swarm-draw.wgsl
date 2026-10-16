@@ -251,13 +251,8 @@ fn hud(p: vec2f) -> vec3f {
     // cells and streaked whole columns.
     let id = round(vec2f(hc.z * 2.0, hc.w / 0.8660254));
     let h = hash21(id);
-    // Its outer edge is an arc that thins out cell by cell into the ground, each cell whole and
-    // dimming as it goes, so it never ends on a line (and never reaches the column).
-    let cp = hc.zw * 12.0;
-    let reach = smoothstep(1.6, 1.32, length(cp - c) / R) * smoothstep(colRight + 4.0, colRight + 40.0, cp.x);
-    let thin = sat((reach * 1.35 - hash21(id + 31.7)) * 5.0);
-    let wing = smoothstep(-0.7, -0.82, cos(ang)) * smoothstep(1.22, 1.32, rn) *
-      smoothstep(R * 1.15, R * 0.95, abs(q.y)) * reach * thin;
+    let wing = smoothstep(-0.7, -0.82, cos(ang)) * smoothstep(1.22, 1.32, rn) * smoothstep(1.62, 1.5, rn) *
+      smoothstep(R * 1.15, R * 0.95, abs(q.y)) * smoothstep(colRight + 6.0, colRight + 46.0, p.x);
     let pulse = 0.5 + 0.5 * sin(t * 2.0 + h * 9.0 - length(id) * 0.2);
     let tint = P.pal4.rgb;
     var cc = mix(tint, prim, step(0.55, h)) * 0.1;
