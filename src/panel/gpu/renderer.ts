@@ -3951,7 +3951,7 @@ class GpuOverlayManager {
         const restInk = cssMix(
           tokens.label,
           tokens.dim,
-          this.ease(panel.header, "lit", lit ? 1 : 0, this.hoverOmega(lit)),
+          this.ease(panel.header, "lit", lit ? 1 : 0, this.hoverOmega(false)),
         )
         for (const hb of panel.headerButtons) {
           if (hb.button.hidden) continue

@@ -721,7 +721,7 @@ Theme with `--k-*` tokens on the panel or any ancestor, or ship a set as a prese
 | Token | Default | What it does |
 | --- | --- | --- |
 | `--k-row-gap` | `0px` | Above 0, each row is its own bar, this far apart; a spring stacks its curve over its sliders |
-| `--k-hover-in` / `--k-hover-out` | `150` / `150` | Hover washes in and out (ms) |
+| `--k-hover-in` / `--k-hover-out` | `0` / `120` | Hover washes in and out (ms): at once under the pointer, fading as it leaves |
 | `--k-chrome` | `1` | `0` drops an inline panel's card: background, border and rim |
 | `--k-fill-base`, `--k-fill-rest-mix`, `--k-fill-hover-mix`, `--k-fill-active-mix` | surface-hi, 20%, rest, 30% | The fill: accent mixed into the base at rest, hovered and dragged |
 | `--k-handle`, `--k-handle-rest`, `--k-handle-inset` | accent, `0`, `0px` | The handle's colour, its opacity at rest, and how far inside the fill's edge it sits; it fades where it passes under the label or readout |

@@ -114,7 +114,7 @@ ${GRAD_PROPS}
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
   --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
-  --k-row-gap:0px;--k-hover-in:150;--k-hover-out:150;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:0;--k-hover-out:120;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
 }
 /* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
@@ -267,7 +267,7 @@ const css = `
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 /* The tools sit quiet (--k-dim) until the panel has the pointer or keyboard focus, then read as
    labels, and as text under the pointer. */
-.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-dim);background:transparent;border-radius:var(--k-round);cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s,opacity .15s}
+.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--k-dim);background:transparent;border-radius:var(--k-round);cursor:pointer;font-size:12px;line-height:1;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s}
 .knobs-panel:is(:hover,:has(:focus-visible)) header button{color:var(--k-label)}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel header button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
@@ -278,15 +278,15 @@ const css = `
 .knobs-head-history{display:flex;flex:none;overflow:hidden;width:calc(var(--k-icon-btn) * 2);margin-left:calc(var(--k-unit) * 1.5);transition:width .26s var(--k-ease),margin .26s var(--k-ease)}
 .knobs-head-history[data-single]{width:var(--k-icon-btn)}
 .knobs-head-history[data-shown="false"]{width:0;margin-left:0;transition:width .24s var(--k-ease) .06s,margin .24s var(--k-ease) .06s}
-.knobs-panel .knobs-head-history>button{transition:background .15s,color .15s,opacity .18s var(--k-ease) .08s,scale .3s cubic-bezier(.34,1.45,.64,1) .08s}
-.knobs-panel .knobs-head-history[data-shown="false"]>button{opacity:0;scale:.6;transition:background .15s,color .15s,opacity .12s ease-in,scale .14s ease-in}
+.knobs-panel .knobs-head-history>button{transition:background var(--k-hover-t),color var(--k-hover-t),opacity .18s var(--k-ease) .08s,scale .3s cubic-bezier(.34,1.45,.64,1) .08s}
+.knobs-panel .knobs-head-history[data-shown="false"]>button{opacity:0;scale:.6;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .12s ease-in,scale .14s ease-in}
 /* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
 .knobs-panel header .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
-  transition:background .15s,color .15s,opacity .15s,--k-copy .32s cubic-bezier(.34,1.45,.64,1) .08s,--k-check 0s .18s,--k-check-a .16s ease-in}
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .32s cubic-bezier(.34,1.45,.64,1) .08s,--k-check 0s .18s,--k-check-a .16s ease-in}
 .knobs-panel header .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--k-text);
-  transition:background .15s,color .15s,opacity .15s,--k-copy .14s ease-in,--k-check .28s cubic-bezier(.3,.7,.2,1) .06s,--k-check-a .05s linear .06s}
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .14s ease-in,--k-check .28s cubic-bezier(.3,.7,.2,1) .06s,--k-check-a .05s linear .06s}
 .knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
 .knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
 /* (Over .knobs-icon>path's fill: the check is a stroke, 16 of 256 wide like Phosphor's regular icons.) */
@@ -328,7 +328,7 @@ const css = `
 .knobs-group-reset[data-shown="false"]{opacity:0;visibility:hidden;transform:scale(.55);transition:opacity .14s ease-in,transform .14s ease-in,visibility 0s .14s}
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--k-round);color:var(--k-dim)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
-.knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background .15s,color .15s,opacity .2s,transform .12s}
+.knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background var(--k-hover-t),color var(--k-hover-t),opacity .2s,transform .12s}
 
 /* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
@@ -436,7 +436,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-smear-pill{margin-inline:calc(var(--k-smear) * -.5px);
   -webkit-mask:linear-gradient(to right,transparent,#000 calc(var(--k-smear) * 1px),#000 calc(100% - var(--k-smear) * 1px),transparent);
   mask:linear-gradient(to right,transparent,#000 calc(var(--k-smear) * 1px),#000 calc(100% - var(--k-smear) * 1px),transparent)}
-.knobs-seg button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 7px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:var(--k-radius-sm);transition:background .15s,color .15s}
+.knobs-seg button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 7px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);white-space:nowrap;color:var(--k-label);background:transparent;cursor:pointer;border-radius:var(--k-radius-sm);transition:background var(--k-hover-t),color var(--k-hover-t)}
 .knobs-seg button:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-seg button[aria-checked=true]{color:var(--k-text)}
 
@@ -545,7 +545,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-ease-handle:focus-visible{scale:1.2}
 .knobs-ease-mini{flex:none;width:30px;height:var(--k-track-h);overflow:visible}
 .knobs-ease-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--k-tray-pad);margin-top:6px;padding:var(--k-tray-pad);border-radius:var(--k-radius-md);background:var(--k-seg-bg)}
-.knobs-panel .knobs-ease-chip{min-width:0;height:calc(var(--k-row) - 10px);padding:0 6px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-panel .knobs-ease-chip{min-width:0;height:calc(var(--k-row) - 10px);padding:0 6px;font-size:var(--k-text-control);font-weight:var(--k-label-weight);color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer;white-space:nowrap;transition:background var(--k-hover-t),color var(--k-hover-t),box-shadow .15s}
 .knobs-panel .knobs-ease-chip:is(:hover,:focus-visible){color:var(--k-text)}
 .knobs-panel .knobs-ease-chip[aria-checked="true"]{color:var(--k-text);background:var(--k-pill-bg);box-shadow:var(--k-lift-shadow)}
 
@@ -650,7 +650,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-search input{flex:1;min-width:0;height:100%;padding:0;background:transparent;border-radius:0;color:var(--k-text);font-size:var(--k-text-control);-webkit-appearance:none;appearance:none}
 .knobs-panel .knobs-search input::placeholder{color:var(--k-dim)}
 .knobs-panel .knobs-search input::-webkit-search-cancel-button{display:none}
-.knobs-panel .knobs-search-chip{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--kc-control-h);padding:0 8px;background:transparent;border-radius:var(--k-radius-md);box-shadow:inset 0 0 0 1px var(--k-line);color:var(--k-label);font-size:var(--k-text-meta);font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s,opacity .15s}
+.knobs-panel .knobs-search-chip{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--kc-control-h);padding:0 8px;background:transparent;border-radius:var(--k-radius-md);box-shadow:inset 0 0 0 1px var(--k-line);color:var(--k-label);font-size:var(--k-text-meta);font-weight:var(--k-label-weight);white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t),box-shadow .15s,opacity .15s}
 .knobs-panel .knobs-search-chip:is(:hover,:focus-visible){color:var(--k-text);box-shadow:inset 0 0 0 1px var(--k-line-hi)}
 .knobs-panel .knobs-search-chip[aria-pressed="true"]{background:var(--k-pill-bg);box-shadow:inset 0 0 0 1px var(--k-pill-border);color:var(--k-text)}
 .knobs-panel .knobs-search-chip[data-none]{opacity:.5}
@@ -677,7 +677,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-cell-axis{flex:none;font-style:normal;font-size:var(--k-text-cap);font-weight:var(--k-title-weight);color:var(--k-dim)}
 .knobs-cell-read,.knobs-range-read,.knobs-angle-read,.knobs-seed-read{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-label);font-family:var(--k-value-font);font-size:var(--kc-value-size);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 .knobs-cell:focus-visible .knobs-cell-read,.knobs-active .knobs-cell:focus .knobs-cell-read,.knobs-cell[data-panned] .knobs-cell-read{color:var(--k-text)}
-.knobs-panel .knobs-link{flex:none;width:20px;height:20px;margin:0 -4px 0 auto;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background .15s,color .15s}
+.knobs-panel .knobs-link{flex:none;width:20px;height:20px;margin:0 -4px 0 auto;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
 .knobs-panel .knobs-link:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-panel .knobs-link[aria-pressed="true"]{color:var(--k-text)}
 .knobs-link .knobs-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
@@ -735,11 +735,11 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-seed-read{display:inline-flex;align-items:center}
 .knobs-seed-read[data-mixed]::before{content:"—"}
 .knobs-seed-read[data-mixed]>.knobs-seed-digits{display:none}
-.knobs-panel .knobs-seed-roll{flex:none;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background .15s,color .15s}
+.knobs-panel .knobs-seed-roll{flex:none;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:var(--k-round);color:var(--k-dim);cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
 .knobs-panel .knobs-seed-roll:hover{background:var(--k-surface-hi);color:var(--k-text)}
 .knobs-seed-roll .knobs-die-icon{width:var(--k-icon-sm);height:var(--k-icon-sm)}
 
-.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;justify-content:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;overflow:hidden;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-family:inherit;font-weight:inherit;font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+.knobs-panel .knobs-keys{flex:none;display:inline-flex;align-items:center;justify-content:center;max-width:62%;height:var(--kc-control-h);padding:0 8px;overflow:hidden;background:var(--k-seg-bg);border-radius:var(--k-radius-md);color:var(--k-text);font-family:inherit;font-weight:inherit;font-size:var(--kc-value-size);letter-spacing:.08em;white-space:nowrap;cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t)}
 .knobs-panel .knobs-keys:is(:hover,:focus-visible){background:color-mix(in srgb,var(--k-surface-hi) 70%,var(--k-seg-bg))}
 .knobs-panel .knobs-keys[data-empty]{color:var(--k-dim);letter-spacing:0}
 /* Listening: a soft accent wash, no ring, and the text breathing in "Type keys…" (keyCap). */
@@ -815,14 +815,14 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 /* Custom actions */
 .knobs-panel .knobs-custom-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:var(--k-gap);margin-top:var(--k-section-gap)}
 .knobs-panel .knobs-custom-actions button{height:var(--k-button-h,var(--k-action-h));min-height:24px;padding:0 8px;font-size:var(--k-button-font-size,var(--k-text-control));font-weight:var(--k-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k-button-color,var(--k-label));cursor:pointer;
-  background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);transition:background .15s,color .15s,opacity .15s,transform .12s,box-shadow .15s}
+  background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,transform .12s,box-shadow .15s}
 .knobs-panel .knobs-custom-actions button:is(:hover:not([disabled]),:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 .knobs-panel .knobs-custom-actions button:active:not([disabled]){transform:scale(.97)}
 .knobs-panel .knobs-tile-body>.knobs-custom-actions button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 
 /* Variants Disclosure Drawer */
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
-.knobs-transfer button{height:var(--k-button-h,24px);padding:0 8px;background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);font-size:var(--k-button-font-size,var(--k-text-meta));color:var(--k-button-color,var(--k-label));cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.knobs-transfer button{height:var(--k-button-h,24px);padding:0 8px;background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);font-size:var(--k-button-font-size,var(--k-text-meta));color:var(--k-button-color,var(--k-label));cursor:pointer;transition:background var(--k-hover-t),color var(--k-hover-t),box-shadow .15s}
 .knobs-transfer button:is(:hover,:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
 
 /* Context menu: borrows its panel's tokens (see menu.ts) and floats above everything. */
