@@ -316,6 +316,14 @@ function buildPanel<S extends Schema>(
   const iconButton = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
     const node = button("", action)
     node.append(iconSvg(doc, icon))
+    // A click presses it without taking focus, so nothing is left lit on it (a key press after a
+    // click would make the focus visible); keys go on reaching the panel.
+    node.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      if (!root.contains(doc.activeElement))
+        root.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+    })
     node.setAttribute("aria-label", label)
     if (shortcut) node.setAttribute("aria-keyshortcuts", shortcut)
     return node
@@ -326,10 +334,28 @@ function buildPanel<S extends Schema>(
    */
   const bloom = (node: HTMLButtonElement, on: boolean) => {
     const shown = String(on)
+    if (!on && doc.activeElement === node) handOff(node)
     if (node.disabled !== !on) node.disabled = !on
     if (node.dataset.shown === shown) return false
     node.dataset.shown = shown
     return true
+  }
+  /**
+   * Focus on a button that's leaving (keys took it there) moves to a neighbour that stays, once the
+   * header has settled, rather than falling out of the panel.
+   */
+  const handOff = (node: HTMLButtonElement) => {
+    const bar = node.closest(".knobs-head-actions, .knobs-group-head") ?? root
+    queueMicrotask(() => {
+      if (doc.activeElement !== node && doc.activeElement !== doc.body) return
+      const here = [...bar.querySelectorAll<HTMLButtonElement>("button")].filter(
+        (b) => !b.hidden && !b.disabled && b.dataset.shown !== "false" && visible(b),
+      )
+      const after = here.find(
+        (b) => node.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+      ;(after ?? here.at(-1) ?? root).focus({ preventScroll: true })
+    })
   }
   const place = (node: HTMLButtonElement, icon: IconName) => {
     headActions.append(node)
