@@ -60,6 +60,47 @@ export const rulerAlpha = (depth: number, level: number) => clamp(depth - (level
 export const rulerDepth = (rate: number, levels: number) =>
   rate >= 1 ? 0 : clamp(-Math.log2(rate), 0, levels)
 
+// Rubber-band ends: past a limit a control stretches like rubber, its far end anchored. It
+// lengthens by the give (scaled about the far end, so nothing near that end moves), thins a
+// little as it does, and the corners at the stretching end round off.
+
+/** How much a stretched control thins per unit of strain (a row ~300 px long, 14 px over: ~.92). */
+export const THIN = 1.7
+/** The thinnest a stretched control gets. */
+export const THINNEST = 0.85
+/** How thin a control stretched to `scale` times its length draws, across it. */
+export const thinOf = (scale: number) => Math.max(THINNEST, 1 - THIN * Math.max(0, scale - 1))
+
+/** Over how many px of give a control's stretching corners round off fully. */
+export const ROUND_IN = 4
+/** How far (0–1) the corners at a stretching end have rounded off. */
+export const roundOf = (give: number) => clamp(Math.abs(give) / ROUND_IN, 0, 1)
+
+/**
+ * A box `length` px long, stretched `give` px past one end (positive: past its far end, negative:
+ * past its start): its scale along it, about the end that stays put (0 its start, 1 its far end).
+ */
+export const stretchOf = (give: number, length: number) => ({
+  scale: length > 0 ? 1 + Math.abs(give) / length : 1,
+  anchor: give < 0 ? 1 : 0,
+})
+
+/**
+ * Where a point `at` px along a box `length` long draws while it's stretched `give` px: points near
+ * the anchored end barely move, the stretching end moves by the whole give.
+ */
+export const stretchAt = (at: number, give: number, length: number) => {
+  const { scale, anchor } = stretchOf(give, length)
+  const o = anchor * length
+  return o + (at - o) * scale
+}
+
+/**
+ * The most a control gives where it has `room` px before something clips it: `most`, or less so
+ * it never draws cut off (and a hair at least, so meeting the limit still ticks).
+ */
+export const giveRoom = (room: number, most: number) => Math.max(0.5, Math.min(most, room))
+
 export type DetentKind = "default" | "base" | "round"
 
 /** A detent's hold (px either side where the value sticks) and the ramp past it (px). */

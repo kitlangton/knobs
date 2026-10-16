@@ -1,6 +1,6 @@
 import { dieSamples, HEADER_DIE } from "../die.js"
 import { DIE_WGSL } from "./die.wgsl.js"
-import { RULER, RULER_FADE, RULER_NEAR } from "../feel.js"
+import { RULER, RULER_FADE, RULER_NEAR, THIN, THINNEST } from "../feel.js"
 
 export const FLOATS_PER_PRIM = 44
 
@@ -230,17 +230,15 @@ fn clearOfText(p: Prim, x: f32, width: f32) -> f32 {
   return clamp((x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) * clamp((width - p.aux.x - 4.0 - x) / 8.0, 0.0, 1.0);
 }
 
-// Single sample of slider fill + handle at local coordinate. Past an end both give by motion.z
-// (px), as the DOM's fill and handle translate; the fill is a block a track wide, so giving past
-// the top it pulls away from the start. more.y swells the handle as it settles on a detent.
+// Single sample of slider fill + handle at local coordinate (the row at rest: a stretch maps back
+// to it). more.y swells the handle as it settles on a detent.
 fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let fillRatio = clamp(p.extra.x, 0.0, 1.0);
-  let fillX = fillRatio * size.x + p.motion.z;
+  let fillX = fillRatio * size.x;
   var out = vec4f(0.0);
 
   // One flat, monochrome fill.
-  let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0) *
-    clamp(0.5 + (local.x - fillX + size.x) * view.dpr, 0.0, 1.0);
+  let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
     out = premul(p.color) * fillCov;
   }
@@ -273,11 +271,18 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   return out;
 }
 
-// kind 2: Slider fill + tick marks + hairline handle with horizontal motion blur
-fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
-  let trackDist = roundedBox4(local, size, radiiOf(p));
+// kind 2: Slider fill + tick marks + hairline handle with horizontal motion blur. Past an end the
+// row stretches like rubber (motion.z: its scale along, about its anchored end; it thins across
+// as the DOM's does): the rect is the stretched row, and everything in it draws as the row at
+// rest, scaled with it.
+fn shadeSlider(p: Prim, localIn: vec2f, sizeIn: vec2f, fragPos: vec2f) -> vec4f {
+  let trackDist = roundedBox4(localIn, sizeIn, radiiOf(p));
   let trackCov = covSd(trackDist);
   if (trackCov <= 0.0) { return vec4f(0.0); }
+  let sx = max(p.motion.z, 1.0);
+  let stretch = vec2f(sx, max(${THINNEST}, 1.0 - ${THIN} * (sx - 1.0)));
+  let local = localIn / stretch;
+  let size = sizeIn / stretch;
 
   let blurX = p.motion.x;
   var acc = vec4f(0.0);
@@ -293,12 +298,10 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     acc = acc / f32(n);
   }
 
-  // Tick marks and default-value notch on the centerline, clear of the label and readout; past an
-  // end they give with the fill (motion.z).
+  // Tick marks and default-value notch on the centerline, clear of the label and readout.
   let clear = clearOfText(p, local.x, size.x);
-  let give = p.motion.z;
-  let gx = local.x - give;
-  let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0) + give;
+  let gx = local.x;
+  let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
   let tickAlpha = clamp(p.extra.w, 0.0, 1.0);
   let tickCount = p.extra.z;
   if (tickAlpha > 0.01 && tickCount >= 2.0 && clear > 0.0) {
@@ -346,7 +349,7 @@ ${RULER.map(
   }
   // The active preset's notch (more.z its place, more.w its strength), hanging from the top edge.
   if (p.more.w > 0.005 && clear > 0.0) {
-    let bx = clamp(p.more.z * size.x, 1.0, size.x - 1.0) + give;
+    let bx = clamp(p.more.z * size.x, 1.0, size.x - 1.0);
     let bh = select(4.0, 6.0, p.more.w > 0.8);
     let bCov = covSd(roundedBox(local - vec2f(bx - 0.75, -1.0), vec2f(1.5, bh + 1.0), 0.75)) * clear;
     let ba = bCov * p.aux2.a * p.more.w;

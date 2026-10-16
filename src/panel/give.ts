@@ -1,3 +1,4 @@
+import { roundOf, stretchOf, thinOf } from "./feel.js"
 import { tick } from "./haptics.js"
 import { Spring } from "./motion.js"
 
@@ -8,13 +9,11 @@ import { Spring } from "./motion.js"
 
 /** The most a control gives past an end (px). */
 export const GIVE = 6
-/** The most a slider's fill gives past an end (px), dragged or panned alike. */
+/** The most a slider's row stretches past an end (px), dragged or panned alike. */
 export const STRETCH = 14
-/** How long (s) a give takes to spring home, with no bounce: a readout's, and a slider's. */
+/** How long (s) a give takes to spring home, with no bounce: a readout's, and a stretch's. */
 export const HOME_S = 0.25
 export const STRETCH_HOME_S = 0.35
-/** The readout's share of a slider's give past an end (it stays clear of the row's edge). */
-export const READOUT_GIVE = 0.6
 
 /** The give `over` px of push past an end makes: 1:1 at first, never reaching `max`. */
 export const rubber = (over: number, max = GIVE) =>
@@ -224,3 +223,71 @@ export function textGive(
   }
 }
 export type TextGive = ReturnType<typeof textGive>
+
+/**
+ * Draws `el` stretched like rubber, `x` px past an end along it (and `y` px down or up, for a pad):
+ * scaled about the end that stays put, thinner across it as it lengthens (`thin`), its stretching
+ * corners rounding off. CSS reads the vars (.knobs-stretching); `unclip` is a parent whose clip it
+ * may draw past meanwhile (its card).
+ */
+export function drawStretch(
+  el: HTMLElement,
+  x: number,
+  y: number,
+  size: { readonly w: number; readonly h: number },
+  o: { readonly thin?: boolean; readonly unclip?: Element | null } = {},
+) {
+  const on = x !== 0 || y !== 0
+  el.classList.toggle("knobs-stretching", on)
+  o.unclip?.toggleAttribute("data-k-stretch", on)
+  const st = el.style
+  if (!on) {
+    for (const v of STRETCH_VARS) st.removeProperty(v)
+    delete el.dataset.stretch
+    return
+  }
+  const sx = stretchOf(x, size.w)
+  const sy = o.thin ? { scale: thinOf(sx.scale), anchor: 0.5 } : stretchOf(y, size.h)
+  st.setProperty("--k-sx", sx.scale.toFixed(5))
+  st.setProperty("--k-sy", sy.scale.toFixed(5))
+  st.setProperty("--k-sox", `${sx.anchor * 100}%`)
+  st.setProperty("--k-soy", `${(y === 0 && !o.thin ? 0.5 : sy.anchor) * 100}%`)
+  st.setProperty("--k-sf", roundOf(x || y).toFixed(3))
+  st.setProperty("--k-w", `${size.w}px`)
+  st.setProperty("--k-ox", `${sx.anchor * size.w}px`)
+  el.dataset.stretch = x > 0 ? "end" : x < 0 ? "start" : "none"
+}
+const STRETCH_VARS = ["--k-sx", "--k-sy", "--k-sox", "--k-soy", "--k-sf", "--k-w", "--k-ox"]
+
+/**
+ * How far (px) `el` can stretch each way before an ancestor clips it (its overflow isn't
+ * visible), passing over `skip` (a card it unclips while it stretches).
+ */
+export function roomOf(el: Element, skip?: Element | null) {
+  const r = el.getBoundingClientRect()
+  const room = { left: Infinity, right: Infinity, top: Infinity, bottom: Infinity }
+  const win = el.ownerDocument.defaultView
+  let found = { x: false, y: false }
+  for (let a = el.parentElement; a && !(found.x && found.y); a = a.parentElement) {
+    if (a === skip) continue
+    const cs = win?.getComputedStyle(a)
+    if (!cs) break
+    const box = a.getBoundingClientRect()
+    const left = box.left + a.clientLeft
+    const top = box.top + a.clientTop
+    // A panel's glass edge bounds it too, clipped or not (a flat one has none).
+    const glass =
+      a.classList.contains("knobs-panel") && Number(cs.getPropertyValue("--k-chrome") || 1) > 0
+    if (!found.x && (glass || cs.overflowX !== "visible")) {
+      found = { ...found, x: true }
+      room.left = r.left - left
+      room.right = left + a.clientWidth - r.right
+    }
+    if (!found.y && (glass || cs.overflowY !== "visible")) {
+      found = { ...found, y: true }
+      room.top = r.top - top
+      room.bottom = top + a.clientHeight - r.bottom
+    }
+  }
+  return room
+}

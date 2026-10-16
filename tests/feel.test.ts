@@ -3,6 +3,7 @@ import {
   DETENTS,
   detentScale,
   detentsOf,
+  giveRoom,
   Notches,
   offRow,
   precisionDepth,
@@ -11,6 +12,12 @@ import {
   rulerAlpha,
   rulerDepth,
   rulerLevels,
+  ROUND_IN,
+  roundOf,
+  stretchAt,
+  stretchOf,
+  THINNEST,
+  thinOf,
   unwarp,
   warp,
   type Detent,
@@ -158,6 +165,45 @@ describe("magnetic detents", () => {
     expect(n.held).toBe(0)
     expect(n.move(102).caught).toBeUndefined()
     expect(n.move(130).caught).toBeUndefined()
+  })
+})
+
+describe("stretching like rubber, the far end anchored", () => {
+  it("past the top, the start stays put and the far end moves the whole give", () => {
+    expect(stretchOf(14, 300)).toEqual({ scale: 1 + 14 / 300, anchor: 0 })
+    expect(stretchAt(0, 14, 300)).toBe(0)
+    expect(stretchAt(300, 14, 300)).toBeCloseTo(314, 9)
+    expect(stretchAt(150, 14, 300)).toBeCloseTo(157, 9)
+  })
+
+  it("past the bottom, the far end stays put and the start stretches out before it", () => {
+    expect(stretchOf(-14, 300).anchor).toBe(1)
+    expect(stretchAt(300, -14, 300)).toBeCloseTo(300, 9)
+    expect(stretchAt(0, -14, 300)).toBeCloseTo(-14, 9)
+  })
+
+  it("at rest nothing moves or thins", () => {
+    expect(stretchOf(0, 300).scale).toBe(1)
+    expect(stretchAt(120, 0, 300)).toBe(120)
+    expect(thinOf(1)).toBe(1)
+    expect(roundOf(0)).toBe(0)
+  })
+
+  it("thins as it lengthens, to about .92 at a full give, never past its thinnest", () => {
+    expect(thinOf(stretchOf(14, 300).scale)).toBeCloseTo(0.92, 2)
+    expect(thinOf(1.01)).toBeGreaterThan(thinOf(1.02))
+    expect(thinOf(3)).toBe(THINNEST)
+  })
+
+  it("never stretches further than there's room for before a clip", () => {
+    expect(giveRoom(40, 14)).toBe(14)
+    expect(giveRoom(9, 14)).toBe(9)
+    expect(giveRoom(0, 14)).toBe(0.5)
+  })
+
+  it("rounds its stretching corners off over the first few px", () => {
+    expect(roundOf(ROUND_IN / 2)).toBe(0.5)
+    expect(roundOf(-40)).toBe(1)
   })
 })
 
