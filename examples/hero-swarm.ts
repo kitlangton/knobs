@@ -1,18 +1,19 @@
 /// <reference types="@webgpu/types" />
-// A hero: MAGI, watching a live swarm. Sixteen thousand agents flock in a containment ring,
-// simulated on the GPU (hero-magi-sim.wgsl), while a tactical display reads them live
-// (hero-magi-draw.wgsl): brackets lock onto the largest clusters and follow them, a radar shows
-// the density, a scope plots the swarm's order, pace and fear, three MAGI votes judge it, and a
-// trace runs from each row of the panel into the machine. The panel operates it: cohesion,
-// alignment, separation, speed, predators, containment, the display's signal colour, and the
-// lure, which a drag in the ring also places (held, it pulls harder). Bloom and tone are the
-// catalog's (controls-post.wgsl). Without WebGPU, a still of the display stands in.
+// A hero: Swarm, a tactical display watching a live simulation. Sixteen thousand agents flock in
+// a containment ring, simulated on the GPU (hero-swarm-sim.wgsl), while the display reads them
+// live (hero-swarm-draw.wgsl): brackets lock onto the largest clusters and follow them, a radar
+// shows the density, a scope plots the swarm's order, pace and fear, two arcs round the ring
+// show its order and pace, and a wire runs from each row of the panel to what that row drives.
+// The panel operates it: alignment, cohesion, separation, predators, the display's signal
+// colour, containment, the lure (which a drag in the ring also places; held, it pulls harder)
+// and speed. Bloom and tone are the catalog's (controls-post.wgsl). Without WebGPU, a still of
+// the display stands in.
 import { choice, defineControls, knob, point } from "knobs"
 import { mountPanel } from "knobs/panel"
 import postWgsl from "./controls-post.wgsl?raw"
-import commonWgsl from "./hero-magi-common.wgsl?raw"
-import drawWgsl from "./hero-magi-draw.wgsl?raw"
-import simWgsl from "./hero-magi-sim.wgsl?raw"
+import commonWgsl from "./hero-swarm-common.wgsl?raw"
+import drawWgsl from "./hero-swarm-draw.wgsl?raw"
+import simWgsl from "./hero-swarm-sim.wgsl?raw"
 
 const HDR: GPUTextureFormat = "rgba16float"
 const LEVELS = 5
@@ -26,61 +27,72 @@ const AGENTS = 16384
 const LURE_SPAN = 0.85
 /** A trail's light halves in this long (s): the phosphor. */
 const TRAIL_HALF = 0.07
+/** Half the span of the order and pace arcs (rad), as in hero-swarm-common.wgsl. */
+const ARC = 0.44
+/** The wires' moving ends, after the history and the latest statistics (vec4s). */
+const ANCHORS = 3
+/** Segments in each wire's curve, as in hero-swarm-draw.wgsl. */
+const WIRE_SEGS = 48
 
-const SIGNALS = ["Amber", "Emerald", "Red"] as const
+const SIGNALS = ["Amber", "Ice", "Bone"] as const
 type Signal = (typeof SIGNALS)[number]
-/** Each signal: the display's main colour, its second, its alert (sRGB 0–1). */
-const PALETTES: Record<Signal, readonly [readonly number[], readonly number[], readonly number[]]> =
-  {
-    Amber: [
-      [1.0, 0.56, 0.16],
-      [0.2, 1.0, 0.58],
-      [1.0, 0.16, 0.2],
-    ],
-    Emerald: [
-      [0.26, 1.0, 0.6],
-      [1.0, 0.62, 0.22],
-      [1.0, 0.16, 0.2],
-    ],
-    Red: [
-      [1.0, 0.2, 0.18],
-      [1.0, 0.64, 0.24],
-      [0.92, 0.94, 1.0],
-    ],
-  }
+/** knobs' amber (the desk's accent), bone, and a cool counter-accent (sRGB 0–1). */
+const AMBER = [1.0, 0.647, 0.239]
+const BONE = [0.93, 0.89, 0.81]
+const ICE = [0.5, 0.81, 1.0]
+/**
+ * Each signal: the display's main colour (the rings, the wires, the swarm at speed), its second
+ * (the swarm cruising, the gauges) and its counter (the predators and the fear they spread).
+ */
+const PALETTES: Record<Signal, readonly (readonly number[])[]> = {
+  Amber: [AMBER, BONE, ICE],
+  Ice: [ICE, BONE, AMBER],
+  Bone: [BONE, [0.64, 0.61, 0.56], [1.0, 0.5, 0.2]],
+}
 
+// The rows run top to bottom in the order their wires land round the ring, so they barely cross.
 const schema = {
-  cohesion: knob(55, { min: 0, max: 100, step: 1, unit: "%", label: "Cohesion" }),
   alignment: knob(72, { min: 0, max: 100, step: 1, unit: "%", label: "Alignment" }),
+  cohesion: knob(55, { min: 0, max: 100, step: 1, unit: "%", label: "Cohesion" }),
   separation: knob(40, { min: 0, max: 100, step: 1, unit: "%", label: "Separation" }),
-  speed: knob(48, { min: 10, max: 100, step: 1, unit: "%", label: "Speed" }),
   predators: knob(1, { min: 0, max: 6, step: 1, label: "Predators" }),
-  containment: knob(94, { min: 55, max: 100, step: 1, unit: "%", label: "Containment" }),
   signal: choice("Amber", SIGNALS, { label: "Signal", display: "segmented" }),
+  containment: knob(94, { min: 55, max: 100, step: 1, unit: "%", label: "Containment" }),
   lure: point({ x: 0.62, y: 0.42 }, { min: 0, max: 1, step: 0.01, label: "Lure" }),
+  speed: knob(48, { min: 10, max: 100, step: 1, unit: "%", label: "Speed" }),
 }
 type Key = keyof typeof schema
 const KEYS = Object.keys(schema) as Key[]
+/** What each row's wire lands on (hero-swarm-draw.wgsl's `wire`). */
+const LANDS: Record<Key, number> = {
+  cohesion: 0, // the heaviest cluster's bracket
+  alignment: 1, // the tip of the order arc
+  separation: 2, // the next cluster's bracket
+  speed: 3, // the tip of the pace arc
+  predators: 4, // a predator
+  containment: 5, // the containment ring
+  signal: 6, // the bezel, in the signal's colour
+  lure: 7, // the lure's reticle
+}
 
 const CSS = `
-.magi-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
-.magi-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.magi-text { position: absolute; inset: 0; pointer-events: none; font: 500 9.5px/1 ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; letter-spacing: .14em; color: var(--magi-a); text-transform: uppercase; transition: opacity .6s ease; }
-.magi-text > div { position: absolute; left: 0; top: 0; white-space: nowrap; }
-.magi-text .dim { color: rgba(214, 220, 232, .42); }
-.magi-text .b { color: var(--magi-b); }
-.magi-text .c { color: var(--magi-c); }
-.magi-text .v { text-shadow: 0 0 10px currentColor; }
-.magi-text .rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
-.magi-text .vertical { writing-mode: vertical-rl; }
-.magi-text .rows span:nth-child(even) { text-align: right; text-shadow: 0 0 10px currentColor; }
-.magi-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
-.magi-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
-.magi-still { position: absolute; inset: 0; width: 100%; height: 100%; }
+.swarm-stage { position: absolute; inset: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+.swarm-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.swarm-text { position: absolute; inset: 0; pointer-events: none; font: 500 11px/1 ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; letter-spacing: .06em; color: var(--swarm-a); font-variant-numeric: tabular-nums; transition: opacity .6s ease; }
+.swarm-text > div { position: absolute; left: 0; top: 0; white-space: nowrap; }
+.swarm-text .dim { color: rgba(237, 227, 207, .62); }
+.swarm-text .b { color: var(--swarm-b); }
+.swarm-text .c { color: var(--swarm-c); }
+.swarm-text .v { text-shadow: 0 0 12px color-mix(in srgb, currentColor 45%, transparent); }
+.swarm-text .rows { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; }
+.swarm-text .rows span:nth-child(even) { text-align: right; color: var(--swarm-b); }
+.swarm-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
+.swarm-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
+.swarm-still { position: absolute; inset: 0; width: 100%; height: 100%; }
 @media (max-width: 900px) {
-  .magi-stage { position: relative; height: 58vh; min-height: 360px; }
-  .magi-panel { position: static; width: auto; max-width: 420px; margin: 0 auto; padding: 0 16px; display: block; pointer-events: auto; }
-  .magi-text { display: none; }
+  .swarm-stage { position: relative; height: 58vh; min-height: 360px; }
+  .swarm-panel { position: static; width: auto; max-width: 420px; margin: 0 auto; padding: 0 16px; display: block; pointer-events: auto; }
+  .swarm-text { display: none; }
 }
 `
 
@@ -88,10 +100,10 @@ const toLinear = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 
-export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
-  if (!document.getElementById("magi-css")) {
+export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
+  if (!document.getElementById("swarm-css")) {
     const style = document.createElement("style")
-    style.id = "magi-css"
+    style.id = "swarm-css"
     style.textContent = CSS
     document.head.append(style)
   }
@@ -101,27 +113,27 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     parent.append(e)
     return e
   }
-  const stage = el("magi-stage")
+  const stage = el("swarm-stage")
   host.prepend(stage)
-  const text = el("magi-text")
+  const text = el("swarm-text")
   stage.after(text)
-  const slot = el("magi-panel")
+  const slot = el("swarm-panel")
   const narrow = matchMedia("(max-width: 900px)")
 
   // ── The panel ──
-  const store = defineControls("hero-magi", schema, {
+  const store = defineControls("hero-swarm", schema, {
     enabled: true,
     storage: null,
     defaultLabel: "Flock",
     presets: {
-      Swarm: {
+      Cloud: {
         cohesion: 92,
         alignment: 10,
         separation: 28,
         speed: 74,
         predators: 0,
         containment: 74,
-        signal: "Emerald",
+        signal: "Bone",
         lure: { x: 0.5, y: 0.5 },
       },
       Panic: {
@@ -131,7 +143,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
         speed: 88,
         predators: 5,
         containment: 100,
-        signal: "Red",
+        signal: "Amber",
         lure: { x: 0.24, y: 0.7 },
       },
       Vortex: {
@@ -141,7 +153,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
         speed: 64,
         predators: 0,
         containment: 86,
-        signal: "Emerald",
+        signal: "Ice",
         lure: { x: 0.5, y: 0.5 },
       },
     },
@@ -151,7 +163,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     },
   })
   const panel = mountPanel(store, slot, {
-    title: "MAGI",
+    title: "Swarm",
     theme: "dark",
     session: false,
     variants: false,
@@ -193,24 +205,35 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
 
   // ── Layout: the ring and its instruments in the room the panel leaves ──
   const lay = { w: 0, h: 0, cx: 0, cy: 0, R: 1, col: [0, 0, 0, 0], panelX: 0, rows: [] as number[] }
+  /** The scope's share of the instrument column, and the radar's radius in it. */
+  const SCOPE = 0.29
+  const radarR = (col: number[]) => Math.min(col[2]! * 0.5 - 4, col[3]! * 0.22)
   const fit = () => {
     const w = stage.clientWidth
     const h = stage.clientHeight
     const beside = !narrow.matches
     const sr = stage.getBoundingClientRect()
     const pr = slot.querySelector(".knobs-panel")?.getBoundingClientRect()
+    // On the landing page the hero switch sits in the top left corner: the frame stays below it.
+    const sw = host.closest(".hero")?.querySelector(".hero-variant")?.getBoundingClientRect()
+    const roof = sw && sw.height > 0 ? sw.bottom - sr.top + 14 : 18
     lay.w = w
     lay.h = h
     if (beside && pr) {
       const panelX = pr.left - sr.left
       const cw = Math.max(170, Math.min(220, w * 0.15))
       const avail = panelX - 40 - 70 - 40
-      const R = Math.max(120, Math.min(h * 0.315, (avail - 22 - cw - 46) / 2.91))
+      // The frame reaches 1.3 R above and below the ring, with its marks and the clock above it
+      // (28 px) and its marks below (22 px).
+      const R = Math.max(
+        120,
+        Math.min((h - 22 - 16 - roof - 28) / 2.6, (avail - 22 - cw - 46) / 2.91),
+      )
       const comp = 22 + cw + 1.55 * R + 1.36 * R
       const left = 40 + Math.max(0, (avail - comp) / 2)
       lay.R = R
       lay.cx = left + 22 + cw + 1.55 * R
-      lay.cy = h * 0.545
+      lay.cy = (roof + 28 + h - 38) / 2
       lay.col = [left + 22, lay.cy - 1.18 * R, cw, 2.36 * R]
       lay.panelX = panelX
       lay.rows = KEYS.map((k) => {
@@ -230,58 +253,71 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     placeText()
   }
 
-  // ── The readouts ──
+  // ── The readouts: every one a live value or the name of what an instrument shows ──
   const line = (cls: string) => el(cls, text)
-  const header = line("")
   const clock = line("dim")
   const legend = line("dim")
   const numbers = line("rows")
-  const votes = [line(""), line("vertical"), line("")]
+  const orderLabel = line("")
+  const paceLabel = line("")
+  const density = line("dim")
+  /** How many readout lines fit between the scope and the radar. */
+  let fits = 5
   const placeText = () => {
     const { cx, cy, R, col } = lay
-    const top = cy - 1.3 * R - 14
-    const left = col[2]! > 0 ? col[0]! - 22 : cx - 1.5 * R
-    header.style.transform = `translate(${left}px, ${top - 6}px)`
-    clock.style.transform = `translate(${cx + 1.36 * R}px, ${top - 6}px) translateX(-100%)`
-    legend.style.transform = `translate(${col[0]}px, ${col[1]! - 16}px)`
-    numbers.style.transform = `translate(${col[0]}px, ${col[1]! + col[3]! * 0.33 + 20}px)`
+    const at = (el: HTMLElement, x: number, y: number, shift: string) => {
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) ${shift}`
+    }
+    at(clock, cx + 1.36 * R, cy - 1.3 * R - 22, "translateX(-100%)")
+    // Each arc's name and value at its left end, clear of the wires that come from the right.
+    const arcEnd = (a: number) => [cx + Math.cos(a) * 1.125 * R - 10, cy + Math.sin(a) * 1.125 * R]
+    const [ox, oy] = arcEnd(-Math.PI / 2 - ARC)
+    const [px, py] = arcEnd(Math.PI / 2 + ARC)
+    at(orderLabel, ox!, oy!, "translate(-100%, -50%)")
+    at(paceLabel, px!, py!, "translate(-100%, -50%)")
+    const shown = col[2]! > 0
+    for (const el of [legend, numbers, density]) el.style.display = shown ? "" : "none"
+    if (!shown) return
+    const rr = radarR(col)
+    const rowsTop = col[1]! + col[3]! * SCOPE + 16
+    const radarTop = col[1]! + col[3]! - 2 * rr - 2
+    fits = Math.max(0, Math.min(5, Math.floor((radarTop - rowsTop - 4) / 19)))
+    at(legend, col[0]!, col[1]! - 20, "")
+    at(numbers, col[0]!, rowsTop, "")
     numbers.style.width = `${col[2]}px`
-    votes[0]!.style.transform = `translate(${cx}px, ${cy - 1.18 * R - 4}px) translate(-50%, -100%)`
-    votes[1]!.style.transform = `translate(${cx - 1.18 * R - 4}px, ${cy}px) translate(-100%, -50%) rotate(180deg)`
-    votes[2]!.style.transform = `translate(${cx}px, ${cy + 1.18 * R + 4}px) translate(-50%, 0)`
+    at(density, col[0]! + col[2]! / 2, col[1]! + col[3]! + 8, "translateX(-50%)")
   }
-  header.innerHTML = `MAGI <span class="dim">· swarm containment</span>`
-  legend.innerHTML = `<span class="v">order</span> <span class="dim">/</span> <span class="b v">pace</span> <span class="dim">/</span> <span class="c v">fear</span>`
-  const fmt = (n: number, d = 3) => n.toFixed(d)
+  legend.innerHTML = `<span class="v">order</span> · <span class="b v">pace</span> · <span class="c v">fear</span> · clusters`
+  density.textContent = "density"
   let simTime = 0
   const showStats = (s: Stats) => {
     const v = store.get()
-    numbers.innerHTML = [
-      ["Φ order", fmt(s.order)],
-      ["v̄ pace", fmt(s.pace)],
-      ["fear", fmt(s.fear)],
-      ["clusters", String(s.clusters).padStart(2, "0")],
-      ["predators", String(v.predators).padStart(2, "0")],
+    const rows: [string, string][] = [
+      ["fear", s.fear.toFixed(3)],
+      ["clusters", String(s.clusters)],
+      ["predators", String(v.predators)],
       ...s.tracks
         .slice(0, 2)
-        .map((t) => [`tgt-${String(t.id).padStart(2, "0")}`, `${Math.round(t.mass)}`]),
+        .map((t): [string, string] => [
+          `cluster ${String(t.id).padStart(2, "0")}`,
+          Math.round(t.mass).toLocaleString("en-US"),
+        ]),
     ]
+    numbers.innerHTML = rows
+      .slice(0, fits)
       .map(([a, b]) => `<span class="dim">${a}</span><span>${b}</span>`)
       .join("")
-    const verdict = (name: string, yes: boolean) =>
-      `<span class="dim">${name}</span> <span class="${yes ? "b" : "c"} v">${yes ? "approve" : "reject"}</span>`
-    votes[0]!.innerHTML = verdict("melchior-1", s.order > 0.5)
-    votes[1]!.innerHTML = verdict("balthasar-2", s.pace > 0.5)
-    votes[2]!.innerHTML = verdict("casper-3", s.fear < 0.17)
-    clock.textContent = `${AGENTS.toLocaleString("en-US")} agents · t+${simTime.toFixed(1).padStart(6, "0")}`
+    orderLabel.innerHTML = `<span class="dim">order</span> <span class="v">${s.order.toFixed(2)}</span>`
+    paceLabel.innerHTML = `<span class="dim">pace</span> <span class="b v">${(s.pace * 2.2).toFixed(2)}× cruise</span>`
+    clock.textContent = `${AGENTS.toLocaleString("en-US")} agents · ${simTime.toFixed(1)} s`
   }
 
   const css = (c: readonly number[]) =>
     `rgb(${c.map((x) => Math.round(255 * (x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055))).join(" ")})`
   const paintText = () => {
-    host.style.setProperty("--magi-a", css(now.pal[0]!))
-    host.style.setProperty("--magi-b", css(now.pal[1]!))
-    host.style.setProperty("--magi-c", css(now.pal[2]!))
+    host.style.setProperty("--swarm-a", css(now.pal[0]!))
+    host.style.setProperty("--swarm-b", css(now.pal[1]!))
+    host.style.setProperty("--swarm-c", css(now.pal[2]!))
   }
 
   // ── The lure, by hand ──
@@ -433,12 +469,12 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     set(4, w, h, dpr, 0.5 ** (dt / TRAIL_HALF))
     set(5, lay.cx, lay.cy, lay.R, arrival)
     set(6, lay.col[0]!, lay.col[1]!, lay.col[2]!, lay.col[3]!)
-    set(7, lay.panelX, lay.rows.length, -1, 0)
+    set(7, lay.panelX, lay.rows.length, 0, 0)
     set(8, now.pal[0]![0]!, now.pal[0]![1]!, now.pal[0]![2]!, 1)
     set(9, now.pal[1]![0]!, now.pal[1]![1]!, now.pal[1]![2]!, 0)
     set(10, now.pal[2]![0]!, now.pal[2]![1]!, now.pal[2]![2]!, 0)
     set(11, page[0], page[1], page[2], 0)
-    lay.rows.forEach((y, i) => set(12 + i, y, rowValue(KEYS[i]!), glows[i]!, 0))
+    lay.rows.forEach((y, i) => set(12 + i, y, rowValue(KEYS[i]!), glows[i]!, LANDS[KEYS[i]!]))
     return p
   }
 
@@ -468,7 +504,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
       paintText()
       still?.()
     })
-    showStats({ order: 0.74, pace: 0.51, fear: 0, clusters: 3, tracks: [] })
+    showStats({ order: 0.74, pace: 0.45, fear: 0, clusters: 3, tracks: [] })
   }
   if (noGpu) fallback()
   else
@@ -477,11 +513,11 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
         if (disposed) return g?.destroy()
         if (!g) return fallback()
         gpu = g
-        Object.assign(window, { __magi: { bench: g.bench } })
+        Object.assign(window, { __swarm: { bench: g.bench } })
         wake()
       })
       .catch((e) => {
-        console.warn("hero-magi: no WebGPU", e)
+        console.warn("hero-swarm: no WebGPU", e)
         fallback()
       })
 
@@ -542,7 +578,7 @@ async function createGpu(
     requiredFeatures: timing ? ["timestamp-query"] : [],
   })
   device.addEventListener("uncapturederror", (e) =>
-    console.error("hero-magi:", (e as GPUUncapturedErrorEvent).error.message),
+    console.error("hero-swarm:", (e as GPUUncapturedErrorEvent).error.message),
   )
   const canvas = document.createElement("canvas")
   canvas.setAttribute("aria-hidden", "true")
@@ -556,13 +592,13 @@ async function createGpu(
     m.getCompilationInfo().then((info) => {
       for (const x of info.messages)
         if (x.type === "error")
-          console.error(`hero-magi ${label} ${x.lineNum}:${x.linePos} ${x.message}`)
+          console.error(`hero-swarm ${label} ${x.lineNum}:${x.linePos} ${x.message}`)
     })
     return m
   }
-  const simMod = compile(commonWgsl + simWgsl, "magi-sim")
-  const drawMod = compile(commonWgsl + drawWgsl, "magi-draw")
-  const postMod = compile(postWgsl, "magi-post")
+  const simMod = compile(commonWgsl + simWgsl, "swarm-sim")
+  const drawMod = compile(commonWgsl + drawWgsl, "swarm-draw")
+  const postMod = compile(postWgsl, "swarm-post")
 
   // ── Buffers ──
   const S = GPUBufferUsage.STORAGE
@@ -575,7 +611,7 @@ async function createGpu(
   const stats = buf(16 * 4, S | GPUBufferUsage.COPY_DST)
   const cand = buf(32 * 16, S)
   const tracks = buf(TRACKS * 2 * 16, S | GPUBufferUsage.COPY_SRC)
-  const hist = buf((HIST + 2) * 16, S | GPUBufferUsage.COPY_SRC)
+  const hist = buf((HIST + 2 + 2 * ANCHORS) * 16, S | GPUBufferUsage.COPY_SRC)
   const READ = 2 * 16 + TRACKS * 2 * 16
   const reads = [0, 1].map(() => buf(READ, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST))
   const fieldTex = (n: number) =>
@@ -711,6 +747,8 @@ async function createGpu(
   const pFade = drawPipe("vs_full", "fs_fade", [r0], keep)
   const pAgent = drawPipe("vs_agent", "fs_agent", [r0], add)
   const pHud = drawPipe("vs_full", "fs_hud", [r0, r1])
+  const pWire = drawPipe("vs_wire", "fs_wire", [r0], add)
+  const pCap = drawPipe("vs_cap", "fs_cap", [r0], add)
 
   // ── Bloom and tone: the catalog's post pass ──
   const postLayout = device.createBindGroupLayout({
@@ -870,7 +908,8 @@ async function createGpu(
   const encode = (simDt: number, dt: number, arrive: number) => {
     const t = fitTargets()
     frameNo++
-    device.queue.writeBuffer(uniform, 0, writeParams(simDt, dt, arrive, t.w, t.h, t.dpr, frameNo))
+    const params = writeParams(simDt, dt, arrive, t.w, t.h, t.dpr, frameNo)
+    device.queue.writeBuffer(uniform, 0, params)
     const enc = device.createCommandEncoder()
     enc.clearBuffer(grid)
     const timed = query && !queryBusy
@@ -927,6 +966,14 @@ async function createGpu(
     rp.setBindGroup(0, rb0)
     rp.setBindGroup(1, t.rb1)
     rp.draw(3)
+    // The wires, over the display: one per row of the panel beside it.
+    const rows = params[29]!
+    if (rows > 0) {
+      rp.setPipeline(pWire)
+      rp.draw(WIRE_SEGS * 6, rows)
+      rp.setPipeline(pCap)
+      rp.draw(6, rows * 2)
+    }
     rp.end()
     for (let i = 0; i < LEVELS; i++) {
       rp = pass(t.levels[i]!.createView(), "clear")
@@ -994,7 +1041,8 @@ async function createGpu(
             if (alive > 0.5) list.push({ id: f[8 + i * 8 + 5]!, mass: f[8 + i * 8 + 2]! })
           }
           list.sort((a, b) => b.mass - a.mass)
-          onStats({ order: f[1]!, pace: f[2]!, fear: f[3]!, clusters: f[4]!, tracks: list })
+          // The arcs show order and pace eased (f[6], f[7]); their labels read the same.
+          onStats({ order: f[6]!, pace: f[7]!, fear: f[3]!, clusters: f[4]!, tracks: list })
         },
         () => {
           reading[r] = false
@@ -1036,7 +1084,7 @@ function drawStill(
 ) {
   const NS = "http://www.w3.org/2000/svg"
   const svg = document.createElementNS(NS, "svg")
-  svg.setAttribute("class", "magi-still")
+  svg.setAttribute("class", "swarm-still")
   svg.setAttribute("aria-hidden", "true")
   stage.append(svg)
   let seed = 11

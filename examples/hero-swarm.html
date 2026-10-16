@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs · Swarm</title>
+    <style>
+      /* The landing page's hero box, alone: always dark, the title near the top, the panel at
+         the right (below it under 900px). hero-swarm.ts brings the rest. */
+      :root {
+        --night: #101012; --page: var(--night);
+        --sans: system-ui, -apple-system, "SF Pro Text", sans-serif;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--page); color: rgba(255, 255, 255, .92); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+      .hero { position: relative; height: clamp(560px, 82vh, 1000px); overflow: hidden; background: var(--night); color: rgba(255, 255, 255, .9); }
+      .hero-title { position: absolute; left: 0; right: 0; top: 5.5%; text-align: center; pointer-events: none; }
+      .hero-title h1 { margin: 0; font: 400 22px/1.2 var(--sans); letter-spacing: .01em; color: rgba(255, 255, 255, .86); }
+      @media (max-width: 900px) {
+        .hero { height: auto; overflow: visible; padding-bottom: 20px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero" id="hero">
+      <div class="hero-title"><h1>knobs</h1></div>
+    </header>
+    <script type="module">
+      import { mountHeroSwarm } from "./hero-swarm.ts"
+      mountHeroSwarm(document.getElementById("hero"))
+    </script>
+  </body>
+</html>
