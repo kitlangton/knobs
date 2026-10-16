@@ -306,24 +306,32 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     lay.w = w
     lay.h = h
     if (beside && pr) {
-      const panelX = pr.left - sr.left
-      const cw = Math.max(170, Math.min(220, w * 0.15))
-      const avail = panelX - 40 - 70 - 40
+      // The whole group, centred on the page: the frame's marks (21 px past it), the instrument
+      // column, the ring, a gap the wires curve through, the panel. The gap is whatever puts the
+      // ring nearest the page's centre, within what the wires need.
+      const pw = pr.width
+      const cw = Math.max(150, Math.min(220, w * 0.15))
+      const side = 24
+      const gapMin = 90
       // The frame reaches 1.3 R above and below the ring, with its marks and the clock above it
       // (28 px) and its marks below (22 px).
       const R = Math.max(
-        120,
-        Math.min((h - 22 - 16 - roof - 28) / 2.6, (avail - 22 - cw - 46) / 2.91),
+        100,
+        Math.min((h - 22 - 16 - roof - 28) / 2.6, (w - 2 * side - 43 - cw - gapMin - pw) / 2.91),
       )
-      const comp = 22 + cw + 1.55 * R + 1.36 * R
-      const left = 40 + Math.max(0, (avail - comp) / 2)
+      const before = 43 + cw + 1.55 * R
+      const after = 1.36 * R + pw
+      const gap = Math.min(220, Math.max(gapMin, before - after))
+      const left = Math.max(16, (w - (before + gap + after)) / 2)
       lay.R = R
-      lay.cx = left + 22 + cw + 1.55 * R
+      lay.cx = left + before
       lay.cy = (roof + 28 + h - 38) / 2
-      lay.col = [left + 22, lay.cy - 1.18 * R, cw, 2.36 * R]
-      lay.panelX = panelX
+      lay.col = [left + 43, lay.cy - 1.18 * R, cw, 2.36 * R]
+      lay.panelX = lay.cx + 1.36 * R + gap
+      slot.style.right = `${Math.max(0, w - lay.panelX - pw).toFixed(1)}px`
       measureRows()
     } else {
+      slot.style.right = ""
       lay.R = Math.min((w / 2 - 16) / 1.5, h * 0.36)
       lay.cx = w / 2
       lay.cy = h * 0.52
