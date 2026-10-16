@@ -273,6 +273,64 @@ export function chevronTurn(p: number, edge: "start" | "end"): number {
   return (edge === "start" ? 180 : -180) * (1 - clamp01(p))
 }
 
+/**
+ * The fold's chevron, flipping: its width (scaleX) against the rail's chevron at flip progress
+ * `f` (0 open, 1 folded). The arms close in to a flat line halfway and open out the other way.
+ */
+export function chevronFlip(f: number): number {
+  return 2 * clamp01(f) - 1
+}
+
+/** How a pane folds: see `SplitOptions.fold`. */
+export interface FoldStyle {
+  readonly chevron: "flip" | "turn"
+  readonly title: "travel" | "fade"
+  /** Seconds, on a spring with no bounce. */
+  readonly duration: number
+}
+
+export const FOLD_STYLE: FoldStyle = { chevron: "flip", title: "travel", duration: 0.3 }
+
+export function foldStyle(options: Partial<FoldStyle> = {}): FoldStyle {
+  const duration = options.duration
+  return {
+    chevron: options.chevron === "turn" ? "turn" : "flip",
+    title: options.title === "fade" ? "fade" : "travel",
+    duration:
+      duration !== undefined && Number.isFinite(duration) && duration > 0
+        ? Math.min(2, duration)
+        : FOLD_STYLE.duration,
+  }
+}
+
+/**
+ * Where a header's title and the rail's label sit, each from its own box's start edge and the
+ * pane's top (`dy` is the title's height less the label's), as measured with the pane open.
+ */
+export interface TitlePlaces {
+  readonly title: number
+  readonly label: number
+  readonly dy: number
+}
+
+/**
+ * The rail's label travelling as the header's title, at fold progress `p`: the offset that puts it
+ * on the title (the rail holds on to the pane's moving edge, the header to the inner content that
+ * keeps its open size), and its turn from upright (-90°) to the rail's vertical (0°).
+ */
+export function titleTravel(
+  at: TitlePlaces,
+  open: number,
+  rail: number,
+  edge: "start" | "end",
+  p: number,
+): { x: number; y: number; turn: number } {
+  const k = 1 - clamp01(p)
+  // At the start edge the inner content reaches back past the rail by the rest of its open size.
+  const dx = at.title - at.label - (edge === "start" ? open - rail : 0)
+  return { x: dx * k, y: at.dy * k, turn: -90 * k }
+}
+
 /** A saved layout, kept only where it names known panes with sane values. */
 export function parseLayout(raw: unknown, panes: readonly PaneSpec[]): SplitLayout | undefined {
   if (!raw || typeof raw !== "object") return undefined

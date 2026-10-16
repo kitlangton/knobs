@@ -14,6 +14,7 @@ import {
 } from "../src/ui/tree-model"
 import { Spring, springMotion } from "../src/core/spring"
 import {
+  chevronFlip,
   chevronTurn,
   collapsibleSide,
   drag,
@@ -22,11 +23,13 @@ import {
   FACE_OUT,
   foldFaces,
   foldProgress,
+  foldStyle,
   nudge,
   parseLayout,
   serializeLayout,
   softClamp,
   solve,
+  titleTravel,
   type FoldFaces,
   type PaneSpec,
 } from "../src/ui/split-model"
@@ -255,6 +258,69 @@ describe("split folds", () => {
     expect(Math.min(...sizes)).toBeLessThan(sizes[6]!)
     expect(sizes.at(-1)).toBeCloseTo(open, 0)
     expect(f).toEqual(OPEN)
+  })
+
+  it("flips the chevron flat halfway and out the other way", () => {
+    expect(chevronFlip(0)).toBe(-1)
+    expect(chevronFlip(0.5)).toBe(0)
+    expect(chevronFlip(1)).toBe(1)
+    expect(chevronFlip(1.2)).toBe(1)
+  })
+
+  it("flips on a spring quick enough to finish in about 0.2 s, and turns back mid-flip", () => {
+    const { omega, zeta } = springMotion({ duration: 0.18, bounce: 0 })
+    const s = new Spring(0, omega, zeta, 0.002).set(1)
+    let flat = 0
+    for (let t = 1; t <= 30 && !flat; t++) {
+      s.step(1 / 60)
+      if (chevronFlip(s.x) >= 0) flat = t / 60
+    }
+    // Flat by ~0.07 s, and nearly all the way by 0.2 s.
+    expect(flat).toBeLessThan(0.09)
+    for (let t = 0; t < 8; t++) s.step(1 / 60)
+    expect(s.x).toBeGreaterThan(0.95)
+    // Toggled back halfway through a flip, it carries on from where it is.
+    const r = new Spring(0, omega, zeta, 0.002).set(1)
+    for (let t = 0; t < 3; t++) r.step(1 / 60)
+    const at = r.x
+    r.set(0)
+    r.step(1 / 60)
+    expect(Math.abs(r.x - at)).toBeLessThan(0.15)
+  })
+
+  it("defaults to a flip, a travelling title and a 0.3 s fold", () => {
+    expect(foldStyle()).toEqual({ chevron: "flip", title: "travel", duration: 0.3 })
+    expect(foldStyle({ chevron: "turn", title: "fade", duration: 0.45 })).toEqual({
+      chevron: "turn",
+      title: "fade",
+      duration: 0.45,
+    })
+    expect(foldStyle({ duration: -1 }).duration).toBe(0.3)
+  })
+
+  it("travels the title from the header to the rail, whichever edge the pane folds to", () => {
+    // A pane 170 px open folding to a 32 px rail, its card inset 3 px. The header's title sits
+    // 30 px into the inner and 14 px down; the rail's label 16 px into the rail, 60 px down.
+    const open = 170
+    const rail = 32
+    const m = 3
+    const places = { title: 30, label: 16, dy: 14 - 60 }
+    for (const edge of ["start", "end"] as const) {
+      for (const p of [0, 0.3, 1]) {
+        const size = open - (open - rail) * p
+        // The pane's own left edge in the page: a start pane keeps it, an end pane moves it.
+        const left = edge === "start" ? 0 : open - size
+        // The rail holds on to the moving edge; the inner keeps its open width against it.
+        const railLeft = edge === "start" ? left + size - m - (rail - 2 * m) : left + m
+        const innerLeft = edge === "start" ? left + size - m - (open - 2 * m) : left + m
+        const t = titleTravel(places, open, rail, edge, p)
+        const x = railLeft + places.label + t.x
+        if (p === 0) expect(x).toBeCloseTo(innerLeft + places.title)
+        if (p === 1) expect(x).toBeCloseTo(railLeft + places.label)
+        expect(t.turn).toBeCloseTo(-90 * (1 - p))
+      }
+    }
+    expect(titleTravel(places, open, rail, "start", 0).y).toBe(-46)
   })
 
   it("turns the chevron half a turn, the way the edge travels", () => {
