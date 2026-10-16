@@ -567,7 +567,8 @@ export function stackingAncestor(el: HTMLElement): HTMLElement | null {
       (s.backdropFilter && s.backdropFilter !== "none") ||
       s.perspective !== "none" ||
       s.clipPath !== "none" ||
-      (s.maskImage && s.maskImage !== "none") ||
+      // A scroll fade's mask is dropped around a panel the GPU draws (see knobs/ui's look).
+      (s.maskImage && s.maskImage !== "none" && !n.classList.contains("knobs-scroll-fade")) ||
       s.mixBlendMode !== "normal" ||
       s.isolation === "isolate" ||
       /layout|paint|strict|content/.test(s.contain) ||

@@ -3367,11 +3367,13 @@ function buildPanel<S extends Schema>(
     if (i !== undefined && !r.row.closest("[data-disabled],[data-readonly]")) o.choose(i)
     return true
   }
+  // A read-only field takes no typing, so the page's shortcuts still reach past it.
   const isTyping = (target: EventTarget | null) =>
-    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLTextAreaElement && !target.readOnly) ||
     target instanceof HTMLSelectElement ||
     (target instanceof HTMLElement && target.isContentEditable) ||
     (target instanceof HTMLInputElement &&
+      !target.readOnly &&
       !["range", "checkbox", "radio", "button"].includes(target.type))
   /**
    * Presses the toolbar button whose shortcut this is: any of them while the panel has focus,

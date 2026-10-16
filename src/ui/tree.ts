@@ -163,7 +163,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   const renamed = new Map<string, string>()
 
   const root = doc.createElement("div")
-  root.className = "knobs-tree"
+  root.className = "knobs-tree knobs-scroll-fade"
   root.tabIndex = 0
   root.setAttribute("role", "tree")
   root.setAttribute("aria-multiselectable", "true")
@@ -232,7 +232,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     const icon = doc.createElement("span")
     icon.className = "knobs-tree-icon"
     const label = doc.createElement("span")
-    label.className = "knobs-tree-label"
+    label.className = "knobs-tree-label knobs-scroll-fade-x"
     const text = doc.createElement("span")
     text.className = "knobs-tree-text"
     label.append(text)
@@ -779,6 +779,8 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   const typesAhead = (key: string, running: boolean) => {
     const rule = options.typeahead ?? true
     if (rule === false) return false
+    // A run starts on a letter or digit: punctuation (⇧1 is "!") is left to the page's shortcuts.
+    if (!(running && typed !== "") && !/^[\p{L}\p{N}]$/u.test(key)) return false
     if (!(running && typed !== "") && options.hints !== false && claimsHintKey(doc, key))
       return false
     return rule === true || (running && typed !== "") || rule(key)

@@ -158,6 +158,22 @@ stations.forEach((station, i) =>
     left.pane("stations").title("Stations", i + 1)
   }),
 )
+// …or by its number, from anywhere on the page, as knobs' digits go: whatever focused claims them
+// first (a panel row picking its options, a text field, hint mode) and the page has the rest.
+const typing = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable ||
+    t instanceof HTMLSelectElement ||
+    ((t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) &&
+      !t.readOnly &&
+      !["range", "checkbox", "radio", "button"].includes(t.type)))
+window.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+  const station = /^[1-9]$/.test(e.key) ? stations[Number(e.key) - 1] : undefined
+  if (!station || typing(e.target)) return
+  e.preventDefault()
+  station.click()
+})
 
 // The outliner: a search field over the tree.
 const outliner = document.createElement("div")
@@ -207,8 +223,8 @@ const outline = tree(rows, {
   ...look,
   items: scene,
   label: "Scene objects",
-  // F, G and P are the workbench's; other letters jump to a label.
-  typeahead: (key) => !(key.toLowerCase() in WORKBENCH),
+  // F, G and P are the workbench's and the digits pick stations; other letters jump to a label.
+  typeahead: (key) => !(key.toLowerCase() in WORKBENCH) && !/^[1-9]$/.test(key),
   expanded: ["lights", "props", "cones"],
   icon: (n) => n.icon,
   detail: (n) =>

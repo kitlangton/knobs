@@ -12,15 +12,22 @@ import {
   virtualWindow,
   type TreeAccess,
 } from "../src/ui/tree-model"
+import { Spring, springMotion } from "../src/core/spring"
 import {
+  chevronTurn,
   collapsibleSide,
   drag,
   edgeOf,
+  FACE_IN,
+  FACE_OUT,
+  foldFaces,
+  foldProgress,
   nudge,
   parseLayout,
   serializeLayout,
   softClamp,
   solve,
+  type FoldFaces,
   type PaneSpec,
 } from "../src/ui/split-model"
 
@@ -135,6 +142,126 @@ describe("split model", () => {
       ),
     ).toEqual({ sizes: {}, collapsed: {} })
     expect(parseLayout(null, panes)).toBeUndefined()
+  })
+})
+
+describe("split folds", () => {
+  const OPEN: FoldFaces = { content: 1, rail: 0 }
+  const SHUT: FoldFaces = { content: 0, rail: 1 }
+  /** The faces along a run of fold progress values, from `start`. */
+  const run = (ps: number[], start: FoldFaces) => {
+    let f = start
+    return ps.map((p) => (f = foldFaces(f, p)))
+  }
+  const ramp = (from: number, to: number, n = 100) =>
+    Array.from({ length: n + 1 }, (_, i) => from + ((to - from) * i) / n)
+
+  it("measures progress from the open size (0) to the rail (1)", () => {
+    expect(foldProgress(200, 200, 32)).toBe(0)
+    expect(foldProgress(32, 200, 32)).toBe(1)
+    expect(foldProgress(116, 200, 32)).toBeCloseTo(0.5)
+    // Past either end it holds there.
+    expect(foldProgress(240, 200, 32)).toBe(0)
+    expect(foldProgress(20, 200, 32)).toBe(1)
+  })
+
+  it("folding, the content leaves early and the rail arrives late, never both at once", () => {
+    const ps = ramp(0, 1)
+    const faces = run(ps, OPEN)
+    faces.forEach((f, i) => {
+      const p = ps[i]!
+      if (p >= FACE_OUT) expect(f.content).toBe(0)
+      if (p <= 1 - FACE_IN) expect(f.rail).toBe(0)
+      expect(f.content > 0 && f.rail > 0).toBe(false)
+      if (i) expect(f.content).toBeLessThanOrEqual(faces[i - 1]!.content)
+      if (i) expect(f.rail).toBeGreaterThanOrEqual(faces[i - 1]!.rail)
+    })
+    expect(faces.at(-1)).toEqual(SHUT)
+  })
+
+  it("opening mirrors it: the rail leaves early and the content arrives late", () => {
+    const ps = ramp(1, 0)
+    const faces = run(ps, SHUT)
+    faces.forEach((f, i) => {
+      const p = ps[i]!
+      if (p <= 1 - FACE_OUT) expect(f.rail).toBe(0)
+      if (p >= FACE_IN) expect(f.content).toBe(0)
+      expect(f.content > 0 && f.rail > 0).toBe(false)
+    })
+    expect(faces.at(-1)).toEqual(OPEN)
+  })
+
+  it("turning back mid-flight, every face carries on from where it is", () => {
+    // Fold to 20%, open again, fold to 85%, open all the way: in small steps, nothing jumps.
+    const ps = [
+      ...ramp(0, 0.2, 20),
+      ...ramp(0.2, 0.1, 10),
+      ...ramp(0.1, 0.85, 75),
+      ...ramp(0.85, 0, 85),
+    ]
+    const faces = run(ps, OPEN)
+    for (let i = 1; i < faces.length; i++) {
+      const step = Math.abs(ps[i]! - ps[i - 1]!)
+      expect(Math.abs(faces[i]!.content - faces[i - 1]!.content)).toBeLessThanOrEqual(
+        step / FACE_IN + 1e-9,
+      )
+      expect(Math.abs(faces[i]!.rail - faces[i - 1]!.rail)).toBeLessThanOrEqual(
+        step / FACE_IN + 1e-9,
+      )
+      expect(faces[i]!.content > 0 && faces[i]!.rail > 0).toBe(false)
+    }
+    // Turned back at 20%, the half-faded content holds until the opening curve reaches it.
+    const at = faces[20]!.content
+    expect(at).toBeCloseTo(0.5)
+    expect(faces[25]!.content).toBeCloseTo(at)
+    expect(faces.at(-1)).toEqual(OPEN)
+  })
+
+  it("on the pane's spring, the content is gone in ~0.1 s and the rail lands as it settles", () => {
+    const { omega, zeta } = springMotion({ duration: 0.45, bounce: 0 })
+    const open = 170
+    const rail = 32
+    const s = new Spring(open, omega, zeta, 0.2).set(rail)
+    let f = OPEN
+    let gone = 0
+    let railFrom = 0
+    for (let t = 1; t <= 60; t++) {
+      s.step(1 / 60)
+      f = foldFaces(f, foldProgress(s.x, open, rail))
+      if (!gone && f.content === 0) gone = t / 60
+      if (!railFrom && f.rail > 0) railFrom = t / 60
+    }
+    expect(gone).toBeLessThan(0.13)
+    expect(railFrom).toBeGreaterThan(0.15)
+    expect(f).toEqual(SHUT)
+  })
+
+  it("reversed on its spring, the size turns back without a jump and ends open", () => {
+    const { omega, zeta } = springMotion({ duration: 0.45, bounce: 0 })
+    const open = 170
+    const rail = 32
+    const s = new Spring(open, omega, zeta, 0.2).set(rail)
+    const sizes: number[] = []
+    let f = OPEN
+    for (let t = 1; t <= 90; t++) {
+      if (t === 8) s.set(open)
+      s.step(1 / 60)
+      sizes.push(s.x)
+      f = foldFaces(f, foldProgress(s.x, open, rail))
+    }
+    for (let i = 1; i < sizes.length; i++)
+      expect(Math.abs(sizes[i]! - sizes[i - 1]!)).toBeLessThan(25)
+    // It keeps going a little, then turns: no snap back to where it started.
+    expect(Math.min(...sizes)).toBeLessThan(sizes[6]!)
+    expect(sizes.at(-1)).toBeCloseTo(open, 0)
+    expect(f).toEqual(OPEN)
+  })
+
+  it("turns the chevron half a turn, the way the edge travels", () => {
+    expect(chevronTurn(0, "start")).toBe(180)
+    expect(chevronTurn(1, "start")).toBe(0)
+    expect(chevronTurn(0.5, "end")).toBe(-90)
+    expect(chevronTurn(2, "end")).toBeCloseTo(0)
   })
 })
 

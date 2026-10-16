@@ -139,10 +139,10 @@ test("split: collapsing springs to a rail, interruptibly, and the rail opens it 
   const rail = pane.locator(".knobs-pane-rail")
   await expect(rail).toHaveAttribute("aria-label", "Open Scene")
   await expect.poll(() => rail.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
-  // Its content is out of reach while collapsed.
+  // Its content is out of reach while collapsed (the card stays: it's folded to the rail).
   expect(
     await pane
-      .locator(":scope > .knobs-pane-clip")
+      .locator(":scope > .knobs-pane-clip > .knobs-pane-inner")
       .evaluate((el) => getComputedStyle(el).visibility),
   ).toBe("hidden")
   // The rail opens it to the size it had.
