@@ -37,8 +37,24 @@ const ENTRANCE = springMotion({ duration: 1.3, bounce: 0 })
 const WARM = springMotion({ duration: 0.28, bounce: 0 })
 const COOL = springMotion({ duration: 0.6, bounce: 0 })
 const SNAP = springMotion({ duration: 0.22, bounce: 0.25 })
-/** The refined still: this many jittered samples, averaged, once everything is at rest. */
-const STILL_SAMPLES = 24
+/**
+ * Every frame is jittered and folded into a history. While anything changes, each new frame
+ * counts MOVING of it (the rest clipped to what's on screen now); at rest, REST more frames
+ * average in and then it stops.
+ */
+const MOVING = 0.14
+const REST = 32
+/** Where the scene reads what changed since the frame before (see controls-hero.wgsl, u.v[14]). */
+const AT = (i: number, c = 0) => 4 + i * 4 + c
+const POSES: readonly (readonly number[])[] = [
+  [AT(9, 0), AT(9, 1)], // key knob: angle, spin
+  [AT(7, 3), AT(9, 2)], // colour knob
+  [AT(8, 3), AT(9, 3)], // selector
+  [AT(10, 0)], // toggle
+  [AT(10, 1)], // fader
+  [AT(10, 2), AT(10, 3)], // joystick
+]
+const LIGHT = [AT(5, 0), AT(5, 1), AT(5, 2), AT(4, 3)]
 
 type V3 = readonly [number, number, number]
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -149,8 +165,8 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     label: "hero",
     tone: "neutral",
     bloom: 0.12,
-    maxDpr: 1.5,
-    restDpr: 2,
+    maxDpr: 2,
+    temporal: true,
     base: page,
     edge: 0.07,
   })
@@ -220,9 +236,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const lab = accent.lab
     const acc = linearRgb(oklabRgb(lab))
     const accMax = Math.max(...acc, 1e-4)
-    // A warm key, leaning a little toward the accent.
-    const warm = kelvinRgb(3700)
-    const tint = acc.map((c, i) => warm[i]! * 0.88 + (c / accMax) * 0.12)
+    // The key takes on the accent: its colour is the room's, on the floor and in every reflection.
+    const warm = kelvinRgb(4800)
+    const tint = acc.map((c, i) => warm[i]! * 0.55 + (c / accMax) * 0.45)
     const lum = 0.2126 * tint[0]! + 0.7152 * tint[1]! + 0.0722 * tint[2]!
     const light: V3 = [-3.2 + 6.4 * spotX.x, 4.6, -2.4 + 5.2 * spotY.x]
     const k = clamp01(key.x)
@@ -284,20 +300,39 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     v(11, arrive[0]!, arrive[1]!, arrive[2]!, arrive[3]!)
     v(12, arrive[4]!, arrive[5]!, 0, 0)
     v(13, page[0], page[1], page[2], 0)
-    // Moving: one quick sample a frame. At rest: the still, refined over the next frames.
+    // Moving: each frame folds in at MOVING. At rest: REST more, from the next frame.
     cancelAnimationFrame(refining)
     refining = 0
     if (stage.active) {
-      sample = STILL_SAMPLES
-      view.render()
+      settled = REST
+      shoot(MOVING, true)
     } else {
-      // From the next frame, so a draw that lands mid-change (a paint) doesn't start one.
-      sample = 0
+      settled = 0
       refining = requestAnimationFrame(refine)
     }
   })
-  // ── The still: jittered samples averaged at the full pixel ratio, then nothing ──
-  let sample = STILL_SAMPLES
+  // ── Frames: jittered, with what changed since the last one, into the history ──
+  let frames = 0
+  const last = new Float32Array(view?.data.length ?? 0)
+  /** One frame: an R2 sub-pixel offset (Roberts' sequence), its noise seed and what moved. */
+  const shoot = (blend: number, clip: boolean) => {
+    if (!view) return
+    const d = view.data
+    frames++
+    d[AT(0, 3)] = frames % 4096
+    d[AT(12, 2)] = ((0.5 + frames * 0.7548776662) % 1) - 0.5
+    d[AT(12, 3)] = ((0.5 + frames * 0.569840291) % 1) - 0.5
+    let mask = 0
+    POSES.forEach((at, i) => {
+      if (at.some((j) => d[j] !== last[j])) mask |= 1 << i
+    })
+    const moved = LIGHT.some((j) => d[j] !== last[j]) ? 1 : 0
+    d[AT(14, 0)] = moved
+    d[AT(14, 1)] = mask
+    last.set(d)
+    view.render({ blend, clip })
+  }
+  let settled = REST
   let refining = 0
   const inView = () => {
     const r = stageEl.getBoundingClientRect()
@@ -305,19 +340,45 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   }
   const refine = () => {
     refining = 0
-    if (!view || sample >= STILL_SAMPLES || !inView()) return
-    // R2 offsets (Roberts' low-discrepancy sequence) over the pixel, the first at its centre.
-    const jx = sample ? ((0.5 + sample * 0.7548776662) % 1) - 0.5 : 0
-    const jy = sample ? ((0.5 + sample * 0.569840291) % 1) - 0.5 : 0
-    view.data[4 + 3] = sample
-    view.data[4 + 12 * 4 + 2] = jx
-    view.data[4 + 12 * 4 + 3] = jy
-    if (view.render({ rest: true, sample })) sample++
-    if (sample < STILL_SAMPLES) refining = requestAnimationFrame(refine)
+    if (!view || settled >= REST || !inView()) return
+    // The first few still clip (whatever the move left behind goes), then they simply average.
+    shoot(1 / (settled + 4), settled < 8)
+    settled++
+    if (settled < REST) refining = requestAnimationFrame(refine)
   }
+  // Measurements (the catalog's dev hook): GPU ms a frame for each kind of change.
+  const bench = async (n = 40) => {
+    if (!view) return null
+    const d = view.data
+    const keep = d.slice()
+    const run = async (moved: number, mask: number, uncached = false) => {
+      d[AT(14, 0)] = moved
+      d[AT(14, 1)] = mask
+      return +(await view.bench(n, { blend: MOVING, clip: true }, uncached)).toFixed(2)
+    }
+    // Each row's drag also moves its twin: Key light turns the big knob (bit 1), Accent the
+    // colour knob (2), Spot moves the light and leans the joystick (32), Shadow resizes the
+    // light and slides the fader (16).
+    const out: Record<string, number> = {}
+    out.uncached = await run(1, 63, true)
+    out.keyLight = await run(0, 1)
+    out.accent = await run(0, 2)
+    out.spot = await run(1, 32)
+    out.shadow = await run(1, 16)
+    out.still = await run(0, 0)
+    // The big knob flicked: mid-spin, with its shutter's instants.
+    d[AT(9, 1)] = 0.12
+    d[AT(6, 3)] = 8
+    out.knobSpin = await run(0, 1)
+    d.set(keep)
+    out.dpr = view.dpr
+    stage.paint()
+    return out
+  }
+  Object.assign(window, { __hero: { bench } })
   // Scrolled away or hidden mid-refinement: it carries on when it's back.
   const resume = () => {
-    if (sample > 0 && sample < STILL_SAMPLES && !refining && inView())
+    if (settled > 0 && settled < REST && !refining && inView())
       refining = requestAnimationFrame(refine)
   }
   new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && resume()).observe(
@@ -588,28 +649,13 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   wireBox.setAttribute("aria-hidden", "true")
   wireBox.append(svg)
   root.insertBefore(wireBox, slot)
-  // The wires pass under the other twins: a mask with a hole for each.
+  // The wires run over the hardware: a hairline of light in a soft glow.
   const SVG = "http://www.w3.org/2000/svg"
-  const mask = document.createElementNS(SVG, "mask")
-  mask.id = "hero-wire-mask"
-  mask.setAttribute("maskUnits", "userSpaceOnUse")
-  const maskBg = document.createElementNS(SVG, "rect")
-  maskBg.setAttribute("fill", "#fff")
-  const holes = KEYS.map(() => {
-    const e = document.createElementNS(SVG, "ellipse")
-    e.setAttribute("fill", "#000")
-    return e
-  })
-  mask.append(maskBg, ...holes)
-  const defs = document.createElementNS(SVG, "defs")
-  defs.append(mask)
-  svg.append(defs)
   const lines = KEYS.map(() => {
     const g = document.createElementNS(SVG, "g")
     const halo = document.createElementNS(SVG, "path")
     const line = document.createElementNS(SVG, "path")
     const ends = [0, 1].map(() => document.createElementNS(SVG, "circle"))
-    g.setAttribute("mask", "url(#hero-wire-mask)")
     halo.setAttribute("class", "halo")
     for (const c of ends) c.setAttribute("r", "2.2")
     g.append(halo, line, ...ends)
@@ -635,16 +681,6 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     const hero = stageEl.getBoundingClientRect()
     const fade = clamp01((intro.x - 0.45) / 0.45)
     const css = oklabCss(accent.lab)
-    maskBg.setAttribute("width", String(layout.w))
-    maskBg.setAttribute("height", String(layout.h))
-    KEYS.forEach((k, i) => {
-      const { c, rx, ry } = disc(k)
-      const hole = holes[i]!
-      hole.setAttribute("cx", c[0].toFixed(1))
-      hole.setAttribute("cy", c[1].toFixed(1))
-      hole.setAttribute("rx", (rx * 0.97).toFixed(1))
-      hole.setAttribute("ry", (ry * 0.97).toFixed(1))
-    })
     KEYS.forEach((k, i) => {
       const row = rowFor(k)?.getBoundingClientRect()
       const parts = lines[i]!
@@ -663,13 +699,13 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       parts.line.setAttribute("d", d)
       parts.halo.setAttribute("d", d)
       parts.g.style.color = css
-      parts.line.style.opacity = ((0.2 + 0.8 * glow) * fade).toFixed(3)
-      parts.halo.style.opacity = (0.35 * glow * fade).toFixed(3)
+      parts.line.style.opacity = ((0.28 + 0.72 * glow) * fade).toFixed(3)
+      parts.halo.style.opacity = ((0.12 + 0.5 * glow) * fade).toFixed(3)
       parts.ends[0]!.setAttribute("cx", start[0].toFixed(1))
       parts.ends[0]!.setAttribute("cy", start[1].toFixed(1))
       parts.ends[1]!.setAttribute("cx", end[0].toFixed(1))
       parts.ends[1]!.setAttribute("cy", end[1].toFixed(1))
-      for (const e of parts.ends) e.style.opacity = ((0.35 + 0.65 * glow) * fade).toFixed(3)
+      for (const e of parts.ends) e.style.opacity = ((0.45 + 0.55 * glow) * fade).toFixed(3)
     })
   })
   const glows = KEYS.map(() => wires.val(0, 0.002))

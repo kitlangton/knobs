@@ -6,8 +6,15 @@
 // spot is a disc light pointing down: a cone that falls off into black, soft shadows from its size
 // and a contact shadow; the finish morphs between powder-coat, brushed (anisotropic) and anodised
 // metal. LEDs are HDR emitters into the bloom. A spinning knob is rendered at several instants
-// across Argon's shutter and averaged. At rest the page refines the still: one jittered sample a
-// frame, averaged (controls-gpu's `render({ rest, sample })`).
+// across Argon's shutter and averaged.
+//
+// Temporal: every frame is jittered and folded into a history (controls-gpu), and the camera never
+// moves, so each pixel keeps a cache: its hit distance, shadow, occlusion and material. A frame's
+// march starts just short of the nearest cached hit round the pixel (or goes straight to the floor
+// if there was none), shadows and occlusion are reused unless the light moved or a control beside
+// them did, and a control whose pose changed is marched in full inside its bounds. A reused
+// shadow first refines for SHADOW_N frames (its soft edge is noisy by design), then holds. So a
+// change to the light's level or colour, the finish or the LEDs costs a few steps a pixel.
 //
 // Everything unlit is exactly the page colour: the room's ambient brings a surface to it, the
 // floor is it, less a soft contact shadow, plus whatever light lands there, and every edge of the
@@ -29,6 +36,9 @@
 // u.v[11] each twin's LEDs arriving: key, selector, toggle, fader
 // u.v[12] joystick's and colour knob's LEDs arriving, the sample's jitter (device px)
 // u.v[13] page colour (linear)
+// u.v[14] the light moved (1), the controls whose pose changed (bits: key 1, colour 2,
+//         selector 4, toggle 8, fader 16, joystick 32)
+// u.v[62].x the cache holds last frame (controls-gpu)
 
 const PT = 0.32;
 const PLATE = vec2f(3.0, 2.05);
@@ -53,6 +63,12 @@ var<private> jit: f32;
 /** The camera ray, and the world size of a device pixel where it is now. */
 var<private> rdir: vec3f;
 var<private> pixw: f32;
+/** This pixel in the cache, and the shadow this sample's shading used (and how many samples). */
+var<private> pix: vec2i;
+var<private> usedSh: f32;
+var<private> usedN: f32;
+/** A cached shadow refines this many frames, then holds. */
+const SHADOW_N = 8.0;
 
 fn sq(x: f32) -> f32 {
   return x * x;
@@ -314,6 +330,7 @@ struct Light {
   l: vec3f,
   e: vec3f,
   dist: f32,
+  cone: f32,
 }
 
 /** The spot at p: direction, irradiance (cone and distance; shadow applied by the caller). */
@@ -326,7 +343,7 @@ fn spotAt(p: vec3f) -> Light {
   let ao = mix(0.4, 0.72, soft);
   let cone = smoothstep(cos(ao), cos(ao * mix(0.35, 0.1, soft)), l.y);
   let e = u.v[6].rgb * u.v[5].w * cone / (dist * dist) * u.v[1].w * u.v[1].w;
-  return Light(l, e, dist);
+  return Light(l, e, dist, cone);
 }
 
 fn ggxAniso(n: vec3f, h: vec3f, t: vec3f, ax: f32, ay: f32) -> f32 {
@@ -439,9 +456,21 @@ fn plateDecal(p: vec3f, m: Mat) -> Mat {
   if (kt > 0.0) {
     mm = mixMat(mm, led(leds * u.v[11].z), kt);
   }
-  let kc = dotMask(length(pa - (C + vec2f(0.0, -0.68))), 0.036);
-  if (kc > 0.0) {
-    mm = mixMat(mm, led(leds * u.v[12].y), kc);
+  // Round the colour knob, twelve hues: the accent's at 12, bright; the rest dimly, turning with it.
+  q = pa - C;
+  r = length(q);
+  if (abs(r - 0.74) < 0.05) {
+    let a = ang(q);
+    let i = round(a / (PI / 6.0));
+    let a0 = i * PI / 6.0;
+    let k = dotMask(length(q - 0.74 * vec2f(sin(a0), -cos(a0))), 0.03);
+    if (k > 0.0) {
+      let hue = a0 - rotC;
+      let col = oklabToLinear(vec3f(0.78, 0.15 * cos(hue), 0.15 * sin(hue)));
+      let lit = select(0.22, 1.0, abs(i) < 0.5) * leds * u.v[12].y;
+      let dotM = Mat(vec3f(0.012), vec3f(0.05), 0.1, 0.1, vec3f(1.0, 0.0, 0.0), col * 7.0 * lit);
+      mm = mixMat(mm, dotM, k);
+    }
   }
   // Ticks either side of the fader, and round the joystick.
   q = pa - F;
@@ -497,6 +526,13 @@ fn surface(fin: Mat, id: f32, p: vec3f, n: vec3f) -> Mat {
     } else if (up) {
       m = plateDecal(p, m);
     }
+  } else if (id > 0.5 && id < 1.5 && up && p.y > 0.03 && length(p.xz - J) < 0.6) {
+    // The joystick's base: a ring of light, brightest the way the stick leans.
+    let q = p.xz - J;
+    let tilt = u.v[10].zw;
+    let lean = max(dot(q / max(length(q), 1e-4), tilt / max(length(tilt), 1e-4)), 0.0);
+    let bright = 0.12 + 0.3 * lean * min(length(tilt) / 0.3, 1.0);
+    m = mixMat(m, led(u.v[2].w * u.v[12].x * bright), lineMask(abs(length(q) - 0.5), 0.012));
   } else if (id > 6.5 && id < 7.5 && up && p.y > 0.4) {
     // The key knob's pointer line.
     let lq = rot2(p.xz - K, -rotK);
@@ -504,8 +540,9 @@ fn surface(fin: Mat, id: f32, p: vec3f, n: vec3f) -> Mat {
     m = mixMat(m, paint(), k);
   } else if (id > 7.5 && id < 8.5 && up && p.y > 0.3) {
     let lq = rot2(p.xz - S, -rotS);
-    let k = lineMask(abs(lq.x), 0.018) * soft(-0.44, lq.y) * (1.0 - soft(-0.2, lq.y));
+    let k = lineMask(abs(lq.x), 0.018) * soft(-0.32, lq.y) * (1.0 - soft(-0.14, lq.y));
     m = mixMat(m, paint(), k);
+    m = mixMat(m, led(u.v[2].w * u.v[11].y), dotMask(length(lq - vec2f(0.0, -0.41)), 0.04));
   } else if (id > 8.5 && up) {
     let capZ = F.y + FADER_L - 2.0 * FADER_L * u.v[10].y;
     let k = lineMask(abs(p.z - capZ), 0.016);
@@ -521,21 +558,54 @@ fn wheel(p: vec3f) -> vec3f {
   let hue = ang(q) - rotC;
   let ch = 0.15 * smoothstep(0.05, 0.9, r);
   let col = oklabToLinear(vec3f(0.74, ch * cos(hue), ch * sin(hue)));
-  let lit = (0.15 + 0.85 * u.v[2].w) * u.v[12].y;
+  let lit = u.v[2].w * u.v[12].y;
   return col * 0.5 * lit * (1.0 - smoothstep(0.88, 1.0, r));
 }
 
-fn shade(p: vec3f, rd: vec3f, id: f32) -> vec3f {
+/**
+ * This frame's shadow, given what's known: `known` is (a shadow, its samples, how to use it:
+ * 0 ignore it, 1 keep it, 2 average a new sample into it, 3 move it 40% toward the new one,
+ * for a light or a part that's moving: it follows in a few frames without the new one's grain).
+ */
+fn shadowWith(known: vec4f, s: f32) -> f32 {
+  if (known.z > 2.5) {
+    usedN = 1.0;
+    return mix(known.x, s, 0.4);
+  }
+  if (known.z > 1.5) {
+    usedN = known.y + 1.0;
+    return mix(known.x, s, 1.0 / usedN);
+  }
+  usedN = 1.0;
+  return s;
+}
+
+/** Shades a hit, with what's known of its shadow (see shadowWith). */
+fn shade(p: vec3f, rd: vec3f, id: f32, known: vec4f) -> vec3f {
   let n = normalAt(p);
   let v = -rd;
   let sp = spotAt(p);
-  var sh = 0.0;
-  if (dot(n, sp.l) > 0.0 && max(sp.e.r, max(sp.e.g, sp.e.b)) > 1e-4) {
-    sh = shadow(p + n * 0.006, sp.l, sp.dist);
+  var sh = known.x;
+  usedN = known.y;
+  if (abs(known.z - 1.0) > 0.5) {
+    var s = 0.0;
+    if (dot(n, sp.l) > 0.0 && sp.cone > 0.0) {
+      s = shadow(p + n * 0.006, sp.l, sp.dist);
+    }
+    sh = shadowWith(known, s);
   }
   let ao = occlusion(p, n);
+  usedSh = sh;
   var col = vec3f(0.0);
   if (id > 1.5 && id < 2.5) {
+    // The lever's tip: a frosted lens, lit in the accent while the LEDs are on.
+    let a = u.v[10].x;
+    let tip = vec3f(T.x, 0.24 + 0.58 * cos(a), T.y + 0.58 * sin(a));
+    if (length(p - tip) < 0.1) {
+      let lens = Mat(vec3f(0.03), vec3f(0.05), 0.25, 0.25, vec3f(1.0, 0.0, 0.0),
+        u.v[7].rgb * 1.4 * u.v[2].w * u.v[11].z * (0.6 + 0.4 * max(dot(n, v), 0.0)));
+      return light(lens, p, n, v, sp, sh, ao);
+    }
     let chrome = Mat(vec3f(0.0), vec3f(0.9, 0.9, 0.92), 0.07, 0.07, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
     col = light(chrome, p, n, v, sp, sh, ao);
     // Chrome mirrors the room: the spot's disc and the warm pool round it.
@@ -568,21 +638,35 @@ fn shade(p: vec3f, rd: vec3f, id: f32) -> vec3f {
       col += w * light(surface(fins[i], id, p, n), p, n, v, sp, sh, ao);
     }
   }
-  // The key knob's LEDs light the plate round them a little.
-  if (id < 0.5) {
+  // The LEDs light the plate round them a little: the key's ring, the fader's slot, the
+  // joystick's ring. With the LEDs off, all of it goes.
+  if (id < 0.5 && p.y > -0.02) {
+    let leds = u.v[2].w;
     let r = length(p.xz - K);
-    col += u.v[7].rgb * 0.05 * u.v[3].w * u.v[2].w * u.v[11].x * exp(-abs(r - 0.86) / 0.12) * step(-0.02, p.y);
+    var spill = 0.05 * u.v[3].w * u.v[11].x * exp(-abs(r - 0.86) / 0.12);
+    let fq = p.xz - F;
+    let capZ = FADER_L - 2.0 * FADER_L * u.v[10].y;
+    let along = smoothstep(capZ - 0.05, capZ + 0.1, fq.y) * (1.0 - smoothstep(FADER_L, FADER_L + 0.15, fq.y));
+    spill += 0.05 * u.v[11].w * along * exp(-max(abs(fq.x) - 0.06, 0.0) / 0.1);
+    spill += 0.015 * u.v[12].x * exp(-abs(length(p.xz - J) - 0.6) / 0.1);
+    col += u.v[7].rgb * leds * spill;
   }
   return col;
 }
 
-fn floorShade(p: vec3f, rd: vec3f) -> vec3f {
+fn floorShade(p: vec3f, rd: vec3f, known: vec4f) -> vec3f {
   let n = vec3f(0.0, 1.0, 0.0);
   let sp = spotAt(p);
-  var sh = 1.0;
-  if (max(sp.e.r, max(sp.e.g, sp.e.b)) > 1e-4) {
-    sh = shadow(p + n * 0.004, sp.l, sp.dist);
+  var sh = known.x;
+  usedN = known.y;
+  if (abs(known.z - 1.0) > 0.5) {
+    var s = 1.0;
+    if (sp.cone > 0.0) {
+      s = shadow(p + n * 0.004, sp.l, sp.dist);
+    }
+    sh = shadowWith(known, s);
   }
+  usedSh = sh;
   // The floor is the page, less a contact shadow darkest under the plate's edge and gone within
   // a few centimetres, plus the light that lands on it.
   let edge = max(sdRoundRect(p.xz, PLATE, 0.32), 0.0);
@@ -594,7 +678,60 @@ fn floorShade(p: vec3f, rd: vec3f) -> vec3f {
   return u.v[13].rgb * (1.0 - 0.7 * contact) + lit * near;
 }
 
-fn render(px: vec2f, tau: f32) -> vec4f {
+/** Where the ray enters a box, or never (1e9). */
+fn enter(ro: vec3f, rd: vec3f, lo: vec3f, hi: vec3f) -> f32 {
+  let inv = 1.0 / rd;
+  let a = (lo - ro) * inv;
+  let b = (hi - ro) * inv;
+  let n = max(max(min(a.x, b.x), min(a.y, b.y)), min(a.z, b.z));
+  let f = min(min(max(a.x, b.x), max(a.y, b.y)), max(a.z, b.z));
+  return select(1e9, max(n, 0.0), n < f && f > 0.0);
+}
+
+/** Each twin's bounds over its whole travel: key, colour, selector, toggle, fader, joystick. */
+fn twinBox(i: u32) -> array<vec3f, 2> {
+  switch i {
+    case 0u: { return array(vec3f(K.x - 0.8, -0.01, K.y - 0.8), vec3f(K.x + 0.8, 0.62, K.y + 0.8)); }
+    case 1u: { return array(vec3f(C.x - 0.68, -0.01, C.y - 0.68), vec3f(C.x + 0.68, 0.52, C.y + 0.68)); }
+    case 2u: { return array(vec3f(S.x - 0.64, -0.01, S.y - 0.64), vec3f(S.x + 0.64, 0.52, S.y + 0.64)); }
+    case 3u: { return array(vec3f(T.x - 0.5, -0.01, T.y - 0.75), vec3f(T.x + 0.5, 0.97, T.y + 0.75)); }
+    case 4u: { return array(vec3f(F.x - 0.34, -0.13, F.y - FADER_L - 0.22), vec3f(F.x + 0.34, 0.32, F.y + FADER_L + 0.22)); }
+    default: { return array(vec3f(J.x - 0.68, -0.01, J.y - 0.68), vec3f(J.x + 0.68, 0.97, J.y + 0.68)); }
+  }
+}
+
+/** The nearest a twin that moved this frame comes along the ray (1e9: none). */
+fn dirtyEntry(ro: vec3f, rd: vec3f, mask: u32) -> f32 {
+  var t = 1e9;
+  for (var i = 0u; i < 6u; i++) {
+    if ((mask & (1u << i)) != 0u) {
+      let b = twinBox(i);
+      t = min(t, enter(ro, rd, b[0], b[1]));
+    }
+  }
+  return t;
+}
+
+/** Whether a twin that moved this frame is within `reach` of a point on the plate. */
+fn nearDirty(p: vec3f, mask: u32, reach: f32) -> bool {
+  for (var i = 0u; i < 6u; i++) {
+    if ((mask & (1u << i)) != 0u) {
+      let b = twinBox(i);
+      let d = max(max(b[0].xz - p.xz, p.xz - b[1].xz), vec2f(0.0));
+      if (length(d) < reach) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * One sample of the frame. The primary one (`primary`) uses and refills the pixel's cache; the
+ * shutter's others reuse the primary's shadow (`prim`: shadow, its samples, part) where they hit
+ * the same part.
+ */
+fn render(px: vec2f, tau: f32, primary: bool, prim: vec3f) -> vec4f {
   jit = hash12(px * 3.1 + tau + u.v[0].w * 17.13);
   rotK = u.v[9].x + u.v[9].y * tau;
   rotC = u.v[7].w + u.v[9].z * tau;
@@ -604,15 +741,60 @@ fn render(px: vec2f, tau: f32) -> vec4f {
   let rd = normalize(d.x * u.v[2].xyz - d.y * u.v[3].xyz + u.v[0].z * u.v[4].xyz);
   rdir = rd;
   let pixA = 1.0 / (u.v[0].z * u.frame.z);
+  let mask = u32(u.v[14].y);
+  let moved = u.v[14].x > 0.5;
   let bh = boxHit(cam, rd);
-  if (bh.x < bh.y && bh.y > 0.0) {
-    var t = max(bh.x, 0.0);
+  var t = max(bh.x, 0.0);
+  var march = bh.x < bh.y && bh.y > 0.0;
+  var c0 = vec4f(0.0, 0.0, 1.0, -2.0);
+  let cached = primary && u.v[62].x > 0.5;
+  if (cached) {
+    c0 = textureLoad(cacheIn, pix, 0);
+  }
+  if (cached && march) {
+    // The nearest hit round this pixel last frame: nothing static can be nearer than that.
+    let hi = vec2i(u.frame.xy) - 1;
+    var near = 1e9;
+    var known = true;
+    for (var y = -1; y <= 1; y++) {
+      for (var x = -1; x <= 1; x++) {
+        let c = textureLoad(cacheIn, clamp(pix + vec2i(x, y), vec2i(0), hi), 0);
+        known = known && c.w > -1.5;
+        if (c.w > -0.5) {
+          near = min(near, c.x);
+        }
+      }
+    }
+    if (known) {
+      let de = dirtyEntry(cam, rd, mask);
+      if (near < 1e8) {
+        t = max(t, near - 0.08);
+      } else {
+        march = de < 1e8;
+      }
+      t = min(t, max(de, bh.x));
+    }
+  }
+  if (march) {
     for (var i = 0; i < 110; i++) {
       let p = cam + rd * t;
       pixw = t * pixA;
       let h = map(p);
       if (h.x < 0.0006 * t) {
-        return vec4f(shade(p, rd, h.y), h.y);
+        var known = vec4f(0.0);
+        // The same surface as last frame: under the same light with nothing moving beside it,
+        // its shadow holds (or refines); otherwise it follows.
+        if (cached && abs(c0.w - h.y) < 0.5 && abs(c0.x - t) < 0.03) {
+          let still = !moved && !nearDirty(p, mask, 1.0);
+          known = vec4f(c0.y, c0.z, select(3.0, select(2.0, 1.0, c0.z >= SHADOW_N), still), 0.0);
+        } else if (!primary && abs(prim.z - h.y) < 0.5) {
+          known = vec4f(prim.x, prim.y, 1.0, 0.0);
+        }
+        let col = shade(p, rd, h.y, known);
+        if (primary) {
+          cacheOut = vec4f(t, usedSh, usedN, h.y);
+        }
+        return vec4f(col, h.y);
       }
       t += h.x * 0.85;
       if (t > bh.y) {
@@ -622,10 +804,19 @@ fn render(px: vec2f, tau: f32) -> vec4f {
   }
   let tf = (-PT - cam.y) / rd.y;
   pixw = tf * pixA;
-  return vec4f(floorShade(cam + rd * tf, rd), -1.0);
+  var known = vec4f(0.0);
+  if (cached && c0.w < -0.5 && c0.w > -1.5) {
+    known = vec4f(c0.y, c0.z, select(3.0, select(2.0, 1.0, c0.z >= SHADOW_N), !moved), 0.0);
+  }
+  let col = floorShade(cam + rd * tf, rd, known);
+  if (primary) {
+    cacheOut = vec4f(tf, usedSh, usedN, -1.0);
+  }
+  return vec4f(col, -1.0);
 }
 
 fn scene(px: vec2f) -> vec3f {
+  pix = vec2i(floor(px));
   let dpr = u.frame.z;
   let p = (px + u.v[12].zw) / dpr;
   // Whatever the light does, every edge of the frame is the page colour.
@@ -637,7 +828,8 @@ fn scene(px: vec2f) -> vec3f {
 }
 
 fn frame(px: vec2f, p: vec2f, dpr: f32) -> vec3f {
-  let first = render(p, 0.0);
+  let first = render(p, 0.0, true, vec3f(0.0));
+  let prim = vec3f(usedSh, usedN, first.w);
   // Spinning twins (key 7, colour 6, selector 8) take the shutter's samples.
   var n = 1;
   let id = first.w;
@@ -662,7 +854,7 @@ fn frame(px: vec2f, p: vec2f, dpr: f32) -> vec3f {
       tau = (fi + hash12(px.yx + fi) - 0.5) / f32(n) - 0.5;
       w = 0.64 + 0.36 * cos(tau * 6.2831853);
     }
-    c += w * render(p + off, tau).rgb;
+    c += w * render(p + off, tau, false, prim).rgb;
     ws += w;
   }
   return c / ws;

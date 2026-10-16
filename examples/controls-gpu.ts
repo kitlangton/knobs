@@ -3,8 +3,8 @@
 // fragment shader (its scene, in linear HDR) drawn into a half-float target, then bloomed down and
 // up a chain of smaller targets and tone-mapped into its canvas with blue-noise dither
 // (controls-post.wgsl). A view draws only when its Stage asks (something visible changed), so a
-// still page costs nothing. A view can also refine its still: `render({ rest: true, sample })`
-// draws at the full device pixel ratio and averages each new (jittered) sample into its target.
+// still page costs nothing. A temporal view (the hero) keeps a history of its jittered frames,
+// folded together with neighbourhood clipping, and a per-pixel cache its scene reuses.
 // Without WebGPU (or with ?nogpu) `gpuView` returns null and the section keeps its DOM preview.
 import { clamp01, live } from "./controls-motion"
 import postWgsl from "./controls-post.wgsl?raw"
@@ -23,10 +23,12 @@ interface Shared {
   down: GPURenderPipeline
   up: GPURenderPipeline
   composite: GPURenderPipeline
-  /** Every scene's: its one uniform block, shared by its plain and accumulating pipelines. */
+  /** Folds a temporal view's frame into its history. */
+  taa: GPURenderPipeline
+  /** A scene's uniform block; a temporal scene's also last frame's cache. */
   sceneLayout: GPUPipelineLayout
+  temporalLayout: GPUPipelineLayout
   scenes: Map<string, GPURenderPipeline>
-  modules: Map<string, GPUShaderModule>
 }
 let shared: Shared | null = null
 
@@ -118,6 +120,11 @@ export async function initGpu() {
       { bytesPerRow: 64 * 4 },
       [64, 64],
     )
+    const uniform: GPUBindGroupLayoutEntry = {
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: {},
+    }
     shared = {
       device,
       format,
@@ -127,21 +134,25 @@ export async function initGpu() {
       down: pipe("fs_down", HDR),
       up: pipe("fs_up", HDR, true),
       composite: pipe("fs_composite", format),
+      taa: pipe("fs_taa", HDR),
       sceneLayout: device.createPipelineLayout({
+        bindGroupLayouts: [device.createBindGroupLayout({ entries: [uniform] })],
+      }),
+      temporalLayout: device.createPipelineLayout({
         bindGroupLayouts: [
           device.createBindGroupLayout({
             entries: [
+              uniform,
               {
-                binding: 0,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                buffer: {},
+                binding: 1,
+                visibility: GPUShaderStage.FRAGMENT,
+                texture: { sampleType: "unfilterable-float" },
               },
             ],
           }),
         ],
       }),
       scenes: new Map(),
-      modules: new Map(),
     }
   } catch (e) {
     console.warn("controls-gpu: no WebGPU", e)
@@ -198,18 +209,14 @@ function blueNoise(n: number) {
   return out
 }
 
-/** The prelude every scene shares: its uniforms, a full-screen triangle and the entry points. */
-const PRELUDE = /* wgsl */ `
+/** What every scene shares: its uniforms, a full-screen triangle and a few helpers. */
+const COMMON = /* wgsl */ `
 struct U { frame: vec4f, v: array<vec4f, ${SCENE_FLOATS / 4 - 1}> }
 @group(0) @binding(0) var<uniform> u: U;
 @vertex
 fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
   let uv = vec2f(f32((vi << 1u) & 2u), f32(vi & 2u));
   return vec4f(uv * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
-}
-@fragment
-fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
-  return vec4f(max(scene(fc.xy), vec3f(0.0)), 1.0);
 }
 const PI = 3.14159265;
 fn sat(x: f32) -> f32 { return clamp(x, 0.0, 1.0); }
@@ -219,6 +226,34 @@ fn hash12(p: vec2f) -> f32 {
   return fract((p3.x + p3.y) * p3.z);
 }
 `
+/** The prelude: a scene's colour, one fragment a pixel. */
+const PRELUDE = /* wgsl */ `${COMMON}
+@fragment
+fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
+  return vec4f(max(scene(fc.xy), vec3f(0.0)), 1.0);
+}
+`
+/**
+ * A temporal scene's prelude: it also reads last frame's per-pixel cache (`cacheIn`, whatever
+ * the scene keeps: a hit distance, a shadow) and writes this frame's (`cacheOut`). `u.v[62].x`
+ * is 1 while the cache and the history hold an earlier frame of this size, 0 on the first.
+ */
+const TEMPORAL = /* wgsl */ `${COMMON}
+@group(0) @binding(1) var cacheIn: texture_2d<f32>;
+var<private> cacheOut: vec4f;
+struct SceneOut {
+  @location(0) color: vec4f,
+  @location(1) cache: vec4f,
+}
+@fragment
+fn fs(@builtin(position) fc: vec4f) -> SceneOut {
+  cacheOut = vec4f(0.0, 0.0, 1.0, -2.0);
+  let c = max(scene(fc.xy), vec3f(0.0));
+  return SceneOut(vec4f(c, 1.0), cacheOut);
+}
+`
+/** Where a temporal view says its cache and history are good (see TEMPORAL). */
+const VALID = 4 + 62 * 4
 
 export interface ViewSpec {
   /** WGSL defining `fn scene(px: vec2f) -> vec3f` (device pixels, y down), reading `u.v[i]`. */
@@ -233,8 +268,6 @@ export interface ViewSpec {
   readonly saturation?: number
   /** The most device pixels per CSS pixel it draws at (2): lower for heavy scenes. */
   readonly maxDpr?: number
-  /** The most it draws its refined still at (`render({ rest: true })`); `maxDpr` by default. */
-  readonly restDpr?: number
   /**
    * The colour the scene sits on (linear). Given, the bloom fades out over `edge` (a fraction of
    * each side) so nothing glows at the canvas's edge, and there's no dither where the frame is
@@ -242,6 +275,11 @@ export interface ViewSpec {
    */
   readonly base?: readonly [number, number, number]
   readonly edge?: number
+  /**
+   * Temporal: each frame (jittered by the scene) goes into a history, which is what's shown, and
+   * the scene keeps a per-pixel cache from frame to frame (see TEMPORAL). `render({ blend, clip })`.
+   */
+  readonly temporal?: boolean
 }
 
 interface Targets {
@@ -252,21 +290,24 @@ interface Targets {
   hdrView: GPUTextureView
   levels: GPUTexture[]
   levelViews: GPUTextureView[]
-  /** One small uniform block per pass: down × LEVELS, up × (LEVELS − 1), composite. */
+  /** One small uniform block per pass: down × LEVELS, up × (LEVELS − 1), composite, history. */
   bufs: GPUBuffer[]
-  binds: GPUBindGroup[]
-  scene: GPUBindGroup
+  /** Per frame parity (one set without a history): bloom down, up, composite, then the history. */
+  binds: GPUBindGroup[][]
+  scenes: GPUBindGroup[]
+  /** Temporal: the cache and the history, each a pair that swaps every frame. */
+  cache: GPUTexture[]
+  history: GPUTexture[]
+  parity: number
+  valid: boolean
   exposure: number
 }
 
 export interface RenderOptions {
-  /** The refined still: drawn at `restDpr`. */
-  readonly rest?: boolean
-  /**
-   * Which sample of the still this is: 0 replaces the target, n averages in at 1/(n + 1). Until
-   * the averaging pipeline is ready, `render` draws nothing for n > 0 and returns false.
-   */
-  readonly sample?: number
+  /** Temporal views: how much of this frame goes into the history (1 replaces it). */
+  readonly blend?: number
+  /** Temporal views: clip the history to this frame's neighbourhood first (anything changing). */
+  readonly clip?: boolean
 }
 
 const byCanvas = new WeakMap<Element, GpuView>()
@@ -288,12 +329,9 @@ export class GpuView {
   cssH = 0
   private ctx!: GPUCanvasContext
   private pipeline!: GPURenderPipeline
-  private accumulate: GPURenderPipeline | null = null
   private sceneBuf!: GPUBuffer
   private readonly postData = new Float32Array(16)
-  /** A set of targets per size drawn at (moving and at rest), dropped when the canvas resizes. */
-  private targets = new Map<string, Targets>()
-  private targetsFor = ""
+  private targets: Targets | null = null
   private readonly t0 = performance.now()
   private failures = 0
   private retry = 0
@@ -317,49 +355,27 @@ export class GpuView {
     this.s = s
     this.ctx = this.canvas.getContext("webgpu")!
     this.ctx.configure({ device: s.device, format: s.format, alphaMode: "opaque" })
-    let module = s.modules.get(this.spec.wgsl)
-    if (!module) {
-      module = compile(s.device, PRELUDE + this.spec.wgsl, this.spec.label)
-      s.modules.set(this.spec.wgsl, module)
-    }
+    const temporal = !!this.spec.temporal
     let pipeline = s.scenes.get(this.spec.wgsl)
     if (!pipeline) {
+      const module = compile(
+        s.device,
+        (temporal ? TEMPORAL : PRELUDE) + this.spec.wgsl,
+        this.spec.label,
+      )
       pipeline = s.device.createRenderPipeline({
-        layout: s.sceneLayout,
+        layout: temporal ? s.temporalLayout : s.sceneLayout,
         vertex: { module, entryPoint: "vs" },
-        fragment: { module, entryPoint: "fs", targets: [{ format: HDR }] },
+        fragment: {
+          module,
+          entryPoint: "fs",
+          targets: temporal ? [{ format: HDR }, { format: HDR }] : [{ format: HDR }],
+        },
         primitive: { topology: "triangle-list" },
       })
       s.scenes.set(this.spec.wgsl, pipeline)
     }
     this.pipeline = pipeline
-    // The still's samples: the scene again, averaged into what's there by the blend constant.
-    // Built off the main thread, so the first still doesn't wait for it.
-    const key = `${this.spec.wgsl}\u0000accumulate`
-    this.accumulate = s.scenes.get(key) ?? null
-    if (this.spec.restDpr && !this.accumulate) {
-      const blend: GPUBlendComponent = {
-        srcFactor: "constant",
-        dstFactor: "one-minus-constant",
-        operation: "add",
-      }
-      s.device
-        .createRenderPipelineAsync({
-          layout: s.sceneLayout,
-          vertex: { module, entryPoint: "vs" },
-          fragment: {
-            module,
-            entryPoint: "fs",
-            targets: [{ format: HDR, blend: { color: blend, alpha: blend } }],
-          },
-          primitive: { topology: "triangle-list" },
-        })
-        .then((p) => {
-          s.scenes.set(key, p)
-          if (this.s === s) this.accumulate = p
-        })
-        .catch((e) => console.error(`controls-gpu ${this.spec.label}: no still`, e))
-    }
     this.sceneBuf = s.device.createBuffer({
       size: SCENE_FLOATS * 4,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -367,12 +383,11 @@ export class GpuView {
     this.dropTargets()
   }
   private dropTargets() {
-    for (const t of this.targets.values()) {
-      t.hdr.destroy()
-      for (const l of t.levels) l.destroy()
-      for (const b of t.bufs) b.destroy()
-    }
-    this.targets.clear()
+    const t = this.targets
+    if (!t) return
+    for (const x of [t.hdr, ...t.levels, ...t.cache, ...t.history]) x.destroy()
+    for (const b of t.bufs) b.destroy()
+    this.targets = null
   }
   /** On a new device: everything again, then the last frame's data drawn. */
   rebuild(s: Shared) {
@@ -413,28 +428,21 @@ export class GpuView {
     u[15] = base ? (this.spec.edge ?? 0.06) : 0
     this.s.device.queue.writeBuffer(buf, 0, u)
   }
-  private fit(rest: boolean) {
+  /** Device pixels per CSS pixel it draws at. */
+  get dpr() {
+    return Math.min(this.spec.maxDpr ?? 2, devicePixelRatio || 1)
+  }
+  private fit() {
     const cssW = this.cssW || (this.cssW = this.canvas.clientWidth)
     const cssH = this.cssH || (this.cssH = this.canvas.clientHeight)
-    const ratio = devicePixelRatio || 1
-    const moving = this.spec.maxDpr ?? 2
-    const still = Math.max(moving, this.spec.restDpr ?? moving)
-    const dpr = Math.min(rest ? still : moving, ratio)
-    // The canvas always holds the sharpest the view draws; a smaller frame is scaled up into it.
-    const cw = Math.round(cssW * Math.min(still, ratio))
-    const ch = Math.round(cssH * Math.min(still, ratio))
-    const w = Math.round(cssW * dpr)
-    const h = Math.round(cssH * dpr)
+    const w = Math.round(cssW * this.dpr)
+    const h = Math.round(cssH * this.dpr)
     if (w < 2 || h < 2) return null
-    const size = `${cw}x${ch}`
-    if (this.targetsFor !== size) {
-      this.dropTargets()
-      this.targetsFor = size
-      this.canvas.width = cw
-      this.canvas.height = ch
-    }
-    const known = this.targets.get(`${w}x${h}`)
-    if (known) return known
+    if (this.targets && this.targets.w === w && this.targets.h === h) return this.targets
+    this.dropTargets()
+    this.canvas.width = w
+    this.canvas.height = h
+    const temporal = !!this.spec.temporal
     const { device, layout, sampler, noise } = this.s
     const tex = (tw: number, th: number) =>
       device.createTexture({
@@ -444,6 +452,8 @@ export class GpuView {
       })
     const hdr = tex(w, h)
     const hdrView = hdr.createView()
+    const cache = temporal ? [tex(w, h), tex(w, h)] : []
+    const history = temporal ? [tex(w, h), tex(w, h)] : []
     const levels: GPUTexture[] = []
     const levelViews: GPUTextureView[] = []
     for (let i = 0; i < LEVELS; i++) {
@@ -463,28 +473,47 @@ export class GpuView {
         ],
       })
     const bufs: GPUBuffer[] = []
-    for (let i = 0; i < LEVELS * 2; i++)
+    for (let i = 0; i < LEVELS * 2 + 1; i++)
       bufs.push(
         device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
       )
-    const binds: GPUBindGroup[] = []
-    // Down: hdr → L0 → … → L4. Up: L4 → L3 … L1 → L0 (added on). Composite: hdr with L0.
-    for (let i = 0; i < LEVELS; i++) {
-      binds.push(bind(i ? levelViews[i - 1]! : hdrView, bufs[i]!, hdrView))
+    // Down: shown → L0 → … → L4. Up: L4 → L3 … L1 → L0 (added on). Composite: shown with L0.
+    // What's shown is the frame itself, or for a temporal view this parity's history (made from
+    // the frame and the other history).
+    const binds: GPUBindGroup[][] = []
+    for (let parity = 0; parity < (temporal ? 2 : 1); parity++) {
+      const shown = temporal ? history[parity]!.createView() : hdrView
+      const set: GPUBindGroup[] = []
+      for (let i = 0; i < LEVELS; i++)
+        set.push(bind(i ? levelViews[i - 1]! : shown, bufs[i]!, shown))
+      for (let i = LEVELS - 1; i > 0; i--)
+        set.push(bind(levelViews[i]!, bufs[LEVELS + (LEVELS - 1 - i)]!, shown))
+      set.push(bind(shown, bufs[LEVELS * 2 - 1]!, levelViews[0]!))
+      if (temporal) set.push(bind(hdrView, bufs[LEVELS * 2]!, history[1 - parity]!.createView()))
+      binds.push(set)
+    }
+    for (let i = 0; i < LEVELS; i++)
       this.writePost(bufs[i]!, i ? levels[i - 1]! : hdr, i ? 0 : 1, 1)
-    }
-    for (let i = LEVELS - 1; i > 0; i--) {
-      const idx = LEVELS + (LEVELS - 1 - i)
-      binds.push(bind(levelViews[i]!, bufs[idx]!, hdrView))
-      this.writePost(bufs[idx]!, levels[i]!, 0, 1)
-    }
-    binds.push(bind(hdrView, bufs[LEVELS * 2 - 1]!, levelViews[0]!))
+    for (let i = LEVELS - 1; i > 0; i--)
+      this.writePost(bufs[LEVELS + (LEVELS - 1 - i)]!, levels[i]!, 0, 1)
     this.writePost(bufs[LEVELS * 2 - 1]!, hdr, 0, 1)
-    const scene = device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.sceneBuf } }],
-    })
-    const t: Targets = {
+    const scenes = temporal
+      ? [0, 1].map((parity) =>
+          device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [
+              { binding: 0, resource: { buffer: this.sceneBuf } },
+              { binding: 1, resource: cache[1 - parity]!.createView() },
+            ],
+          }),
+        )
+      : [
+          device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: this.sceneBuf } }],
+          }),
+        ]
+    this.targets = {
       w,
       h,
       dpr: w / Math.max(1, cssW),
@@ -494,22 +523,16 @@ export class GpuView {
       levelViews,
       bufs,
       binds,
-      scene,
+      scenes,
+      cache,
+      history,
+      parity: 0,
+      valid: false,
       exposure: this.exposure,
     }
-    this.targets.set(`${w}x${h}`, t)
-    return t
-  }
-  /** Device pixels per CSS pixel the next `render` with these options draws at. */
-  dprFor(rest = false) {
-    const moving = this.spec.maxDpr ?? 2
-    return Math.min(
-      rest ? Math.max(moving, this.spec.restDpr ?? moving) : moving,
-      devicePixelRatio || 1,
-    )
+    return this.targets
   }
   render(options: RenderOptions = {}): boolean {
-    if ((options.sample ?? 0) > 0 && !this.accumulate) return false
     try {
       this.draw(options)
       this.failures = 0
@@ -524,39 +547,83 @@ export class GpuView {
     }
     return true
   }
-  private draw({ rest = false, sample = 0 }: RenderOptions) {
-    const t = this.fit(rest)
+  /**
+   * GPU time per frame (ms) of `frames` renders of the current data back to back, for the
+   * catalog's measurements: whatever the queue takes, divided out. `uncached`: as if each were
+   * a temporal view's first.
+   */
+  async bench(frames: number, options: RenderOptions = {}, uncached = false) {
+    this.draw(options, false)
+    await this.s.device.queue.onSubmittedWorkDone()
+    const t0 = performance.now()
+    for (let i = 0; i < frames; i++) {
+      if (uncached && this.targets) this.targets.valid = false
+      this.draw(options, false)
+    }
+    await this.s.device.queue.onSubmittedWorkDone()
+    return (performance.now() - t0) / frames
+  }
+  private draw({ blend = 1, clip = false }: RenderOptions, log = true) {
+    const t = this.fit()
     if (!t) return
     const { device } = this.s
     const q = device.queue
+    const temporal = !!this.spec.temporal
+    if (temporal) t.parity = 1 - t.parity
+    const parity = temporal ? t.parity : 0
     this.data[0] = t.w
     this.data[1] = t.h
     this.data[2] = t.dpr
     this.data[3] = this.time
+    if (temporal) this.data[VALID] = t.valid ? 1 : 0
     q.writeBuffer(this.sceneBuf, 0, this.data)
     if (this.exposure !== t.exposure) {
       this.writePost(t.bufs[LEVELS * 2 - 1]!, t.hdr, 0, 1)
       t.exposure = this.exposure
     }
+    const binds = t.binds[parity]!
 
     const enc = device.createCommandEncoder()
-    const pass = (view: GPUTextureView, load: GPULoadOp) =>
+    const pass = (view: GPUTextureView, load: GPULoadOp, extra?: GPUTextureView) =>
       enc.beginRenderPass({
-        colorAttachments: [{ view, loadOp: load, storeOp: "store", clearValue: [0, 0, 0, 1] }],
+        colorAttachments: [
+          { view, loadOp: load, storeOp: "store", clearValue: [0, 0, 0, 1] },
+          ...(extra
+            ? [
+                {
+                  view: extra,
+                  loadOp: "clear" as const,
+                  storeOp: "store" as const,
+                  clearValue: [0, 0, 0, 1],
+                },
+              ]
+            : []),
+        ],
       })
-    let p = pass(t.hdrView, sample > 0 ? "load" : "clear")
-    if (sample > 0 && this.accumulate) {
-      const k = 1 / (sample + 1)
-      p.setPipeline(this.accumulate)
-      p.setBlendConstant([k, k, k, k])
-    } else p.setPipeline(this.pipeline)
-    p.setBindGroup(0, t.scene)
+    let p = pass(t.hdrView, "clear", temporal ? t.cache[parity]!.createView() : undefined)
+    p.setPipeline(this.pipeline)
+    p.setBindGroup(0, t.scenes[parity]!)
     p.draw(3)
     p.end()
+    if (temporal) {
+      // The history: this frame folded into the last (clipped to what's here now, if asked).
+      const u = this.postData
+      u.fill(0)
+      u[4] = t.valid ? blend : 1
+      u[5] = clip ? 1 : 0
+      u[6] = 1.25
+      q.writeBuffer(t.bufs[LEVELS * 2]!, 0, u)
+      p = pass(t.history[parity]!.createView(), "clear")
+      p.setPipeline(this.s.taa)
+      p.setBindGroup(0, binds[LEVELS * 2]!)
+      p.draw(3)
+      p.end()
+      t.valid = true
+    }
     for (let i = 0; i < LEVELS; i++) {
       p = pass(t.levelViews[i]!, "clear")
       p.setPipeline(this.s.down)
-      p.setBindGroup(0, t.binds[i]!)
+      p.setBindGroup(0, binds[i]!)
       p.draw(3)
       p.end()
     }
@@ -564,18 +631,19 @@ export class GpuView {
       const i = LEVELS - 1 - k
       p = pass(t.levelViews[i - 1]!, "load")
       p.setPipeline(this.s.up)
-      p.setBindGroup(0, t.binds[LEVELS + k]!)
+      p.setBindGroup(0, binds[LEVELS + k]!)
       p.draw(3)
       p.end()
     }
     p = pass(this.ctx.getCurrentTexture().createView(), "clear")
     p.setPipeline(this.s.composite)
-    p.setBindGroup(0, t.binds[LEVELS * 2 - 1]!)
+    p.setBindGroup(0, binds[LEVELS * 2 - 1]!)
     p.draw(3)
     p.end()
     q.submit([enc.finish()])
+    if (!log) return
     const t0 = performance.now()
-    const label = rest ? `${this.spec.label} still` : this.spec.label
+    const label = this.spec.label
     q.onSubmittedWorkDone().then(() => {
       const ms = performance.now() - t0
       const v = live.views.get(label) ?? { renders: 0, ms: 0 }
