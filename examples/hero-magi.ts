@@ -472,7 +472,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
   }
   if (noGpu) fallback()
   else
-    createGpu(stage, page, writeParams, showStats)
+    createGpu(stage, page, lay, writeParams, showStats)
       .then((g) => {
         if (disposed) return g?.destroy()
         if (!g) return fallback()
@@ -531,6 +531,7 @@ type WriteParams = (
 async function createGpu(
   stage: HTMLElement,
   page: readonly number[],
+  lay: { cx: number; cy: number; R: number },
   writeParams: WriteParams,
   onStats: (s: Stats) => void,
 ): Promise<Gpu | null> {
@@ -853,6 +854,16 @@ async function createGpu(
     device.queue.submit([enc.finish()])
   }
 
+  /** The ring's box on the canvas (device px, clamped): x, y, width, height. */
+  const ringBox = (t: { w: number; h: number; dpr: number }) => {
+    const p = lay
+    const r = (p.R * 1.02 + 8) * t.dpr
+    const x0 = Math.max(0, Math.floor(p.cx * t.dpr - r))
+    const y0 = Math.max(0, Math.floor(p.cy * t.dpr - r))
+    const x1 = Math.min(t.w, Math.ceil(p.cx * t.dpr + r))
+    const y1 = Math.min(t.h, Math.ceil(p.cy * t.dpr + r))
+    return [x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0)] as const
+  }
   let frameNo = 0
   let readIdx = 0
   const reading = [false, false]
@@ -894,6 +905,9 @@ async function createGpu(
       ...(timed ? { timestampWrites: { querySet: query!, endOfPassWriteIndex: 2 } } : {}),
     })
     rp.setBindGroup(0, rb0)
+    // Only the ring holds agents: the trail lives in its box.
+    const box = ringBox(t)
+    rp.setScissorRect(box[0], box[1], box[2], box[3])
     const decay = 0.5 ** (dt / TRAIL_HALF)
     rp.setBlendConstant([decay, decay, decay, decay])
     rp.setPipeline(pFade)

@@ -248,8 +248,10 @@ fn hud(p: vec2f) -> vec3f {
     }
   }
 
+  // Brackets, predators and the lure all live in the ring (and a bracket's reach past it).
+  let inRing = rn < 1.0 + 90.0 / R;
   // ── Clusters: brackets close in on each as it's locked, with its id ──
-  for (var i = 0u; i < TRACKS; i++) {
+  for (var i = 0u; i < select(0u, TRACKS, inRing); i++) {
     let tp = tracks[2u * i];
     let ta = tracks[2u * i + 1u];
     if (ta.x <= 0.01) {
@@ -280,7 +282,7 @@ fn hud(p: vec2f) -> vec3f {
   }
 
   // ── Predators: red chevrons, each in its ring of fear ──
-  for (var i = 0u; i < PREDS; i++) {
+  for (var i = 0u; i < select(0u, PREDS, inRing); i++) {
     let on = preds[2u * i + 1u].x;
     if (on <= 0.01) {
       continue;
@@ -303,7 +305,7 @@ fn hud(p: vec2f) -> vec3f {
   }
 
   // ── The lure: a reticle, brighter while it's held ──
-  {
+  if (inRing) {
     let s = c + P.sim2.xy * R;
     let dq = p - s;
     let dl = length(dq);
@@ -330,6 +332,9 @@ fn hud(p: vec2f) -> vec3f {
       let port = c + dirA * R * 1.2;
       let bend = c + dirA * R * 1.3;
       let end = vec2f(panelX, row.x);
+      if (p.y < min(port.y, end.y) - 8.0 || p.y > max(port.y, end.y) + 8.0) {
+        continue;
+      }
       let d1 = seg(p, port, bend);
       let d2 = seg(p, bend, end);
       let glow = row.z;
@@ -433,7 +438,11 @@ fn fs_hud(in: FullOut) -> @location(0) vec4f {
   let arrive = P.scr1.w;
   let reach = arrive * P.scr1.z * 3.2;
   let shown = smoothstep(reach, reach - 60.0, length(p - P.scr1.xy));
-  var col = hud(p) * shown;
+  var col = vec3f(0.0);
+  // Under the panel and past it there's nothing to draw.
+  if (P.scr3.y < 0.5 || p.x < P.scr3.x + 1.0) {
+    col = hud(p) * shown;
+  }
   col += textureLoad(trail, vec2i(in.pos.xy), 0).rgb;
   // Every edge of the frame is the page.
   let size = P.scr0.xy / dpr;
