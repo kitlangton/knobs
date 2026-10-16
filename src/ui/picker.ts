@@ -27,6 +27,11 @@ export interface PickerOption {
   readonly label: string
   /** Marked "Suggested". */
   readonly suggested?: boolean
+  /**
+   * A picture of it (an image URL), small between the number and the name. It loads lazily and
+   * fades in once loaded; while loading, or if it fails, nothing is drawn.
+   */
+  readonly thumb?: string
 }
 
 export interface OptionPickerOptions extends UiLook {
@@ -92,6 +97,7 @@ interface Entry {
   el: HTMLElement
   head: HTMLElement
   key: HTMLElement
+  thumb: HTMLImageElement | undefined
   name: HTMLElement
   suggested: HTMLElement
   body: HTMLElement
@@ -182,6 +188,7 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
       el,
       head,
       key,
+      thumb: undefined,
       name,
       suggested,
       body,
@@ -200,9 +207,44 @@ export function optionPicker(container: HTMLElement, options: OptionPickerOption
     return entry
   }
 
+  /**
+   * An option's picture: placed (and its space kept) as soon as it has a URL, drawn only once
+   * loaded, fading in; one that fails gives its space back. One already loaded shows at once.
+   */
+  const setThumb = (e: Entry, url: string | undefined) => {
+    if ((e.thumb?.getAttribute("src") ?? undefined) === (url || undefined)) return
+    if (!url) {
+      e.thumb?.remove()
+      e.thumb = undefined
+      return
+    }
+    let img = e.thumb
+    if (!img) {
+      const el: HTMLImageElement = doc.createElement("img")
+      el.className = "knobs-picker-thumb"
+      el.alt = ""
+      el.loading = "lazy"
+      el.decoding = "async"
+      el.draggable = false
+      el.addEventListener("load", () => (el.dataset.state = "loaded"))
+      el.addEventListener("error", () => (el.dataset.state = "failed"))
+      e.key.after(el)
+      e.thumb = img = el
+    }
+    const shown = img
+    shown.dataset.state = "loading"
+    shown.src = url
+    if (shown.complete && shown.naturalWidth > 0) {
+      shown.dataset.state = "loaded"
+      shown.dataset.instant = ""
+      win.requestAnimationFrame(() => delete shown.dataset.instant)
+    }
+  }
+
   const bind = (e: Entry, i: number) => {
     e.option = list[i]!
     e.key.textContent = pickDigit(i)
+    setThumb(e, e.option.thumb)
     if (e.name.textContent !== e.option.label) e.name.textContent = e.option.label
     e.suggested.textContent = e.option.suggested ? (options.suggestedLabel ?? "Suggested") : ""
     e.suggested.hidden = !e.option.suggested
