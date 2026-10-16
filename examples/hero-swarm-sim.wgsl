@@ -1,4 +1,4 @@
-// MAGI's swarm, a few compute passes a frame (after the common block, hero-magi-common.wgsl):
+// The swarm, a few compute passes a frame (after the common block, hero-swarm-common.wgsl):
 //
 //   splat    each agent adds itself (1, its velocity) bilinearly into a NEAR² grid (atomics)
 //   resolve  the grid, tent-filtered, into the near field (density, momentum)
@@ -9,8 +9,8 @@
 //            predators, circles the lure, keeps inside the containment ring. It also adds its
 //            heading, speed and fear to the frame's statistics.
 //   maxima   the far field's peaks: the clusters, with their mass in agents
-//   track    six tracks follow the clusters (lock-on, a serial id each), and the statistics go
-//            into a history the scope plots
+//   track    six tracks follow the clusters (lock-on, a serial id each), the statistics go
+//            into a history the scope plots, and the wires' moving ends find their targets
 //
 // So the swarm costs one splat and one gather an agent, whatever its size.
 
@@ -32,7 +32,8 @@
 /** Fixed point for the grid and the statistics. */
 const FIX = 256.0;
 const STAT = 1000.0;
-// stats: 0–1 summed heading, 2 speed, 3 fear, 4 candidates, 5 the next track's id, 6 frames
+// stats: 0 summed local order, 1 unused, 2 speed, 3 fear, 4 candidates, 5 the next track's id,
+// 6 frames
 const S_CANDS = 4u;
 const S_SERIAL = 5u;
 const S_FRAME = 6u;
@@ -58,7 +59,7 @@ fn init(@builtin(global_invocation_id) id: vec3u) {
   if (i < TRACKS * 2u) {
     tracks[i] = vec4f(0.0);
   }
-  if (i < HIST + 2u) {
+  if (i < arrayLength(&hist)) {
     hist[i] = vec4f(0.0);
   }
 }
@@ -164,8 +165,8 @@ fn hunt(@builtin(global_invocation_id) id: vec3u) {
   b.x = clamp(b.x + select(-dt * 2.0, dt * 1.5, on), 0.0, 1.0);
   if (!on && b.x <= 0.0) {
     // Parked off the ring's edge, ready to come in.
-    let ang = f32(i) * 2.39996 + 0.6;
-    preds[2u * i] = vec4f(cos(ang), sin(ang), -cos(ang), -sin(ang)) * vec4f(vec2f(P.sim1.y * 0.92), vec2f(0.1));
+    let at = parked(i, P.sim1.y);
+    preds[2u * i] = vec4f(at, -at * 0.1);
     preds[2u * i + 1u] = b;
     return;
   }
@@ -292,8 +293,10 @@ fn advance(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_i
     x.x = max(fear, x.x - dt * 1.2);
     agents[i] = vec4f(q, v);
     aux[i] = x;
+    // Its order: how nearly it heads the way the swarm round it does.
     let h = v / max(length(v), 1e-5);
-    out = vec4f(h, length(v) / (cruise(P) * 2.2), x.x);
+    let around = select(h, m / max(ml, 1e-5), ml > 1e-4);
+    out = vec4f(dot(h, around), 0.0, length(v) / (cruise(P) * 2.2), x.x);
   }
   // The frame's statistics, summed in the group, then added once.
   red[li] = out;
@@ -345,6 +348,57 @@ fn maxima(@builtin(global_invocation_id) id: vec3u) {
     let cells = f32(NEAR / FAR) * f32(NEAR / FAR);
     cand[k] = vec4f(world, mass * cells, 0.0);
   }
+}
+
+/** The tracks as this frame left them, read once (the tracker runs on one thread). */
+var<private> held: array<vec4f, 12>;
+fn alive(t: i32) -> bool {
+  return t >= 0 && held[2 * t + 1].x > 0.5;
+}
+fn mass(t: i32) -> f32 {
+  return held[2 * t].z;
+}
+/** The heaviest live track other than `not`, or `held` while it's alive and not far lighter. */
+fn pick(not: i32, kept: i32) -> i32 {
+  var best = -1;
+  var bm = 0.0;
+  for (var t = 0; t < i32(TRACKS); t++) {
+    if (t != not && alive(t) && mass(t) > bm) {
+      bm = mass(t);
+      best = t;
+    }
+  }
+  if (kept != not && alive(kept) && mass(kept) > bm * 0.7) {
+    return kept;
+  }
+  return best;
+}
+/** Where a wire lands on track t's bracket (px): the middle of its right side; none, the centre. */
+fn bracketEnd(t: i32) -> vec2f {
+  let c = P.scr1.xy;
+  if (t < 0) {
+    return c;
+  }
+  let tp = held[2 * t];
+  return c + tp.xy * P.scr1.z + vec2f(bracketSize(tp) + 2.0, 0.0);
+}
+/** A wire end follows its goal exactly, after a short glide whenever the goal changes. */
+fn glide(slot: u32, id: f32, goal: vec2f, dt: f32) {
+  let at = ANCH + 2u * slot;
+  var a = hist[at];
+  var b = hist[at + 1u];
+  if (b.z == 0.0) {
+    a = vec4f(goal, 1.0, id);
+    b = vec4f(goal, 1.0, 0.0);
+  }
+  if (a.w != id) {
+    b = vec4f(a.xy, 1.0, 0.0);
+    a.z = 0.0;
+  }
+  let g = min(a.z + dt * 2.5, 1.0);
+  let e = g * g * (3.0 - 2.0 * g);
+  hist[at] = vec4f(mix(b.xy, goal, e), g, id);
+  hist[at + 1u] = b;
 }
 
 @compute @workgroup_size(1)
@@ -413,7 +467,7 @@ fn track() {
   }
   // The statistics: now, and into the history every other frame.
   let count = max(P.sim3.x, 1.0);
-  let order = length(vec2f(f32(atomicLoad(&stats[0])), f32(atomicLoad(&stats[1])))) / STAT / count;
+  let order = max(f32(atomicLoad(&stats[0])) / STAT / count, 0.0);
   let speed = f32(atomicLoad(&stats[2])) / STAT / count;
   let fear = f32(atomicLoad(&stats[3])) / STAT / count;
   let clusters = live / f32(TRACKS);
@@ -424,7 +478,37 @@ fn track() {
     hist[head] = vec4f(order, speed, clusters, fear);
   }
   hist[HIST] = vec4f(f32(head), order, speed, fear);
-  hist[HIST + 1u] = vec4f(live, f32(n), 0.0, 0.0);
+  // Order and pace again, eased, for the arcs and the wires that land on their tips.
+  let was = hist[HIST + 1u];
+  let ks = 1.0 - exp(-dt * 2.0);
+  hist[HIST + 1u] = vec4f(live, f32(n), mix(was.z, order, ks), mix(was.w, speed, ks));
+  for (var k = 0u; k < TRACKS * 2u; k++) {
+    held[k] = tracks[k];
+  }
+  // The wires' moving ends: Cohesion's on the heaviest cluster, Separation's on the next,
+  // Predators' on the first one hunting (else where it waits). A choice holds until its cluster
+  // is lost or well outweighed.
+  let heavy = pick(-1, i32(hist[ANCH].w));
+  var second = pick(heavy, i32(hist[ANCH + 2u].w));
+  if (second < 0) {
+    second = heavy;
+  }
+  var hunter = -1;
+  for (var i = 0u; i < PREDS; i++) {
+    if (preds[2u * i + 1u].x > 0.5) {
+      hunter = i32(i);
+      break;
+    }
+  }
+  let c = P.scr1.xy;
+  let R = P.scr1.z;
+  var prey = c + parked(0u, P.sim1.y) * R;
+  if (hunter >= 0) {
+    prey = c + preds[2u * u32(hunter)].xy * R;
+  }
+  glide(0u, f32(heavy), bracketEnd(heavy), dt);
+  glide(1u, f32(second), bracketEnd(second), dt);
+  glide(2u, f32(hunter), prey + vec2f(8.0, 0.0), dt);
   for (var s = 0u; s <= S_CANDS; s++) {
     atomicStore(&stats[s], 0);
   }

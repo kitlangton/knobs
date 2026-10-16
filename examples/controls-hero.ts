@@ -43,7 +43,7 @@ const SWITCH = springMotion({ duration: 0.9, bounce: 0 })
 const VARIANTS = ["Hardware", "Schematic"] as const
 /** The other heroes: simulations of their own, each loaded when chosen into a layer over the twins. */
 const ALTS = {
-  magi: { name: "MAGI", load: () => import("./hero-magi").then((m) => m.mountHeroMagi) },
+  swarm: { name: "Swarm", load: () => import("./hero-swarm").then((m) => m.mountHeroSwarm) },
   slime: { name: "Slime", load: () => import("./hero-slime").then((m) => m.mountHeroSlime) },
   ink: { name: "Ink", load: () => import("./hero-ink").then((m) => m.mountHeroInk) },
   attractor: {
@@ -557,7 +557,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
     if (i) tickSchematic()
   }
   if (scheme) {
-    const asked = new URLSearchParams(location.search).get("hero")
+    // The swarm was first called MAGI: its old links still open it.
+    const param = new URLSearchParams(location.search).get("hero")
+    const asked = param === "magi" ? "swarm" : param
     root.append(toggleEl)
     show(variant.target)
     if (isAlt(asked) && !matchMedia("(max-width: 900px)").matches) showAlt(asked)
