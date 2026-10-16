@@ -4,8 +4,8 @@
 // live (hero-swarm-draw.wgsl): brackets lock onto the largest clusters and follow them, a radar
 // shows the density, a scope plots the swarm's order, pace and fear, two arcs round the ring
 // show its order and pace, and a wire runs from each row of the panel to what that row drives.
-// The panel operates it: alignment, cohesion, separation, predators, the display's signal
-// colour, containment, the lure (which a drag in the ring also places; held, it pulls harder)
+// The panel operates it: alignment, cohesion, separation, predators, the display's colour
+// scheme, containment, the lure (which a drag in the ring also places; held, it pulls harder)
 // and speed. Bloom and tone are the catalog's (controls-post.wgsl). Without WebGPU, a still of
 // the display stands in.
 import { choice, defineControls, knob, point } from "knobs"
@@ -34,21 +34,93 @@ const ANCHORS = 3
 /** Segments in each wire's curve, as in hero-swarm-draw.wgsl. */
 const WIRE_SEGS = 48
 
-const SIGNALS = ["Amber", "Ice", "Bone"] as const
-type Signal = (typeof SIGNALS)[number]
-/** knobs' amber (the desk's accent), bone, and a cool counter-accent (sRGB 0–1). */
-const AMBER = [1.0, 0.647, 0.239]
-const BONE = [0.93, 0.89, 0.81]
-const ICE = [0.5, 0.81, 1.0]
 /**
- * Each signal: the display's main colour (the rings, the wires, the swarm at speed), its second
- * (the swarm cruising, the gauges) and its counter (the predators and the fear they spread).
+ * A scheme: a whole look. Its frame (rings, bezel, wires, the acquiring brackets), the swarm
+ * cruising (and the gauges and radar), the swarm at speed, the alert (predators and the fear they
+ * spread), the hex lattice's tint, all sRGB 0–1; then how bright an agent burns, how much bloom
+ * softens the frame, and how far the trail reads as heat (its density through black, red, orange
+ * and yellow) instead of its own colours.
  */
-const PALETTES: Record<Signal, readonly (readonly number[])[]> = {
-  Amber: [AMBER, BONE, ICE],
-  Ice: [ICE, BONE, AMBER],
-  Bone: [BONE, [0.64, 0.61, 0.56], AMBER],
+interface Scheme {
+  frame: readonly number[]
+  calm: readonly number[]
+  fast: readonly number[]
+  alert: readonly number[]
+  lattice: readonly number[]
+  gain: number
+  bloom: number
+  heat?: number
 }
+const SCHEME_NAMES = ["Tactical", "Synthwave", "Acid", "Arctic", "Solar", "Thermal"] as const
+type SchemeName = (typeof SCHEME_NAMES)[number]
+const SCHEMES: Record<SchemeName, Scheme> = {
+  // Emerald trails, a hot orange frame, red alerts: the swarm's first look.
+  Tactical: {
+    frame: [1.0, 0.56, 0.16],
+    calm: [0.2, 1.0, 0.58],
+    fast: [1.0, 0.6, 0.2],
+    alert: [1.0, 0.16, 0.2],
+    lattice: [0.2, 1.0, 0.58],
+    gain: 0.27,
+    bloom: 0.2,
+  },
+  // Cyan trails that run pink, a magenta frame, yellow alerts on a violet lattice.
+  Synthwave: {
+    frame: [1.0, 0.2, 0.74],
+    calm: [0.12, 0.84, 1.0],
+    fast: [1.0, 0.42, 0.88],
+    alert: [1.0, 0.92, 0.3],
+    lattice: [0.58, 0.3, 1.0],
+    gain: 0.27,
+    bloom: 0.26,
+  },
+  // Violet trails that go acid lime at speed, a lime frame, hot pink alerts.
+  Acid: {
+    frame: [0.76, 1.0, 0.12],
+    calm: [0.62, 0.34, 1.0],
+    fast: [0.82, 1.0, 0.28],
+    alert: [1.0, 0.22, 0.56],
+    lattice: [0.62, 0.34, 1.0],
+    gain: 0.32,
+    bloom: 0.24,
+  },
+  // Ice-white trails, a cyan frame, and red where the predators are.
+  Arctic: {
+    frame: [0.3, 0.84, 1.0],
+    calm: [0.8, 0.93, 1.0],
+    fast: [0.36, 0.88, 1.0],
+    alert: [1.0, 0.12, 0.16],
+    lattice: [0.3, 0.84, 1.0],
+    gain: 0.21,
+    bloom: 0.22,
+  },
+  // Crimson trails burning gold at speed, a gold frame, cyan alerts.
+  Solar: {
+    frame: [1.0, 0.76, 0.2],
+    calm: [0.95, 0.12, 0.24],
+    fast: [1.0, 0.68, 0.18],
+    alert: [0.36, 0.86, 1.0],
+    lattice: [0.95, 0.12, 0.24],
+    gain: 0.3,
+    bloom: 0.27,
+  },
+  // The swarm as heat: its density from black through red and orange to yellow.
+  Thermal: {
+    frame: [1.0, 0.38, 0.08],
+    calm: [0.72, 0.72, 0.72],
+    fast: [0.72, 0.72, 0.72],
+    alert: [0.6, 0.92, 1.0],
+    lattice: [1.0, 0.22, 0.04],
+    gain: 0.3,
+    bloom: 0.3,
+    heat: 1,
+  },
+}
+/** A scheme as the frame reads it: its colours linear, in the order of the shader's pal0–pal4. */
+const flat = (s: Scheme) => [
+  ...[s.frame, s.calm, s.alert, s.fast, s.lattice].map((c) => c.map(toLinear)),
+  [s.gain, s.bloom, s.heat ?? 0],
+]
 
 // The rows run top to bottom in the order their wires land round the ring, so they barely cross.
 const schema = {
@@ -56,7 +128,7 @@ const schema = {
   cohesion: knob(55, { min: 0, max: 100, step: 1, unit: "%", label: "Cohesion" }),
   separation: knob(40, { min: 0, max: 100, step: 1, unit: "%", label: "Separation" }),
   predators: knob(1, { min: 0, max: 6, step: 1, label: "Predators" }),
-  signal: choice("Amber", SIGNALS, { label: "Signal", display: "segmented" }),
+  scheme: choice("Tactical", SCHEME_NAMES, { label: "Scheme" }),
   containment: knob(94, { min: 55, max: 100, step: 1, unit: "%", label: "Containment" }),
   lure: point({ x: 0.62, y: 0.42 }, { min: 0, max: 1, step: 0.01, label: "Lure" }),
   speed: knob(48, { min: 10, max: 100, step: 1, unit: "%", label: "Speed" }),
@@ -71,7 +143,7 @@ const LANDS: Record<Key, number> = {
   speed: 3, // the tip of the pace arc
   predators: 4, // a predator
   containment: 5, // the containment ring
-  signal: 6, // the bezel, in the signal's colour
+  scheme: 6, // the bezel, in the scheme's frame colour
   lure: 7, // the lure's reticle
 }
 
@@ -136,7 +208,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         speed: 74,
         predators: 0,
         containment: 74,
-        signal: "Bone",
+        scheme: "Acid",
         lure: { x: 0.5, y: 0.5 },
       },
       Panic: {
@@ -146,7 +218,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         speed: 88,
         predators: 5,
         containment: 100,
-        signal: "Amber",
+        scheme: "Arctic",
         lure: { x: 0.24, y: 0.7 },
       },
       Vortex: {
@@ -156,7 +228,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         speed: 64,
         predators: 0,
         containment: 86,
-        signal: "Ice",
+        scheme: "Synthwave",
         lure: { x: 0.5, y: 0.5 },
       },
     },
@@ -182,13 +254,12 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
   let glide = 0
   const target = () => {
     const v = store.get()
-    const pal = PALETTES[v.signal as Signal] ?? PALETTES.Amber
     return {
       sim: [v.cohesion / 100, v.alignment / 100, v.separation / 100, (v.speed - 10) / 90],
       preds: v.predators,
       rc: 0.55 + (0.43 * (v.containment - 55)) / 45,
       lure: [(v.lure.x - 0.5) * 2 * LURE_SPAN, (v.lure.y - 0.5) * 2 * LURE_SPAN],
-      pal: pal.map((c) => c.map(toLinear)),
+      pal: flat(SCHEMES[v.scheme as SchemeName] ?? SCHEMES.Tactical),
     }
   }
   const now = target()
@@ -201,8 +272,9 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     mix(now.lure, t.lure)
     now.preds = t.preds
     now.rc += (t.rc - now.rc) * k
-    // The palette always fades (it's a look, not a hand's motion).
-    const kp = 1 - Math.exp(-dt / 0.15)
+    // A scheme always crossfades, every colour, the bloom and the heat together (it's a look,
+    // not a hand's motion).
+    const kp = 1 - Math.exp(-dt / 0.22)
     now.pal.forEach((c, i) => c.forEach((x, j) => (c[j] = x + (t.pal[i]![j]! - x) * kp)))
   }
 
@@ -453,15 +525,15 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         return v.predators / 6
       case "containment":
         return (v.containment - 55) / 45
-      case "signal":
-        return SIGNALS.indexOf(v.signal as Signal) / 2
+      case "scheme":
+        return SCHEME_NAMES.indexOf(v.scheme as SchemeName) / (SCHEME_NAMES.length - 1)
       case "lure":
         return Math.hypot(v.lure.x - 0.5, v.lure.y - 0.5) * 2
       default:
         return (v[k] as number) / 100
     }
   }
-  const params = new Float32Array(48 + 32)
+  const params = new Float32Array(56 + 32)
   const writeParams = (
     simDt: number,
     dt: number,
@@ -485,11 +557,16 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
     set(5, lay.cx, lay.cy, lay.R, arrival)
     set(6, lay.col[0]!, lay.col[1]!, lay.col[2]!, lay.col[3]!)
     set(7, lay.panelX, lay.rows.length, 0, 0)
-    set(8, now.pal[0]![0]!, now.pal[0]![1]!, now.pal[0]![2]!, 1)
-    set(9, now.pal[1]![0]!, now.pal[1]![1]!, now.pal[1]![2]!, 0)
-    set(10, now.pal[2]![0]!, now.pal[2]![1]!, now.pal[2]![2]!, 0)
-    set(11, page[0], page[1], page[2], 0)
-    lay.rows.forEach((y, i) => set(12 + i, y, rowValue(KEYS[i]!), glows[i]!, LANDS[KEYS[i]!]))
+    const [gain, bloom, heat] = now.pal[5]!
+    const pal = (i: number, w: number) =>
+      set(8 + i, now.pal[i]![0]!, now.pal[i]![1]!, now.pal[i]![2]!, w)
+    pal(0, 1)
+    pal(1, gain!)
+    pal(2, 0)
+    pal(3, bloom!)
+    pal(4, heat!)
+    set(13, page[0], page[1], page[2], 0)
+    lay.rows.forEach((y, i) => set(14 + i, y, rowValue(KEYS[i]!), glows[i]!, LANDS[KEYS[i]!]))
     return p
   }
 
@@ -528,7 +605,7 @@ export function mountHeroSwarm(host: HTMLElement): { dispose(): void } {
         if (disposed) return g?.destroy()
         if (!g) return fallback()
         gpu = g
-        Object.assign(window, { __swarm: { bench: g.bench, layout: lay } })
+        Object.assign(window, { __swarm: { bench: g.bench, layout: lay, store } })
         wake()
       })
       .catch((e) => {
@@ -618,7 +695,7 @@ async function createGpu(
   // ── Buffers ──
   const S = GPUBufferUsage.STORAGE
   const buf = (size: number, usage: number) => device.createBuffer({ size, usage })
-  const uniform = buf(80 * 4, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST)
+  const uniform = buf(88 * 4, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST)
   const agents = buf(AGENTS * 16, S)
   const aux = buf(AGENTS * 16, S)
   const grid = buf(NEAR * NEAR * 3 * 4, S | GPUBufferUsage.COPY_DST)
@@ -824,6 +901,7 @@ async function createGpu(
   }
   let tg: Targets | null = null
   const postData = new Float32Array(16)
+  const bloomMix = new Float32Array(1)
   const writePost = (b: GPUBuffer, tex: GPUTexture, first: number) => {
     const u = postData
     u.fill(0)
@@ -925,6 +1003,9 @@ async function createGpu(
     frameNo++
     const params = writeParams(simDt, dt, arrive, t.w, t.h, t.dpr, frameNo)
     device.queue.writeBuffer(uniform, 0, params)
+    // The scheme's bloom, into the composite's mix (pal3.w), so it crossfades with the rest.
+    bloomMix[0] = params[47]!
+    device.queue.writeBuffer(t.bufs[LEVELS * 2 - 1]!, 24, bloomMix)
     const enc = device.createCommandEncoder()
     enc.clearBuffer(grid)
     const timed = query && !queryBusy

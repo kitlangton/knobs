@@ -252,6 +252,11 @@ fn advance(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_i
     // A little wander, less the more they align.
     let wob = hash11(i * 977u + u32(P.sim3.y) * 13u) - 0.5;
     acc += vec2f(-dir.y, dir.x) * wob * k * (1.6 - P.sim0.y) * 2.5;
+    // And a slow turn of its own that only alignment talks it out of: barely there in a flock,
+    // a buzzing cloud when nothing holds them to each other's heading.
+    let own = sin(P.sim1.w * (1.5 + 2.5 * hash11(i * 5u + 11u)) + hash11(i * 7u + 3u) * TAU);
+    let loose = (1.0 - P.sim0.y) * (1.0 - P.sim0.y);
+    acc += vec2f(-dir.y, dir.x) * own * k * loose * 3.0;
     // The cruise.
     acc += dir * (sp - speed) * 2.0;
     // Predators: flee, hardest close.

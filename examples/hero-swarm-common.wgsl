@@ -10,9 +10,12 @@ struct Params {
   scr1: vec4f, // the ring's centre (px), its radius R (px), the arrival (0–1)
   scr2: vec4f, // the instrument column: left, top, width, height (px; width 0: none)
   scr3: vec4f, // the panel's left edge (px), rows, 0, 0
-  pal0: vec4f, // signal: the display's main colour (linear), its brightness
-  pal1: vec4f, // the second colour (linear)
-  pal2: vec4f, // the alert colour (linear)
+  // The scheme (linear colours):
+  pal0: vec4f, // the frame: rings, bezel, wires, brackets acquiring; its brightness
+  pal1: vec4f, // the swarm cruising, the gauges and the radar; the agents' gain
+  pal2: vec4f, // the alert: predators and the fear they spread; 0
+  pal3: vec4f, // the swarm at speed; the bloom's mix (for the post pass)
+  pal4: vec4f, // the hex lattice's tint; how much the trail reads as heat (0–1)
   page: vec4f, // the page (linear)
   rows: array<vec4f, 8>, // each row: its y (px), its value (0–1), its glow, what its wire lands on
 }
