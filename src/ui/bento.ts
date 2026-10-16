@@ -9,7 +9,15 @@ import {
   type BentoPlan,
   type BentoRect,
 } from "./bento-model.js"
-import { applyLook, frameLoop, reducedMotion, syncFrame, type UiLook } from "./look.js"
+import {
+  applyLook,
+  frameLoop,
+  isTypingTarget,
+  reducedMotion,
+  syncFrame,
+  tune,
+  type UiLook,
+} from "./look.js"
 
 export interface BentoItem {
   readonly id: string
@@ -95,11 +103,7 @@ const EXIT_BLUR = 3
 type Motion = { omega: number; zeta: number }
 const px = (x: number) => new Spring(x, LAYOUT.omega, LAYOUT.zeta, 0.05)
 const unit = (x: number) => new Spring(x, ENTER.omega, ENTER.zeta, 0.0005)
-const drive = (s: Spring, m: Motion, target: number) => {
-  s.omega = m.omega
-  s.zeta = m.zeta
-  return s.set(target)
-}
+const drive = (s: Spring, m: Motion, target: number) => tune(s, m).set(target)
 
 interface Tile {
   id: string
@@ -886,10 +890,7 @@ export function bento(container: HTMLElement, options: BentoOptions): Bento {
     zoomIn(t.id)
   }
 
-  const typing = (target: EventTarget | null) =>
-    target instanceof HTMLElement &&
-    target !== root &&
-    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+  const typing = (target: EventTarget | null) => target !== root && isTypingTarget(target)
   const reveal = (id: string) => {
     const r = rectOf(id)
     if (!r) return

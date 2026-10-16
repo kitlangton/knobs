@@ -10,6 +10,7 @@
 // the display stands in.
 import { choice, defineControls, knob, point } from "knobs"
 import { mountPanel } from "knobs/panel"
+import { blueNoise } from "./controls-gpu"
 import postWgsl from "./controls-post.wgsl?raw"
 import commonWgsl from "./hero-swarm-common.wgsl?raw"
 import drawWgsl from "./hero-swarm-draw.wgsl?raw"
@@ -1225,39 +1226,4 @@ function drawStill(
       ${ticks}
       ${dots.map(([x, y]) => `<circle cx="${cx + x * R * rc}" cy="${cy + y * R * rc}" r="1.1" fill="${css(b!)}" fill-opacity=".8"/>`).join("")}`
   }
-}
-
-/** Blue noise for the dither: white noise high-passed three times, then ranked. */
-function blueNoise(n: number) {
-  let v = new Float32Array(n * n)
-  let seed = 7
-  const rnd = () => {
-    seed = (seed * 16807) % 2147483647
-    return seed / 2147483647
-  }
-  for (let i = 0; i < v.length; i++) v[i] = rnd()
-  const K = [0.06, 0.24, 0.4, 0.24, 0.06]
-  for (let pass = 0; pass < 3; pass++) {
-    const a = new Float32Array(v.length)
-    const b = new Float32Array(v.length)
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * v[y * n + ((x + k + n) % n)]!
-        a[y * n + x] = s
-      }
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * a[((y + k + n) % n) * n + x]!
-        b[y * n + x] = v[y * n + x]! - s
-      }
-    v = b
-  }
-  const order = [...v.keys()].sort((i, j) => v[i]! - v[j]!)
-  const out = new Float32Array(v.length)
-  order.forEach((i, rank) => {
-    out[i] = (rank + 0.5) / v.length
-  })
-  return out
 }

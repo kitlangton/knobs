@@ -64,7 +64,7 @@ const remote = createRemoteControls(
     actions: [
       {
         label: "Copy as Swift",
-        run: (_values, ctl) => {
+        run: () => {
           const code = remote.swift()
           remoteEvents.push(`swift:${code}`)
           return code ? "Copied Swift." : "Nothing changed."

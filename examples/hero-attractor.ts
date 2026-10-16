@@ -10,6 +10,7 @@
 // follows. Without WebGPU (or with ?nogpu) a still of the same form is drawn on a 2D canvas.
 import { angle, choice, color, defineControls, knob, parseColor, springMotion } from "knobs"
 import { mountPanel } from "knobs/panel"
+import { blueNoise } from "./controls-gpu"
 import postWgsl from "./controls-post.wgsl?raw"
 import sceneWgsl from "./hero-attractor.wgsl?raw"
 
@@ -1179,40 +1180,6 @@ async function createGpu(
       device.destroy()
     },
   }
-}
-
-/**
- * Blue noise by repeated high-pass (white noise minus its wrapped blur, three times), ranked so
- * the values are uniform: the dither controls-gpu.ts makes.
- */
-function blueNoise(n: number) {
-  let v = new Float32Array(n * n)
-  const rand = rng(7)
-  for (let i = 0; i < v.length; i++) v[i] = rand()
-  const K = [0.06, 0.24, 0.4, 0.24, 0.06]
-  for (let pass = 0; pass < 3; pass++) {
-    const a = new Float32Array(v.length)
-    const b = new Float32Array(v.length)
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * v[y * n + ((x + k + n) % n)]!
-        a[y * n + x] = s
-      }
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * a[((y + k + n) % n) * n + x]!
-        b[y * n + x] = v[y * n + x]! - s
-      }
-    v = b
-  }
-  const order = [...v.keys()].sort((i, j) => v[i]! - v[j]!)
-  const out = new Float32Array(v.length)
-  order.forEach((i, rank) => {
-    out[i] = (rank + 0.5) / v.length
-  })
-  return out
 }
 
 // ── Without WebGPU: a still of the same form ────────────────────────────────────────────────

@@ -440,14 +440,7 @@ export const tune = <T extends { omega: number; zeta: number }>(
 }
 
 /** Whether `target` is an editable field or select that takes typed keys. */
-export const isTypingTarget = (t: EventTarget | null): boolean =>
-  t instanceof HTMLElement &&
-  (t.isContentEditable ||
-    t instanceof HTMLSelectElement ||
-    t instanceof HTMLTextAreaElement ||
-    (t instanceof HTMLInputElement &&
-      !t.readOnly &&
-      !["range", "checkbox", "radio", "button"].includes(t.type)))
+export { isTypingTarget } from "../core/keys.js"
 
 /**
  * Tells the page's GPU overlay that layout moved (a pane resizing, collapsing or sliding): it

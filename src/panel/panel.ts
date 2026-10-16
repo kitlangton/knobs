@@ -15,7 +15,7 @@ import {
   type Values,
 } from "../core/schema.js"
 import { REFRESHES } from "../core/internal.js"
-import { comboLabel, letterOf, matchesCombo } from "../core/keys.js"
+import { comboLabel, isTypingTarget, letterOf, matchesCombo } from "../core/keys.js"
 import type { SpringValue } from "../core/spring.js"
 import type {
   ControlAction,
@@ -24,7 +24,6 @@ import type {
   HeaderButton,
   MountPanelOptions,
   PanelCommand,
-  PanelKeys,
   SectionFolded,
 } from "../core/store.js"
 import {
@@ -3571,13 +3570,7 @@ function buildPanel<S extends Schema>(
     return true
   }
   // A read-only field takes no typing, so the page's shortcuts still reach past it.
-  const isTyping = (target: EventTarget | null) =>
-    (target instanceof HTMLTextAreaElement && !target.readOnly) ||
-    target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable) ||
-    (target instanceof HTMLInputElement &&
-      !target.readOnly &&
-      !["range", "checkbox", "radio", "button"].includes(target.type))
+  const isTyping = isTypingTarget
   /**
    * Presses the toolbar button whose shortcut this is: any of them while the panel has focus,
    * only page-scoped ones (`global`) from elsewhere on the page, and never a chip-only one
@@ -3762,39 +3755,33 @@ function buildPanel<S extends Schema>(
     }
     if (typing) return
     const key = event.key
-    if (target.dataset.subhead !== undefined) {
-      // A sub-heading folds as a group's header does.
-      const id = target.dataset.subhead
-      const toggle = key === "Enter" || key === " "
-      const shut = key === "ArrowLeft" || (prefs.vim && key === "h")
-      const open = key === "ArrowRight" || (prefs.vim && key === "l")
-      if (toggle || shut || open) {
+    const foldKey =
+      key === "Enter" || key === " "
+        ? "toggle"
+        : key === "ArrowLeft" || (prefs.vim && key === "h")
+          ? true
+          : key === "ArrowRight" || (prefs.vim && key === "l")
+            ? false
+            : undefined
+    if (foldKey !== undefined) {
+      if (target.dataset.subhead !== undefined) {
+        const id = target.dataset.subhead
         event.preventDefault()
-        foldSub(id, toggle ? !subFolds.get(id) : shut)
+        foldSub(id, foldKey === "toggle" ? !subFolds.get(id) : foldKey)
         return
       }
-    }
-    if (target.hasAttribute("data-foldable") && target.dataset.section !== undefined && layout) {
-      // A section's heading folds its cards as a group's header does.
-      const section = target.dataset.section
-      const toggle = key === "Enter" || key === " "
-      const shut = key === "ArrowLeft" || (prefs.vim && key === "h")
-      const open = key === "ArrowRight" || (prefs.vim && key === "l")
-      if (toggle || shut || open) {
+      if (target.hasAttribute("data-foldable") && target.dataset.section !== undefined && layout) {
+        const section = target.dataset.section
         event.preventDefault()
-        byUser(() => foldSection(section, toggle ? !layout!.isFolded(section) : shut))
+        byUser(() =>
+          foldSection(section, foldKey === "toggle" ? !layout!.isFolded(section) : foldKey),
+        )
         return
       }
-    }
-    if (target.hasAttribute("data-foldable") && target.dataset.group !== undefined) {
-      // Enter or Space toggles a group's card; ← folds it and → opens it.
-      const group = target.dataset.group
-      const toggle = key === "Enter" || key === " "
-      const shut = key === "ArrowLeft" || (prefs.vim && key === "h")
-      const open = key === "ArrowRight" || (prefs.vim && key === "l")
-      if (toggle || shut || open) {
+      if (target.hasAttribute("data-foldable") && target.dataset.group !== undefined) {
+        const group = target.dataset.group
         event.preventDefault()
-        byUser(() => fold(group, toggle ? !folds.get(group) : shut))
+        byUser(() => fold(group, foldKey === "toggle" ? !folds.get(group) : foldKey))
         return
       }
     }
@@ -4596,8 +4583,6 @@ function buildPanel<S extends Schema>(
         doc.removeEventListener(type, pressEnded, true)
       clearTimeout(statusTimer)
       clearTimeout(nudgeEnd)
-      for (const k of inHand) controls.hold(k, false)
-      inHand.clear()
       clearTimeout(copiedTimer)
       for (const t of peekTimers.values()) clearTimeout(t)
       for (const r of [...rows, ...leavingRows]) dropGpu(r)

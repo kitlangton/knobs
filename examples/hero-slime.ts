@@ -9,6 +9,7 @@
 // ?nogpu), a still of it stands in (assets/hero-slime-still.jpg, from window.__heroSlime.reseed).
 import { choice, defineControls, knob, point, springMotion, type Values } from "knobs"
 import { mountPanel } from "knobs/panel"
+import { blueNoise } from "./controls-gpu"
 import postWgsl from "./controls-post.wgsl?raw"
 import lookWgsl from "./hero-slime-look.wgsl?raw"
 import simWgsl from "./hero-slime-sim.wgsl?raw"
@@ -1011,42 +1012,4 @@ function stillOf() {
   el.setAttribute("aria-hidden", "true")
   el.style.cssText = `position:absolute;inset:0;background:var(--night, #101012) url("${stillUrl}") center / cover no-repeat`
   return el
-}
-
-/**
- * Blue noise by repeated high-pass (white noise minus its wrapped blur, three times), then ranked
- * so the values are uniform (as controls-gpu.ts makes it), for the post pass's dither.
- */
-function blueNoise(n: number) {
-  let v = new Float32Array(n * n)
-  let seed = 7
-  const rnd = () => {
-    seed = (seed * 16807) % 2147483647
-    return seed / 2147483647
-  }
-  for (let i = 0; i < v.length; i++) v[i] = rnd()
-  const K = [0.06, 0.24, 0.4, 0.24, 0.06]
-  for (let pass = 0; pass < 3; pass++) {
-    const a = new Float32Array(v.length)
-    const b = new Float32Array(v.length)
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * v[y * n + ((x + k + n) % n)]!
-        a[y * n + x] = s
-      }
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * a[((y + k + n) % n) * n + x]!
-        b[y * n + x] = v[y * n + x]! - s
-      }
-    v = b
-  }
-  const order = [...v.keys()].sort((i, j) => v[i]! - v[j]!)
-  const out = new Float32Array(v.length)
-  order.forEach((i, rank) => {
-    out[i] = (rank + 0.5) / v.length
-  })
-  return out
 }

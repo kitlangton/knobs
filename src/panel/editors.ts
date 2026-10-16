@@ -23,6 +23,7 @@ import type {
   RowWave,
 } from "./gpu/renderer.js"
 import { arrowOf, bigOf } from "./prefs.js"
+import { caretIcon } from "./page.js"
 import { offRow, precisionRate } from "./feel.js"
 import { clamp } from "./motion.js"
 import { fadeText, rollingReadout, rollMs } from "./reel.js"
@@ -184,7 +185,7 @@ export function measure(node: Element, onResize: () => void) {
  */
 let summaries = 0
 export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) {
-  const { el, svg } = factory(c.doc)
+  const { el } = factory(c.doc)
   const row = el("div", "knobs-x")
   row.dataset.field = c.key
   const head = el("div", "knobs-x-head")
@@ -198,12 +199,7 @@ export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) 
   sum.id = `knobs-x-sum-${++summaries}`
   sum.setAttribute("aria-hidden", "true")
   head.setAttribute("aria-describedby", sum.id)
-  const caret = svg("svg", "knobs-caret")
-  caret.setAttribute("viewBox", "0 0 10 10")
-  caret.setAttribute("aria-hidden", "true")
-  const chevron = svg("path")
-  chevron.setAttribute("d", "M3.75 2.25 6.5 5 3.75 7.75")
-  caret.append(chevron)
+  const caret = caretIcon(c.doc)
   sum.append(...summary, caret)
   head.append(label, sum)
   const bodyEl = el("div", "knobs-x-body")
@@ -1192,6 +1188,61 @@ const mapper =
     padY + ((range[1] - clamp(y, range[0], range[1])) / (range[1] - range[0])) * (h - padY * 2),
   ]
 
+/** Named presets as chips in a radiogroup (the easing editor's look); ←/→ cycle them. */
+export function presetChips(
+  c: RowContext<unknown>,
+  names: readonly string[],
+  choose: (i: number) => void,
+  cls = "knobs-ease-chips",
+) {
+  const { el } = factory(c.doc)
+  const chips = el("div", cls)
+  chips.tabIndex = 0
+  chips.setAttribute("role", "radiogroup")
+  chips.setAttribute("aria-label", `${c.display} presets`)
+  const buttons = names.map((n, i) => {
+    const b = el("button", "knobs-ease-chip", n)
+    b.type = "button"
+    b.tabIndex = -1
+    b.setAttribute("role", "radio")
+    b.onclick = () => {
+      choose(i)
+      chips.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+    }
+    return b
+  })
+  chips.append(...buttons)
+  const cycle = (dir: number) => {
+    if (!names.length) return
+    const i = buttons.findIndex((b) => b.getAttribute("aria-checked") === "true")
+    choose(i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length)
+  }
+  return {
+    el: chips,
+    buttons,
+    cycle,
+    check(i: number) {
+      for (const [j, b] of buttons.entries()) b.setAttribute("aria-checked", String(i === j))
+    },
+  }
+}
+
+/** ←/→ on `target` itself cycle the presets (a row's head, the chips). */
+export function cycleKeys(
+  targets: readonly HTMLElement[],
+  row: HTMLElement,
+  cycle: (dir: number) => void,
+) {
+  for (const target of targets)
+    target.addEventListener("keydown", (event) => {
+      const dir = arrow(event)
+      if (!dir || event.target !== target || !plainKey(event) || event.altKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!row.closest("[data-disabled],[data-readonly]")) cycle(dir)
+    })
+}
+
 /** A mini curve in the head; an editor with two handles and named chips in the body. */
 export function easingRow(c: RowContext<EasingField>): EditorRow {
   const { el, svg } = factory(c.doc)
@@ -1215,24 +1266,9 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     return h
   })
   box.append(plot, ...handles)
-  const chips = el("div", "knobs-ease-chips")
-  chips.tabIndex = 0
-  chips.setAttribute("role", "radiogroup")
-  chips.setAttribute("aria-label", `${c.display} presets`)
   const names = Object.keys(EASINGS) as (keyof typeof EASINGS)[]
-  const chipButtons = names.map((n) => {
-    const b = el("button", "knobs-ease-chip", n)
-    b.type = "button"
-    b.tabIndex = -1
-    b.setAttribute("role", "radio")
-    b.onclick = () => {
-      c.set(EASINGS[n])
-      chips.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
-    }
-    return b
-  })
-  chips.append(...chipButtons)
-  const x = expander(c, [name, mini], [box, chips])
+  const chips = presetChips(c, names, (i) => c.set(EASINGS[names[i]!]))
+  const x = expander(c, [name, mini], [box, chips.el])
   let shown = c.field.value
   const range = EASING_Y
   const map = (px: number, py: number) =>
@@ -1486,24 +1522,12 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     },
     { axes: "xy" },
   )
-  const cycle = (dir: number) => {
-    const i = chipButtons.findIndex((b) => b.getAttribute("aria-checked") === "true")
-    const next = i < 0 ? (dir > 0 ? 0 : names.length - 1) : (i + dir + names.length) % names.length
-    c.set(EASINGS[names[next]!])
-  }
   panPresets(c, x.head, mini, {
     count: names.length,
     at: () => names.findIndex((n) => n === easingName(shown)),
     choose: (i, coalesce) => c.set(EASINGS[names[i]!], { coalesce }),
   })
-  for (const target of [chips, x.head])
-    target.addEventListener("keydown", (event) => {
-      const dir = arrow(event)
-      if (!dir || event.target !== target || !plainKey(event) || event.altKey) return
-      event.preventDefault()
-      event.stopPropagation()
-      cycle(dir)
-    })
+  cycleKeys([chips.el, x.head], x.row, chips.cycle)
   const gpu: GpuEasingRow = {
     kind: "easing",
     key: c.key,
@@ -1521,7 +1545,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     smear: handleSmear,
     guides: () => (size.w ? [...map(0, 0), ...map(1, 1)] : []),
     handles,
-    chips: chipButtons,
+    chips: chips.buttons,
     snap: () => box.classList.contains("knobs-active"),
     wave: c.wave,
     isModified: c.isModified,
@@ -1530,13 +1554,13 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
     row: x.row,
     labelEl: x.label,
     input: x.head,
-    stops: () => [x.head, ...(x.isOpen() ? [chips, ...handles] : [])].filter(visible),
+    stops: () => [x.head, ...(x.isOpen() ? [chips.el, ...handles] : [])].filter(visible),
     tracks: [],
     gpu: [gpu],
     options: {
       count: names.length,
       choose: (i) => c.set(EASINGS[names[i]!]),
-      shown: () => (x.isOpen() && visible(chips) ? chipButtons : []),
+      shown: () => (x.isOpen() && visible(chips.el) ? chips.buttons : []),
       anchor: mini,
     },
     update(value, delay, instant = false, mixed = false) {
@@ -1546,8 +1570,7 @@ export function easingRow(c: RowContext<EasingField>): EditorRow {
       const match = mixed ? undefined : easingName(shown)
       const hand = box.classList.contains("knobs-active") || x.head.hasAttribute("data-panned")
       fadeText(name, mixed ? "—" : (match ?? ""), !first && !instant && !hand)
-      for (const [i, b] of chipButtons.entries())
-        b.setAttribute("aria-checked", String(names[i] === match))
+      chips.check(match ? (names as readonly string[]).indexOf(match) : -1)
       handles.forEach((h, i) =>
         h.setAttribute("aria-valuetext", `x ${shown[i * 2]}, y ${shown[i * 2 + 1]}`),
       )

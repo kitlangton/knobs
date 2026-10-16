@@ -2,7 +2,7 @@
 // chromeless) and the Lab's with button tokens, each drawn by the DOM and by the GPU: a choice
 // whose segments are wide, vectors named x and z, sub-headings whose rows aren't next to each
 // other in the schema, toolbar chips that only show a key, an action row and presets. The dashed
-// guides are the column's edges. Used by tests/browser/rows.spec.ts and scripts/batche-shots.ts.
+// guides are the column's edges. Used by tests/browser/rows.spec.ts.
 import { action, choice, defineControls, knob, toggle, toolbar, vec2, vec3 } from "knobs"
 import { mountPanel, type Panel } from "knobs/panel"
 import { labPreset, type TokenPreset } from "knobs/themes"
