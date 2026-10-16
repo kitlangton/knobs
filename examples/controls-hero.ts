@@ -1,226 +1,753 @@
-// The hero: one dial on a field of light, with the knobs that drive it floating round its edges.
-// WebGPU draws it (controls-hero.wgsl); without it, a CSS dial on CSS gradients turns the same way.
-import { choice, color, knob, point, spring, springMotion, toggle } from "knobs"
+// The hero: hardware twins. A faceplate in the dark under one soft spot, with six physical controls
+// on it, each the twin of a row in the knobs panel floating over its right edge: twist, flick or
+// drag the hardware and the row follows; move the row and the hardware glides to it. Every row
+// changes how the hardware or its light looks. Thin lines of light run from each row to its twin
+// and brighten while either is hovered, focused or in hand. WebGPU draws it (controls-hero.wgsl);
+// without it, a CSS still of the plate stands in.
+import { choice, color, knob, point, springMotion, toggle } from "knobs"
+import { sound } from "knobs/panel"
 import type { SceneKit } from "./controls"
-import { gpuView, linearRgb, toLinear } from "./controls-gpu"
+import { gpuView, kelvinRgb, linearRgb, toLinear } from "./controls-gpu"
 import heroWgsl from "./controls-hero.wgsl?raw"
 import {
   ColorVal,
   clamp01,
+  FEEL,
+  type How,
+  oklab,
   oklabCss,
   oklabRgb,
   px,
-  rad,
   reduced,
   SHUTTER_S,
   Stage,
+  type Val,
 } from "./controls-motion"
 
-const MATERIALS = ["Glass", "Metal", "Obsidian"] as const
-/** The dial turns through 270°, from −135° (0%) to 135° (100%). */
-const ARC = rad(135)
-const TICKS = 41
-/** The field's drift eases in and out over a second and a half instead of stopping dead. */
-const DRIFT = springMotion({ duration: 1.5, bounce: 0 })
-const PAGE = { dark: [16, 16, 18], light: [233, 233, 238] }
+const FINISHES = ["Matte", "Brushed", "Anodised"] as const
+type Key = "keyLight" | "finish" | "leds" | "spot" | "shadow" | "accent"
+const ARC = (135 * Math.PI) / 180
+/** The selector's detents, one per finish. */
+const DETENT = [-0.7, 0, 0.7]
+const TOGGLE = 0.38
+const TILT = 0.42
+const PT = 0.32
+const ENTRANCE = springMotion({ duration: 1.3, bounce: 0 })
+/** LEDs warm up like a filament and fade a little slower than they came. */
+const WARM = springMotion({ duration: 0.28, bounce: 0 })
+const COOL = springMotion({ duration: 0.6, bounce: 0 })
+const SNAP = springMotion({ duration: 0.22, bounce: 0.25 })
+const PAGE = [16, 16, 18].map((c) => toLinear(c / 255))
 
-/** Three colours from one: the colour itself, and two neighbours either side of its hue. */
-function palette([L, a, b]: readonly number[]) {
-  const c = Math.hypot(a!, b!)
-  const h = Math.atan2(b!, a!)
-  const at = (l: number, k: number, dh: number) =>
-    [l, k * Math.cos(h + dh), k * Math.sin(h + dh)] as const
-  return [at(L!, c, 0), at(Math.min(0.92, L! + 0.05), c * 0.9, 0.85), at(L! - 0.03, c * 0.85, -0.8)]
+type V3 = readonly [number, number, number]
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+const norm = (a: V3): V3 => {
+  const l = Math.hypot(...a)
+  return [a[0] / l, a[1] / l, a[2] / l]
 }
+const cross = (a: V3, b: V3): V3 => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+]
+
+/** The camera: straight on, looking down at 62°, so the side walls and the knobs' grips show. */
+const TARGET: V3 = [0, 0, 0.15]
+const EL = (62 * Math.PI) / 180
+const CAM: V3 = [0, 13 * Math.sin(EL), TARGET[2] + 13 * Math.cos(EL)]
+const FWD = norm(sub(TARGET, CAM))
+const RIGHT = norm(cross(FWD, [0, 1, 0]))
+const UP = cross(RIGHT, FWD)
+/** On screen at focal 1 about the principal point. */
+const project1 = (p: V3): [number, number] => {
+  const d = sub(p, CAM)
+  const z = dot(d, FWD)
+  return [dot(d, RIGHT) / z, -dot(d, UP) / z]
+}
+
+/** Each twin: where it sits, how big it is, where its wire leaves it and which way it runs. */
+const TWINS: Record<
+  Key,
+  { at: V3; r: number; wire: V3; route: "up" | "down" | "out"; lane: number; cursor: string }
+> = {
+  keyLight: {
+    at: [-1.85, 0.3, -0.8],
+    r: 0.66,
+    wire: [-1.85, 0, -1.78],
+    route: "up",
+    lane: 2,
+    cursor: "grab",
+  },
+  finish: {
+    at: [0, 0.22, -0.8],
+    r: 0.58,
+    wire: [0, 0, -1.62],
+    route: "up",
+    lane: 1,
+    cursor: "pointer",
+  },
+  leds: {
+    at: [1.85, 0.25, -0.8],
+    r: 0.42,
+    wire: [2.3, 0, -0.8],
+    route: "out",
+    lane: 0,
+    cursor: "pointer",
+  },
+  spot: { at: [0, 0.3, 0.95], r: 0.62, wire: [0, 0, 1.86], route: "down", lane: 1, cursor: "move" },
+  shadow: {
+    at: [-1.9, 0.1, 0.95],
+    r: 0.36,
+    wire: [-1.9, 0, 1.86],
+    route: "down",
+    lane: 2,
+    cursor: "ns-resize",
+  },
+  accent: {
+    at: [1.85, 0.25, 0.95],
+    r: 0.56,
+    wire: [2.45, 0, 0.95],
+    route: "out",
+    lane: 0,
+    cursor: "grab",
+  },
+}
+const KEYS = Object.keys(TWINS) as Key[]
+const FADER_L = 0.72
 
 export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
   const stageEl = root.querySelector<HTMLElement>(".hero-stage")!
-  const slot = (name: string) => root.querySelector<HTMLElement>(`[data-hero="${name}"]`)!
+  const slot = root.querySelector<HTMLElement>(".hero-panel")!
+  const narrow = matchMedia("(max-width: 900px)")
 
-  const dialStore = define("hero-dial", "Hero dial", {
-    level: knob(62, { min: 0, max: 100, step: 1, unit: "%", label: "Level" }),
-    feel: spring({ duration: 0.6, bounce: 0.32 }, { label: "Spring" }),
-  })
-  const materialStore = define("hero-material", "Hero material", {
-    material: choice("Glass", MATERIALS, { label: "Material", display: "segmented" }),
-  })
-  const fieldStore = define("hero-field", "Hero field", {
-    colour: color("#5b8cff", { label: "Colour" }),
-    drift: toggle(true, { label: "Drift" }),
-  })
-  const lightStore = define("hero-light", "Hero light", {
-    light: point({ x: 0.3, y: 0.26 }, { min: 0, max: 1, step: 0.01, label: "Light" }),
-  })
-  mount(dialStore.store, slot("dial"), { title: "Dial", header: false })
-  mount(materialStore.store, slot("material"), { title: "Material", header: false })
-  mount(fieldStore.store, slot("field"), { title: "Field", header: false })
-  mount(lightStore.store, slot("light"), { title: "Light", header: false })
-  // The pad starts open: it's the one control here that's a surface to drag.
-  slot("light")
-    .querySelector<HTMLElement>('[data-field="light"] .knobs-x-head[aria-expanded="false"]')
+  const { store, on } = define(
+    "hero",
+    "Hardware",
+    {
+      keyLight: knob(70, { min: 0, max: 100, step: 1, unit: "%", label: "Key light" }),
+      finish: choice("Matte", FINISHES, { label: "Finish", display: "segmented" }),
+      leds: toggle(true, { label: "LEDs" }),
+      spot: point({ x: 0.42, y: 0.6 }, { min: 0, max: 1, step: 0.01, label: "Spot" }),
+      shadow: knob(45, { min: 0, max: 100, step: 1, unit: "%", label: "Shadow" }),
+      accent: color("#ffa53d", { label: "Accent" }),
+    },
+    {
+      defaultLabel: "Amber",
+      presets: {
+        Studio: {
+          keyLight: 88,
+          finish: "Brushed",
+          leds: true,
+          spot: { x: 0.5, y: 0.36 },
+          shadow: 78,
+          accent: "#eef2ff",
+        },
+        Night: {
+          keyLight: 24,
+          finish: "Matte",
+          leds: true,
+          spot: { x: 0.64, y: 0.3 },
+          shadow: 22,
+          accent: "#38d6ff",
+        },
+        Anodised: {
+          keyLight: 66,
+          finish: "Anodised",
+          leds: true,
+          spot: { x: 0.34, y: 0.5 },
+          shadow: 55,
+          accent: "#4f7dff",
+        },
+      },
+    },
+  )
+  mount(store, slot, { title: "Hardware", theme: "dark" })
+  const panelEl = () => slot.querySelector<HTMLElement>(".knobs-panel")
+  // The pad starts open, as on the hardware: it's the joystick's twin.
+  slot
+    .querySelector<HTMLElement>('[data-field="spot"] .knobs-x-head[aria-expanded="false"]')
     ?.click()
 
   const view = gpuView(stageEl, {
     wgsl: heroWgsl,
     label: "hero",
     tone: "neutral",
-    bloom: 0.08,
+    bloom: 0.12,
     maxDpr: 1.5,
   })
-  const css = view ? null : cssDial(stageEl, h)
-  let clock = 14
+  const still = view ? null : cssStill(stageEl, h)
 
-  const stage = new Stage(stageEl, () => {
+  // ── Layout: the plate fitted into the room the panel leaves, one projection for all ──
+  const layout = {
+    focal: 1,
+    pp: [0, 0] as [number, number],
+    w: 0,
+    h: 0,
+    panel: null as DOMRect | null,
+  }
+  const project = (p: V3): [number, number] => {
+    const [x, y] = project1(p)
+    return [layout.pp[0] + layout.focal * x, layout.pp[1] + layout.focal * y]
+  }
+  const fit = () => {
     const w = stage.width || stageEl.clientWidth
     const hh = stage.height || stageEl.clientHeight
-    if (w < 2 || hh < 2) return
-    const R = Math.min(w, hh) * 0.235
-    const cx = w / 2
-    const cy = hh * 0.52
-    // The ring lights up to where the dial is, overshoot and all, not to where it's going.
-    const lit = clamp01((angle.x + ARC) / (2 * ARC))
-    const weights = w3.map((v) => Math.max(0, v.x))
-    const labs = palette(colour.lab)
-    const dx = (lx.x - 0.5) * 2.2
-    const dy = (ly.x - 0.5) * 2.2
-    const len = Math.hypot(dx, dy, 1.1)
-    const l = [dx / len, dy / len, 1.1 / len]
+    const hero = stageEl.getBoundingClientRect()
+    const pr = panelEl()?.getBoundingClientRect()
+    const panel =
+      pr && !narrow.matches
+        ? new DOMRect(pr.left - hero.left, pr.top - hero.top, pr.width, pr.height)
+        : null
+    // Left of the panel, passing 30 px under it; below the title, with room for the pool beneath.
+    const right = panel ? panel.left + 56 : w - Math.max(20, w * 0.05)
+    const left = Math.max(panel ? 40 : 20, right - (panel ? 820 : w))
+    const top = hh * (panel ? 0.16 : 0.1)
+    const bottom = hh * (panel ? 0.84 : 0.92)
+    let x0 = Infinity
+    let x1 = -Infinity
+    let y0 = Infinity
+    let y1 = -Infinity
+    for (const x of [-3, 3])
+      for (const z of [-2.05, 2.05])
+        for (const y of [-PT, 0.6]) {
+          const [sx, sy] = project1([x, y, z])
+          x0 = Math.min(x0, sx)
+          x1 = Math.max(x1, sx)
+          y0 = Math.min(y0, sy)
+          y1 = Math.max(y1, sy)
+        }
+    const focal = Math.min((right - left) / (x1 - x0), (bottom - top) / (y1 - y0))
+    layout.focal = focal
+    layout.pp = [
+      // Beside the panel, its right edge passes under it; alone, it's centred.
+      panel ? right - focal * x1 : (left + right) / 2 - (focal * (x0 + x1)) / 2,
+      (top + bottom) / 2 - (focal * (y0 + y1)) / 2,
+    ]
+    layout.w = w
+    layout.h = hh
+    layout.panel = panel
+  }
+
+  // ── The springs ──
+  const stage = new Stage(stageEl, () => {
+    fit()
+    wires.paint()
+    const lab = accent.lab
+    const acc = linearRgb(oklabRgb(lab))
+    const accMax = Math.max(...acc, 1e-4)
+    // A warm key, leaning a little toward the accent.
+    const warm = kelvinRgb(3700)
+    const tint = acc.map((c, i) => warm[i]! * 0.88 + (c / accMax) * 0.12)
+    const lum = 0.2126 * tint[0]! + 0.7152 * tint[1]! + 0.0722 * tint[2]!
+    const light: V3 = [-3.2 + 6.4 * spotX.x, 4.6, -2.4 + 5.2 * spotY.x]
+    const k = clamp01(key.x)
+    const ledOn = clamp01(leds.x) ** 1.5
+    const arrive = [0, 1, 2, 3, 4, 5].map((i) => {
+      const t = clamp01((intro.x - 0.35 - 0.08 * i) / 0.35)
+      return t * t * (3 - 2 * t)
+    })
     if (!view) {
-      css!.draw({ cx, cy, R, rot: angle.x, lit, weights, labs, light: l })
+      still!.draw({
+        project,
+        k,
+        ledOn,
+        rotK: rotK.x,
+        finish: fin.map((v) => v.x),
+        spot: [spotX.x, spotY.x],
+        css: oklabCss(lab),
+        on: leds.target > 0.5,
+        fader: shadowV.x,
+      })
       return
     }
-    // The angle travelled in one shutter, and how far that carries the rim (px), set how many
-    // instants are rendered: 4 at rest (anti-aliasing only), up to 12 when it spins fast.
-    let dRot = !reduced() && stage.active ? angle.v * SHUTTER_S : 0
-    const arc = Math.abs(dRot) * R
-    if (arc < 0.3) dRot = 0
-    const samples = dRot ? Math.min(12, Math.max(5, Math.ceil(arc * 1.2))) : 4
-    const page = PAGE.dark.map((c, i) => toLinear((c + (PAGE.light[i]! - c) * tone.x) / 255))
+    // Spinning: the angle each knob turns in a shutter, and so how many instants to render.
+    const moving = !reduced() && stage.active
+    const rPx = (r: number, at: V3) =>
+      Math.abs(project([at[0] + r, at[1], at[2]])[0] - project(at)[0])
+    const spin = (v: Val, r: number, at: V3) => {
+      const d = moving ? v.v * SHUTTER_S : 0
+      return Math.abs(d) * rPx(r, at) < 0.4 ? 0 : d
+    }
+    const dK = spin(rotK, 0.6, TWINS.keyLight.at)
+    const dC = spin(rotC, 0.5, TWINS.accent.at)
+    const dS = spin(rotS, 0.5, TWINS.finish.at)
+    const arc = Math.max(
+      Math.abs(dK) * rPx(0.6, TWINS.keyLight.at),
+      Math.abs(dC) * rPx(0.5, TWINS.accent.at),
+      Math.abs(dS) * rPx(0.5, TWINS.finish.at),
+    )
     const data = view.data
     const v = (i: number, a: number, b: number, c: number, d: number) =>
       data.set([a, b, c, d], 4 + i * 4)
-    v(0, cx, cy, R, angle.x)
-    v(1, dRot, samples, lit, tone.x)
-    v(2, l[0]!, l[1]!, l[2]!, clock)
-    v(3, weights[0]!, weights[1]!, weights[2]!, 0.3 + 0.7 * lit)
-    labs.forEach((lab, i) => {
-      const c = linearRgb(oklabRgb(lab))
-      v(4 + i, c[0], c[1], c[2], 0)
-    })
-    v(7, page[0]!, page[1]!, page[2]!, 0)
+    v(0, layout.pp[0], layout.pp[1], layout.focal, stage.active ? 1 : 3)
+    v(1, CAM[0], CAM[1], CAM[2], clamp01(intro.x))
+    v(2, RIGHT[0], RIGHT[1], RIGHT[2], ledOn)
+    v(3, UP[0], UP[1], UP[2], k)
+    v(4, FWD[0], FWD[1], FWD[2], clamp01(shadowV.x))
+    v(5, light[0], light[1], light[2], 3 + 75 * k * k)
+    v(
+      6,
+      tint[0]! / lum,
+      tint[1]! / lum,
+      tint[2]! / lum,
+      arc ? Math.min(12, Math.max(4, Math.ceil(arc * 1.2))) : 0,
+    )
+    v(7, acc[0], acc[1], acc[2], rotC.x)
+    v(8, Math.max(0, fin[0]!.x), Math.max(0, fin[1]!.x), Math.max(0, fin[2]!.x), rotS.x)
+    v(9, rotK.x, dK, dC, dS)
+    v(10, toggleA.x, clamp01(shadowV.x), (spotX.x - 0.5) * 2 * TILT, (spotY.x - 0.5) * 2 * TILT)
+    v(11, arrive[0]!, arrive[1]!, arrive[2]!, arrive[3]!)
+    v(12, arrive[4]!, arrive[5]!, 0, 0)
+    v(13, PAGE[0]!, PAGE[1]!, PAGE[2]!, 0)
     view.render()
   })
-  const angle = stage.val(-ARC + 2 * ARC * 0.62, 0.0005)
-  const w3 = MATERIALS.map((m) => stage.val(m === "Glass" ? 1 : 0, 0.0005))
-  const colour = new ColorVal(stage, "#5b8cff")
-  const lx = stage.val(0.3, 0.0005)
-  const ly = stage.val(0.26, 0.0005)
-  const driftRate = stage.val(0, 0.001)
-  const isLight = () => document.documentElement.dataset.theme === "light"
-  const tone = stage.val(isLight() ? 1 : 0, 0.001)
-  new MutationObserver(() => tone.to(isLight() ? 1 : 0, "calm")).observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
+  const intro = stage.val(0, 0.001)
+  const key = stage.val(0.7, 0.0005)
+  const rotK = stage.val(-ARC + 2 * ARC * 0.7, 0.0005)
+  const fin = FINISHES.map((f) => stage.val(f === "Matte" ? 1 : 0, 0.0005))
+  const rotS = stage.val(DETENT[0]!, 0.0005)
+  const leds = stage.val(1, 0.001)
+  const toggleA = stage.val(-TOGGLE, 0.0005)
+  const spotX = stage.val(0.42, 0.0005)
+  const spotY = stage.val(0.6, 0.0005)
+  const shadowV = stage.val(0.45, 0.0005)
+  const accent = new ColorVal(stage, "#ffa53d")
+  const rotC = stage.val(0, 0.0005)
+
+  // ── Rows → hardware ──
+  /** Under the hand it follows; from anything else (Random, a preset, undo, a peer) it glides. */
+  const go = (val: Val, to: number, how: How, feel: Parameters<Val["to"]>[1] = "calm") =>
+    how === "init" ? val.snap(to) : val.to(to, how === "hand" ? "follow" : feel)
+  on((v, how) => {
+    go(key, v.keyLight / 100, how)
+    go(rotK, -ARC + 2 * ARC * (v.keyLight / 100), how)
+    const i = Math.max(0, FINISHES.indexOf(v.finish as (typeof FINISHES)[number]))
+    FINISHES.forEach((_, j) => {
+      go(fin[j]!, j === i ? 1 : 0, how === "hand" ? "other" : how, "morph")
+    })
+    // A detented selector always snaps into its detent, by hand too.
+    go(rotS, DETENT[i]!, how === "hand" ? "other" : how, SNAP)
+    if (how === "init" || reduced()) leds.snap(v.leds ? 1 : 0)
+    else leds.to(v.leds ? 1 : 0, v.leds ? WARM : COOL)
+    go(toggleA, v.leds ? -TOGGLE : TOGGLE, how === "hand" ? "other" : how, SNAP)
+    go(spotX, v.spot.x, how)
+    go(spotY, v.spot.y, how)
+    go(shadowV, v.shadow / 100, how)
+    accent.go(v.accent, how, "calm")
+    // The colour knob turns to the hue, the short way round from wherever it's heading.
+    const [, a, b] = oklab(v.accent)
+    const target = -Math.atan2(b, a)
+    const turn =
+      rotC.target +
+      ((((target - rotC.target + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) -
+      Math.PI
+    go(rotC, turn, how)
+  })
+  // The entrance: the spot fades up out of the dark and each twin's LEDs arrive after it.
+  if (reduced()) intro.snap(1)
+  else requestAnimationFrame(() => intro.to(1, ENTRANCE))
+
+  // ── Hardware → rows ──
+  let hover: Key | null = null
+  let drag: Key | null = null
+  let focus: Key | null = null
+  const screenR = (k: Key) => {
+    const t = TWINS[k]
+    return Math.hypot(...sub2(project([t.at[0] + t.r, t.at[1], t.at[2]]), project(t.at)))
+  }
+  const faderEnds = () => {
+    const t = TWINS.shadow.at
+    return [project([t[0], 0.1, t[2] + FADER_L]), project([t[0], 0.1, t[2] - FADER_L])] as const
+  }
+  const pick = (x: number, y: number): Key | null => {
+    let best: Key | null = null
+    let bestD = Infinity
+    for (const k of KEYS) {
+      let d: number
+      let r: number
+      if (k === "shadow") {
+        const [a, b] = faderEnds()
+        d = segDist([x, y], a, b)
+        r = screenR(k) * 0.9
+      } else {
+        const c = project(TWINS[k].at)
+        d = Math.hypot(x - c[0], y - c[1])
+        r = screenR(k) * 1.1
+      }
+      if (d < r && d / r < bestD) {
+        bestD = d / r
+        best = k
+      }
+    }
+    return best
+  }
+  const local = (e: PointerEvent): [number, number] => {
+    const r = stageEl.getBoundingClientRect()
+    return [e.clientX - r.left, e.clientY - r.top]
+  }
+  /** Screen angle about a twin, clockwise from up. */
+  const angleAt = (k: Key, x: number, y: number) => {
+    const c = project(TWINS[k].at)
+    return Math.atan2(x - c[0], -(y - c[1]))
+  }
+  const wrap = (a: number) =>
+    ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
+  let first = true
+  const set = (patch: Partial<ReturnType<typeof store.get>>) => {
+    store.set(patch, { coalesce: !first })
+    first = false
+  }
+  const ticks = new Map<string, number>()
+  /** A detent's tick when a value crosses into another of `n` steps. */
+  const tick = (id: string, at: number, n: number) => {
+    const step = Math.round(clamp01(at) * n)
+    if (ticks.get(id) === step) return
+    ticks.set(id, step)
+    sound.play("step", { position: clamp01(at) })
+  }
+  let grab: {
+    key: Key
+    x: number
+    y: number
+    moved: boolean
+    angle: number
+    value: number
+    spot: { x: number; y: number }
+    hue: number
+    lc: [number, number]
+    radial: boolean
+  } | null = null
+
+  stageEl.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return
+    const [x, y] = local(e)
+    const k = pick(x, y)
+    if (!k) return
+    e.preventDefault()
+    stageEl.setPointerCapture(e.pointerId)
+    const v = store.get()
+    const [L, a, b] = oklab(v.accent)
+    const c = project(TWINS[k].at)
+    grab = {
+      key: k,
+      x,
+      y,
+      moved: false,
+      angle: angleAt(k, x, y),
+      value: k === "keyLight" ? v.keyLight : v.shadow,
+      spot: { ...v.spot },
+      hue: Math.atan2(b, a),
+      lc: [L, Math.hypot(a, b)],
+      radial: Math.hypot(x - c[0], y - c[1]) > screenR(k) * 0.38,
+    }
+    first = true
+    drag = k
+    ticks.clear()
+    stageEl.style.cursor = k === "keyLight" || k === "accent" ? "grabbing" : TWINS[k].cursor
+    lightWires()
+    if (k === "shadow") faderTo(x, y)
+  })
+  const faderTo = (x: number, y: number) => {
+    const [a, b] = faderEnds()
+    const t = clamp01(
+      ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) /
+        Math.max(1, (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2),
+    )
+    const value = Math.round(t * 100)
+    if (value !== store.get().shadow) {
+      set({ shadow: value })
+      tick("shadow", t, 24)
+    }
+  }
+  stageEl.addEventListener("pointermove", (e) => {
+    const [x, y] = local(e)
+    if (!grab) {
+      const k = pick(x, y)
+      if (k !== hover) {
+        hover = k
+        stageEl.style.cursor = k ? TWINS[k].cursor : ""
+        lightWires()
+      }
+      return
+    }
+    const g = grab
+    if (Math.hypot(x - g.x, y - g.y) > 4) g.moved = true
+    const a = angleAt(g.key, x, y)
+    const da = wrap(a - g.angle)
+    if (g.key === "keyLight") {
+      // Round the knob by its angle; near its centre, up and down.
+      if (g.radial) g.value += (da / (2 * ARC)) * 100
+      else g.value -= (e.movementY || 0) * 0.5
+      g.angle = a
+      g.value = Math.min(100, Math.max(0, g.value))
+      const value = Math.round(g.value)
+      if (value !== store.get().keyLight) {
+        set({ keyLight: value })
+        tick("keyLight", value / 100, 24)
+      }
+    } else if (g.key === "accent") {
+      g.hue -= g.radial ? da : (e.movementY || 0) * 0.02
+      g.angle = a
+      const deg = ((((g.hue * 180) / Math.PI) % 360) + 360) % 360
+      set({ accent: `oklch(${g.lc[0].toFixed(4)} ${g.lc[1].toFixed(4)} ${deg.toFixed(2)})` })
+      tick("accent", deg / 360, 24)
+    } else if (g.key === "finish" && g.moved) {
+      // Turned toward a detent: the nearest within reach of the pointer's angle.
+      const i = DETENT.reduce(
+        (best, d, j) => (Math.abs(wrap(a - d)) < Math.abs(wrap(a - DETENT[best]!)) ? j : best),
+        0,
+      )
+      if (Math.abs(wrap(a - DETENT[i]!)) < 1.1) {
+        const was = FINISHES.indexOf(store.get().finish as (typeof FINISHES)[number])
+        if (i !== was) {
+          set({ finish: FINISHES[i]! })
+          sound.play("select", { direction: Math.sign(i - was) })
+        }
+      }
+    } else if (g.key === "leds" && g.moved) {
+      // Flicked: up throws it on, down off.
+      const on = y < g.y
+      if (on !== store.get().leds) {
+        set({ leds: on })
+        sound.play("toggle", { direction: on ? 1 : -1 })
+      }
+    } else if (g.key === "shadow") {
+      faderTo(x, y)
+    } else if (g.key === "spot") {
+      // The stick pushes the spot; it holds where it's left, as the value does.
+      const reach = screenR("spot") * 2.4
+      const sx = clamp01(g.spot.x + (x - g.x) / reach)
+      const sy = clamp01(g.spot.y + (y - g.y) / reach)
+      const spot = { x: Math.round(sx * 100) / 100, y: Math.round(sy * 100) / 100 }
+      const now = store.get().spot
+      if (spot.x !== now.x || spot.y !== now.y) {
+        set({ spot })
+        tick("spot", (sx + sy) / 2, 16)
+      }
+    }
+  })
+  const release = (e: PointerEvent) => {
+    if (!grab) return
+    const g = grab
+    grab = null
+    if (stageEl.hasPointerCapture(e.pointerId)) stageEl.releasePointerCapture(e.pointerId)
+    if (!g.moved && e.type === "pointerup") {
+      // A click: the selector steps to its next position, the switch flips.
+      if (g.key === "finish") {
+        const was = FINISHES.indexOf(store.get().finish as (typeof FINISHES)[number])
+        const i = (was + 1) % FINISHES.length
+        set({ finish: FINISHES[i]! })
+        sound.play("select", { direction: i > was ? 1 : -1 })
+      } else if (g.key === "leds") {
+        const on = !store.get().leds
+        set({ leds: on })
+        sound.play("toggle", { direction: on ? 1 : -1 })
+      }
+    }
+    drag = null
+    const [x, y] = local(e)
+    hover = pick(x, y)
+    stageEl.style.cursor = hover ? TWINS[hover].cursor : ""
+    lightWires()
+  }
+  stageEl.addEventListener("pointerup", release)
+  stageEl.addEventListener("pointercancel", release)
+  stageEl.addEventListener("pointerleave", () => {
+    if (grab || !hover) return
+    hover = null
+    stageEl.style.cursor = ""
+    lightWires()
   })
 
-  // Ambient drift: a clock that runs at the drift's rate while the hero is in view (the stage
-  // sleeps off screen and with the tab hidden). Under reduced motion it never starts.
-  let drifting = false
-  const drift = () => {
-    if (drifting || reduced() || driftRate.target === 0) return
-    drifting = true
-    stage.loop((dt) => {
-      clock += dt * driftRate.x
-      drifting = driftRate.target > 0 || !driftRate.spring.resting
-      return drifting
+  // ── Wires: a thin line of light from each row to its twin ──
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  const wireBox = h("div", "hero-wires")
+  wireBox.setAttribute("aria-hidden", "true")
+  wireBox.append(svg)
+  root.insertBefore(wireBox, slot)
+  const lines = KEYS.map(() => {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g")
+    const halo = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const ends = [0, 1].map(() => document.createElementNS("http://www.w3.org/2000/svg", "circle"))
+    halo.setAttribute("class", "halo")
+    for (const c of ends) c.setAttribute("r", "2.2")
+    g.append(halo, line, ...ends)
+    svg.append(g)
+    return { g, halo, line, ends }
+  })
+  const rowFor = (k: Key) => {
+    const row = panelEl()?.querySelector<HTMLElement>(`[data-field="${k}"]`)
+    return row?.querySelector<HTMLElement>(".knobs-x-head") ?? row ?? null
+  }
+  const wires = new Stage(wireBox, () => {
+    const panel = layout.panel
+    wireBox.style.display = panel ? "" : "none"
+    if (!panel) return
+    const hero = stageEl.getBoundingClientRect()
+    const fade = clamp01((intro.x - 0.45) / 0.45)
+    const css = oklabCss(accent.lab)
+    // Lanes above and below the plate for the twins whose straight line would cross others.
+    const top = Math.min(...[-3, 3].map((x) => project([x, 0, -2.05])[1]))
+    const bottom = Math.max(...[-3, 3].map((x) => project([x, -PT, 2.05])[1]))
+    KEYS.forEach((k, i) => {
+      const t = TWINS[k]
+      const row = rowFor(k)?.getBoundingClientRect()
+      const parts = lines[i]!
+      if (!row) {
+        parts.g.style.display = "none"
+        return
+      }
+      parts.g.style.display = ""
+      const end: [number, number] = [panel.left, row.top - hero.top + row.height / 2]
+      const start = project(t.wire)
+      const pts: [number, number][] = [start]
+      if (t.route === "out") {
+        const mid = start[0] + (end[0] - start[0]) * 0.5
+        pts.push([mid, start[1]], [mid, end[1]])
+      } else {
+        const lane = t.route === "up" ? top - 6 - 12 * t.lane : bottom + 6 + 12 * t.lane
+        // The outer lane turns nearer the panel, so no two lines cross.
+        const turn = panel.left - 16 - 18 * (t.route === "up" ? 3 - t.lane : t.lane)
+        pts.push([start[0], lane], [turn, lane], [turn, end[1]])
+      }
+      pts.push(end)
+      const d = rounded(pts, 9)
+      const glow = clamp01(glows[i]!.x)
+      parts.line.setAttribute("d", d)
+      parts.halo.setAttribute("d", d)
+      parts.g.style.color = css
+      parts.line.style.opacity = ((0.2 + 0.8 * glow) * fade).toFixed(3)
+      parts.halo.style.opacity = (0.35 * glow * fade).toFixed(3)
+      parts.ends[0]!.setAttribute("cx", px(start[0]).slice(0, -2))
+      parts.ends[0]!.setAttribute("cy", px(start[1]).slice(0, -2))
+      parts.ends[1]!.setAttribute("cx", px(end[0]).slice(0, -2))
+      parts.ends[1]!.setAttribute("cy", px(end[1]).slice(0, -2))
+      for (const c of parts.ends) c.style.opacity = ((0.35 + 0.65 * glow) * fade).toFixed(3)
+    })
+  })
+  const glows = KEYS.map(() => wires.val(0, 0.002))
+  /** Each wire brightens while its row or twin is hovered, focused or in hand. */
+  const lightWires = () => {
+    KEYS.forEach((k, i) => {
+      glows[i]!.to(
+        k === hover || k === drag || k === focus ? 1 : 0,
+        k === drag ? "snappy" : "default",
+      )
     })
   }
 
-  let feel = ""
-  let pluck = 1
-  dialStore.on((v, how) => {
-    const target = -ARC + 2 * ARC * (v.level / 100)
-    const motion = springMotion({
-      duration: Math.max(0.05, v.feel.duration),
-      bounce: v.feel.bounce,
-    })
-    const next = `${v.feel.duration} ${v.feel.bounce}`
-    if (how === "init") angle.snap(target)
-    else {
-      // The dial always travels on its own spring, under the hand too: that spring is the point.
-      angle.to(target, motion)
-      // A new spring plucks the dial, so its feel shows at once.
-      if (next !== feel) {
-        angle.push(pluck * 3.2)
-        pluck = -pluck
-      }
+  // Rows hovered or focused light their wires too.
+  const keyOf = (t: EventTarget | null) =>
+    ((t as HTMLElement | null)?.closest?.("[data-field]") as HTMLElement | null)?.dataset.field as
+      | Key
+      | undefined
+  slot.addEventListener("pointerover", (e) => {
+    const k = keyOf(e.target)
+    if (k && KEYS.includes(k) && k !== hover) {
+      hover = k
+      lightWires()
     }
-    feel = next
   })
-  materialStore.on((v, how) => {
-    const step = how === "init" ? "init" : "other"
-    MATERIALS.forEach((m, i) => {
-      w3[i]!.go(m === v.material ? 1 : 0, step, "morph")
-    })
+  slot.addEventListener("pointerleave", () => {
+    hover = null
+    lightWires()
   })
-  fieldStore.on((v, how) => {
-    colour.go(v.colour, how, "calm")
-    if (how === "init" || reduced()) driftRate.snap(v.drift && !reduced() ? 1 : 0)
-    else driftRate.to(v.drift ? 1 : 0, DRIFT)
-    drift()
+  slot.addEventListener("focusin", (e) => {
+    focus = keyOf(e.target) ?? null
+    lightWires()
   })
-  lightStore.on((v, how) => {
-    lx.go(v.light.x, how)
-    ly.go(v.light.y, how)
+  slot.addEventListener("focusout", () => {
+    focus = null
+    lightWires()
   })
+  // The rows move when the panel scrolls, folds or reflows.
+  new ResizeObserver(() => stage.paint()).observe(slot)
+  narrow.addEventListener("change", () => stage.paint())
 }
 
-interface CssFrame {
-  cx: number
-  cy: number
-  R: number
-  rot: number
-  lit: number
-  weights: number[]
-  labs: readonly (readonly number[])[]
-  light: number[]
+const sub2 = (a: [number, number], b: [number, number]): [number, number] => [
+  a[0] - b[0],
+  a[1] - b[1],
+]
+function segDist(p: [number, number], a: readonly [number, number], b: readonly [number, number]) {
+  const ab = sub2(b as [number, number], a as [number, number])
+  const t = clamp01(
+    ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / Math.max(1e-6, ab[0] ** 2 + ab[1] ** 2),
+  )
+  return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t)
 }
 
-/** The dial in CSS: conic and radial gradients for the materials, a ring of tick elements. */
-function cssDial(host: HTMLElement, h: SceneKit["h"]) {
+/** A polyline with its corners rounded by up to `r`. */
+function rounded(pts: readonly [number, number][], r: number) {
+  const f = (n: number) => n.toFixed(1)
+  let d = `M${f(pts[0]![0])} ${f(pts[0]![1])}`
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [px0, py0] = pts[i - 1]!
+    const [x, y] = pts[i]!
+    const [nx, ny] = pts[i + 1]!
+    const a = Math.hypot(x - px0, y - py0)
+    const b = Math.hypot(nx - x, ny - y)
+    const k = Math.min(r, a / 2, b / 2)
+    if (k < 0.5) {
+      d += ` L${f(x)} ${f(y)}`
+      continue
+    }
+    d += ` L${f(x + ((px0 - x) / a) * k)} ${f(y + ((py0 - y) / a) * k)} Q${f(x)} ${f(y)} ${f(x + ((nx - x) / b) * k)} ${f(y + ((ny - y) / b) * k)}`
+  }
+  const last = pts[pts.length - 1]!
+  return `${d} L${f(last[0])} ${f(last[1])}`
+}
+
+interface StillFrame {
+  project: (p: V3) => [number, number]
+  k: number
+  ledOn: number
+  rotK: number
+  finish: number[]
+  spot: [number, number]
+  css: string
+  on: boolean
+  fader: number
+}
+
+/** Without WebGPU: the plate and its twins in CSS, lit by a radial spot, still but live. */
+function cssStill(host: HTMLElement, h: SceneKit["h"]) {
   host.classList.add("hero-css")
-  const glow = h("div", "hero-glow")
-  const dial = h("div", "hero-dial")
-  const layers = MATERIALS.map((m) => {
-    const el = h("i", `hero-${m.toLowerCase()}`)
-    dial.append(el)
-    return el
+  const spot = h("div", "hero-spot")
+  const plate = h("div", "hero-plate")
+  const knobs = (["keyLight", "finish", "leds", "spot", "accent"] as Key[]).map((k) => {
+    const el = h("div", `hero-knob hero-${k}`)
+    el.append(h("i"))
+    return [k, el] as const
   })
-  const turn = h("div", "hero-turn")
-  const bead = h("b", "hero-bead")
-  turn.append(bead)
-  dial.append(turn)
-  const ticks = Array.from({ length: TICKS }, (_, i) => {
-    const t = h("span", `hero-tick${i % 5 === 0 ? " major" : ""}`)
-    host.append(t)
-    return t
-  })
-  host.append(glow, dial)
+  const fader = h("div", "hero-fader")
+  const cap = h("i")
+  fader.append(cap)
+  host.append(spot, plate, fader, ...knobs.map(([, el]) => el))
   return {
-    draw({ cx, cy, R, rot, lit, weights, labs, light }: CssFrame) {
-      const [a, b, c] = labs.map((l) => oklabCss(l))
-      glow.style.background = `radial-gradient(${px(R * 3)} ${px(R * 2.4)} at ${px(cx - R * 1.5)} ${px(cy - R * 0.5)}, ${oklabCss(labs[0]!, 0.42 * (0.3 + 0.7 * lit))}, transparent 70%), radial-gradient(${px(R * 3.2)} ${px(R * 2.6)} at ${px(cx + R * 1.6)} ${px(cy + R * 0.3)}, ${oklabCss(labs[1]!, 0.32)}, transparent 70%), radial-gradient(${px(R * 2.8)} ${px(R * 2.2)} at ${px(cx)} ${px(cy + R * 1.5)}, ${oklabCss(labs[2]!, 0.3)}, transparent 70%)`
-      dial.style.cssText = `left:${px(cx - R)};top:${px(cy - R)};width:${px(R * 2)};height:${px(R * 2)};--light:${Math.atan2(light[0]!, -light[1]!).toFixed(3)}rad;--a:${a};--b:${b};--c:${c}`
-      layers.forEach((el, i) => {
-        el.style.opacity = weights[i]!.toFixed(3)
-      })
-      turn.style.transform = `rotate(${rot.toFixed(4)}rad)`
-      bead.style.background = a!
-      ticks.forEach((t, i) => {
-        const ang = -ARC + (2 * ARC * i) / (TICKS - 1)
-        t.style.transform = `translate(${px(cx)},${px(cy)}) rotate(${ang.toFixed(4)}rad) translateY(${px(-R * 1.24)})`
-        t.style.background = clamp01(lit * TICKS - i) > 0.5 ? a! : ""
-      })
+    draw(f: StillFrame) {
+      const [x0, y0] = f.project([-3, 0, -2.05])
+      const [x1, y1] = f.project([3, 0, 2.05])
+      plate.style.cssText = `left:${px(x0)};top:${px(y0)};width:${px(x1 - x0)};height:${px(y1 - y0)}`
+      const [sx, sy] = f.project([-3 + 6 * f.spot[0], 0, -2.05 + 4.1 * f.spot[1]])
+      spot.style.background = `radial-gradient(${px((x1 - x0) * 0.55)} at ${px(sx)} ${px(sy)}, rgba(255,214,170,${(0.1 + 0.22 * f.k).toFixed(3)}), transparent 70%)`
+      host.style.setProperty("--accent", f.css)
+      host.style.setProperty("--leds", f.ledOn.toFixed(3))
+      for (const [k, el] of knobs) {
+        const t = TWINS[k]
+        const [cx, cy] = f.project(t.at)
+        const r = Math.abs(f.project([t.at[0] + t.r, t.at[1], t.at[2]])[0] - cx)
+        el.style.cssText = `left:${px(cx - r)};top:${px(cy - r)};width:${px(r * 2)};height:${px(r * 2)}`
+        if (k === "keyLight")
+          (el.firstChild as HTMLElement).style.transform = `rotate(${f.rotK.toFixed(3)}rad)`
+        if (k === "leds") el.classList.toggle("on", f.on)
+      }
+      const [fx, fy0] = f.project([TWINS.shadow.at[0], 0, TWINS.shadow.at[2] - FADER_L])
+      const [, fy1] = f.project([TWINS.shadow.at[0], 0, TWINS.shadow.at[2] + FADER_L])
+      fader.style.cssText = `left:${px(fx - 3)};top:${px(fy0)};height:${px(fy1 - fy0)}`
+      cap.style.top = `${((1 - f.fader) * 100).toFixed(2)}%`
     },
   }
 }
