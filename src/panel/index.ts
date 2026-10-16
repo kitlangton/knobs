@@ -44,6 +44,15 @@ export {
   type PresetEntry,
   type PresetStrip,
 } from "./presets.js"
+export {
+  sound,
+  type CueDetail,
+  type Sound,
+  type SoundCue,
+  type SoundLayer,
+  type SoundOptions,
+  type SoundTheme,
+} from "./sound.js"
 export { injectStyles } from "./styles.js"
 export {
   attachVariantSwitcher,

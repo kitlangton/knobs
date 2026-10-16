@@ -129,7 +129,7 @@ export function panSwitch(
       travelled += Math.abs(dx)
       const before = at.give
       at = pushThumb(box, at, dx)
-      if (before === 0 && at.give !== 0) tick(toggle)
+      if (before === 0 && at.give !== 0) tick(toggle, "limit")
       if (o.value() === "mixed" ? at.at !== heldAt(box, "mixed") : onAt(box, at.at) !== o.value())
         choose(onAt(box, at.at))
       paint()

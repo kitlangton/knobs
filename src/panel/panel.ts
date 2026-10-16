@@ -98,6 +98,7 @@ import { createPresetStrip, type PresetStrip } from "./presets.js"
 import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
+import { changed, cue, resolveSound, sound, SOUND_PREF, soundPanel } from "./sound.js"
 import { panSwitch } from "./thumb.js"
 import { createSlider, type Slider, stepValue } from "./slider.js"
 import { readSession, writeSession } from "./session.js"
@@ -208,6 +209,15 @@ function buildPanel<S extends Schema>(
   const titleText = options.title === undefined ? controls.id : options.title
   if (options.restored) root.dataset.restored = ""
   if (options.haptics === false) root.dataset.haptics = "off"
+  const soundOptions = resolveSound(options.sound)
+  if (soundOptions) {
+    soundPanel(root, soundOptions)
+    // The user's own choice (the ? popover's Sounds), kept in the store's storage.
+    try {
+      const kept = controls.storage?.getItem(SOUND_PREF)
+      if (kept === "on" || kept === "off") sound.enable(kept === "on")
+    } catch {}
+  }
   root.setAttribute("role", inline ? "region" : "dialog")
   root.setAttribute("aria-label", `${titleText || controls.id} controls`)
   host.append(root)
@@ -461,6 +471,7 @@ function buildPanel<S extends Schema>(
         resetBtn.disabled = !rows.some((r) => r.keys.some((k) => !same(values[k], base[k])))
         wakeGpu()
       })
+    cue(root, "reset")
     controls.reset()
   }
   const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), resetAll)
@@ -482,14 +493,23 @@ function buildPanel<S extends Schema>(
   const copied = () => {
     clearTimeout(copiedTimer)
     copyButton.dataset.copied = ""
+    cue(root, "copy")
     announce("Copied")
     copiedTimer = setTimeout(() => {
       delete copyButton.dataset.copied
       wakeGpu()
     }, COPIED_MS)
   }
-  const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), controls.undo)
-  const redoButton = iconButton("redo", "Redo", ariaKeys(keys.redo), controls.redo)
+  const undo = () => {
+    if (controls.canUndo) cue(root, "undo")
+    controls.undo()
+  }
+  const redo = () => {
+    if (controls.canRedo) cue(root, "redo")
+    controls.redo()
+  }
+  const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), undo)
+  const redoButton = iconButton("redo", "Redo", ariaKeys(keys.redo), redo)
   // Undo and redo fold in once there's history and away again when there's none.
   const history = el("span")
   history.className = "knobs-head-history"
@@ -781,6 +801,7 @@ function buildPanel<S extends Schema>(
    */
   function fold(group: string, next = !folds.get(group), animate = true, remember = true) {
     if (!folds.has(group)) return
+    if (userFolding && folds.get(group) !== next) cue(root, next ? "close" : "open")
     if (page && folds.get(group) !== next) noteFold(userFolding ? "user" : "code")
     if (remember) auto.groups.delete(group)
     if (folds.get(group) === next && page) return
@@ -834,13 +855,17 @@ function buildPanel<S extends Schema>(
     const gRight = el("span")
     const gBtns: HTMLButtonElement[] = []
     for (const act of allActions.filter((a) => a.group === groupName)) {
-      const b = button(act.label, () => act.run(controls.get(), controls))
+      const b = button(act.label, () => {
+        cue(root, "press")
+        return act.run(controls.get(), controls)
+      })
       gBtns.push(b)
       gRight.append(b)
     }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
       spin(gReset, wakeGpu)
+      cue(root, "reset")
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
         rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
@@ -1065,6 +1090,7 @@ function buildPanel<S extends Schema>(
   const applyGroupPreset = (group: string, index: number, coalesce = false) => {
     const preset = controls.groupPresets[group]?.[index]
     if (!preset) return
+    cue(root, coalesce ? "select" : "preset")
     controls.groupPreset(group, index, { coalesce })
     // Names that show already say which one it is.
     peek(group, preset.name, 1100)
@@ -1254,14 +1280,19 @@ function buildPanel<S extends Schema>(
       section: spec.section,
       wave,
     }
-    const set = (value: unknown, setOpts?: { coalesce?: boolean }) =>
+    const set = (value: unknown, setOpts?: { coalesce?: boolean }) => {
+      const before = controls.get()[key]
+      if (!same(before, value)) changed(root, key, field, before, value)
       controls.set({ [key]: value } as Partial<Values<S>>, setOpts)
+    }
     const plain = (values: Record<string, unknown>) => values[key]
     // No way to reset a row (`keys: { reset: false }`), no modified marks.
     const isModified = () =>
       marks && bound("reset") && spec.keys.some((k) => controls.isModified(k as keyof S & string))
     const resetRow = () => {
-      if (bound("reset")) run(() => controls.reset(spec.keys as (keyof S & string)[]))
+      if (!bound("reset")) return
+      cue(root, "reset")
+      run(() => controls.reset(spec.keys as (keyof S & string)[]))
     }
     let label: (text: string) => void = () => {}
     const retuneBase = (row: Row, next: RowSpec) => {
@@ -1314,7 +1345,10 @@ function buildPanel<S extends Schema>(
       const press = el("button", display)
       press.type = "button"
       press.className = "knobs-action"
-      press.onclick = () => run(() => controls.action(key as keyof S & string))
+      press.onclick = () => {
+        cue(root, "press")
+        run(() => controls.action(key as keyof S & string))
+      }
       row.append(press)
       label = (text) => (press.textContent = text)
       // Its shortcut sits at the row's end as a key cap, one that listens for a new combination
@@ -1327,7 +1361,10 @@ function buildPanel<S extends Schema>(
             row,
             empty: "Add key",
             name: () => `${display} shortcut`,
-            set: (next) => controls.rebind(key as keyof S & string, next),
+            set: (next) => {
+              if (next) cue(root, "capture")
+              controls.rebind(key as keyof S & string, next)
+            },
             wake: () => wakeGpu(),
           })
         : undefined
@@ -1420,7 +1457,10 @@ function buildPanel<S extends Schema>(
           isModified: () => false,
           wake: () => wakeGpu(),
         },
-        (item) => run(() => controls.action(key as keyof S & string, item.id ?? item.label)),
+        (item) => {
+          cue(root, "press")
+          run(() => controls.action(key as keyof S & string, item.id ?? item.label))
+        },
         (item) => {
           const combo = controls.shortcut(key as keyof S & string, item.id ?? item.label)
           const scope = toolbarShortcut(item)?.scope ?? (item.global ? "page" : "panel")
@@ -2338,7 +2378,10 @@ function buildPanel<S extends Schema>(
                 label: "Reset",
                 shortcut: keyLabel(keys.reset[0]!),
                 disabled: !chosen.some((k) => controls.isModified(k)),
-                run: () => run(() => controls.reset(chosen)),
+                run: () => {
+                  cue(root, "reset")
+                  run(() => controls.reset(chosen))
+                },
               },
             ]
           : []),
@@ -2406,7 +2449,10 @@ function buildPanel<S extends Schema>(
   const customActions = el("div")
   customActions.className = "knobs-custom-actions"
   for (const act of panelActions) {
-    const b = button(act.label, () => act.run(controls.get(), controls))
+    const b = button(act.label, () => {
+      cue(root, "press")
+      return act.run(controls.get(), controls)
+    })
     if (act.shortcut) b.setAttribute("aria-keyshortcuts", act.shortcut)
     customActions.append(b)
     gpuActionButtons.push(b)
@@ -2427,6 +2473,27 @@ function buildPanel<S extends Schema>(
       }),
     )
     popover.append(transfer)
+  }
+  // A panel with sound offers the user's own switch with the shortcuts, kept like other prefs.
+  let unsubscribeSound = () => {}
+  if (soundOptions && showFooter) {
+    const pref = el("div")
+    pref.className = "knobs-transfer knobs-sound-pref"
+    const soundButton = button("", () => {
+      sound.enable(!sound.enabled)
+      try {
+        controls.storage?.setItem(SOUND_PREF, sound.enabled ? "on" : "off")
+      } catch {}
+      cue(root, "toggle", { direction: 1 })
+    })
+    const paintSound = () => {
+      soundButton.textContent = sound.enabled ? "Sounds on" : "Sounds off"
+      soundButton.setAttribute("aria-pressed", String(sound.enabled))
+    }
+    paintSound()
+    unsubscribeSound = sound.subscribe(paintSound)
+    pref.append(soundButton)
+    popover.append(pref)
   }
 
   if (page) {
@@ -3265,6 +3332,7 @@ function buildPanel<S extends Schema>(
   const resetFrom = (target: Node | null) => {
     const scope = scopeAt(target)
     if (scope === "all") return resetAll()
+    cue(root, "reset")
     if (scope === "selection") return controls.reset(selectionKeys())
     if (scope === "row") return controls.reset(keysOf([rowAt(target)]))
     const keys = cardKeys(cardOf(target)!) as (keyof S & string)[]
@@ -3389,6 +3457,7 @@ function buildPanel<S extends Schema>(
         button.classList.add("knobs-pressed")
         setTimeout(() => button.classList.remove("knobs-pressed"), 140)
       }
+      cue(root, "press")
       run(() => controls.action(key as keyof S & string))
       wakeGpu()
       return true
@@ -3606,12 +3675,12 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("redo", event)) {
       event.preventDefault()
-      controls.redo()
+      redo()
       return
     }
     if (pressed("undo", event)) {
       event.preventDefault()
-      controls.undo()
+      undo()
       return
     }
     if (pressed("first", event)) {
@@ -3685,6 +3754,7 @@ function buildPanel<S extends Schema>(
       const chosen = selectionKeys() ?? (index >= 0 ? keysOf([index]) : undefined)
       if (chosen?.length) {
         event.preventDefault()
+        cue(root, "reset")
         run(() => controls.reset(chosen))
       }
       return
@@ -3734,7 +3804,14 @@ function buildPanel<S extends Schema>(
       event.preventDefault()
       event.stopPropagation()
       const t = tracks.get(target)!
-      t.set(stepValue(t.field, t.get(), (right ? 1 : -1) * (event.shiftKey ? prefs.bigStep : 1)))
+      const next = stepValue(
+        t.field,
+        t.get(),
+        (right ? 1 : -1) * (event.shiftKey ? prefs.bigStep : 1),
+      )
+      // An arrow against an end meets it, as a pan's give does.
+      if (next === t.get()) cue(root, "limit")
+      t.set(next)
     } else if (
       (left || right) &&
       index >= 0 &&
@@ -4390,6 +4467,7 @@ function buildPanel<S extends Schema>(
       controls.compare(false)
       morph?.dispose()
       untrackHas()
+      unsubscribeSound()
       optionKeys.dispose()
       root.remove()
     },

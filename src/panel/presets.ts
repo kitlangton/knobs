@@ -3,6 +3,7 @@ import { equal, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
 import { tick } from "./haptics.js"
+import { cue } from "./sound.js"
 import { measure } from "./measure.js"
 import { smearPill } from "./smear.js"
 import { livePill, panOptions } from "./swipe.js"
@@ -251,6 +252,8 @@ export function createPresetStrip<S extends Schema>(
   function selectAt(index: number, coalesce = false) {
     const entry = entries[index]
     if (!entry) return
+    // A scrub's later stops are detents; a fresh pick lands.
+    cue(root, coalesce ? "select" : "preset", { direction: index - activeState.activeIndex })
     lastAppliedId = entry.id
     run(() => {
       // A scrub is one gesture, so it lands in history as one step.

@@ -1,4 +1,5 @@
 import { Spring, springMotion, type SpringValue } from "../core/spring.js"
+import { cue } from "./sound.js"
 
 // A die drawn like Phosphor's dice icons, but solid: a rounded cube whose bevel is inked wherever the
 // surface turns more than `bevel` degrees from a face. Face-on, that band is exactly the glyph's
@@ -505,6 +506,7 @@ export function createHeaderDie(doc: Document, onFrame: () => void, size = HEADE
     size,
     /** Tumble to another face; `nudge` turns a quarter onto a neighbour instead (Mutate). */
     roll(nudge = false) {
+      cue(node, nudge ? "mutate" : "random")
       const still = win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches
       if (still) {
         const others = FACES.filter((f) => f.value !== motion.value)

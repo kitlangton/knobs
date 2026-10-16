@@ -187,7 +187,7 @@ export function textGive(el: HTMLElement | SVGElement, wake: () => void) {
     hold(px: number) {
       if (frame) win?.cancelAnimationFrame(frame)
       frame = 0
-      if (stretched(spring.x, px)) tick(el)
+      if (stretched(spring.x, px)) tick(el, "limit")
       spring.snap(px)
       held = px
       write(px)

@@ -157,6 +157,14 @@ export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
   /** `false` stops ↑/↓ at the first and last rows instead of wrapping around. */
   readonly wrap?: boolean
 }
+/** `glass` (the default): ticks with a faint ring. `mech`: drier, the rings all but gone. */
+export type SoundTheme = "glass" | "mech"
+/** A mount's `sound`, beyond `true`. */
+export interface SoundOptions {
+  /** This panel's level, 0–1 (times `sound.volume`). */
+  readonly volume?: number
+  readonly theme?: SoundTheme
+}
 /** A header button (see `MountPanelOptions.header`). */
 export type HeaderButton = "random" | "reset" | "copy" | "undo" | "redo" | "help" | "close"
 export interface HeaderOptions {
@@ -241,6 +249,13 @@ export interface MountPanelOptions extends LabelOptions {
    * Reduced motion turns them off too.
    */
   readonly haptics?: boolean
+  /**
+   * Sound effects: quiet, short ticks and clicks synthesized live for the panel's moments (a
+   * slider's detents, a switch, Random, Copy…). Off by default; `true` turns them on, or
+   * `{ volume, theme }`. The page's switch (`sound.enable(false)` from `knobs/panel`) mutes every
+   * panel, and the `?` popover offers it as Sounds, kept in the store's storage.
+   */
+  readonly sound?: boolean | SoundOptions
   /** Called once the panel is mounted, with a handle to focus it (a host's "Tune" key). */
   readonly onReady?: (panel: PanelHandle) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */

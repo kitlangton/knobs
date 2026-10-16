@@ -824,6 +824,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-transfer{display:grid;grid-template-columns:1fr 1fr;gap:var(--k-gap);margin-top:8px;padding-top:8px;border-top:1px solid var(--k-line)}
 .knobs-transfer button{height:var(--k-button-h,24px);padding:0 8px;background:var(--k-button-bg,var(--k-surface));border-radius:var(--k-button-radius,var(--k-radius));box-shadow:inset 0 0 0 1px var(--k-button-line,transparent);font-size:var(--k-button-font-size,var(--k-text-meta));color:var(--k-button-color,var(--k-label));cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
 .knobs-transfer button:is(:hover,:focus-visible){background:var(--k-button-hover-bg,var(--k-surface-hi));box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent));color:var(--k-text)}
+.knobs-sound-pref{grid-template-columns:1fr}
 
 /* Context menu: borrows its panel's tokens (see menu.ts) and floats above everything. */
 .knobs-menu{position:fixed;z-index:2147480004;min-width:176px;padding:var(--k-unit);box-sizing:border-box;font:var(--k-font-weight) var(--k-text-control)/1.35 var(--k-font);color:var(--k-text);text-align:left;-webkit-font-smoothing:antialiased;
