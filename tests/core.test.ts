@@ -258,9 +258,12 @@ describe("spring, color, point and easing fields", () => {
     expect(c.get().origin).toEqual({ x: 0, y: 0 })
     c.preset("calm")
     expect(c.matchingPreset()).toBe("calm")
-    expect(c.isModified("curve")).toBe(true)
-    c.resetKey("curve")
+    // At the active preset nothing is modified, but a reset still has the defaults to go to.
     expect(c.isModified("curve")).toBe(false)
+    expect(c.canReset(["curve"])).toBe(true)
+    c.resetKey("curve")
+    expect(c.get().curve).toEqual(c.locked.curve)
+    expect(c.isModified("curve")).toBe(true)
     c.resetGroup("Motion")
     expect(c.matchingPreset()).toBe("default")
   })
@@ -397,6 +400,9 @@ describe("store", () => {
     expect(c.matchingPreset()).toBe("custom")
     expect(() => c.preset("missing")).toThrow()
     expect(() => c.preset("toString")).toThrow()
+    // Reset climbs back to the preset first, then to the defaults.
+    c.reset()
+    expect(c.matchingPreset()).toBe("subtle")
     c.reset()
     expect(c.get()).toEqual(c.locked)
   })
@@ -1267,7 +1273,8 @@ describe("remote batches", () => {
   })
 
   it("batches group presets (without onPreset), Random, Mutate and a selection's reset", () => {
-    const { remote, batches, sets, resets } = make()
+    // A fixed draw, so Random moves both of the group's keys and goes out as a batch.
+    const { remote, batches, sets, resets } = make({ random: () => 0.1 })
     remote.groupPreset("G", 0)
     expect(batches.at(-1)).toEqual({
       source: "preset",
@@ -1281,8 +1288,19 @@ describe("remote batches", () => {
     remote.mutate()
     expect(batches.at(-1)?.source).toBe("mutate")
     const before = batches.length
+    // The group's preset is the base: a reset goes back to it first, as values.
     remote.reset(["a", "b"])
     expect(batches).toHaveLength(before + 1)
+    expect(batches.at(-1)).toEqual({
+      source: "reset",
+      changes: [
+        { key: "a", value: 9 },
+        { key: "b", value: 9 },
+      ],
+    })
+    expect(resets).toEqual([])
+    remote.reset(["a", "b"])
+    expect(batches).toHaveLength(before + 2)
     expect(batches.at(-1)).toEqual({
       source: "reset",
       changes: [
@@ -1292,12 +1310,12 @@ describe("remote batches", () => {
     })
     expect(resets.slice(-2)).toEqual([{ key: "a" }, { key: "b" }])
     expect(sets).toEqual([])
-    // Each was one store change: four undo steps back to the start, one batch each.
+    // Each was one store change: five undo steps back to the start, one batch each.
     const sent = batches.length
-    for (let i = 0; i < 4; i++) remote.undo()
+    for (let i = 0; i < 5; i++) remote.undo()
     expect(remote.canUndo).toBe(false)
     expect(remote.get()).toEqual({ a: 1, b: 2, c: "x", d: false })
-    expect(batches).toHaveLength(sent + 4)
+    expect(batches).toHaveLength(sent + 5)
   })
 
   it("keeps onSet for one key, and sends it as a one-entry batch without onSet", () => {

@@ -31,7 +31,10 @@ export interface FieldMeta {
   /** One muted line under the section's heading on a page (the first field that gives one wins). */
   readonly sectionDescription?: string
   readonly shortcut?: string
-  /** `false` keeps the field out of Random and Mutate, as a lock does, but by declaration. */
+  /**
+   * `false` keeps the field out of Random and Mutate, as a lock does, but by declaration. Switches,
+   * seeds and key combinations start out; `true` brings them in.
+   */
   readonly random?: boolean
   /**
    * The row dims and takes no edits from the pointer or keys (focus can still reach it, to read
@@ -574,8 +577,12 @@ export function flatSpring(
   }
 }
 let springIds = 0
+/**
+ * A switch. Switches usually show or hide things (a view, a scene's parts), so Random and Mutate
+ * leave them alone unless `random: true`.
+ */
 export function toggle(value: boolean, meta?: FieldMeta): Toggle {
-  return withMeta({ kind: "toggle" as const, value }, meta)
+  return withMeta({ kind: "toggle" as const, value }, { ...meta, random: meta?.random ?? false })
 }
 /** `spring({ duration: 0.4, bounce: 0.2 })`, like SwiftUI's `.spring(duration:bounce:)`. */
 export function spring(value: Partial<SpringValue> = {}, meta?: FieldMeta): SpringField {
