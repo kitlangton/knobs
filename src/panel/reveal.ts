@@ -1,10 +1,10 @@
 import { springEasing } from "../core/spring.js"
 
 const EASE_OUT = "cubic-bezier(.2,.8,.2,1)"
-// Opening and closing ride springs with no bounce (.22 s and .18 s): they leave at once and
+// Opening and closing ride springs with no bounce (.18 s and .14 s): they leave at once and
 // settle softly, where an ease-in close starts late and lands hard.
-const OPEN = springEasing((2 * Math.PI) / 0.22, 1)
-const CLOSE = springEasing((2 * Math.PI) / 0.18, 1)
+const OPEN = springEasing((2 * Math.PI) / 0.18, 1)
+const CLOSE = springEasing((2 * Math.PI) / 0.14, 1)
 /** How far the content drifts with the moving edge (px), at most, so it isn't a still crop. */
 const DRIFT = 10
 /** Where in a close the content has faded out, so nothing lingers cropped as the edge arrives. */

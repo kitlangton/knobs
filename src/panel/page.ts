@@ -1474,7 +1474,7 @@ export function createCustomCard(
       const hit = (event.target as Element).closest(
         "button,a,input,select,textarea,[data-knobs-stop],[role=button]",
       )
-      if (hit && hit !== head) return
+      if ((hit && hit !== head) || event.detail > 1) return
       fold(!folded)
     })
     head.addEventListener("keydown", (event) => {

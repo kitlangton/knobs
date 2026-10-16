@@ -217,7 +217,10 @@ export function expander(c: RowContext<unknown>, summary: Node[], body: Node[]) 
     c.onExpand?.(next)
     c.wake()
   }
-  head.onclick = () => open()
+  // One click opens or folds it; a double click is still one (its second click doesn't undo it).
+  head.onclick = (event) => {
+    if (event.detail < 2) open()
+  }
   head.addEventListener("keydown", (event) => {
     if (event.target !== head || !plainKey(event) || event.altKey) return
     if (event.key === "Enter" || event.key === " ") {

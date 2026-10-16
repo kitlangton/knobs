@@ -1029,8 +1029,9 @@ function buildPanel<S extends Schema>(
         (page ? foldsKept?.get("groups", groupName) : session.groups?.[groupName]) ?? foldAt
       folds.set(groupName, folded)
       gHead.setAttribute("aria-expanded", String(!folded))
+      // Anywhere on the header but its buttons, once (a double click's second click is ignored).
       gHead.addEventListener("click", (event) => {
-        if ((event.target as Element).closest("button")) return
+        if (event.detail > 1 || (event.target as Element).closest("button")) return
         byUser(() => fold(groupName))
       })
     }
@@ -2057,7 +2058,9 @@ function buildPanel<S extends Schema>(
     if (!subFolds.has(id))
       subFolds.set(id, session.subsections?.[id] ?? options.subsectionFolded?.[name] ?? false)
     node.setAttribute("aria-expanded", String(!subFolds.get(id)))
-    node.addEventListener("click", () => foldSub(id))
+    node.addEventListener("click", (event) => {
+      if (event.detail < 2) foldSub(id)
+    })
     const sh: Subhead = {
       id,
       name,
