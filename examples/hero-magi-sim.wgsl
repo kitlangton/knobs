@@ -266,14 +266,12 @@ fn advance(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_i
         fear = max(fear, f);
       }
     }
-    // The lure: a pull and a swirl round it, strongest while it's held.
+    // The lure: a spring toward it and a swirl round it, gone by a third of the ring away, and
+    // strongest while it's held. Both grow from nothing at its centre, so nothing piles up there.
     let ld = P.sim2.xy - p;
-    let lr = length(ld);
-    if (lr > 1e-4) {
-      let pull = P.sim2.z * (1.0 + 2.5 * P.sim2.w);
-      let f = exp(-lr * lr / 0.09) * pull;
-      acc += (ld / lr * 1.4 + vec2f(-ld.y, ld.x) / lr * 1.1) * f * k;
-    }
+    let pull = P.sim2.z * (1.0 + 2.5 * P.sim2.w);
+    let f = exp(-dot(ld, ld) / 0.1) * pull;
+    acc += (ld * 5.0 + vec2f(-ld.y, ld.x) * 6.0) * f * k;
     acc += wall(p, k * 10.0);
     v += acc * dt;
     let s = length(v);

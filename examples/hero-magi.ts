@@ -71,7 +71,8 @@ const CSS = `
 .magi-text .b { color: var(--magi-b); }
 .magi-text .c { color: var(--magi-c); }
 .magi-text .v { text-shadow: 0 0 10px currentColor; }
-.magi-text .rows { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
+.magi-text .rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+.magi-text .vertical { writing-mode: vertical-rl; }
 .magi-text .rows span:nth-child(even) { text-align: right; text-shadow: 0 0 10px currentColor; }
 .magi-panel { position: absolute; top: 0; bottom: 0; right: max(32px, calc(50% - 620px)); width: 320px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
 .magi-panel .knobs-panel { --k-width: 100%; pointer-events: auto; }
@@ -134,14 +135,14 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
         lure: { x: 0.24, y: 0.7 },
       },
       Lattice: {
-        cohesion: 12,
-        alignment: 4,
+        cohesion: 64,
+        alignment: 0,
         separation: 100,
-        speed: 16,
+        speed: 12,
         predators: 0,
-        containment: 66,
+        containment: 70,
         signal: "Amber",
-        lure: { x: 0.5, y: 0.5 },
+        lure: { x: 0.86, y: 0.16 },
       },
     },
     onChange(_patch, _values, meta) {
@@ -235,7 +236,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
   const clock = line("dim")
   const legend = line("dim")
   const numbers = line("rows")
-  const votes = [line(""), line(""), line("")]
+  const votes = [line(""), line("vertical"), line("")]
   const placeText = () => {
     const { cx, cy, R, col } = lay
     const top = cy - 1.3 * R - 14
@@ -243,11 +244,11 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     header.style.transform = `translate(${left}px, ${top - 6}px)`
     clock.style.transform = `translate(${cx + 1.36 * R}px, ${top - 6}px) translateX(-100%)`
     legend.style.transform = `translate(${col[0]}px, ${col[1]! - 16}px)`
-    numbers.style.transform = `translate(${col[0]}px, ${col[1]! + col[3]! * 0.4 + 22}px)`
+    numbers.style.transform = `translate(${col[0]}px, ${col[1]! + col[3]! * 0.33 + 20}px)`
     numbers.style.width = `${col[2]}px`
-    votes[0]!.style.transform = `translate(${cx}px, ${cy - 1.2 * R - 8}px) translate(-50%, -100%)`
-    votes[1]!.style.transform = `translate(${cx - 1.2 * R - 10}px, ${cy}px) translate(-100%, -50%)`
-    votes[2]!.style.transform = `translate(${cx}px, ${cy + 1.2 * R + 8}px) translate(-50%, 0)`
+    votes[0]!.style.transform = `translate(${cx}px, ${cy - 1.18 * R - 4}px) translate(-50%, -100%)`
+    votes[1]!.style.transform = `translate(${cx - 1.18 * R - 4}px, ${cy}px) translate(-100%, -50%) rotate(180deg)`
+    votes[2]!.style.transform = `translate(${cx}px, ${cy + 1.18 * R + 4}px) translate(-50%, 0)`
   }
   header.innerHTML = `MAGI <span class="dim">· swarm containment</span>`
   legend.innerHTML = `<span class="v">order</span> <span class="dim">/</span> <span class="b v">pace</span> <span class="dim">/</span> <span class="c v">fear</span>`
@@ -261,9 +262,8 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
       ["fear", fmt(s.fear)],
       ["clusters", String(s.clusters).padStart(2, "0")],
       ["predators", String(v.predators).padStart(2, "0")],
-      ["agents", AGENTS.toLocaleString("en-US")],
       ...s.tracks
-        .slice(0, 3)
+        .slice(0, 2)
         .map((t) => [`tgt-${String(t.id).padStart(2, "0")}`, `${Math.round(t.mass)}`]),
     ]
       .map(([a, b]) => `<span class="dim">${a}</span><span>${b}</span>`)
@@ -273,7 +273,7 @@ export function mountHeroMagi(host: HTMLElement): { dispose(): void } {
     votes[0]!.innerHTML = verdict("melchior-1", s.order > 0.5)
     votes[1]!.innerHTML = verdict("balthasar-2", s.pace > 0.5)
     votes[2]!.innerHTML = verdict("casper-3", s.fear < 0.17)
-    clock.textContent = `t+${simTime.toFixed(1).padStart(6, "0")}`
+    clock.textContent = `${AGENTS.toLocaleString("en-US")} agents · t+${simTime.toFixed(1).padStart(6, "0")}`
   }
 
   const css = (c: readonly number[]) =>
@@ -903,13 +903,14 @@ async function createGpu(
       rp.end()
     }
     for (let k = 0; k < LEVELS - 1; k++) {
-      rp = pass(t.levels[LEVELS - 2 - k]!.createView(), "load")
+      // The clock stops after the bloom: the composite waits on the page's drawable.
+      rp = pass(t.levels[LEVELS - 2 - k]!.createView(), "load", k === LEVELS - 2)
       rp.setPipeline(pUp)
       rp.setBindGroup(0, t.post[LEVELS + k]!)
       rp.draw(3)
       rp.end()
     }
-    rp = pass(ctx.getCurrentTexture().createView(), "clear", true)
+    rp = pass(ctx.getCurrentTexture().createView(), "clear")
     rp.setPipeline(pComposite)
     rp.setBindGroup(0, t.post[LEVELS * 2 - 1]!)
     rp.draw(3)

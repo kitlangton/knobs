@@ -60,7 +60,7 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   let sp = length(vel);
   let dir = select(vec2f(1.0, 0.0), vel / sp, sp > 1e-4);
   // A streak as long as the agent travels in a 50th of a second.
-  let half = clamp(sp * 0.02, 0.6, 7.0);
+  let half = clamp(sp * 0.016, 0.5, 4.5);
   let corner = array(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0))[vi];
   let local = corner * vec2f(half + 1.5, 2.0);
   o.pos = toClip(s + dir * local.x + vec2f(-dir.y, dir.x) * local.y);
@@ -71,7 +71,7 @@ fn vs_agent(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
   c = mix(c, P.pal2.rgb * 1.3, sat(aux[ii].x * 1.4));
   // A long streak spreads the same light thinner; each frame adds what the trail lets fade, so
   // an agent holds its brightness and a moving one leaves a tail.
-  o.col = c * 0.62 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
+  o.col = c * 0.3 * P.scr1.w * (1.0 - P.scr0.w) * 7.0 / (1.0 + half * 0.18);
   return o;
 }
 
@@ -229,14 +229,15 @@ fn hud(p: vec2f) -> vec3f {
   }
 
   // ── The hex wing, left of the ring: the more the swarm agrees, the more cells answer ──
-  if (rn > 1.22 && rn < 1.8 && cos(ang) < -0.5 && p.x > P.scr2.x + P.scr2.z + 14.0) {
+  if (rn > 1.22 && rn < 1.62 && cos(ang) < -0.5 && abs(q.y) < R * 1.18 && p.x > P.scr2.x + P.scr2.z + 14.0) {
     let hc = hexCell(p, 12.0);
     let h = hash21(hc.zw);
-    let wing = smoothstep(-0.5, -0.62, cos(ang)) * smoothstep(1.22, 1.3, rn) * smoothstep(1.8, 1.68, rn);
+    let wing = smoothstep(-0.5, -0.62, cos(ang)) * smoothstep(1.22, 1.3, rn) * smoothstep(1.62, 1.5, rn) *
+      smoothstep(R * 1.18, R * 1.05, abs(q.y));
     let pulse = 0.5 + 0.5 * sin(t * 2.0 + h * 9.0 - length(hc.zw) * 0.3);
-    var cc = mix(sec, prim, step(0.55, h)) * 0.3;
+    var cc = mix(sec, prim, step(0.55, h)) * 0.16;
     if (h < order * 0.6 + 0.05) {
-      cc = mix(sec, prim, step(0.5, h)) * (0.6 + 0.8 * pulse);
+      cc = mix(sec, prim, step(0.5, h)) * (0.4 + 0.7 * pulse);
     }
     if (h > 1.0 - fear * 0.6) {
       cc = alert * (0.6 + 0.8 * pulse);
@@ -346,7 +347,7 @@ fn hud(p: vec2f) -> vec3f {
   let cl = P.scr2;
   if (cl.z > 0.0 && p.x > cl.x - 12.0 && p.x < cl.x + cl.z + 12.0 && p.y > cl.y - 12.0 && p.y < cl.y + cl.w + 12.0) {
     // The scope: order (signal), pace (emerald), fear (red), clusters (bone, stepped).
-    let sh = cl.w * 0.4;
+    let sh = cl.w * 0.33;
     let sq = p - vec2f(cl.x, cl.y);
     if (sq.y > -6.0 && sq.y < sh + 6.0) {
       let b = max(abs(sq.x - cl.z * 0.5) - cl.z * 0.5, abs(sq.y - sh * 0.5) - sh * 0.5);
