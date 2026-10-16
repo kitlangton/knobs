@@ -590,7 +590,7 @@ fn floorShade(p: vec3f, rd: vec3f) -> vec3f {
   let m = Mat(vec3f(0.065), vec3f(0.03), 0.6, 0.6, vec3f(1.0, 0.0, 0.0), vec3f(0.0));
   let lit = light(m, p, n, -rd, sp, sh * (1.0 - 0.6 * contact), 1.0) - u.v[13].rgb;
   // The pool stays close round the plate, dissolving long before the frame's edge.
-  let near = exp(-sq(edge / 0.55));
+  let near = exp(-sq(edge / 0.45)) * (1.0 - smoothstep(0.55, 1.0, edge));
   return u.v[13].rgb * (1.0 - 0.7 * contact) + lit * near;
 }
 
