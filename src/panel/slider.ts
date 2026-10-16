@@ -1,11 +1,34 @@
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import type { Knob as KnobField } from "../core/schema.js"
 import { springMotion } from "../core/spring.js"
+import {
+  type DetentKind,
+  detentScale,
+  detentsOf,
+  Notches,
+  offRow,
+  precisionRate,
+  roundValues,
+  rulerAlpha,
+  rulerDepth,
+  rulerLevels,
+  unwarp,
+} from "./feel.js"
 import { tick } from "./haptics.js"
 import { keyPrefs } from "./prefs.js"
-import { clamp, FILL, POP_MS, popScale, type Roll, Spring, VelocityTracker } from "./motion.js"
+import {
+  clamp,
+  FILL,
+  POP_MS,
+  popScale,
+  type Roll,
+  settleScale,
+  Spring,
+  VelocityTracker,
+} from "./motion.js"
 import { syncPlaces } from "./reel.js"
-import { band, textGive, type Band } from "./give.js"
+import { band, STRETCH, STRETCH_HOME_S, textGive, type Band } from "./give.js"
+import { cue } from "./sound.js"
 import { onPan } from "./swipe.js"
 
 export interface DigitPlace {
@@ -48,6 +71,17 @@ export interface Slider {
   readonly notchRatio: number
   /** Whether a drag is currently held on the default by the notch's magnet. */
   isMagnetized(): boolean
+  /** The detent holding a drag right now, if any. */
+  heldDetent(): DetentKind | undefined
+  /** Where the active preset's value sits [0..1], when it differs from the default. */
+  readonly baseRatio: number | undefined
+  /** When the handle last caught a detent (see `settleScale`). */
+  readonly settledAt: number
+  /**
+   * How many halvings the drag in hand moves at, for its ruler (0 at 1:1 or at rest, up to 3; each
+   * level halves the tenths again). Each level shows `rulerAlpha(depth, level)` of the way.
+   */
+  rulerDepth(): number
   /** When the readout last popped (a click landing on a decile, or the default's magnet). */
   poppedAt: number
   /** Formatted numeric string without unit (e.g. "0.45" or "98"). */
@@ -109,9 +143,11 @@ export function stepValue(
 /**
  * A DialKit-style slider: the whole row is the track, the fill is a full-height block,
  * the handle is a hairline that only shows on hover, and the label + value sit on the
- * track itself. Dragging follows the pointer exactly (⌥ for 1/10 speed) and the default's notch
- * pulls it in from a few px away; a click snaps to the nearest step (or nearest 10% when there
- * are many steps) with a short spring-like ease. A sideways trackpad pan moves it like a drag.
+ * track itself. Dragging follows the pointer exactly, slower the further the pointer strays off
+ * the row (and ⌥ for 1/10 speed); detents at the default, the active preset's value and round
+ * values hold it for a few px, and past an end the fill gives like a rubber band. A click snaps
+ * to the nearest step (or nearest 10% when there are many steps) with a short spring-like ease.
+ * A sideways trackpad pan moves it like a drag.
  */
 export function createSlider(
   doc: Document,
@@ -119,6 +155,10 @@ export function createSlider(
   initialField: KnobField,
   set: (value: number, options?: { coalesce?: boolean }) => void,
   onMotionWake?: () => void,
+  options: {
+    /** The active preset's value for this key (what Reset goes back to first). */
+    readonly base?: () => number | undefined
+  } = {},
 ): Slider {
   let field = initialField
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string) => {
@@ -140,6 +180,13 @@ export function createSlider(
   let span = 0
   const marks = el("div", "knobs-marks")
   const notch = el("i", "knobs-notch")
+  // The active preset's value: a notch hanging from the top edge, as the default's rises.
+  const baseNotch = el("i", "knobs-notch knobs-base")
+  baseNotch.style.display = "none"
+  // A fine ruler near the handle while the drag slows (precision by distance), a level per halving.
+  const ruler = el("b", "knobs-ruler")
+  const rulerRows = [el("i"), el("i"), el("i")]
+  ruler.append(...rulerRows)
   const fill = el("div", "knobs-fill")
   const handle = el("div", "knobs-handle")
   const label = el("span", "knobs-label")
@@ -164,6 +211,18 @@ export function createSlider(
   /** Measures the typed text, so the field is as wide as it (and never narrower than the digits). */
   const fitter = el("span", "knobs-number-fit")
   fitter.setAttribute("aria-hidden", "true")
+  let baseRatio: number | undefined
+  /** Places the active preset's notch, or hides it while there's none (or it's the default). */
+  const rebase = () => {
+    const b = options.base?.()
+    const next =
+      b === undefined || !Number.isFinite(b) || b === field.value ? undefined : ratioOf(b)
+    if (next === baseRatio) return
+    baseRatio = next
+    baseNotch.style.display = next === undefined ? "none" : ""
+    if (next !== undefined) baseNotch.style.left = `clamp(1px, ${next * 100}%, calc(100% - 1px))`
+    onMotionWake?.()
+  }
   /** Lays out everything that follows from the field: marks, notch, labels and limits. */
   const shape = () => {
     const display = field.label ?? key
@@ -171,6 +230,8 @@ export function createSlider(
     track.setAttribute("aria-valuemin", String(field.min))
     track.setAttribute("aria-valuemax", String(field.max))
     notchRatio = ratioOf(field.value)
+    baseRatio = Number.NaN
+    rebase()
     span = field.max - field.min
     steps = span / field.step
     count = steps <= 10 ? Math.round(steps) + 1 : 11
@@ -182,7 +243,7 @@ export function createSlider(
       ticks.push(mark)
     }
     notch.style.left = `clamp(1px, ${notchRatio * 100}%, calc(100% - 1px))`
-    marks.replaceChildren(...ticks, notch)
+    marks.replaceChildren(ruler, ...ticks, notch, baseNotch)
     if (label.textContent !== display) label.textContent = display
     unit.textContent = field.unit ?? ""
     if (field.unit) {
@@ -283,13 +344,10 @@ export function createSlider(
   let rollerDirty = false
   /** The reel was just made (showTyped), so its first roll waits a frame or two. */
   let freshRoller = false
-  // Entering or leaving the notch's magnet eases the last few px instead of jumping.
-  let settleUntil = 0
-  const settling = () => inHand() && performance.now() < settleUntil
   /** Where the fill's edge belongs: the value, pulled toward the pointer while a stepped drag holds it. */
   const aim = () => {
     const r = ratioOf(current)
-    if (pulled === undefined || !stepped() || magnet) return r
+    if (pulled === undefined || !stepped() || held) return r
     return r + (ratioOf(pulled) - r) * tokens.resist
   }
   const gpuActive = () => root.closest('[data-gpu-active="true"]') !== null
@@ -298,6 +356,7 @@ export function createSlider(
     const p = `${ratio * 100}%`
     fill.style.setProperty("--k-fill", p)
     handle.style.setProperty("--k-fill", p)
+    ruler.style.setProperty("--k-fill", p)
   }
   // The DOM moves the fill on CSS transitions, except where it needs the spring itself: a stepped
   // drag's resistance and snap, and edge blur (--k-motion-blur), which needs the edge's speed. Then
@@ -340,7 +399,7 @@ export function createSlider(
       }
       synced = true
     }
-    root.classList.remove("knobs-animate", "knobs-settle")
+    root.classList.remove("knobs-animate")
     frameAt = performance.now()
     frame = requestAnimationFrame(run)
   }
@@ -354,7 +413,6 @@ export function createSlider(
     halt()
     synced = gpuActive()
     root.classList.toggle("knobs-animate", animate)
-    root.classList.toggle("knobs-settle", settling())
     writeFill(ratioOf(v))
   }
   let rollTimer: ReturnType<typeof setTimeout> | undefined
@@ -378,10 +436,11 @@ export function createSlider(
   const update = (v: number, delay = 0, instant = false) => {
     const previous = current
     current = v
+    if (!inHand()) rebase()
     const r = ratioOf(v)
     velocity.add(r, 0)
     const ms = !initialized || instant ? 0 : rollMs(inHand())
-    if (!initialized || instant || (inHand() && !settling() && !stepped())) {
+    if (!initialized || instant || (inHand() && !stepped())) {
       fillSpring.snap(r)
       synced = true
     } else fillSpring.set(aim(), delay)
@@ -489,15 +548,105 @@ export function createSlider(
   let committed = false
   let dragRect: DOMRect | undefined
   let startX = 0
+  let lastX = 0
   let moved = false
   let fromValue = false
-  let magnet = false
-  // ⌥ switches to relative 1/10-speed dragging, re-anchored whenever ⌥ changes so nothing jumps.
+  /** A press with ⌥ starts where the value is, rather than under the pointer. */
   let relative = false
-  let fine = false
-  let anchorX = 0
-  let anchorValue = 0
-  let raw = 0
+  /**
+   * The hand along the track (px) and its give past an end. A drag adds each move at its rate
+   * (slower off the row, a tenth with ⌥), so a change of rate never moves the value; the give is
+   * the fill's rubber band, and the value stays clamped.
+   */
+  let hand: Band = { at: 0, give: 0 }
+  /** The detents of the gesture in hand, the strength they're at, and where they show the value. */
+  let notches: Notches | undefined
+  let strength = 1
+  let shownAt = 0
+  let held: DetentKind | undefined
+  let depth = 0
+  let settledAt = Number.NEGATIVE_INFINITY
+  /** Whether a gesture holds the slider (`grip` until `letGo`). */
+  let gripped = false
+  const give = textGive(root, () => onMotionWake?.(), {
+    home: STRETCH_HOME_S,
+    draw: (px) => root.style.setProperty("--k-give", `${px.toFixed(2)}px`),
+  })
+
+  /** A gesture takes hold: its detents (none on a stepped slider, or with `detents: false`). */
+  const grip = (at: number) => {
+    const width = getTrackWidth()
+    rebase()
+    gripped = true
+    hand = { at, give: 0 }
+    strength = 1
+    const off = field.detents === false || root.closest('[data-detents="off"]') !== null
+    const base = options.base?.()
+    notches =
+      stepped() || off
+        ? undefined
+        : new Notches(
+            detentsOf(width, field.min, field.max, {
+              value: field.value,
+              ...(base !== undefined && base !== field.value ? { base } : {}),
+              round: roundValues(field.min, field.max),
+            }),
+            at,
+          )
+    shownAt = at
+  }
+  const setHeld = (kind: DetentKind | undefined) => {
+    if (kind === held) return
+    held = kind
+    root.classList.toggle("knobs-magnet", kind === "default")
+    root.classList.toggle("knobs-held-base", kind === "base")
+    onMotionWake?.()
+  }
+  /** The handle settles into a detent: a small swell of its height, as the readout pops. */
+  const settle = () => {
+    if (reduced?.matches) return
+    settledAt = performance.now()
+    const frames = Array.from({ length: 13 }, (_, i) => ({
+      scale: `1 ${settleScale((i / 12) * POP_MS).toFixed(4)}`,
+    }))
+    if (!gpuActive()) handle.animate(frames, { duration: POP_MS, pseudoElement: "::before" })
+  }
+  const setDepth = (next: number) => {
+    if (Math.abs(next - depth) < 0.01 && (next === 0) === (depth === 0)) return
+    depth = next
+    for (let i = 0; i < 3; i++) {
+      const a = rulerAlpha(depth, i + 1)
+      rulerRows[i]!.style.opacity = a > 0 ? a.toFixed(3) : ""
+    }
+    onMotionWake?.()
+  }
+  /**
+   * Moves the hand `dx` px along the track with detents at strength `k`: past an end the fill
+   * gives (a tick as it starts), on a detent the value holds (a tick and a settle as it catches).
+   */
+  const travel = (dx: number, k: number) => {
+    const width = getTrackWidth()
+    if (!width || span <= 0) return
+    if (notches && k !== strength) {
+      hand = { at: unwarp(shownAt, hand.at, notches.list, k), give: hand.give }
+      strength = k
+    }
+    hand = band(hand, dx, 0, width, STRETCH)
+    const { shown, caught } = notches ? notches.move(hand.at, strength) : { shown: hand.at }
+    shownAt = shown
+    const on = notches && notches.held >= 0 ? notches.list[notches.held] : undefined
+    setHeld(on?.kind)
+    pull(on ? on.value : field.min + (shown / width) * span)
+    if (hand.give !== give.give) give.hold(hand.give)
+    if (caught) {
+      tick(track)
+      // The default's catch sounds firmer on its own (a step landing on the default).
+      if (caught.kind !== "default")
+        cue(track, "step", { position: ratioOf(caught.value), strong: caught.kind === "base" })
+      if (caught.kind !== "round") pop()
+      settle()
+    }
+  }
 
   track.onpointerdown = (event) => {
     const target = event.target as Node | null
@@ -512,10 +661,8 @@ export function createSlider(
     trackWidth = dragRect.width
     dragging = true
     moved = false
-    startX = event.clientX
-    fine = relative = event.altKey
-    anchorX = startX
-    anchorValue = raw = current
+    startX = lastX = event.clientX
+    relative = event.altKey
     committed = false
     velocity.reset()
     root.classList.add("knobs-active")
@@ -526,19 +673,17 @@ export function createSlider(
   }
   /**
    * The pointer or fingers have the value at `at` (clamped to the range): it takes the nearest
-   * step (or the default, held by its magnet), and the fill follows: exactly for a continuous
-   * slider, pulled part way from its stop for a stepped one, which snaps to the next stop past
-   * halfway. Each new stop or catch by the magnet ticks on a phone.
+   * step, and the fill follows: exactly for a continuous slider, pulled part way from its stop
+   * for a stepped one, which snaps to the next stop past halfway. Each new stop ticks on a phone.
    */
-  const pull = (at: number, factor = 1) => {
+  const pull = (at: number) => {
     pulled = at
     const before = current
-    const caught = magnetize(at, factor)
     // The gesture's first change is a new undo step; the rest fold into it.
-    set(caught ? field.value : quantize(at), { coalesce: committed })
+    set(held ? at : quantize(at), { coalesce: committed })
     if (current !== before) {
       committed = true
-      if (stepped() && !caught) tick(track)
+      if (stepped()) tick(track)
     }
     if (stepped()) {
       fillSpring.set(aim())
@@ -549,45 +694,30 @@ export function createSlider(
   track.onpointermove = (event) => {
     if (!dragging) return
     if (!moved && !relative && Math.abs(event.clientX - startX) < 3) return
-    if (event.altKey !== fine) {
-      fine = event.altKey
-      relative = true
-      anchorX = event.clientX
-      anchorValue = raw
-    }
-    moved = true
     const rect = dragRect ?? (dragRect = track.getBoundingClientRect())
-    const factor = fine ? 0.1 : 1
-    if (relative) {
-      raw = anchorValue + ((event.clientX - anchorX) / rect.width) * span * factor
-      // The ends hold: pushing past one and back moves at once, with nothing banked.
-      if (raw < field.min || raw > field.max) {
-        raw = clamp(raw, field.min, field.max)
-        anchorValue = raw
-        anchorX = event.clientX
-      }
-    } else raw = valueAt(event.clientX, rect)
-    pull(raw, factor)
-  }
-  /** Whether `raw` is close enough to the default for its magnet to hold it there. */
-  const magnetize = (raw: number, factor = 1) => {
-    const held = nearDefault(raw, factor)
-    if (held !== magnet) {
-      magnet = held
-      settleUntil = held ? performance.now() + 80 : 0
-      root.classList.toggle("knobs-magnet", held)
-      if (held) {
-        pop()
-        tick(track)
-      }
+    if (!moved) {
+      moved = true
+      // The value jumps under the pointer (unless ⌥ held it where it was), then follows it.
+      grip(relative ? ratioOf(current) * rect.width : clamp(startX - rect.left, 0, rect.width))
     }
-    return held
+    // Precision by distance: further off the row, slower (continuous sliders only).
+    const rate =
+      (stepped() ? 1 : precisionRate(offRow(event.clientY, rect.top, rect.bottom))) *
+      (event.altKey ? 0.1 : 1)
+    const dx = (event.clientX - lastX) * rate
+    lastX = event.clientX
+    setDepth(stepped() ? 0 : rulerDepth(rate, rulerLevels(steps)))
+    travel(dx, detentScale(rate))
   }
-  /** The end of a drag or pan: a stepped fill springs home onto its stop. */
+  /** The end of a drag or pan: a stepped fill springs home onto its stop, the give springs back. */
   const letGo = () => {
-    magnet = false
     pulled = undefined
-    root.classList.remove("knobs-magnet", "knobs-settle", "knobs-active")
+    notches = undefined
+    gripped = false
+    setHeld(undefined)
+    setDepth(0)
+    give.release()
+    root.classList.remove("knobs-active")
     fillSpring.set(ratioOf(current))
     if (!gpuActive() && (frame !== 0 || stepped() || tokens.blur > 0)) drive()
   }
@@ -613,14 +743,10 @@ export function createSlider(
   track.onpointercancel = release
 
   // A sideways trackpad pan is a drag by other means: the value follows the fingers 1:1 at the
-  // fill's scale from the first event, holds at the ends, and lands as one undo step; the
-  // momentum after the fingers lift is ignored. A wheel notch (or ⇧ + wheel) steps once.
-  // Vertical scrolling is left alone so the page and panel still scroll.
-  let panRaw = 0
+  // fill's scale from the first event, with the same detents and the same give at the ends, and
+  // lands as one undo step; the momentum after the fingers lift is ignored. A wheel notch (or
+  // ⇧ + wheel) steps once. Vertical scrolling is left alone so the page and panel still scroll.
   let panValue = 0
-  /** The pan along the track (px), and its give past an end: the readout's. */
-  let panBand: Band = { at: 0, give: 0 }
-  const give = textGive(value, () => onMotionWake?.())
   /** Between a pan's first move and its end (`panning` lets go a little sooner, at the lift). */
   let panGesture = false
   const panLift = () => {
@@ -643,23 +769,19 @@ export function createSlider(
         readTokens()
       }
       // A new gesture, or any other change (an undo, a key), anchors the pan as a new undo step.
-      if (!panGesture || current !== panValue) {
+      if (!panGesture || current !== panValue || !gripped) {
         panGesture = true
-        panRaw = panValue = current
-        panBand = { at: ((current - field.min) / span) * width, give: 0 }
+        panValue = current
+        grip(ratioOf(current) * width)
         committed = false
       }
-      panBand = band(panBand, dx, 0, width)
-      panRaw = clamp(field.min + (panBand.at / width) * span, field.min, field.max)
-      pull(panRaw)
+      travel(dx, 1)
       panValue = current
-      if (panBand.give !== give.give) give.hold(panBand.give)
     },
     lift: panLift,
     end() {
       panLift()
       panGesture = false
-      panBand = { at: 0, give: 0 }
     },
     step(direction) {
       const next = stepValue(field, current, direction)
@@ -781,7 +903,15 @@ export function createSlider(
       return field
     },
     retune,
-    isMagnetized: () => magnet,
+    isMagnetized: () => held === "default",
+    heldDetent: () => held,
+    get baseRatio() {
+      return baseRatio
+    },
+    get settledAt() {
+      return settledAt
+    },
+    rulerDepth: () => depth,
     get poppedAt() {
       return poppedAt
     },

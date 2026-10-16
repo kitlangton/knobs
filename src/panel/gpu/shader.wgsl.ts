@@ -1,7 +1,8 @@
 import { dieSamples, HEADER_DIE } from "../die.js"
 import { DIE_WGSL } from "./die.wgsl.js"
+import { RULER, RULER_FADE, RULER_NEAR } from "../feel.js"
 
-export const FLOATS_PER_PRIM = 40
+export const FLOATS_PER_PRIM = 44
 
 export const panelWgsl = /* wgsl */ `
 ${DIE_WGSL}
@@ -25,6 +26,7 @@ struct Prim {
   extra: vec4f,   // kind-specific params
   aux: vec4f,     // kind-specific params
   aux2: vec4f,    // kind-specific color
+  more: vec4f,    // kind-specific params
 }
 
 // A panel morphing out of its chip clips its content to the shape and reveals it top first,
@@ -228,14 +230,17 @@ fn clearOfText(p: Prim, x: f32, width: f32) -> f32 {
   return clamp((x - p.aux.w - 4.0) / 8.0, 0.0, 1.0) * clamp((width - p.aux.x - 4.0 - x) / 8.0, 0.0, 1.0);
 }
 
-// Single sample of slider fill + handle at local coordinate
+// Single sample of slider fill + handle at local coordinate. Past an end both give by motion.z
+// (px), as the DOM's fill and handle translate; the fill is a block a track wide, so giving past
+// the top it pulls away from the start. more.y swells the handle as it settles on a detent.
 fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let fillRatio = clamp(p.extra.x, 0.0, 1.0);
-  let fillX = fillRatio * size.x;
+  let fillX = fillRatio * size.x + p.motion.z;
   var out = vec4f(0.0);
 
   // One flat, monochrome fill.
-  let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0);
+  let fillCov = clamp(0.5 - (local.x - fillX) * view.dpr, 0.0, 1.0) *
+    clamp(0.5 + (local.x - fillX + size.x) * view.dpr, 0.0, 1.0);
   if (fillCov > 0.0) {
     out = premul(p.color) * fillCov;
   }
@@ -246,7 +251,7 @@ fn sampleSliderAt(p: Prim, local: vec2f, size: vec2f) -> vec4f {
     let fade = clearOfText(p, local.x, size.x);
     // Like the CSS handle: 3px wide at rest, scaled from 25% width as it appears.
     let hw = 3.0 * clamp(0.25 + handleScale * 1.15, 0.25, 1.0);
-    let hh = max(6.0, size.y - 12.0);
+    let hh = max(6.0, size.y - 12.0) * max(p.more.y, 1.0);
     // motion.y: how far inside the fill's edge the handle sits (--k-handle-inset).
     let hp = local - vec2f(fillX - hw * 0.5 - p.motion.y, (size.y - hh) * 0.5);
     // look.y: 1 rounds the handle's ends, 0 squares them (--k-round).
@@ -288,18 +293,21 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     acc = acc / f32(n);
   }
 
-  // Tick marks and default-value notch on the centerline, clear of the label and readout.
+  // Tick marks and default-value notch on the centerline, clear of the label and readout; past an
+  // end they give with the fill (motion.z).
   let clear = clearOfText(p, local.x, size.x);
-  let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0);
+  let give = p.motion.z;
+  let gx = local.x - give;
+  let nx = clamp(p.aux.y * size.x, 1.0, size.x - 1.0) + give;
   let tickAlpha = clamp(p.extra.w, 0.0, 1.0);
   let tickCount = p.extra.z;
   if (tickAlpha > 0.01 && tickCount >= 2.0 && clear > 0.0) {
     let span = max(1.0, size.x);
-    let u = clamp(local.x / span, 0.0, 1.0);
+    let u = clamp(gx / span, 0.0, 1.0);
     let stepU = 1.0 / (tickCount - 1.0);
     let nearestIdx = round(u / stepU);
     let tickX = nearestIdx * stepU * span;
-    let dx = abs(local.x - tickX);
+    let dx = abs(gx - tickX);
     let dy = abs(local.y - size.y * 0.5);
     let tDist = max(dx - 0.5, dy - 3.5);
     let tCov = covSd(tDist) * clear;
@@ -309,12 +317,40 @@ fn shadeSlider(p: Prim, local: vec2f, size: vec2f, fragPos: vec2f) -> vec4f {
     }
   }
 
+  // Precision by distance (more.x halvings): a fine ruler around the handle, a level per
+  // halving, as the DOM's .knobs-ruler draws it.
+  let depth = p.more.x;
+  if (depth > 0.005 && clear > 0.0) {
+    let edge = clamp(p.extra.x, 0.0, 1.0) * size.x;
+    let win = clamp((${RULER_FADE}.0 - abs(gx - edge)) / ${RULER_FADE - RULER_NEAR}.0, 0.0, 1.0);
+    let ry = abs(local.y - size.y * 0.5);
+    if (win > 0.0) {
+${RULER.map(
+  ([n, h, a], i) => `      {
+        let level = clamp(depth - ${i}.0, 0.0, 1.0);
+        let period = size.x / ${n}.0;
+        let rx = gx - round(gx / period) * period;
+        let ra = covSd(max(abs(rx) - 0.5, ry - ${(h / 2).toFixed(1)})) * clear * win * level * ${a};
+        if (ra > 0.0) { acc = over(acc, vec4f(p.aux2.rgb * ra, ra)); }
+      }`,
+).join("\n")}
+    }
+  }
+
   // Default notch: a short tick rising from the bottom edge, off the scale's centerline.
   if (p.aux.z > 0.005 && clear > 0.0) {
     let nh = select(4.0, 6.0, p.aux.z > 0.8);
     let nCov = covSd(roundedBox(local - vec2f(nx - 0.75, size.y - nh), vec2f(1.5, nh + 1.0), 0.75)) * clear;
     let na = nCov * p.aux2.a * p.aux.z;
     acc = over(acc, vec4f(p.aux2.rgb * na, na));
+  }
+  // The active preset's notch (more.z its place, more.w its strength), hanging from the top edge.
+  if (p.more.w > 0.005 && clear > 0.0) {
+    let bx = clamp(p.more.z * size.x, 1.0, size.x - 1.0) + give;
+    let bh = select(4.0, 6.0, p.more.w > 0.8);
+    let bCov = covSd(roundedBox(local - vec2f(bx - 0.75, -1.0), vec2f(1.5, bh + 1.0), 0.75)) * clear;
+    let ba = bCov * p.aux2.a * p.more.w;
+    acc = over(acc, vec4f(p.aux2.rgb * ba, ba));
   }
 
   return acc * trackCov;

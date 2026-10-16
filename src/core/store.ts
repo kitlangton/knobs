@@ -268,6 +268,11 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly haptics?: boolean
   /**
+   * Magnetic detents on slider drags and pans (the default, the active preset's value, the middle
+   * and zero); on by default, `false` turns them off for the whole panel.
+   */
+  readonly detents?: boolean
+  /**
    * Sound effects: quiet, short ticks and clicks synthesized live for the panel's moments (a
    * slider's detents, a switch, Random, Copy…). Off by default; `true` turns them on, or
    * `{ volume, theme }`. The page's switch (`sound.enable(false)` from `knobs/panel`) mutes every

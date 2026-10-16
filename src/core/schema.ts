@@ -110,6 +110,11 @@ export interface Knob extends FieldMeta {
   /** Digits after the point in the readout; the step's own by default. */
   readonly decimals?: number
   readonly spring?: SpringPart
+  /**
+   * Whether a drag sticks for a moment at the default, the active preset's value and the middle
+   * (and zero); `false` lets it glide straight through.
+   */
+  readonly detents?: boolean
 }
 export interface Choice<T extends string = string> extends FieldMeta {
   readonly kind: "choice"

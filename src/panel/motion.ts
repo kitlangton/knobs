@@ -71,6 +71,9 @@ export function popScale(t: number, peak = 0.04): number {
   return 1 + peak * u * Math.exp(1 - u)
 }
 
+/** A slider's handle settling on a detent: its height swells like the pop, a little more (t in ms). */
+export const settleScale = (t: number) => popScale(t, 0.14)
+
 export class VelocityTracker {
   private samples: { t: number; x: number; y: number }[] = []
   add(x: number, y: number, t = performance.now()) {
