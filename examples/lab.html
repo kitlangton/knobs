@@ -35,22 +35,31 @@
       .head { display: flex; align-items: center; gap: 6px; padding: 4px 4px 2px; font-weight: 600; }
       .head .n { color: var(--dim); font-weight: 400; }
       .head .link { color: var(--blue); font-weight: 500; }
+      /* Stations: two columns, or one in a narrow pane; a name that doesn't fit stays on its line
+         and fades out at its end (knobs/ui's .knobs-scroll-fade-x). */
+      .side { container-type: inline-size; }
       .stations { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 6px; padding: 0 4px; }
-      .station { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px; color: var(--label); cursor: pointer; }
-      .station i { font-style: normal; color: var(--dim); width: 12px; }
-      .station .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+      @container (max-width: 200px) { .stations { grid-template-columns: 1fr; } }
+      .station { display: flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 4px; color: var(--label); cursor: pointer; }
+      .station i { flex: none; font-style: normal; color: var(--dim); width: 12px; }
+      .station .name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; --knobs-fade: 14px; }
+      .station .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
       .station .dot.y { background: #d9a03c; }
       .station .dot.g { background: #41b06e; }
       .station.on { background: #242e3b; color: var(--text); box-shadow: inset 2px 0 var(--blue); }
       .card { background: var(--card); border: 1px solid var(--line); padding: 8px 10px; }
       .cap { color: var(--label); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
       .card p { margin: 0 0 6px; color: var(--text2); }
+      .card p:last-child { margin-bottom: 0; }
       .card .mono { font-family: var(--mono); color: var(--label); }
       .card a { color: var(--blue); text-decoration: none; }
       .viewport { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 55% 45%, #2a2019 0%, #17130f 45%, #0d0c0d 80%); }
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .dock { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.25fr) minmax(260px, 1.25fr); gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
-      .dock .live { padding: 0; min-width: 0; min-height: 0; overflow: auto; scrollbar-width: thin; }
+      /* Each of the dock's columns scrolls on its own, fading where it runs under the dock's header
+         or past its bottom (knobs/ui's .knobs-scroll-fade). */
+      .dock .live { display: flex; flex-direction: column; padding: 0; min-width: 0; min-height: 0; overflow: hidden; }
+      .dock .live > .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
       .dock .live .knobs-panel { --k-width: 100%; }
       [data-pane="dock"] { background: var(--dock); }
       .details { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 6px; }
@@ -166,12 +175,12 @@
       <div class="main" id="workspace">
         <aside class="side" id="side">
           <div class="stations" data-hint-group>
-            <div class="station" role="button" data-hint="Explosions"><i>1</i>Explosions<span class="dot"></span></div>
-            <div class="station" role="button" data-hint="Smoke and fire"><i>2</i>Smoke &amp; fire<span class="dot g"></span></div>
-            <div class="station on" role="button" data-hint="Weather"><i>3</i>Weather<span class="dot y"></span></div>
-            <div class="station" role="button" data-hint="Vegetation"><i>4</i>Vegetation<span class="dot g"></span></div>
-            <div class="station" role="button" data-hint="Looks"><i>5</i>Looks<span class="dot y"></span></div>
-            <div class="station" role="button" data-hint="Lighting"><i>6</i>Lighting<span class="dot g"></span></div>
+            <div class="station" role="button" data-hint="Explosions" aria-keyshortcuts="1"><i>1</i><span class="name knobs-scroll-fade-x">Explosions</span><span class="dot"></span></div>
+            <div class="station" role="button" data-hint="Smoke and fire" aria-keyshortcuts="2"><i>2</i><span class="name knobs-scroll-fade-x">Smoke &amp; fire</span><span class="dot g"></span></div>
+            <div class="station on" role="button" data-hint="Weather" aria-keyshortcuts="3"><i>3</i><span class="name knobs-scroll-fade-x">Weather</span><span class="dot y"></span></div>
+            <div class="station" role="button" data-hint="Vegetation" aria-keyshortcuts="4"><i>4</i><span class="name knobs-scroll-fade-x">Vegetation</span><span class="dot g"></span></div>
+            <div class="station" role="button" data-hint="Looks" aria-keyshortcuts="5"><i>5</i><span class="name knobs-scroll-fade-x">Looks</span><span class="dot y"></span></div>
+            <div class="station" role="button" data-hint="Lighting" aria-keyshortcuts="6"><i>6</i><span class="name knobs-scroll-fade-x">Lighting</span><span class="dot g"></span></div>
           </div>
           <div class="card">
             <div class="cap">Status</div>
@@ -188,9 +197,9 @@
           <span class="tag">Weather</span>
         </section>
         <div class="dock" id="dock">
-          <div class="card live" id="sets"></div>
-          <div class="card live" id="live"></div>
-          <div class="card live" id="diag"></div>
+          <div class="card live"><div class="scroll knobs-scroll-fade" id="sets"></div></div>
+          <div class="card live"><div class="scroll knobs-scroll-fade" id="live"></div></div>
+          <div class="card live"><div class="scroll knobs-scroll-fade" id="diag"></div></div>
         </div>
         <aside class="details" id="details-column">
           <div class="card controls">
