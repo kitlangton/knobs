@@ -310,6 +310,17 @@ function buildPanel<S extends Schema>(
     if (shortcut) node.setAttribute("aria-keyshortcuts", shortcut)
     return node
   }
+  /**
+   * A button that's there only when it's useful (a group's or the panel's reset, undo, redo): it
+   * keeps its slot either way and blooms in and out of it (see `[data-shown]` in the styles).
+   */
+  const bloom = (node: HTMLButtonElement, on: boolean) => {
+    const shown = String(on)
+    if (node.disabled !== !on) node.disabled = !on
+    if (node.dataset.shown === shown) return false
+    node.dataset.shown = shown
+    return true
+  }
   const place = (node: HTMLButtonElement, icon: IconName) => {
     headActions.append(node)
     headerButtons.push({ button: node, icon })
@@ -452,19 +463,15 @@ function buildPanel<S extends Schema>(
   randomButton.onclick = (event) => run(() => reroll(undefined, event.altKey))
   randomButton.querySelector(".knobs-icon")?.replaceWith(die.node)
   // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
-  // stays live while it turns, so another press adds a turn; it dims once it has stopped.
+  // stays while it turns, so another press adds a turn, and leaves once it has stopped.
   const resetAll = () => {
-    if (!resetBtn.hidden && !resetBtn.disabled && !header.hidden)
-      spin(resetBtn, wakeGpu, () => {
-        const values = controls.get() as Record<string, unknown>
-        const base = controls.locked as Record<string, unknown>
-        resetBtn.disabled = !rows.some((r) => r.keys.some((k) => !same(values[k], base[k])))
-        wakeGpu()
-      })
+    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && !header.hidden)
+      spin(resetBtn, wakeGpu, syncResets)
     controls.reset()
   }
   const resetBtn = command("reset", "Reset", ariaKeys(keys.resetAll), resetAll)
   if (!bound("resetAll") || !marks || !shows("reset")) resetBtn.hidden = true
+  bloom(resetBtn, false)
   const copyButton = command("copy", "Copy", ariaKeys(keys.copy), copyValues)
   if (!bound("copy") || !shows("copy")) copyButton.hidden = true
   copyButton.classList.add("knobs-copy")
@@ -490,10 +497,11 @@ function buildPanel<S extends Schema>(
   }
   const undoButton = iconButton("undo", "Undo", ariaKeys(keys.undo), controls.undo)
   const redoButton = iconButton("redo", "Redo", ariaKeys(keys.redo), controls.redo)
-  // Undo and redo fold in once there's history and away again when there's none.
+  // Undo shows while there's history and Redo while there's a future, each in its own slot.
   const history = el("span")
   history.className = "knobs-head-history"
-  history.dataset.shown = "false"
+  bloom(undoButton, false)
+  bloom(redoButton, false)
   if (showHistory && (bound("undo") || bound("redo"))) {
     place(undoButton, "undo")
     place(redoButton, "redo")
@@ -502,7 +510,6 @@ function buildPanel<S extends Schema>(
     if (!bound("undo") || !shows("undo")) undoButton.hidden = true
     if (!bound("redo") || !shows("redo")) redoButton.hidden = true
     if (undoButton.hidden && redoButton.hidden) history.hidden = true
-    else if (undoButton.hidden || redoButton.hidden) history.dataset.single = ""
   }
   if (showFooter && bound("help")) {
     helpButton = headButton("help", "Keyboard shortcuts", "?", () => togglePopover())
@@ -514,6 +521,10 @@ function buildPanel<S extends Schema>(
   dismiss?.classList.add("knobs-close")
   if (dismiss && (!helpButton || helpButton.hidden)) dismiss.classList.add("knobs-head-split")
   if (dismiss && !shows("close")) dismiss.hidden = true
+  // Fixed slots, left to right: Undo · Redo, Reset, Copy, then Random in the corner (and ? · ✕
+  // past it). Undo, Redo and Reset come and go in place (bloom), so nothing else ever moves.
+  for (const node of [history, resetBtn, copyButton, randomButton, helpButton, dismiss])
+    if (node && (node !== history || history.parentNode)) headActions.append(node)
   const titleEl = el(
     "strong",
     titleText && headerOptions?.title !== false ? readableTitle(titleText) : "",
@@ -840,15 +851,14 @@ function buildPanel<S extends Schema>(
     }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
-      spin(gReset, wakeGpu)
+      spin(gReset, wakeGpu, syncResets)
       controls.resetGroup(groupName)
       if (doc.activeElement === gReset)
         rows.find((r) => r.group === groupName)?.input.focus({ preventScroll: true })
     })
     gReset.className = "knobs-group-reset"
     gReset.dataset.hint = `${title} reset`
-    gReset.dataset.shown = "false"
-    gReset.disabled = true
+    bloom(gReset, false)
     groupResetButtons.set(groupName, gReset)
     // The group's own die: Random for just these rows (⌥ mutates them).
     const gDie = createHeaderDie(doc, () => wakeGpu(), GROUP_DIE)
@@ -2477,6 +2487,27 @@ function buildPanel<S extends Schema>(
   }
   const isMixed = (r: Row) => r.keys.some((k) => controls.isMixed(k as keyof S & string))
   let lastRefresh = (controls as unknown as { [REFRESHES]?: number })[REFRESHES] ?? 0
+  /**
+   * Each reset shows while its scope differs from its defaults, the scope ⇧R would reset from
+   * there (a row's mark, its group's ↺, the header's ↺ for everything), and stays while it turns.
+   */
+  function syncResets() {
+    const values = controls.get() as Record<string, unknown>
+    const locked = controls.locked as Record<string, unknown>
+    const differs = (r: Row) => r.keys.some((k) => !same(values[k], locked[k]))
+    let anyMod = false
+    let changed = false
+    for (const [groupName, gReset] of groupResetButtons) {
+      const groupMod = rows.some((r) => r.group === groupName && differs(r))
+      if (groupMod) anyMod = true
+      // A group's reset is a coarse reset, so it follows `resetAll`.
+      if (bloom(gReset, (marks && groupMod && bound("resetAll")) || spinning(gReset)))
+        changed = true
+    }
+    const totalMod = anyMod || rows.some((r) => !r.group && differs(r))
+    if (bloom(resetBtn, totalMod || spinning(resetBtn))) changed = true
+    if (changed) wakeGpu()
+  }
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2581,24 +2612,7 @@ function buildPanel<S extends Schema>(
       lastRefresh = refreshes
       for (const r of rows) fillAccessory(r)
     }
-    if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) {
-      let anyMod = false
-      for (const [groupName, gReset] of groupResetButtons) {
-        const groupMod = rows.some(
-          (r) => r.group === groupName && r.keys.some((k) => !same(values[k], locked[k])),
-        )
-        if (groupMod) anyMod = true
-        // A group's reset is a coarse reset, so it follows `resetAll`.
-        const shown = marks && groupMod && bound("resetAll")
-        if (gReset.disabled !== !shown) gReset.disabled = !shown
-        const s = String(shown)
-        if (gReset.dataset.shown !== s) gReset.dataset.shown = s
-      }
-      const totalMod =
-        anyMod || rows.some((r) => !r.group && r.keys.some((k) => !same(values[k], locked[k])))
-      const resetOff = !totalMod && !spinning(resetBtn)
-      if (resetBtn.disabled !== resetOff) resetBtn.disabled = resetOff
-    }
+    if (!initialized || moving.length > 0 || landing || turn > 0 || rows.some(fresh)) syncResets()
     let unlocked = 0
     for (const row of rows) {
       if (!row.keys.length) continue
@@ -2617,10 +2631,8 @@ function buildPanel<S extends Schema>(
     }
     if (root.hasAttribute("data-comparing") !== controls.comparing)
       root.toggleAttribute("data-comparing", controls.comparing)
-    if (undoButton.disabled !== !controls.canUndo) undoButton.disabled = !controls.canUndo
-    if (redoButton.disabled !== !controls.canRedo) redoButton.disabled = !controls.canRedo
-    const anyHistory = String(controls.canUndo || controls.canRedo)
-    if (history.dataset.shown !== anyHistory) history.dataset.shown = anyHistory
+    const undoMoved = bloom(undoButton, controls.canUndo)
+    if (bloom(redoButton, controls.canRedo) || undoMoved) wakeGpu()
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     if (search) {
@@ -3267,7 +3279,11 @@ function buildPanel<S extends Schema>(
     if (scope === "all") return resetAll()
     if (scope === "selection") return controls.reset(selectionKeys())
     if (scope === "row") return controls.reset(keysOf([rowAt(target)]))
-    const keys = cardKeys(cardOf(target)!) as (keyof S & string)[]
+    const card = cardOf(target)!
+    const keys = cardKeys(card) as (keyof S & string)[]
+    // A group's card turns the group's ↺, as its click would.
+    const gReset = card.dataset.group ? groupResetButtons.get(card.dataset.group) : undefined
+    if (gReset?.dataset.shown === "true") spin(gReset, wakeGpu, syncResets)
     if (keys.length) controls.reset(keys)
   }
   const cardKeys = (card: HTMLElement) =>

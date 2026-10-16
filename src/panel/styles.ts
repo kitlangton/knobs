@@ -280,12 +280,15 @@ const css = `
 /* The close X's ink sits a fifth of its box in from each side, a digit's barely: nudged right, its
    ink ends where the values' digits do. */
 .knobs-panel header .knobs-close>.knobs-icon{translate:calc(var(--k-icon-size) * .1) 0}
-/* Undo and redo fold in (room first, then the icons) once there's history, and away without it. */
-.knobs-head-history{display:flex;flex:none;overflow:hidden;width:calc(var(--k-icon-btn) * 2);margin-left:calc(var(--k-unit) * 1.5);transition:width .26s var(--k-ease),margin .26s var(--k-ease)}
-.knobs-head-history[data-single]{width:var(--k-icon-btn)}
-.knobs-head-history[data-shown="false"]{width:0;margin-left:0;transition:width .24s var(--k-ease) .06s,margin .24s var(--k-ease) .06s}
-.knobs-panel .knobs-head-history>button{transition:background var(--k-hover-t),color var(--k-hover-t),opacity .18s var(--k-ease) .08s,scale .3s cubic-bezier(.34,1.45,.64,1) .08s}
-.knobs-panel .knobs-head-history[data-shown="false"]>button{opacity:0;scale:.6;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .12s ease-in,scale .14s ease-in}
+/* Undo · Redo sit apart from Reset · Copy · Random. Undo, Redo and Reset (and a group's reset)
+   keep their slots while they're away and bloom in and out of them: nothing beside them moves. */
+.knobs-head-history{display:flex;flex:none;margin-right:calc(var(--k-unit) * 1.5)}
+.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},filter 0s,visibility 0s}
+.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+@media(prefers-reduced-motion:reduce){
+  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:opacity .15s,visibility 0s!important}
+  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
 /* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
@@ -328,10 +331,8 @@ const css = `
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--k-label);background:transparent;border-radius:var(--k-radius-sm);cursor:pointer}
 .knobs-group-head button:is(:hover:not([disabled]),:focus-visible){background:var(--k-surface-hi);color:var(--k-text)}
-.knobs-group-head .knobs-group-reset{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--k-round);
-  transition:opacity .18s var(--k-ease),transform .3s cubic-bezier(.34,1.45,.64,1),background .15s,color .15s,visibility 0s}
+.knobs-group-head .knobs-group-reset{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--k-round)}
 .knobs-group-head :is(.knobs-icon,.knobs-die-icon){width:var(--k-icon-sm);height:var(--k-icon-sm)}
-.knobs-group-reset[data-shown="false"]{opacity:0;visibility:hidden;transform:scale(.55);transition:opacity .14s ease-in,transform .14s ease-in,visibility 0s .14s}
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--k-round);color:var(--k-dim)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background var(--k-hover-t),color var(--k-hover-t),opacity .2s,transform .12s}
