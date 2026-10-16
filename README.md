@@ -8,7 +8,7 @@ Each panel's header carries **Undo · Redo · Reset · Copy · Random** as icon 
 
 Beyond sliders, choices and switches there are four richer fields: a SwiftUI-style **spring** (duration and bounce beside its live step-response curve), an **OKLCH colour** (swatch and hex, with hue, chroma and lightness strips that paint their real gradients), a 2D **point** pad, and a cubic-bezier **easing** editor with named curves.
 
-Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, detents that hold a drag for a few px at the default (a faint notch rising from the bottom edge), the active preset's value (one hanging from the top) and the middle (and zero), letting go once you push through, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, precision by distance (move the pointer up or down off the row while dragging and it slows to ½, ¼ and ⅛ in smooth steps, a fine ruler showing near the handle; come back and it speeds up without the value jumping), `⌥`-drag for 1/10 speed on top of that, a fill that gives like a rubber band past either end and springs back on release, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, flips a switch from anywhere on its row, scrubs a seed and steps a ramp's presets, and the momentum after you lift is ignored, so it stops where your fingers did. At an end, a drag or a pan gives a little like a rubber band instead of stopping dead. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
+Zero runtime dependencies in core. Pure DOM panels with `@kitlangton/rolling-number` readouts and DialKit-style sliders: a flat accent-tinted fill that stops exactly at its ends, a hairline handle centred on its edge that fades where it would cross the text, detents that hold a drag for a few px at the default (a faint notch rising from the bottom edge), the active preset's value (one hanging from the top) and the middle (and zero), letting go once you push through, stepped sliders (ten steps or fewer) that resist around their stop and snap to the next past halfway, precision by distance (move the pointer up or down off the row while dragging and it slows to ½, ¼ and ⅛ in smooth steps, a fine ruler showing near the handle; come back and it speeds up without the value jumping), `⌥`-drag for 1/10 speed on top of that, a row that stretches like rubber past either end (its far end anchored, a little thinner as it lengthens, its text still) and springs back on release, and a sideways trackpad pan that moves the value with your fingers like a drag (a `⇧` + wheel notch steps once); the same pan drags the selection pill across the preset strip or a choice, through as many options as you travel, flips a switch from anywhere on its row, scrubs a seed and steps a ramp's presets, and the momentum after you lift is ignored, so it stops where your fingers did. At an end, a drag or a pan gives a little like a rubber band instead of stopping dead. Switching presets ripples the changed rows top to bottom; selection pills and switch thumbs stretch toward where they're going and settle; the panel is a frosted glass surface over your work. A reload, Vite's included, keeps floating panels open, editors expanded and focus where it was, per tab. Thin adapters for React (`knobs/react`) and Solid (`knobs/solid`), plus a remote/descriptor mode for driving values over a WebSocket.
 
 ## Install
 
@@ -340,7 +340,7 @@ Panels and switchers are keyboard-first:
 | `↑` / `↓` or `j` / `k` | Move between presets, rows and custom actions (`←`/`→` move along the custom actions); a spring's two sliders are two stops |
 | `←` / `→` or `h` / `l` | Adjust slider, cycle choice, or flip toggle (`⇧` multiplies numeric step by `×10`); on a colour row turn the hue, on a point row move x, on an easing row cycle the named curves |
 | `Enter` / `Space` | Open a colour, point, easing, gradient or curve row's editor; `↓` then walks into it (strips, chips, handles, pad) |
-| `Esc` | Climb one level: fold an open editor back to its row, then from a row to its card, from a card to the panel, then out (a floating panel closes). Inline edits, the search field and the tree's type-ahead take `Esc` first |
+| `Esc` | Climb one level: fold an open editor back to its row, then from a row to its card, from a card to the panel, then out (a floating panel closes). The focus lens grows out to each level as you go, and the header's `esc ↑ Shape` says where the next press goes (see [Where keys go](#where-keys-go)). Inline edits, the search field and the tree's type-ahead take `Esc` first |
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | On a gradient strip or curve graph | Arrows move the selected stop or point; `Tab` / `⇧Tab` and `[` / `]` pick another; `n` adds one, `Delete` removes it; `Enter` edits a stop's colour (`Esc` returns) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
@@ -350,7 +350,7 @@ Panels and switchers are keyboard-first:
 | `Home` / `End` | Jump slider to `min` or `max` |
 | `0`–`9`, `.`, `-` or `Enter` | Edit numeric value inline: the readout's own digits, in place, with the unit after them. `↑` `↓` step the text (`⇧` by the big step), `Enter` commits (the readout rolls from what was typed to the nearest step in range), `Esc` cancels |
 | `Backspace` / `Delete` | Reset focused row (or the selection) to its default (or double-click row/label) |
-| Drag a slider | Follows the pointer. Off the row it slows in smooth steps (×1 within 24 px, ×½ around 60, ×¼ around 110, ×⅛ beyond 146; ranges, dials, vector cells and colour strips too), a fine ruler fading in near the handle a level per halving; the value never jumps as the rate changes. It sticks for a few px at the default, the active preset's value and the middle (and zero), with a tick (a sound with `sound: true`) and a small settle of the handle, and lets go once pushed through; slowed, the detents weaken so a fine move can sit beside one. `detents: false` on a knob or the mount turns them off. Past `min` or `max` the fill gives like a rubber band (14 px at most, with one tick) while the value stays at the limit, and springs back on release; range ends, colour strips and pads give at their limits too |
+| Drag a slider | Follows the pointer. Off the row it slows in smooth steps (×1 within 24 px, ×½ around 60, ×¼ around 110, ×⅛ beyond 146; ranges, dials, vector cells and colour strips too), a fine ruler fading in near the handle a level per halving; the value never jumps as the rate changes. It sticks for a few px at the default, the active preset's value and the middle (and zero), with a tick (a sound with `sound: true`) and a small settle of the handle, and lets go once pushed through; slowed, the detents weaken so a fine move can sit beside one. `detents: false` on a knob or the mount turns them off. Past `min` or `max` the row stretches like rubber from the end it's anchored at (14 px at most, never past the panel's glass, with one tick) while the value stays at the limit, and springs back on release; range ends, colour strips and pads stretch at their limits too |
 | `⌥` + drag | Fine-tune at 1/10 speed, on top of the slowing off the row |
 | Pan sideways (two fingers) | Every control that holds a value answers it, in the active state a drag gives it. Sliders, colour strips, pads, easing handles, vector cells, ranges and dials move 1:1 with the fingers; over the preset strip or a choice, the pill slides through the options, and a choice menu steps them. Anywhere on a switch's row, its thumb follows the fingers and the switch flips past the middle (a flick goes its way). A seed scrubs a step every 12 px, its die rolling along, and a flick carries on a few steps. Over a gradient strip or a curve graph it moves the stop or point under the pointer; on a gradient, curve or easing row's head it steps through the presets (a mouse dragged sideways on the folded head does too, a step every 24 px; under 4 px it's still a click that opens the row), and on a colour row's head it turns the hue. At a limit everything gives a little, as under a drag (a slider's fill 14 px at most, other controls 6, with one tick), and springs back when you let go; a slider's pan sticks at the same detents as its drag. One undo entry per gesture; momentum is otherwise ignored; vertical scrolling passes through. A `⇧` + wheel notch steps once |
 | `s` | Jump: badges every row (one code per row, compound ones included), preset and button with its shortest unique prefix; type it to jump (presets apply). With other panels or `knobs/ui` pieces on the page, it labels all of them (see [Hint mode across the page](#hint-mode-across-the-page)) |
@@ -370,7 +370,48 @@ Panels and switchers are keyboard-first:
 | `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
 | `` ` `` | Show or hide every panel and chip on the page, from anywhere outside a text field (see [Show, hide and unlock](#show-hide-and-unlock)) |
 | `Esc` | Close the shortcuts popover; on a focused floating panel (nothing deeper focused), close it and restore focus to its chip |
-| Click a card's empty area or heading | Focus the card (a soft wash shows it); `↑` / `↓` go to its first or last row, and `r`, `⌥R` and `⇧R` act on its group |
+| Click a card's empty area or heading | Focus the card (the lens wraps it); `↑` / `↓` go to its first or last row, and `r`, `⌥R` and `⇧R` act on its group |
+
+### Where keys go
+
+Keys act on the level focus is at: an open editor's part, a row, its card, or the whole panel.
+Three things show which, in both renderers, on floating and inline panels and on a page:
+
+- **The focus lens.** One shape, a soft wash with a hairline edge, marks that level and morphs
+  between levels (position, size and corners on a spring with no bounce, the size a little
+  quicker). Going in, it shrinks onto the row; `Esc` grows it out to the card, then to the panel;
+  out of the panel it grows to the panel's edge and fades. A row to the next glides. It replaces
+  the per-row and per-card washes. A row's lens shows while you use keys (as the old focus wash
+  did); a card's also after a click on it. With reduced motion it fades out where it was and in
+  where it lands.
+- **The armed panel.** While a panel holds the keys (focus is inside it; hovering isn't enough),
+  its edge takes a little of the accent with a faint glow, and its title is at full strength. At
+  rest the title is a touch quieter, so on a page with several panels the one listening is plain.
+  Focus leaving (or `Esc` out of the panel, or the window going to the background) disarms it.
+- **The scope line.** Beside the title, a quiet trail says where keys go: `Swarm › Shape ›
+  Cohesion`, the deepest crumb bright and its parents dim. Crumbs glide to their places as focus
+  moves, and one that changes fades out as the new one fades in. For a moment after a key below
+  the panel's level, a faint `esc ↑ Shape` follows it, then fades. Clicking a crumb takes focus to
+  its level; clicking the title takes it to the panel. When it doesn't fit, the first crumbs fold
+  into `…`. `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
+
+When `r`, `⇧R`, `⌥R`, `g` or `⌥G` acts, the lens lights up over exactly what changed (the selected
+rows, the row, the card, or the panel) and fades back.
+
+Tune them with tokens on the panel or any ancestor:
+
+| Token | Default | What it does |
+| --- | --- | --- |
+| `--k-lens-ms` | `340` | The lens's morph (ms), a spring with no bounce |
+| `--k-lens-lead` | `1.25` | How much quicker its size settles than its position |
+| `--k-lens-wash`, `--k-lens-line` | `.9`, `.65` | Its wash (a share of `--k-surface-hi`) and hairline edge (of `--k-line-hi`) |
+| `--k-lens-panel-wash` | `.35` | The wash at the panel's level, where it covers everything (a share of the wash) |
+| `--k-lens-inset`, `--k-lens-panel-inset` | `2px`, `4px` | How far inside a row, and inside the panel's edge, it sits |
+| `--k-lens-flash`, `--k-lens-flash-ms` | `1`, `520` | How bright a scoped action lights it (wash, edge and an accent tint), and how long that fades |
+| `--k-armed-edge` | `.4` | How much accent an armed panel's edge takes |
+| `--k-armed-glow`, `--k-armed-glow-a` | `16`, `.14` | Its glow: blur (px) and the accent's strength |
+| `--k-title-rest` | `.6` | A resting panel's title, between `--k-label` (0) and `--k-text` (1) |
+| `--k-esc-hint-ms` | `1800` | How long `esc ↑ …` stays after the last key |
 
 ### Hint mode across the page
 
@@ -1415,7 +1456,7 @@ The package has two core exports selected through the standard `development` con
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`false` drops the scope line), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |

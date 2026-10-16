@@ -7,6 +7,7 @@
 // (or with ?nogpu) a still of soft colour stands in.
 import { angle, choice, defineControls, knob, point, springMotion } from "knobs"
 import { mountPanel } from "knobs/panel"
+import { blueNoise } from "./controls-gpu"
 import postWgsl from "./controls-post.wgsl?raw"
 import simWgsl from "./hero-ink-sim.wgsl?raw"
 import viewWgsl from "./hero-ink-view.wgsl?raw"
@@ -151,7 +152,6 @@ export function mountHeroInk(host: HTMLElement): { dispose(): void } {
   const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 
   // ── The panel ──
-  let how: "init" | "hand" | "other" = "init"
   const store = defineControls("hero-ink", schema, {
     enabled: true,
     storage: null,
@@ -225,7 +225,6 @@ export function mountHeroInk(host: HTMLElement): { dispose(): void } {
   )
   const glides = [viscosity, swirl, flow, fade, hue, curX, curY, ...look, ...phase, ...weight]
   function apply(v: ReturnType<typeof store.get>, h: "init" | "hand" | "other") {
-    how = h
     viscosity.set(v.viscosity, h)
     swirl.set(v.swirl, h)
     flow.set(v.flow, h)
@@ -1158,39 +1157,4 @@ class InkGpu {
     this.canvas.remove()
     this.device.destroy()
   }
-}
-
-/** Blue noise by repeated high-pass, ranked so it's uniform (as controls-gpu.ts makes it). */
-function blueNoise(n: number) {
-  let v = new Float32Array(n * n)
-  let seed = 7
-  const rnd = () => {
-    seed = (seed * 16807) % 2147483647
-    return seed / 2147483647
-  }
-  for (let i = 0; i < v.length; i++) v[i] = rnd()
-  const K = [0.06, 0.24, 0.4, 0.24, 0.06]
-  for (let pass = 0; pass < 3; pass++) {
-    const a = new Float32Array(v.length)
-    const b = new Float32Array(v.length)
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * v[y * n + ((x + k + n) % n)]!
-        a[y * n + x] = s
-      }
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let s = 0
-        for (let k = -2; k <= 2; k++) s += K[k + 2]! * a[((y + k + n) % n) * n + x]!
-        b[y * n + x] = v[y * n + x]! - s
-      }
-    v = b
-  }
-  const order = [...v.keys()].sort((i, j) => v[i]! - v[j]!)
-  const out = new Float32Array(v.length)
-  order.forEach((i, rank) => {
-    out[i] = (rank + 0.5) / v.length
-  })
-  return out
 }

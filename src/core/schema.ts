@@ -470,18 +470,8 @@ export function knob(
   value: number,
   options: Omit<Knob, "kind" | "value" | "step"> & { step?: number },
 ): Knob {
-  const step = options.step ?? ((options.max - options.min) / 100 || 1)
-  if (
-    ![value, options.min, options.max, step].every(Number.isFinite) ||
-    options.max < options.min ||
-    step <= 0
-  )
-    throw new Error("A knob needs finite bounds and a positive step.")
-  if (
-    options.decimals !== undefined &&
-    !(Number.isInteger(options.decimals) && options.decimals >= 0)
-  )
-    throw new Error("A knob's decimals must be a whole number.")
+  if (!Number.isFinite(value)) throw new Error("A knob needs finite bounds and a positive step.")
+  const step = bounds(options, "A knob")
   checkShortcut(options.shortcut)
   const field: Knob = { ...options, kind: "knob", value, step }
   return Object.freeze({ ...field, value: normalizeField(field, value) as number })

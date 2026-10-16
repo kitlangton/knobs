@@ -175,7 +175,7 @@ function compile(device: GPUDevice, code: string, label: string) {
  * so the values are uniform. Not void-and-cluster, but its energy sits at high frequencies, which
  * is what a dither needs.
  */
-function blueNoise(n: number) {
+export function blueNoise(n: number) {
   let v = new Float32Array(n * n)
   let seed = 7
   const rnd = () => {

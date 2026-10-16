@@ -1568,8 +1568,6 @@ export function createCustomCard(
     return card
   }
   const arrows = arrowOf
-  const quiet = (node: HTMLElement) =>
-    node.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
   const still = () =>
     doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
   /** Fills a list row: a label, a quieter detail and, with `onSelect`, a keyboard stop. */

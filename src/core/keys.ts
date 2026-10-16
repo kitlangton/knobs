@@ -197,9 +197,11 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el || typeof el.tagName !== "string") return false
   const tag = el.tagName
-  if (tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true
+  if (tag === "SELECT" || el.isContentEditable) return true
+  if (tag === "TEXTAREA") return !(el as HTMLTextAreaElement).readOnly
   return (
     tag === "INPUT" &&
+    !(el as HTMLInputElement).readOnly &&
     !["range", "checkbox", "radio", "button", "submit", "reset", "color"].includes(
       (el as HTMLInputElement).type,
     )

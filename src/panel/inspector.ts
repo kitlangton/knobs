@@ -3,7 +3,6 @@
 // overlay the elements and numbers it draws from, so both renderers place things identically.
 import { comboFromEvent, comboLabel, heldMods, matchesCombo } from "../core/keys.js"
 import {
-  same,
   toolbarShortcut,
   wrapAngle,
   type AngleField,
@@ -18,7 +17,13 @@ import {
   type VecField,
 } from "../core/schema.js"
 import { createHeaderDie, GROUP_DIE } from "./die.js"
-import type { EditorRow, RowContext } from "./editors.js"
+import {
+  gesture,
+  plainKey,
+  reducedMotion as reduced,
+  type EditorRow,
+  type RowContext,
+} from "./editors.js"
 import { rangeSmear } from "./smear.js"
 import type {
   GpuAngleRow,
@@ -31,28 +36,28 @@ import type {
 } from "./gpu/renderer.js"
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import { iconSvg } from "./icons.js"
-import { clamp, Roll, rollTarget, springEasing } from "./motion.js"
+import { clamp, springEasing } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
 import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
-import { rollingReadout, rollMs, type RollingReadout } from "./reel.js"
+import { rollingReadout, rollMs, syncPlaces, type RollingReadout } from "./reel.js"
 import {
   band as pushBand,
   carryAt,
   carrySteps,
+  drawStretch,
+  GIVE,
   moves,
+  roomOf,
+  STRETCH_HOME_S,
   stepBand,
   textGive,
   type Band,
   type Steps,
 } from "./give.js"
-import { offRow, precisionRate } from "./feel.js"
+import { giveRoom, offRow, precisionRate } from "./feel.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
-
-const plainKey = (e: KeyboardEvent) => !e.metaKey && !e.ctrlKey && !e.isComposing
-const reduced = (doc: Document) =>
-  doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
 
 function make(doc: Document) {
   return <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -60,21 +65,6 @@ function make(doc: Document) {
     if (cls) node.className = cls
     if (text !== undefined) node.textContent = text
     return node
-  }
-}
-
-/** One undo step per gesture: the first change that lands records history, the rest fold in. */
-function gesture(c: RowContext<unknown>) {
-  let committed = false
-  return {
-    start() {
-      committed = false
-    },
-    set(value: unknown) {
-      const before = c.get()
-      c.set(value, { coalesce: committed })
-      if (!same(before, c.get())) committed = true
-    },
   }
 }
 
@@ -564,7 +554,20 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
   /** The held end along the track (px) and its give; for the band, how far it has been moved. */
   let hand: Band = { at: 0, give: 0 }
   let moved = 0
-  const give = textGive(read, () => c.wake())
+  // Past the track's ends the row stretches like rubber, its far end anchored (see drawStretch).
+  const card = () =>
+    row.parentElement?.classList.contains("knobs-card") ? row.parentElement : null
+  const give = textGive(row, () => c.wake(), {
+    home: STRETCH_HOME_S,
+    draw: (px) =>
+      drawStretch(row, px, 0, { w: track.clientWidth, h: 0 }, { thin: true, unclip: card() }),
+  })
+  /** The most this gesture stretches the row: less where something would clip it. */
+  let most = GIVE
+  const fit = () => {
+    const room = roomOf(row, card())
+    most = giveRoom(Math.min(room.left, room.right) - 1, GIVE)
+  }
   const valueAt = (x: number) => f().min + clamp((x - rect!.left) / rect!.width, 0, 1) * span()
   track.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.shiftKey || event.metaKey) return
@@ -585,6 +588,7 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
     lastX = event.clientX
     startValue = shown
     moved = 0
+    fit()
     // ⌥ starts where the end is; otherwise it jumps under the pointer.
     hand = {
       at:
@@ -613,7 +617,7 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       g.set([lo, Number((lo + width).toPrecision(12))])
       return
     }
-    hand = pushBand(hand, dx, 0, rect.width)
+    hand = pushBand(hand, dx, 0, rect.width, most)
     g.set(
       withEnd(
         c.get() as readonly [number, number],
@@ -644,10 +648,11 @@ export function rangeRow(c: RowContext<RangeField>): EditorRow {
       if (panAt === undefined) {
         g.start()
         panAt = { at: ((shown[lastEnd] - f().min) / span()) * w, give: 0 }
+        fit()
         dragging = true
         row.classList.add("knobs-active")
       }
-      panAt = pushBand(panAt, dx, 0, w)
+      panAt = pushBand(panAt, dx, 0, w, most)
       g.set(
         withEnd(c.get() as readonly [number, number], lastEnd, f().min + (panAt.at / w) * span()),
       )
@@ -1000,44 +1005,6 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
   const places: DigitPlace[] = []
   let initialized = false
   let diced = false
-  const syncPlaces = (text: string, trend: number, ms: number) => {
-    const now = performance.now()
-    for (let j = 0; j < Math.max(text.length, places.length); j++) {
-      const ch = j < text.length ? text[text.length - 1 - j]! : undefined
-      const place = places[j]
-      if (ch === undefined) {
-        if (place && !place.exiting) {
-          place.exiting = true
-          place.presence.set(0, ms * 0.65, now)
-        }
-        continue
-      }
-      const digit = Number(ch)
-      if (!place) {
-        const presence = new Roll(ms > 0 ? 0 : 1)
-        if (ms > 0) presence.set(1, ms, now)
-        places[j] = {
-          ch,
-          wheel: new Roll(digit),
-          presence,
-          enterAt: now,
-          enterMs: ms,
-          exiting: false,
-        }
-        continue
-      }
-      if (place.exiting) {
-        place.exiting = false
-        place.presence.set(1, ms, now)
-      }
-      place.ch = ch
-      const target = rollTarget(place.wheel.target, digit, trend)
-      if (ms > 0) place.wheel.set(target, ms, now)
-      else place.wheel.snap(target)
-    }
-    while (places.length > text.length && places[places.length - 1]!.exiting && ms <= 0)
-      places.pop()
-  }
   const roll = el("button", "knobs-seed-roll")
   roll.type = "button"
   roll.tabIndex = -1
@@ -1159,7 +1126,7 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
     control.setAttribute("aria-valuenow", String(value))
     const ms = !initialized || instant ? 0 : diced ? DICE_ROLL_MS : rollMs(row)
     initialized = true
-    syncPlaces(String(value), diced ? 1 : Math.sign(value - previous), ms)
+    syncPlaces(places, String(value), diced ? 1 : Math.sign(value - previous), ms, 0)
     // The canvas draws the reel when the GPU renders; the hidden DOM one only keeps its width.
     const dom = ms > 0 && row.closest('[data-gpu-active="true"]') === null
     roller.update({

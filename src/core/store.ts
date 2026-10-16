@@ -227,6 +227,11 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly header?: boolean | HeaderOptions
   /**
+   * `false` drops the scope line beside the title (`Shape › Cohesion`, where keys go, and a faint
+   * `esc ↑ Shape` for where Esc goes). The focus lens and the armed frame stay.
+   */
+  readonly crumbs?: boolean
+  /**
    * `false`: no per-tab session, so a rebuilt panel doesn't take focus back to the row it last
    * had or reopen editors and folded groups. On while the store has storage.
    */
