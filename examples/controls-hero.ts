@@ -291,8 +291,9 @@ export function heroScene({ define, mount, h }: SceneKit, root: HTMLElement) {
       sample = STILL_SAMPLES
       view.render()
     } else {
+      // From the next frame, so a draw that lands mid-change (a paint) doesn't start one.
       sample = 0
-      refine()
+      refining = requestAnimationFrame(refine)
     }
   })
   // ── The still: jittered samples averaged at the full pixel ratio, then nothing ──
