@@ -181,8 +181,6 @@ export interface Theme<G extends string, I extends string, N extends string> {
   readonly ink: Readonly<Record<I, string>>
   readonly num: Readonly<Record<N, number>>
   readonly font: FontKey
-  /** The Swarm's colour scheme. */
-  readonly scheme: string
 }
 
 /** Everything the page shows at one position, resolved. */
@@ -191,8 +189,6 @@ export interface Look {
   readonly num: Readonly<Record<string, number>>
   /** Each display face's share of the title (they crossfade). */
   readonly fonts: Readonly<Record<string, number>>
-  /** Each Swarm scheme's share of its palette. */
-  readonly schemes: Readonly<Record<string, number>>
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: any theme
@@ -308,10 +304,7 @@ export function lookAt(themes: readonly AnyTheme[], x: number, light: number): L
   const c = a.font === b.font ? u : smoothstep(0.2, 0.8, u)
   fonts[a.font] = (fonts[a.font] ?? 0) + 1 - c
   fonts[b.font] = (fonts[b.font] ?? 0) + c
-  const schemes: Record<string, number> = {}
-  schemes[a.scheme] = (schemes[a.scheme] ?? 0) + 1 - u
-  schemes[b.scheme] = (schemes[b.scheme] ?? 0) + u
-  return { colors, num, fonts, schemes }
+  return { colors, num, fonts }
 }
 
 /**
@@ -349,7 +342,6 @@ export function mixLooks(a: Look, b: Look, t: number): Look {
     colors,
     num,
     fonts: mixWeights(a.fonts, b.fonts, t),
-    schemes: mixWeights(a.schemes, b.schemes, t),
   }
 }
 

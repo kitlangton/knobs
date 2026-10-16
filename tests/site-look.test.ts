@@ -61,7 +61,6 @@ describe("token interpolation", () => {
       close(look.colors.page!, parseColor(t.ground.page))
       close(look.colors.text!, parseColor(t.ink.text), 2e-3)
       expect(look.fonts[t.font]).toBeCloseTo(1, 6)
-      expect(look.schemes[t.scheme]).toBeCloseTo(1, 6)
     })
   })
 

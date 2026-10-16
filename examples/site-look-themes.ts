@@ -61,9 +61,6 @@ type Num =
   | "tTrack"
   | "tAlign"
   | "tGlow"
-  /** The Swarm's plate: its inset and corners (px). */
-  | "plate"
-  | "plateR"
 
 export type SiteTheme = Theme<Ground, Ink, Num>
 
@@ -73,7 +70,6 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Night",
     dark: true,
     font: "sans",
-    scheme: "Tactical",
     ground: {
       page: "#101012",
       card: "#1c1c1e",
@@ -135,8 +131,6 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.05,
       tAlign: 0,
       tGlow: 0,
-      plate: 0,
-      plateR: 0,
     },
   },
   {
@@ -144,7 +138,6 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Ocean",
     dark: true,
     font: "sans",
-    scheme: "Arctic",
     ground: {
       page: "#07131c",
       card: "#0d1f2b",
@@ -206,8 +199,6 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.02,
       tAlign: 0.5,
       tGlow: 0.3,
-      plate: 18,
-      plateR: 30,
     },
   },
   {
@@ -215,7 +206,6 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Synth",
     dark: true,
     font: "wide",
-    scheme: "Synthwave",
     ground: {
       page: "#13071f",
       card: "#1f0d32",
@@ -277,8 +267,6 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.035,
       tAlign: 0.5,
       tGlow: 1,
-      plate: 0,
-      plateR: 0,
     },
   },
   {
@@ -286,7 +274,6 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Brutal",
     dark: false,
     font: "mono",
-    scheme: "Thermal",
     ground: {
       page: "#f1f1ec",
       card: "#ffffff",
@@ -348,8 +335,6 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.07,
       tAlign: 0,
       tGlow: 0,
-      plate: 20,
-      plateR: 0,
     },
   },
   {
@@ -357,7 +342,6 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Paper",
     dark: false,
     font: "serif",
-    scheme: "Solar",
     ground: {
       page: "#f3ecdf",
       card: "#fbf7ef",
@@ -419,8 +403,6 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.04,
       tAlign: 0.5,
       tGlow: 0,
-      plate: 28,
-      plateR: 6,
     },
   },
 ]
