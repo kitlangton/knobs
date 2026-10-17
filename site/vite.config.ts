@@ -22,10 +22,9 @@ function examplePages(): Plugin {
       handler(html) {
         const page = html.match(/<!-- example: (\w+) -->/)?.[1]
         if (!page) return html
-        return readFileSync(resolve(examplesDir, `${page}.html`), "utf8").replace(
-          /src="\.?\/(\w+\.tsx?)"/,
-          'src="/@examples/$1"',
-        )
+        return readFileSync(resolve(examplesDir, `${page}.html`), "utf8")
+          .replace(/src="\.?\/(\w+\.tsx?)"/, 'src="/@examples/$1"')
+          .replace(/href="\.?\/([\w.-]+\.css)"/g, 'href="/@examples/$1"')
       },
     },
     // The example pages link to each other from the root (`/meta.html`); production redirects

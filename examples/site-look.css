@@ -22,26 +22,6 @@
   inherits: true;
   initial-value: 0;
 }
-@property --f-sans {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 1;
-}
-@property --f-serif {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@property --f-mono {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@property --f-wide {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
 @property --r-stage {
   syntax: "<length>";
   inherits: true;
@@ -120,58 +100,32 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* The faces share one cell and baseline, with no masks: the glow always has room to fall away.
-   Each keeps its own spring weight on interruption. They add up (plus-lighter in an isolated
-   group), so two faces halfway through a blend are as solid as one. */
+/* One SVG word, five persistent letters, one baseline. Its outline and advance change together;
+   there are no stacked words, masks, blend modes or fonts arriving halfway through a morph. */
 .mast-ink {
-  display: grid;
-  align-items: last baseline;
-  isolation: isolate;
+  position: absolute;
+  inset: 0;
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
 }
-.mast-ink > span {
-  grid-area: 1 / 1;
-  justify-self: start;
-  position: relative;
+.mast-vector {
+  position: absolute;
+  bottom: 0;
   left: calc(var(--t-align) * 100%);
   translate: calc(var(--t-align) * -100%) 0;
-  white-space: nowrap;
-  mix-blend-mode: plus-lighter;
-  /* As large as the look asks, but never wider than the column: each face is capped by its own
-     widest (weight 900, tracking at its most open), so it's continuous in every setting. */
-  font-size: min(calc(var(--t-size) * 1em), calc(var(--col) / var(--widest)));
-  font-weight: var(--t-weight);
-  letter-spacing: var(--t-track);
-  font-kerning: normal;
-  text-shadow:
-    0 0 calc(var(--t-glow) * 0.06em)
-    color-mix(in srgb, var(--accent) calc(var(--t-glow) * 80%), transparent),
-    0 0 calc(var(--t-glow) * 0.32em)
-    color-mix(in srgb, var(--accent) calc(var(--t-glow) * 55%), transparent);
-}
-.mast-ink > [data-font="sans"] {
-  --widest: 3.04;
-  opacity: var(--f-sans);
-  font-family: system-ui, -apple-system, "SF Pro Display", "Segoe UI", sans-serif;
-}
-.mast-ink > [data-font="serif"] {
-  --widest: 2.73;
-  opacity: var(--f-serif);
-  font-family: Fraunces, ui-serif, Georgia, serif;
-  font-optical-sizing: auto;
-}
-.mast-ink > [data-font="mono"] {
-  --widest: 3.09;
-  opacity: var(--f-mono);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  text-transform: uppercase;
-}
-.mast-ink > [data-font="wide"] {
-  --widest: 4.12;
-  opacity: var(--f-wide);
-  font-family: Unbounded, system-ui, sans-serif;
+  width: calc(var(--title-advance) * 1em);
+  height: 1em;
+  font-size: min(calc(var(--t-size) * 1em), calc(var(--col) / var(--title-advance)));
+  overflow: visible;
+  filter: drop-shadow(
+      0 0 calc(var(--t-glow) * 0.06em)
+        color-mix(in srgb, var(--accent) calc(var(--t-glow) * 80%), transparent)
+    )
+    drop-shadow(
+      0 0 calc(var(--t-glow) * 0.32em)
+        color-mix(in srgb, var(--accent) calc(var(--t-glow) * 55%), transparent)
+    );
 }
 
 .mast-copy {

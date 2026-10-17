@@ -1440,6 +1440,7 @@ syncRendererLinks()
 // nearest one of the other polarity, and crossing between light and dark restyles as the toggle did.
 const look = mountSiteLook({
   slot: document.getElementById("look")!,
+  title: document.querySelector<HTMLElement>(".mast-ink")!,
   panel: panelOptions(),
   onPolarity: (dark) => setTheme(dark ? "dark" : "light"),
 })

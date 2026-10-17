@@ -26,7 +26,7 @@ import {
   stepSpring,
 } from "./site-look-math"
 import { THEMES } from "./site-look-themes"
-import "./site-look.css"
+import { mountTitle, type TitleFade } from "./site-title"
 
 /** Where the resolved look is kept for the next first paint (read by controls.html). */
 const KEY = "knobs-site-look"
@@ -193,6 +193,7 @@ const targetsOf = (v: Values): Record<Num, number> => {
 export interface SiteLookOptions {
   /** Where the settings' panel goes. */
   readonly slot: HTMLElement
+  readonly title: HTMLElement
   readonly panel: MountPanelOptions
   /** Light or dark changed (the page's own `data-theme`, restyles, scenes). */
   readonly onPolarity: (dark: boolean) => void
@@ -215,6 +216,7 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 
 export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const root = document.documentElement
+  const drawTitle = mountTitle(options.title)
   let booting = true
   // Keep the rest of an existing saved look when upgrading the old numeric theme slider.
   try {
@@ -405,7 +407,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       "--raise": n.raise!.toFixed(3),
       "--flat": n.flat!.toFixed(3),
     }
-    for (const f of FACES) out[`--f-${f}`] = (look.fonts[f] ?? 0).toFixed(4)
     return out
   }
   let frameNo = 0
@@ -416,8 +417,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       root.style.setProperty(k, v)
     }
   }
-  const apply = (look: Look) => {
+  const apply = (look: Look, titleFade?: TitleFade) => {
     write(vars(look))
+    drawTitle(look, titleFade)
     write({ "--look-name": JSON.stringify(caption()) })
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
@@ -491,15 +493,17 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       ink.v = 0
     } else settled = false
     let look = resolve(Math.min(1, Math.max(0, ink.x)))
+    let titleFade: TitleFade | undefined
     if (fade) {
       fade.k = Math.min(1, fade.k + dt / FADE)
       const k = fade.k
+      titleFade = { from: fade.from, to: look, at: k }
       look = mixLooks(fade.from, look, k * k * (3 - 2 * k))
       if (k >= 1) fade = null
       settled = false
     }
     current = look
-    apply(look)
+    apply(look, titleFade)
     if (!settled) {
       raf = requestAnimationFrame(frame)
       return
@@ -512,7 +516,12 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const keep = () => {
     const text = [...written].map(([k, v]) => `${k}:${v}`).join(";")
     try {
-      localStorage.setItem(KEY, JSON.stringify({ css: text, dark }))
+      const svg = options.title.querySelector<SVGSVGElement>("svg")!
+      const title = {
+        advance: Number(svg.style.getPropertyValue("--title-advance")),
+        paths: [...svg.querySelectorAll("path")].map((p) => p.getAttribute("d")),
+      }
+      localStorage.setItem(KEY, JSON.stringify({ css: text, dark, title }))
     } catch {}
   }
 
