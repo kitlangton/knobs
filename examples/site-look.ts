@@ -5,21 +5,29 @@
 // loop springs every setting toward the store's value and writes the result to the root as custom
 // properties, which the page (site-look.css), every knobs panel in both renderers and the title's
 // faces read; it sleeps at rest. Under the hand a row follows 1:1; presets, keys, Random, undo and
-// the top bar's light/dark toggle glide on a duration spring with no bounce (Speed scales it), and
+// appearance changes glide on a duration spring with no bounce (Speed scales it), and
 // with reduced motion fade straight there instead. The values persist with the store; the look
 // they resolve to is kept too, so the next load paints it before any script (controls.html).
 import { type ChangeMeta, choice, color, defineControls, knob, type MountPanelOptions } from "knobs"
 import { mountPanel } from "knobs/panel"
 import { dress, labOf, type Settings } from "./site-dress"
 import {
+  APPEARANCE_KEY,
+  APPEARANCES,
+  type Appearance,
+  appearanceAfterChange,
+  appearanceDark,
+  appearanceLook,
+  appearanceOf,
+  nextAppearance,
+  readAppearance,
+} from "./site-appearance"
+import {
   css,
-  darkAt,
   type FontKey,
   type Look,
   lerp,
-  lookAt,
   mixLooks,
-  nearestTheme,
   type Rgba,
   roundPx,
   segment,
@@ -53,6 +61,12 @@ const schema = {
     label: "Theme",
     display: "segmented",
     labels: Object.fromEntries(THEMES.map((t) => [t.id, t.name])),
+  }),
+  appearance: choice("system", APPEARANCES, {
+    label: "Appearance",
+    display: "segmented",
+    labels: { system: "System", light: "Light", dark: "Dark" },
+    random: false,
   }),
   accent: color("#ffffff", { label: "Accent", tab: "look" }),
   contrast: knob(0, { min: -0.5, max: 1, step: 0.01, decimals: 2, label: "Contrast", tab: "look" }),
@@ -91,7 +105,7 @@ const schema = {
 }
 type Values = { [K in keyof typeof schema]: (typeof schema)[K]["value"] }
 
-/** Complete looks: a theme and everything over it. Night is the defaults, the page as it was. */
+/** Complete looks, except the independent appearance preference. Night is the default look. */
 const PRESETS: Record<string, Partial<Values>> = {
   Editorial: {
     theme: "ocean",
@@ -197,11 +211,14 @@ export interface SiteLookOptions {
   readonly panel: MountPanelOptions
   /** Light or dark changed (the page's own `data-theme`, restyles, scenes). */
   readonly onPolarity: (dark: boolean) => void
+  readonly onAppearance?: (appearance: Appearance) => void
 }
 
 export interface SiteLook {
-  /** Glides the theme to the nearest one of the other polarity. */
+  /** Cycles System → Light → Dark without changing the theme. */
   toggle(): void
+  setAppearance(appearance: Appearance): void
+  readonly appearance: Appearance
   /** Chooses the theme nearest `x` at once, outside the undo history (for scripts). */
   jump(x: number): void
   readonly dark: boolean
@@ -217,6 +234,11 @@ const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)")
 export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const root = document.documentElement
   const drawTitle = mountTitle(options.title)
+  const systemQuery = matchMedia("(prefers-color-scheme: dark)")
+  let appearance = readAppearance()
+  try {
+    localStorage.setItem(APPEARANCE_KEY, appearance)
+  } catch {}
   let booting = true
   // Keep the rest of an existing saved look when upgrading the old numeric theme slider.
   try {
@@ -232,15 +254,30 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     defaultLabel: THEMES[0]!.name,
     presets: PRESETS,
     onChange(patch, values, meta) {
-      if (!booting) drive(patch as Partial<Values>, values as Values, meta)
+      if (booting) return
+      if ("appearance" in patch) {
+        const next = appearanceAfterChange(appearance, values.appearance, meta.source)
+        if (next !== values.appearance) {
+          // Presets/reset contain complete values. Restore this independent preference before
+          // the next paint, without adding another undo entry.
+          queueMicrotask(() => store.sync({ appearance }))
+        }
+        if (next !== appearance) {
+          appearance = next
+          try {
+            localStorage.setItem(APPEARANCE_KEY, appearance)
+          } catch {}
+          options.onAppearance?.(appearance)
+        }
+      }
+      drive(patch as Partial<Values>, values as Values, meta)
     },
   })
 
   // ── State: each number a spring toward the store, the inks' polarity, the face, a fade ──
-  const values0 = store.get()
-  // A first visit asking for light (?theme=light) starts at the nearest light theme.
-  if (values0.theme === "night" && root.dataset.theme === "light" && !localStorage.getItem(KEY))
-    store.sync({ theme: themeAt(nearestTheme(THEMES, 0, false)) })
+  store.get()
+  store.sync({ appearance })
+  store.lock("appearance", true)
   let targets = targetsOf(store.get())
   const springs = Object.fromEntries(
     Object.entries(targets).map(([k, x]) => [k, { x, v: 0 }]),
@@ -248,7 +285,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   /** Rows under the hand, and those it has caught up with. */
   const hand = new Set<Num>()
   const caught = new Set<Num>()
-  let dark = darkAt(THEMES, targets.theme)
+  let dark = appearanceDark(appearance, systemQuery.matches)
+  let modeTarget = dark ? 0 : 1
+  const ground = { x: modeTarget, v: 0 }
   const ink = { x: dark ? 0 : 1, v: 0 }
   // All faces keep their own position and velocity, even when a third is picked mid-transition.
   const faceTargets = (values: Values) => {
@@ -280,6 +319,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     const byHand =
       meta.source === "local" && (root.hasAttribute("data-knobs-scrub") || meta.coalesce === true)
     targets = targetsOf(values)
+    modeTarget = appearanceDark(appearance, systemQuery.matches) ? 0 : 1
     for (const k of keysOf(patch)) {
       if (byHand) {
         if (!hand.has(k)) caught.delete(k)
@@ -289,6 +329,10 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     wantedFaces = faceTargets(values)
     if (!byHand && reducedQuery.matches) {
       fade = { from: current, k: 0 }
+      ground.x = modeTarget
+      ground.v = 0
+      ink.x = modeTarget
+      ink.v = 0
       for (const k of Object.keys(springs) as Num[]) {
         springs[k].x = targets[k]
         springs[k].v = 0
@@ -318,8 +362,8 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       width: n("width"),
     }
   }
-  const resolve = (light: number): Look => {
-    const base = lookAt(THEMES, springs.theme.x, light)
+  const resolve = (light: number, groundLight = ground.x): Look => {
+    const base = appearanceLook(springs.theme.x, groundLight, light)
     const fonts: Record<string, number> = {}
     // A retargeted spring may briefly overshoot. Keep the total coverage at one without
     // dropping any face, so the title never flashes brighter or dimmer on interruption.
@@ -331,7 +375,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
 
   // ── Writing a look: custom properties on the root, only those that changed ──
   const written = new Map<string, string>()
-  const vars = (look: Look) => {
+  const vars = (look: Look, modeDark = dark) => {
     const c = look.colors
     const n = look.num
     const col = (k: string) => css(c[k] as Rgba)
@@ -340,7 +384,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     const K = n.shadowK!
     const a = (x: number) => Math.min(1, x * K).toFixed(3)
     const out: Record<string, string> = {
-      "color-scheme": dark ? "dark" : "light",
+      "color-scheme": modeDark ? "dark" : "light",
       "--page": col("page"),
       "--card": col("card"),
       "--night": col("night"),
@@ -481,7 +525,12 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         s.v = 0
       } else settled = false
     }
-    const nextDark = darkAt(THEMES, springs.theme.x, dark)
+    stepSpring(ground, modeTarget, GLIDE / store.get().speed, dt)
+    if (Math.abs(ground.x - modeTarget) < 1e-4 && Math.abs(ground.v) < 1e-3) {
+      ground.x = modeTarget
+      ground.v = 0
+    } else settled = false
+    const nextDark = ground.x < (dark ? 0.53 : 0.47)
     if (nextDark !== dark) {
       dark = nextDark
       options.onPolarity(dark)
@@ -521,7 +570,25 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         advance: Number(svg.style.getPropertyValue("--title-advance")),
         paths: [...svg.querySelectorAll("path")].map((p) => p.getAttribute("d")),
       }
-      localStorage.setItem(KEY, JSON.stringify({ css: text, dark, title }))
+      const snapshot = (isDark: boolean) => {
+        const light = isDark ? 0 : 1
+        const tokens = {
+          ...vars(resolve(light, light), isDark),
+          "--look-name": JSON.stringify(caption()),
+        }
+        return Object.entries(tokens)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(";")
+      }
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          css: text,
+          dark,
+          title,
+          modes: { dark: snapshot(true), light: snapshot(false) },
+        }),
+      )
     } catch {}
   }
 
@@ -543,11 +610,28 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     header: { buttons: ["undo", "redo", "reset", "random"] },
   })
   booting = false
+  options.onAppearance?.(appearance)
+  // A fixed Light/Dark preference ignores OS changes. System follows them live.
+  systemQuery.addEventListener("change", () => {
+    if (appearance === "system") drive({}, store.get(), { source: "remote" })
+  })
+  window.addEventListener("storage", (event) => {
+    if (event.key !== APPEARANCE_KEY) return
+    appearance = appearanceOf(event.newValue)
+    store.sync({ appearance })
+    options.onAppearance?.(appearance)
+    drive({}, store.get(), { source: "remote" })
+  })
 
   return {
     toggle() {
-      const i = nearestTheme(THEMES, springs.theme.x, !dark)
-      if (i >= 0) store.set({ theme: themeAt(i) })
+      store.set({ appearance: nextAppearance(appearance) })
+    },
+    setAppearance(value) {
+      store.set({ appearance: value })
+    },
+    get appearance() {
+      return appearance
     },
     jump(x) {
       booting = true

@@ -3,7 +3,7 @@
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
 // and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
-// DOM, ?theme=light starts light. ⌘K lists the page's sections and controls; ` hides and shows
+// DOM, ?appearance=light starts light. ⌘K lists the page's sections and controls; ` hides and shows
 // every panel.
 import {
   action,
@@ -78,6 +78,7 @@ import { objectScene } from "./controls-scene-object"
 import skyWgsl from "./controls-sky.wgsl?raw"
 import { uiSections } from "./controls-ui"
 import { mountSiteLook } from "./site-look"
+import { type Appearance, readAppearance } from "./site-appearance"
 import { speakerToggle } from "./sound-toggle"
 
 await initGpu()
@@ -1401,8 +1402,11 @@ overlayLook({ theme })
 tooltips(document)
 
 const themeButton = document.getElementById("theme") as HTMLButtonElement
-const syncThemeButton = () => {
-  themeButton.textContent = theme === "dark" ? "☾" : "☀"
+const syncThemeButton = (appearance: Appearance = readAppearance()) => {
+  themeButton.textContent = appearance === "system" ? "◐" : appearance === "dark" ? "☾" : "☀"
+  const name = appearance === "system" ? `System (${theme})` : appearance
+  themeButton.setAttribute("aria-label", `Appearance: ${name}. Click to cycle System, Light, Dark.`)
+  themeButton.dataset.tip = `Appearance: ${name}. System → Light → Dark`
 }
 function setTheme(next: "dark" | "light") {
   theme = next
@@ -1410,10 +1414,6 @@ function setTheme(next: "dark" | "light") {
   for (const el of document.querySelectorAll<HTMLElement>(".knobs-ui,.knobs-panel"))
     if (!el.closest("[data-own-look]")) restyle(el, { theme: next })
   overlayLook({ theme: next })
-  const url = new URL(location.href)
-  if (next === "light") url.searchParams.set("theme", "light")
-  else url.searchParams.delete("theme")
-  history.replaceState(null, "", url)
   syncThemeButton()
   syncRendererLinks()
 }
@@ -1436,13 +1436,23 @@ function syncRendererLinks() {
 }
 syncRendererLinks()
 
-// The header's panel: the whole page's settings. The top bar's toggle glides its theme to the
-// nearest one of the other polarity, and crossing between light and dark restyles as the toggle did.
+// The header runs the page. Appearance is an independent, persistent preference;
+// the top bar cycles System/Light/Dark without selecting a different theme.
 const look = mountSiteLook({
   slot: document.getElementById("look")!,
   title: document.querySelector<HTMLElement>(".mast-ink")!,
   panel: panelOptions(),
   onPolarity: (dark) => setTheme(dark ? "dark" : "light"),
+  onAppearance: (appearance) => {
+    const url = new URL(location.href)
+    url.searchParams.delete("theme")
+    if (appearance === "system") url.searchParams.delete("appearance")
+    else url.searchParams.set("appearance", appearance)
+    history.replaceState(null, "", url)
+    document.documentElement.dataset.appearance = appearance
+    syncThemeButton(appearance)
+    syncRendererLinks()
+  },
 })
 
 // The side index and the narrow strip, following the scroll.
@@ -1660,13 +1670,13 @@ const commands = (): Command[] => [
     hint: sec.cat,
     run: () => jump(sec.el)(new Event("click")),
   })),
-  {
-    id: "page/theme",
-    label: theme === "dark" ? "Light appearance" : "Dark appearance",
+  ...(["system", "light", "dark"] as const).map((appearance) => ({
+    id: `page/appearance/${appearance}`,
+    label: `${appearance[0]!.toUpperCase()}${appearance.slice(1)} appearance`,
     section: "Page",
-    keywords: ["theme", "dark", "light", "look"],
-    run: () => look.toggle(),
-  },
+    keywords: ["appearance", "dark", "light", "system", "OS"],
+    run: () => look.setAppearance(appearance),
+  })),
   {
     id: "page/toggle",
     label: "Show or hide the panels",

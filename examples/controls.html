@@ -17,15 +17,26 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://knobs.kitlangton.com/og.jpg" />
     <script>
-      if (new URLSearchParams(location.search).get("theme") === "light")
-        document.documentElement.dataset.theme = "light"
-      // The header knob's last look (site-look.ts), painted before anything else.
+      // Appearance is independent of the look. System is the default, including on a
+      // returning visit after the OS changed; both resting palettes are cached below.
+      let appearance = "system"
+      try {
+        const query = new URLSearchParams(location.search).get("appearance")
+        const saved = ["system", "light", "dark"].includes(query)
+          ? query : localStorage.getItem("knobs-site-appearance")
+        if (["system", "light", "dark"].includes(saved)) appearance = saved
+      } catch {}
+      const dark = appearance === "system"
+        ? matchMedia("(prefers-color-scheme: dark)").matches
+        : appearance === "dark"
+      document.documentElement.dataset.theme = dark ? "dark" : "light"
+      document.documentElement.dataset.appearance = appearance
       try {
         const look = JSON.parse(localStorage.getItem("knobs-site-look") || "null")
-        if (look && typeof look.css === "string") {
-          document.documentElement.setAttribute("style", look.css)
+        const css = look?.modes?.[dark ? "dark" : "light"] || (look?.dark === dark ? look?.css : null)
+        if (typeof css === "string") {
+          document.documentElement.setAttribute("style", css)
           document.documentElement.dataset.siteLook = ""
-          document.documentElement.dataset.theme = look.dark ? "dark" : "light"
         }
       } catch {}
     </script>
