@@ -307,6 +307,25 @@ export function lookAt(themes: readonly AnyTheme[], x: number, light: number): L
   return { colors, num, fonts }
 }
 
+/** A direct mixture, not a position in the theme list. Unselected themes contribute nothing. */
+export function blendThemes(themes: readonly AnyTheme[], shares: readonly number[]): Look {
+  const positive = themes.map((_, i) => Math.max(0, shares[i] ?? 0))
+  const total = positive.reduce((sum, w) => sum + w, 0)
+  const weights = positive.map((w, i) => (total ? w / total : i === 0 ? 1 : 0))
+  const labs = prepare(themes)
+  const colors: Record<string, Rgba> = {}
+  for (const group of [labs.ground, labs.ink])
+    for (const key of Object.keys(group)) colors[key] = mixLab(group[key]!, weights)
+  const num: Record<string, number> = {}
+  for (const key of Object.keys(themes[0]!.num))
+    num[key] = themes.reduce((sum, t, i) => sum + t.num[key] * weights[i]!, 0)
+  const fonts: Record<string, number> = {}
+  themes.forEach((t, i) => {
+    fonts[t.font] = (fonts[t.font] ?? 0) + weights[i]!
+  })
+  return { colors, num, fonts }
+}
+
 /**
  * Where two faces meet at `x`: the next theme's face wipes in from the left over the segment's
  * middle (`at`, 0–1 across the title), the last one's out to the right. Null with one face.

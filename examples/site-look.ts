@@ -30,7 +30,6 @@ import {
   mixLooks,
   type Rgba,
   roundPx,
-  segment,
   stepSpring,
 } from "./site-look-math"
 import { THEMES } from "./site-look-themes"
@@ -39,7 +38,7 @@ import { mountTitle, type TitleFade } from "./site-title"
 /** Where the resolved look is kept for the next first paint (read by controls.html). */
 const KEY = "knobs-site-look"
 /** Glides (presets, keys, Random, the toggle), s at Speed 1, bounce 0. */
-const GLIDE = 0.6
+const GLIDE = 0.4
 /** The hand catching a row up when it takes over mid-glide: Kit's "instant". */
 const CATCH = 0.1
 /**
@@ -178,10 +177,9 @@ const NUMS = [
   "density",
   "width",
 ] as const
-type Num = (typeof NUMS)[number] | "theme" | "aL" | "aA" | "aB"
+type Num = (typeof NUMS)[number] | "aL" | "aA" | "aB"
 /** How close a row must be to count as caught up (or settled), in its own units. */
 const EPS: Record<Num, number> = {
-  theme: 0.012,
   contrast: 0.005,
   grain: 0.005,
   size: 0.5,
@@ -199,7 +197,7 @@ const EPS: Record<Num, number> = {
 
 const targetsOf = (v: Values): Record<Num, number> => {
   const [aL, aA, aB] = labOf(v.accent)
-  const out = { aL, aA, aB, theme: THEME_IDS.indexOf(v.theme) } as Record<Num, number>
+  const out = { aL, aA, aB } as Record<Num, number>
   for (const k of NUMS) out[k] = v[k]
   return out
 }
@@ -282,6 +280,11 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const springs = Object.fromEntries(
     Object.entries(targets).map(([k, x]) => [k, { x, v: 0 }]),
   ) as Record<Num, { x: number; v: number }>
+  // Themes are destinations, not stops along a numeric slider. Each share retains its
+  // velocity when a third look is selected, without ever visiting an unrelated palette.
+  const themeTargets = (v: Values) => THEME_IDS.map((id) => (id === v.theme ? 1 : 0))
+  let wantedThemes = themeTargets(store.get())
+  const themes = wantedThemes.map((x) => ({ x, v: 0 }))
   /** Rows under the hand, and those it has caught up with. */
   const hand = new Set<Num>()
   const caught = new Set<Num>()
@@ -307,11 +310,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
 
   const keysOf = (patch: Partial<Values>): Num[] =>
     Object.keys(patch).flatMap((k) =>
-      k === "accent"
-        ? (["aL", "aA", "aB"] as Num[])
-        : k === "theme" || NUMS.includes(k as never)
-          ? [k as Num]
-          : [],
+      k === "accent" ? (["aL", "aA", "aB"] as Num[]) : NUMS.includes(k as never) ? [k as Num] : [],
     )
 
   function drive(patch: Partial<Values>, values: Values, meta: ChangeMeta) {
@@ -319,6 +318,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     const byHand =
       meta.source === "local" && (root.hasAttribute("data-knobs-scrub") || meta.coalesce === true)
     targets = targetsOf(values)
+    wantedThemes = themeTargets(values)
     modeTarget = appearanceDark(appearance, systemQuery.matches) ? 0 : 1
     for (const k of keysOf(patch)) {
       if (byHand) {
@@ -333,6 +333,10 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       ground.v = 0
       ink.x = modeTarget
       ink.v = 0
+      themes.forEach((s, i) => {
+        s.x = wantedThemes[i]!
+        s.v = 0
+      })
       for (const k of Object.keys(springs) as Num[]) {
         springs[k].x = targets[k]
         springs[k].v = 0
@@ -363,7 +367,11 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     }
   }
   const resolve = (light: number, groundLight = ground.x): Look => {
-    const base = appearanceLook(springs.theme.x, groundLight, light)
+    const base = appearanceLook(
+      themes.map((s) => s.x),
+      groundLight,
+      light,
+    )
     const fonts: Record<string, number> = {}
     // A retargeted spring may briefly overshoot. Keep the total coverage at one without
     // dropping any face, so the title never flashes brighter or dimmer on interruption.
@@ -464,7 +472,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   const apply = (look: Look, titleFade?: TitleFade) => {
     write(vars(look))
     drawTitle(look, titleFade)
-    write({ "--look-name": JSON.stringify(caption()) })
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
     document.dispatchEvent(
@@ -472,15 +479,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     )
     // Readouts drawn on canvases take the new colours, every few frames while it moves.
     if (frameNo++ % 6 === 0) restyleReadouts()
-  }
-  /** The theme's name, or the two it's between and how far. */
-  const caption = () => {
-    const { i, u } = segment(THEMES.length, springs.theme.x)
-    const a = THEMES[i]!.name
-    const b = THEMES[i + 1]!.name
-    if (u < 0.005) return a
-    if (u > 0.995) return b
-    return `${a} ${Math.round((1 - u) * 100)} · ${b} ${Math.round(u * 100)}`
   }
   const restyleReadouts = () => {
     for (const el of document.querySelectorAll(".knobs-rd-spark,.knobs-rd-graph,.knobs-rd-meter"))
@@ -522,6 +520,14 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       stepSpring(s, wantedFaces[f], glide, dt)
       if (Math.abs(wantedFaces[f] - s.x) < 1e-4 && Math.abs(s.v) < 1e-3) {
         s.x = wantedFaces[f]
+        s.v = 0
+      } else settled = false
+    }
+    for (const [i, s] of themes.entries()) {
+      const to = wantedThemes[i]!
+      stepSpring(s, to, glide, dt)
+      if (Math.abs(s.x - to) < 1e-5 && Math.abs(s.v) < 1e-4) {
+        s.x = to
         s.v = 0
       } else settled = false
     }
@@ -572,10 +578,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       }
       const snapshot = (isDark: boolean) => {
         const light = isDark ? 0 : 1
-        const tokens = {
-          ...vars(resolve(light, light), isDark),
-          "--look-name": JSON.stringify(caption()),
-        }
+        const tokens = vars(resolve(light, light), isDark)
         return Object.entries(tokens)
           .map(([k, v]) => `${k}:${v}`)
           .join(";")
@@ -638,8 +641,11 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       store.sync({ theme: themeAt(x) })
       booting = false
       targets = targetsOf(store.get())
-      springs.theme.x = targets.theme
-      springs.theme.v = 0
+      wantedThemes = themeTargets(store.get())
+      themes.forEach((s, i) => {
+        s.x = wantedThemes[i]!
+        s.v = 0
+      })
       wantedFaces = faceTargets(store.get())
       for (const f of FACES) {
         faces[f].x = wantedFaces[f]

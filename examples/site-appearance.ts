@@ -3,6 +3,7 @@
 import type { ChangeMeta } from "knobs"
 import {
   css,
+  blendThemes,
   crossL,
   fromOklab,
   lerp,
@@ -85,11 +86,17 @@ export const LIGHT_THEMES = THEMES.map((t) => (t.dark ? counterpart(t) : t))
 const GROUND_KEYS = new Set(["page", "card", "night", "kBg", "kPage"])
 
 /** A theme in either appearance. Only an appearance change crosses the pivot grey. */
-export function appearanceLook(x: number, light: number, inkLight = light): Look {
-  if (light === 0 && inkLight === 0) return lookAt(DARK_THEMES, x, 0)
-  if (light === 1 && inkLight === 1) return lookAt(LIGHT_THEMES, x, 1)
-  const a = lookAt(DARK_THEMES, x, 0)
-  const b = lookAt(LIGHT_THEMES, x, 1)
+export function appearanceLook(
+  theme: number | readonly number[],
+  light: number,
+  inkLight = light,
+): Look {
+  const at = (themes: readonly SiteTheme[], mode: number) =>
+    typeof theme === "number" ? lookAt(themes, theme, mode) : blendThemes(themes, theme)
+  if (light === 0 && inkLight === 0) return at(DARK_THEMES, 0)
+  if (light === 1 && inkLight === 1) return at(LIGHT_THEMES, 1)
+  const a = at(DARK_THEMES, 0)
+  const b = at(LIGHT_THEMES, 1)
   const colors: Record<string, Rgba> = {}
   for (const key of Object.keys(a.colors)) {
     const ca = a.colors[key]!

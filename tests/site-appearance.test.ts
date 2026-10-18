@@ -10,8 +10,8 @@ import {
   nextAppearance,
 } from "../examples/site-appearance"
 import { dress, NEUTRAL } from "../examples/site-dress"
-import { contrast, luminance, over } from "../examples/site-look-math"
-import { THEMES } from "../examples/site-look-themes"
+import { blendThemes, contrast, luminance, over } from "../examples/site-look-math"
+import { type SiteTheme, THEMES } from "../examples/site-look-themes"
 
 describe("independent appearance preference", () => {
   it("defaults to System and follows both OS states", () => {
@@ -49,6 +49,31 @@ describe("independent appearance preference", () => {
 })
 
 describe("paired theme palettes", () => {
+  it("moves directly between selected themes, ignoring palettes between them in the list", () => {
+    for (const palettes of [DARK_THEMES, LIGHT_THEMES]) {
+      const shares = [0.35, 0, 0, 0, 0.65]
+      const direct = blendThemes(palettes, shares)
+      // An unrelated theme's colours, type and geometry must not leak into this transition.
+      const changed = palettes.map((theme, i) =>
+        i > 0 && i < 4
+          ? {
+              ...theme,
+              ground: Object.fromEntries(Object.keys(theme.ground).map((k) => [k, "#ff00ff"])),
+              num: Object.fromEntries(Object.keys(theme.num).map((k) => [k, 999])),
+            }
+          : theme,
+      )
+      expect(blendThemes(changed, shares)).toEqual(direct)
+      for (const key of Object.keys(direct.num) as (keyof SiteTheme["num"])[])
+        expect(direct.num[key]).toBeCloseTo(
+          palettes[0]!.num[key] * 0.35 + palettes[4]!.num[key] * 0.65,
+          8,
+        )
+      const mode = palettes === DARK_THEMES ? 0 : 1
+      expect(appearanceLook(shares, mode)).toEqual(direct)
+    }
+  })
+
   it("gives every theme both appearances without changing its typography or geometry", () => {
     THEMES.forEach((theme, i) => {
       expect(DARK_THEMES[i]!.id).toBe(theme.id)

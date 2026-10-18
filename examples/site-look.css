@@ -70,7 +70,8 @@
   --col: calc(100cqi - var(--knob-w) - var(--gap));
   --mast: clamp(72px, calc(var(--col) * 0.29), 236px);
   container-type: inline-size;
-  max-width: calc(var(--page-w, 1180px) + 200px);
+  /* The control surface must not move under the pointer when it changes page width. */
+  max-width: 1380px;
   margin: 0 auto calc(8px * var(--density, 1));
   padding: clamp(24px, 3.4vw, 52px) clamp(20px, 4vw, 56px) clamp(28px, 3vw, 44px);
   display: grid;
@@ -130,7 +131,7 @@
 
 .mast-copy {
   grid-area: copy;
-  align-self: end;
+  align-self: start;
   padding-top: clamp(18px, 2vw, 28px);
 }
 .mast-sub {
@@ -142,30 +143,20 @@
   letter-spacing: var(--body-track, 0em);
   text-wrap: pretty;
 }
-.mast-now::before {
-  content: var(--look-name, "Night");
-}
-.mast-now {
-  margin: 12px 0 0;
-  color: var(--kicker);
-  font: 600 10.5px / 1 var(--sans);
-  letter-spacing: var(--cat-track);
-  text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 /* The panel: a real one, a little larger. Its rows and type are set here, so both renderers draw
    it so. It holds the height of its tallest tab, before it mounts too, so nothing below moves. */
 .mast-knob {
   grid-area: knob;
   align-self: start;
   min-width: 0;
-  min-height: 404px;
+  min-height: 444px;
   --k-row: 38px;
   --k-font-size: 13px;
 }
 .mast-knob .knobs-panel {
   --k-width: 100%;
+  /* One editing surface, including on the shorter Shape and Space tabs. */
+  min-height: 444px;
 }
 @media (max-width: 820px) {
   .masthead {
