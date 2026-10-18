@@ -1386,7 +1386,7 @@ category("Matching your app")
     return host
   }
   const a = cell("knobs")
-  const b = cell("labPreset", "lab-host")
+  const b = cell("labPreset")
   const c = cell("knobs · flat frame", "flat-host")
   b.dataset.ownLook = ""
   s.slot.append(looks)
