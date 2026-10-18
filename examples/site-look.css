@@ -62,7 +62,7 @@
 
 /* ── The masthead: the page's front door ── */
 /* The title over its copy on the left, the panel that runs the page on the right, its top on the
-   title's and the copy's foot on its own, all over one rule. The title is sized from its column
+   title's, all over one rule. The title is sized from its column
    (the masthead is a container), so no face, size or width setting can push it under the panel. */
 .masthead {
   --knob-w: clamp(400px, 34cqi, 460px);
@@ -85,7 +85,7 @@
   grid-area: title;
   position: relative;
   margin: 0;
-  height: calc(var(--mast) * 0.84);
+  height: calc(var(--mast) * 0.88);
   display: grid;
   align-content: end;
   font-size: var(--mast);
@@ -101,8 +101,8 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* One SVG word, five persistent letters, one baseline. Its outline and advance change together;
-   there are no stacked words, masks, blend modes or fonts arriving halfway through a morph. */
+/* One SVG word on a fixed left edge and baseline. A face replacement uses this same word,
+   never a second overlapping text layer. */
 .mast-ink {
   position: absolute;
   inset: 0;
@@ -113,34 +113,26 @@
 .mast-vector {
   position: absolute;
   bottom: 0;
-  left: calc(var(--t-align) * 100%);
-  translate: calc(var(--t-align) * -100%) 0;
+  left: 0;
+  transform-origin: left bottom;
   width: calc(var(--title-advance) * 1em);
   height: 1em;
   font-size: min(calc(var(--t-size) * 1em), calc(var(--col) / var(--title-advance)));
   overflow: visible;
-  filter: drop-shadow(
-      0 0 calc(var(--t-glow) * 0.06em)
-        color-mix(in srgb, var(--accent) calc(var(--t-glow) * 80%), transparent)
-    )
-    drop-shadow(
-      0 0 calc(var(--t-glow) * 0.32em)
-        color-mix(in srgb, var(--accent) calc(var(--t-glow) * 55%), transparent)
-    );
 }
 
 .mast-copy {
   grid-area: copy;
   align-self: start;
-  padding-top: clamp(18px, 2vw, 28px);
+  padding-top: 28px;
 }
 .mast-sub {
   margin: 0;
-  max-width: 36ch;
+  max-width: 34ch;
   color: var(--label);
-  font-size: calc(16px * var(--bs, 1));
-  line-height: 1.45;
-  letter-spacing: var(--body-track, 0em);
+  font-size: 18px;
+  line-height: 1.55;
+  letter-spacing: -0.015em;
   text-wrap: pretty;
 }
 /* The panel: a real one, a little larger. Its rows and type are set here, so both renderers draw
@@ -157,6 +149,9 @@
   --k-width: 100%;
   /* One editing surface, including on the shorter Shape and Space tabs. */
   min-height: 444px;
+}
+.mast-knob .knobs-card {
+  min-height: calc(var(--k-row) * 8);
 }
 @media (max-width: 820px) {
   .masthead {

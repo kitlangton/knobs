@@ -72,6 +72,10 @@ function counterpart(theme: SiteTheme): SiteTheme {
         : 0.12 + (1 - L) * 0.08
     ink[key] = css(fromOklab(lightness, a, b, c[3]))
   }
+  if (dark) {
+    const rim = parseColor(ink.kRim)
+    ink.kRim = css([rim[0], rim[1], rim[2], Math.min(rim[3], 0.1)])
+  }
   ink.kThumb = "#ffffff"
   return {
     ...theme,

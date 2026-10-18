@@ -121,18 +121,26 @@ def fallback(output):
     letters = output["sans"][2]["letters"]  # Night, weight 650.
     cursor = 0
     paths = []
+    left = math.inf
+    right = -math.inf
+    top = math.inf
     for i, letter in enumerate(letters):
         contours = []
         for points in letter["contours"]:
+            left = min(left, min(p[0] + cursor for p in points))
+            right = max(right, max(p[0] + cursor for p in points))
+            top = min(top, min(p[1] for p in points))
             contours.append("".join(f"{'M' if j == 0 else 'L'}{x + cursor:.4f} {y:.4f}" for j, (x, y) in enumerate(points)) + "Z")
         paths.append(f'<path d="{"".join(contours)}"/>')
         if i < 4:
-            right = max(p[0] for p in letter["contours"][0])
-            left = min(p[0] for p in letters[i + 1]["contours"][0])
-            cursor += max(letter["advance"] - 0.05, right - left + 0.035)
+            ink_right = max(p[0] for p in letter["contours"][0])
+            next_left = min(p[0] for p in letters[i + 1]["contours"][0])
+            cursor += max(letter["advance"] - 0.05, ink_right - next_left + 0.035)
         else:
             cursor += letter["advance"]
-    svg = f'<svg class="mast-vector" aria-hidden="true" fill="currentColor" fill-rule="evenodd" viewBox="0 -1 {cursor:.5f} 1" style="--title-advance:{cursor:.5f}">{"".join(paths)}</svg>'
+    em = -top / 0.78
+    width = right - left
+    svg = f'<svg class="mast-vector" aria-hidden="true" fill="currentColor" fill-rule="evenodd" viewBox="{left} {-em} {width} {em}" style="--title-advance:{width / em:.5f}">{"".join(paths)}</svg>'
     html = ROOT / "examples" / "controls.html"
     text = html.read_text()
     text, count = re.subn(r"<!-- title-outline:start -->.*?<!-- title-outline:end -->", f"<!-- title-outline:start -->{svg}<!-- title-outline:end -->", text, flags=re.S)

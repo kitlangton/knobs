@@ -1,4 +1,4 @@
-// While a row with options is focused (a choice, a curve's or easing's presets), tiny digit hints
+// During keyboard navigation, while a row with options is focused (a choice, a curve's or easing's presets), tiny digit hints
 // in hint mode's look sit on its options: 1–9 pick them. They fade in once focus settles on the
 // row (so running down the rows doesn't flash them) and fade out when it moves on; the GPU draws
 // the same badges from this layer (`data-shown` is the moment both fade by).

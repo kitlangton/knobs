@@ -33,7 +33,7 @@ import {
   stepSpring,
 } from "./site-look-math"
 import { THEMES } from "./site-look-themes"
-import { mountTitle, type TitleFade } from "./site-title"
+import { mountTitle } from "./site-title"
 
 /** Where the resolved look is kept for the next first paint (read by controls.html). */
 const KEY = "knobs-site-look"
@@ -108,13 +108,13 @@ type Values = { [K in keyof typeof schema]: (typeof schema)[K]["value"] }
 const PRESETS: Record<string, Partial<Values>> = {
   Editorial: {
     theme: "ocean",
-    accent: "#e9b75c",
+    accent: "#c0ad8a",
     contrast: 0.2,
-    grain: 0.35,
+    grain: 0,
     speed: 0.8,
     face: "serif",
-    size: 112,
-    weight: -100,
+    size: 100,
+    weight: 0,
     body: 14,
     tracking: -0.3,
     corners: -0.7,
@@ -124,13 +124,13 @@ const PRESETS: Record<string, Partial<Values>> = {
   },
   Synth: {
     theme: "synth",
-    accent: "#ff4fc4",
+    accent: "#b8a4d4",
     contrast: 0.1,
-    grain: 0.2,
+    grain: 0,
     speed: 1.25,
     face: "theme",
     size: 100,
-    weight: 40,
+    weight: 0,
     tracking: 0.2,
     corners: -0.2,
     surface: 1.3,
@@ -140,11 +140,11 @@ const PRESETS: Record<string, Partial<Values>> = {
   Brutal: {
     theme: "brutal",
     accent: "#ff3b00",
-    contrast: 0.6,
+    contrast: 0.25,
     speed: 1.6,
     face: "mono",
-    size: 110,
-    weight: 100,
+    size: 100,
+    weight: 0,
     tracking: -0.4,
     corners: -1,
     surface: 0,
@@ -154,7 +154,7 @@ const PRESETS: Record<string, Partial<Values>> = {
   Paper: {
     theme: "paper",
     accent: "#a8331f",
-    grain: 0.55,
+    grain: 0.1,
     speed: 0.8,
     face: "serif",
     body: 14,
@@ -292,7 +292,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   let modeTarget = dark ? 0 : 1
   const ground = { x: modeTarget, v: 0 }
   const ink = { x: dark ? 0 : 1, v: 0 }
-  // All faces keep their own position and velocity, even when a third is picked mid-transition.
+  // The title replaces a face at zero opacity; palette and numeric springs stay independent.
   const faceTargets = (values: Values) => {
     const base = THEMES[THEME_IDS.indexOf(values.theme)]!.font
     const selected = values.face === "theme" ? base : values.face
@@ -302,10 +302,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     >
   }
   let wantedFaces = faceTargets(store.get())
-  const faces = Object.fromEntries(FACES.map((f) => [f, { x: wantedFaces[f], v: 0 }])) as Record<
-    FontKey,
-    { x: number; v: number }
-  >
   let fade: { from: Look; k: number } | null = null
 
   const keysOf = (patch: Partial<Values>): Num[] =>
@@ -341,10 +337,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         springs[k].x = targets[k]
         springs[k].v = 0
       }
-      for (const f of FACES) {
-        faces[f].x = wantedFaces[f]
-        faces[f].v = 0
-      }
     }
     wake()
   }
@@ -372,12 +364,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       groundLight,
       light,
     )
-    const fonts: Record<string, number> = {}
-    // A retargeted spring may briefly overshoot. Keep the total coverage at one without
-    // dropping any face, so the title never flashes brighter or dimmer on interruption.
-    const total = FACES.reduce((sum, f) => sum + Math.max(0, faces[f].x), 0)
-    for (const f of FACES) fonts[f] = Math.max(0, faces[f].x) / (total || 1)
-    return dress({ ...base, fonts }, settings(), light)
+    return dress({ ...base, fonts: wantedFaces }, settings(), light)
   }
   let current = resolve(ink.x)
 
@@ -469,9 +456,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       root.style.setProperty(k, v)
     }
   }
-  const apply = (look: Look, titleFade?: TitleFade) => {
+  const apply = (look: Look, dt = 0) => {
     write(vars(look))
-    drawTitle(look, titleFade)
+    const titleMoving = drawTitle(look, dt)
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
     document.dispatchEvent(
@@ -479,6 +466,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     )
     // Readouts drawn on canvases take the new colours, every few frames while it moves.
     if (frameNo++ % 6 === 0) restyleReadouts()
+    return titleMoving
   }
   const restyleReadouts = () => {
     for (const el of document.querySelectorAll(".knobs-rd-spark,.knobs-rd-graph,.knobs-rd-meter"))
@@ -515,14 +503,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         s.v = 0
       } else settled = false
     }
-    for (const f of FACES) {
-      const s = faces[f]
-      stepSpring(s, wantedFaces[f], glide, dt)
-      if (Math.abs(wantedFaces[f] - s.x) < 1e-4 && Math.abs(s.v) < 1e-3) {
-        s.x = wantedFaces[f]
-        s.v = 0
-      } else settled = false
-    }
     for (const [i, s] of themes.entries()) {
       const to = wantedThemes[i]!
       stepSpring(s, to, glide, dt)
@@ -548,17 +528,15 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       ink.v = 0
     } else settled = false
     let look = resolve(Math.min(1, Math.max(0, ink.x)))
-    let titleFade: TitleFade | undefined
     if (fade) {
       fade.k = Math.min(1, fade.k + dt / FADE)
       const k = fade.k
-      titleFade = { from: fade.from, to: look, at: k }
       look = mixLooks(fade.from, look, k * k * (3 - 2 * k))
       if (k >= 1) fade = null
       settled = false
     }
     current = look
-    apply(look, titleFade)
+    if (apply(look, dt)) settled = false
     if (!settled) {
       raf = requestAnimationFrame(frame)
       return
@@ -573,7 +551,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     try {
       const svg = options.title.querySelector<SVGSVGElement>("svg")!
       const title = {
+        version: 2,
         advance: Number(svg.style.getPropertyValue("--title-advance")),
+        viewBox: svg.getAttribute("viewBox"),
         paths: [...svg.querySelectorAll("path")].map((p) => p.getAttribute("d")),
       }
       const snapshot = (isDark: boolean) => {
@@ -604,6 +584,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   mountPanel(store, options.slot, {
     ...options.panel,
     title: "This page",
+    crumbs: false,
     tabs: [
       { id: "look", label: "Look" },
       { id: "type", label: "Type" },
@@ -647,10 +628,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
         s.v = 0
       })
       wantedFaces = faceTargets(store.get())
-      for (const f of FACES) {
-        faces[f].x = wantedFaces[f]
-        faces[f].v = 0
-      }
       hand.clear()
       fade = null
       wake()

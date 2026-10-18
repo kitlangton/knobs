@@ -3698,7 +3698,7 @@ function buildPanel<S extends Schema>(
     }
     queueLens()
     if (!popover.hidden) describeScope()
-    optionKeys.show(optionsAt(active))
+    optionKeys.show("keyboard" in root.dataset ? optionsAt(active) : undefined)
   }
   let scopeQueued = false
   const queueScope = () => {
@@ -4244,6 +4244,7 @@ function buildPanel<S extends Schema>(
       delete root.dataset.keyboard
       for (const el of quieted.splice(0)) el.removeAttribute("data-k-quiet")
     }
+    queueScope()
     wakeGpu()
   }
   // Scrolling under the still pointer moves the hover; what it reaches stays quiet too.

@@ -49,6 +49,20 @@ describe("independent appearance preference", () => {
 })
 
 describe("paired theme palettes", () => {
+  it("shares title alignment and size, with quiet rules in both appearances", () => {
+    for (const palettes of [DARK_THEMES, LIGHT_THEMES]) {
+      for (const theme of palettes) {
+        expect(theme.num.tAlign).toBe(0)
+        expect(theme.num.tSize).toBe(1)
+        const look = appearanceLook(
+          THEMES.findIndex((t) => t.id === theme.id),
+          theme.dark ? 0 : 1,
+        )
+        expect(contrast(look.colors.line!, look.colors.page!)).toBeLessThan(1.7)
+      }
+    }
+  })
+
   it("moves directly between selected themes, ignoring palettes between them in the list", () => {
     for (const palettes of [DARK_THEMES, LIGHT_THEMES]) {
       const shares = [0.35, 0, 0, 0, 0.65]

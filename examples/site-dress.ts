@@ -103,7 +103,7 @@ export function dress(look: Look, s: Settings, light: number): Look {
   // Contrast: crisper pushes text toward white or black and solid, and lines up; softer thins
   // them, but gives way near the pivot grey, where text has no room to spare.
   const pageL = colors.page ? oklab(colors.page)[0] : 0
-  const near = Math.max(0, 1 - Math.abs(pageL - PIVOT_L) / 0.3)
+  const near = Math.max(0, 1 - Math.abs(pageL - PIVOT_L) / 0.34)
   const c = s.contrast < 0 ? s.contrast * (1 - near) : s.contrast
   for (const k of TEXT_INKS) {
     const col = colors[k]

@@ -107,7 +107,8 @@ describe("dressing a theme", () => {
   it("scales the title and moves its weight within what the faces have", () => {
     const n = at(1, { titleSize: 1.2, weight: -300 }).num
     expect(n.tSize).toBeCloseTo(THEMES[1]!.num.tSize * 1.2, 6)
-    expect(n.tWeight).toBe(100)
+    expect(n.tWeight).toBe(Math.max(100, THEMES[1]!.num.tWeight - 300))
     expect(at(2, { weight: 300 }).num.tWeight).toBe(900)
+    expect(at(1, { weight: -2000 }).num.tWeight).toBe(100)
   })
 })

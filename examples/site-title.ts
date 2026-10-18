@@ -1,7 +1,7 @@
-// One outline per letter. Faces and weights move the same points, not the opacity of
-// overlapping words. No font loading, text measurement, masks or changing glyph identity.
+// A single typeset word. Weight and tracking interpolate within a face; unrelated faces
+// replace it only at zero opacity, without ghosted text or intermediate letter shapes.
 import data from "./site-title-shapes.json?raw"
-import type { FontKey, Look } from "./site-look-math"
+import { type FontKey, type Look, stepSpring } from "./site-look-math"
 
 type Point = readonly [number, number]
 interface Letter {
@@ -45,6 +45,9 @@ export function titleOutline(fonts: Look["fonts"], weight: number, tracking: num
     return { left, right }
   })
   const paths: string[] = []
+  let left = Infinity
+  let right = -Infinity
+  let top = Infinity
   let cursor = 0
   for (let i = 0; i < 5; i++) {
     const contours: string[] = []
@@ -58,6 +61,9 @@ export function titleOutline(fonts: Look["fonts"], weight: number, tracking: num
           x += p[0] * layer.share
           y += p[1] * layer.share
         }
+        left = Math.min(left, x)
+        right = Math.max(right, x)
+        top = Math.min(top, y)
         points.push(`${pi ? "L" : "M"}${x.toFixed(4)} ${y.toFixed(4)}`)
       }
       contours.push(`${points.join("")}Z`)
@@ -67,13 +73,28 @@ export function titleOutline(fonts: Look["fonts"], weight: number, tracking: num
     cursor +=
       i < 4 ? Math.max(advance + tracking, ink[i]!.right - ink[i + 1]!.left + 0.035) : advance
   }
-  return { paths, advance: cursor }
+  return { paths, advance: cursor, bounds: { left, right, top } }
 }
 
-export interface TitleFade {
-  readonly from: Look
-  readonly to: Look
-  readonly at: number
+/** Retargets preserve opacity and velocity. A face can change only while the word is invisible. */
+export function titlePresence() {
+  let face: FontKey | undefined
+  const alpha = { x: 1, v: 0 }
+  return (desired: FontKey, dt: number) => {
+    if (face === undefined) face = desired
+    const target = face === desired ? 1 : 0
+    stepSpring(alpha, target, target ? 0.16 : 0.12, dt)
+    if (Math.abs(alpha.x - target) < 0.001 && Math.abs(alpha.v) < 0.01) {
+      alpha.x = target
+      alpha.v = 0
+      if (!target) face = desired
+    }
+    return {
+      face,
+      opacity: Math.max(0, Math.min(1, alpha.x)),
+      moving: face !== desired || alpha.x !== 1 || alpha.v !== 0,
+    }
+  }
 }
 
 export function mountTitle(host: HTMLElement) {
@@ -93,21 +114,27 @@ export function mountTitle(host: HTMLElement) {
   })
   host.replaceChildren(svg)
   let key = ""
-  return (look: Look, fade?: TitleFade) => {
-    // Reduced motion replaces the whole word through a short out/in fade, without
-    // travelling through intermediate letter shapes or introducing a second word.
-    if (fade) {
-      const opacity = Math.abs(2 * fade.at - 1)
-      svg.style.opacity = String(opacity * opacity * (3 - 2 * opacity))
-      look = fade.at < 0.5 ? fade.from : fade.to
-    } else svg.style.removeProperty("opacity")
-    const next = `${FACES.map((f) => (look.fonts[f] ?? 0).toFixed(5)).join(",")}|${look.num.tWeight!.toFixed(2)}|${look.num.tTrack!.toFixed(5)}`
-    if (next === key) return
-    key = next
-    const word = titleOutline(look.fonts, look.num.tWeight!, look.num.tTrack!)
-    for (let i = 0; i < paths.length; i++) paths[i]!.setAttribute("d", word.paths[i]!)
-    const advance = word.advance.toFixed(5)
-    svg.setAttribute("viewBox", `0 -1 ${advance} 1`)
-    svg.style.setProperty("--title-advance", advance)
+  const presence = titlePresence()
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)")
+  return (look: Look, dt: number) => {
+    const desired = FACES.reduce((best, f) =>
+      (look.fonts[f] ?? 0) > (look.fonts[best] ?? 0) ? f : best,
+    )
+    const { face, opacity, moving } = presence(desired, dt)
+    svg.style.opacity = String(opacity)
+    svg.style.filter = reduced.matches ? "none" : `blur(${((1 - opacity) * 2.5).toFixed(2)}px)`
+    svg.style.scale = reduced.matches ? "1" : String(0.985 + opacity * 0.015)
+    const next = `${face}|${look.num.tWeight!.toFixed(2)}|${look.num.tTrack!.toFixed(5)}`
+    if (next !== key) {
+      key = next
+      const word = titleOutline({ [face]: 1 }, look.num.tWeight!, look.num.tTrack!)
+      for (let i = 0; i < paths.length; i++) paths[i]!.setAttribute("d", word.paths[i]!)
+      // Align the actual ink, not the font's side bearings, at a shared ascender and baseline.
+      const em = -word.bounds.top / 0.78
+      const width = word.bounds.right - word.bounds.left
+      svg.setAttribute("viewBox", `${word.bounds.left} ${-em} ${width} ${em}`)
+      svg.style.setProperty("--title-advance", (width / em).toFixed(5))
+    }
+    return moving
   }
 }
