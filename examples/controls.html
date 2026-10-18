@@ -39,6 +39,11 @@
           document.documentElement.dataset.siteLook = ""
         }
       } catch {}
+      // The settings panel's last height holds its place until it mounts, so nothing moves.
+      try {
+        const h = Number(localStorage.getItem("knobs-site-knob-h"))
+        if (h > 200 && h < 2000) document.documentElement.style.setProperty("--knob-h", `${h}px`)
+      } catch {}
     </script>
     <style>
       /* knobs' own look: the panels' palette, type and radii on a calm page. The page scrolls in

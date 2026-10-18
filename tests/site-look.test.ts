@@ -85,31 +85,31 @@ describe("token interpolation", () => {
   })
 
   it("crossfades a face only while sizes keep moving, with no step at the ends", () => {
-    // Synth (wide) to Brutal (mono).
-    expect(lookAt(THEMES, 2.15, 0).fonts.wide).toBe(1)
-    expect(lookAt(THEMES, 2.5, 0).fonts.wide).toBeCloseTo(0.5, 6)
-    expect(lookAt(THEMES, 2.85, 1).fonts.mono).toBe(1)
+    // Brutal (mono) to Paper (serif).
+    expect(lookAt(THEMES, 3.15, 1).fonts.mono).toBe(1)
+    expect(lookAt(THEMES, 3.5, 1).fonts.mono).toBeCloseTo(0.5, 6)
+    expect(lookAt(THEMES, 3.85, 1).fonts.serif).toBe(1)
     // Night and Ocean share a face: no crossfade, the weight just moves.
     expect(lookAt(THEMES, 0.5, 0).fonts.sans).toBeCloseTo(1, 6)
   })
 
   it("wipes one face into the next across the middle of a segment", () => {
     expect(faceWipe(THEMES, 0.5)).toBeNull() // Night and Ocean share a face
-    expect(faceWipe(THEMES, 2.1)).toBeNull()
-    expect(faceWipe(THEMES, 2.5)).toMatchObject({ from: "wide", to: "mono" })
-    expect(faceWipe(THEMES, 2.5)!.at).toBeCloseTo(0.5, 9)
-    const a = faceWipe(THEMES, 2.4)!.at
-    const b = faceWipe(THEMES, 2.6)!.at
+    expect(faceWipe(THEMES, 3.1)).toBeNull()
+    expect(faceWipe(THEMES, 3.5)).toMatchObject({ from: "mono", to: "serif" })
+    expect(faceWipe(THEMES, 3.5)!.at).toBeCloseTo(0.5, 9)
+    const a = faceWipe(THEMES, 3.4)!.at
+    const b = faceWipe(THEMES, 3.6)!.at
     expect(a).toBeLessThan(0.5)
     expect(b).toBeGreaterThan(0.5)
-    expect(faceWipe(THEMES, 2.9)).toBeNull()
+    expect(faceWipe(THEMES, 3.9)).toBeNull()
   })
 
   it("mixes two looks for a fade", () => {
     const a = lookAt(THEMES, 0, 0)
     const b = lookAt(THEMES, 4, 1)
     const m = mixLooks(a, b, 0.5)
-    expect(m.num.tAlign).toBeCloseTo(0.25, 6)
+    expect(m.num.tWeight).toBeCloseTo((a.num.tWeight! + b.num.tWeight!) / 2, 6)
     expect(m.fonts.sans).toBeCloseTo(0.5, 6)
     expect(m.fonts.serif).toBeCloseTo(0.5, 6)
   })

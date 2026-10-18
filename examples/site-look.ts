@@ -67,9 +67,9 @@ const schema = {
     labels: { system: "System", light: "Light", dark: "Dark" },
     random: false,
   }),
-  accent: color("#ffffff", { label: "Accent", tab: "look" }),
-  contrast: knob(0, { min: -0.5, max: 1, step: 0.01, decimals: 2, label: "Contrast", tab: "look" }),
-  grain: knob(0, { min: 0, max: 1, step: 0.01, decimals: 2, label: "Grain", tab: "look" }),
+  accent: color("#ffffff", { label: "Accent", group: "look" }),
+  contrast: knob(0, { min: -0.5, max: 1, step: 0.01, decimals: 2, label: "Contrast", group: "look" }),
+  grain: knob(0, { min: 0, max: 1, step: 0.01, decimals: 2, label: "Grain", group: "look" }),
   speed: knob(1, {
     min: 0.5,
     max: 2,
@@ -77,16 +77,16 @@ const schema = {
     decimals: 2,
     unit: "×",
     label: "Speed",
-    tab: "look",
+    group: "look",
   }),
   face: choice("theme", FACE_OPTIONS, {
     label: "Face",
-    tab: "type",
+    group: "type",
     display: "segmented",
     labels: { theme: "Theme", sans: "Sans", serif: "Serif", mono: "Mono", wide: "Wide" },
   }),
-  size: knob(100, { min: 70, max: 130, step: 1, unit: "%", label: "Size", tab: "type" }),
-  weight: knob(0, { min: -300, max: 300, step: 10, label: "Weight", tab: "type" }),
+  size: knob(100, { min: 70, max: 130, step: 1, unit: "%", label: "Size", group: "type" }),
+  weight: knob(0, { min: -300, max: 300, step: 10, label: "Weight", group: "type" }),
   body: knob(13, {
     min: 12,
     max: 16,
@@ -94,13 +94,13 @@ const schema = {
     decimals: 1,
     unit: "px",
     label: "Body",
-    tab: "type",
+    group: "type",
   }),
-  tracking: knob(0, { min: -1, max: 1, step: 0.01, decimals: 2, label: "Tracking", tab: "type" }),
-  corners: knob(0, { min: -1, max: 1, step: 0.01, decimals: 2, label: "Corners", tab: "shape" }),
-  surface: knob(1, { min: 0, max: 2, step: 0.01, decimals: 2, label: "Surface", tab: "shape" }),
-  density: knob(100, { min: 80, max: 130, step: 1, unit: "%", label: "Density", tab: "space" }),
-  width: knob(1180, { min: 960, max: 1440, step: 10, unit: "px", label: "Width", tab: "space" }),
+  tracking: knob(0, { min: -1, max: 1, step: 0.01, decimals: 2, label: "Tracking", group: "type" }),
+  corners: knob(0, { min: -1, max: 1, step: 0.01, decimals: 2, label: "Corners", group: "shape" }),
+  surface: knob(1, { min: 0, max: 2, step: 0.01, decimals: 2, label: "Surface", group: "shape" }),
+  density: knob(100, { min: 80, max: 130, step: 1, unit: "%", label: "Density", group: "space" }),
+  width: knob(1180, { min: 960, max: 1440, step: 10, unit: "px", label: "Width", group: "space" }),
 }
 type Values = { [K in keyof typeof schema]: (typeof schema)[K]["value"] }
 
@@ -585,14 +585,16 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     ...options.panel,
     title: "This page",
     crumbs: false,
-    tabs: [
-      { id: "look", label: "Look" },
-      { id: "type", label: "Type" },
-      { id: "shape", label: "Shape" },
-      { id: "space", label: "Space" },
-    ],
     header: { buttons: ["undo", "redo", "reset", "random"] },
   })
+  // Mounted, the panel holds its own place; its height is kept for the next first paint.
+  options.slot.dataset.mounted = ""
+  new ResizeObserver(() => {
+    const h = Math.round(options.slot.getBoundingClientRect().height)
+    try {
+      if (h > 0) localStorage.setItem("knobs-site-knob-h", String(h))
+    } catch {}
+  }).observe(options.slot)
   booting = false
   options.onAppearance?.(appearance)
   // A fixed Light/Dark preference ignores OS changes. System follows them live.
