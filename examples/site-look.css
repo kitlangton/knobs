@@ -101,8 +101,8 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-/* One SVG word on a fixed left edge and baseline. A face replacement uses this same word,
-   never a second overlapping text layer. */
+/* One SVG word on a fixed left edge and baseline. Its five letters morph between faces in
+   place (site-title.ts); there is never a second, overlapping text layer. */
 .mast-ink {
   position: absolute;
   inset: 0;

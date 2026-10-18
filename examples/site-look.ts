@@ -292,7 +292,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   let modeTarget = dark ? 0 : 1
   const ground = { x: modeTarget, v: 0 }
   const ink = { x: dark ? 0 : 1, v: 0 }
-  // The title replaces a face at zero opacity; palette and numeric springs stay independent.
+  // The title morphs its letters toward these shares itself (site-title.ts), a letter at a time.
   const faceTargets = (values: Values) => {
     const base = THEMES[THEME_IDS.indexOf(values.theme)]!.font
     const selected = values.face === "theme" ? base : values.face
@@ -456,9 +456,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       root.style.setProperty(k, v)
     }
   }
-  const apply = (look: Look, dt = 0) => {
+  const apply = (look: Look, dt = 0, glide = GLIDE) => {
     write(vars(look))
-    const titleMoving = drawTitle(look, dt)
+    const titleMoving = drawTitle(look, dt, glide)
     // Scenes that colour their stage from the page follow along.
     const c = look.colors
     document.dispatchEvent(
@@ -536,7 +536,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       settled = false
     }
     current = look
-    if (apply(look, dt)) settled = false
+    if (apply(look, dt, glide)) settled = false
     if (!settled) {
       raf = requestAnimationFrame(frame)
       return

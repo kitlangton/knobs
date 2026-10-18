@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { titleOutline, titlePresence, titleShapes } from "../examples/site-title"
+import { titleMorph, titleOutline, titlePresence, titleShapes } from "../examples/site-title"
 
 describe("title outline data and interpolation", () => {
   it("keeps contour topology compatible across every face and weight master", () => {
@@ -49,7 +49,53 @@ describe("title outline data and interpolation", () => {
   })
 })
 
-describe("single-word face replacement", () => {
+describe("letter-by-letter face morph", () => {
+  it("accepts one mixture per letter, matching a whole-word mixture when they agree", () => {
+    const fonts = { sans: 0.4, wide: 0.6 }
+    expect(
+      titleOutline(
+        Array.from({ length: 5 }, () => fonts),
+        500,
+        0,
+      ),
+    ).toEqual(titleOutline(fonts, 500, 0))
+  })
+
+  it("starts at rest, morphs letters left to right, and settles in the new face", () => {
+    const step = titleMorph()
+    expect(step({ sans: 1 }, 0, 0.4).moving).toBe(false)
+    const early = step({ serif: 1 }, 1 / 60, 0.4)
+    expect(early.moving).toBe(true)
+    expect(early.letters[0]!.fonts.serif).toBeGreaterThan(0)
+    expect(early.letters[4]!.fonts.serif).toBe(0)
+    let result = early
+    for (let i = 0; i < 4; i++) result = step({ serif: 1 }, 1 / 60, 0.4)
+    const shares = result.letters.map((l) => l.fonts.serif)
+    for (let i = 1; i < 5; i++) expect(shares[i - 1]!).toBeGreaterThanOrEqual(shares[i]!)
+    for (let i = 0; i < 180; i++) result = step({ serif: 1 }, 1 / 60, 0.4)
+    expect(result.moving).toBe(false)
+    for (const l of result.letters) {
+      expect(l.fonts.serif).toBe(1)
+      expect(l.between).toBe(0)
+    }
+  })
+
+  it("continues from the current shapes when retargeted mid-morph", () => {
+    const step = titleMorph()
+    step({ sans: 1 }, 0, 0.4)
+    let result = step({ serif: 1 }, 1 / 60, 0.4)
+    for (let i = 0; i < 8; i++) result = step({ serif: 1 }, 1 / 60, 0.4)
+    const before = result.letters[0]!.fonts
+    const after = step({ mono: 1 }, 1 / 240, 0.4).letters[0]!.fonts
+    // A quarter-frame later the first letter is still almost exactly where it was.
+    for (const f of ["sans", "serif", "mono"] as const)
+      expect(Math.abs((after[f] ?? 0) - (before[f] ?? 0))).toBeLessThan(0.05)
+    for (let i = 0; i < 240; i++) result = step({ mono: 1 }, 1 / 60, 0.4)
+    for (const l of result.letters) expect(l.fonts.mono).toBe(1)
+  })
+})
+
+describe("reduced-motion face replacement", () => {
   it("starts at rest and only changes face at zero opacity", () => {
     const step = titlePresence()
     expect(step("sans", 0)).toEqual({ face: "sans", opacity: 1, moving: false })
