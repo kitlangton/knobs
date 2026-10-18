@@ -421,7 +421,7 @@ function buildPanel<S extends Schema>(
           ...(options.search ? [["/", "Search"]] : []),
           ["1–9", "Pick the row's option"],
         ]) as [string, string][]),
-    [prefs.vim ? "←→ / h l" : "←→", `Adjust value (⇧ ×${prefs.bigStep})`],
+    ["←→", `Adjust value (⇧ ×${prefs.bigStep})`],
     ["⌥ drag", "Fine adjust"],
     ...(bound("presets") ? [[show("presets"), "Cycle presets"]] : []),
     ...(bound("hint") ? [[show("hint"), "Jump to anything by code"]] : []),
@@ -439,7 +439,7 @@ function buildPanel<S extends Schema>(
     ...(bound("group") && (bound("random") || bound("mutate"))
       ? [[`${show("group")} / ${show("group", true)}`, "Random / Mutate group"]]
       : []),
-    ...(bound("lock") ? [[show("lock"), "Lock from Random"]] : []),
+    ...(bound("lock") ? [[show("lock"), "Lock the row (or group) from Random"]] : []),
     ["⇧ click / ⇧↑↓", "Select rows (⌘ adds)"],
     ...(bound("menu") ? [["⇧F10", "Row menu"]] : []),
     ...(bound("compare") ? [[`hold ${show("compare")}`, "Compare with before"]] : []),
@@ -2422,7 +2422,7 @@ function buildPanel<S extends Schema>(
   }
 
   // Selection: ⇧-click selects a range, ⌘-click toggles a row, ⇧↑↓ extends from the focused row.
-  // Commands (r, ⌥R, ⌫, ⇧L, ⇧C and the menu) act on the selection when there is one.
+  // Commands (r, ⌥R, ⌫, L, ⇧C and the menu) act on the selection when there is one.
   const selected = new Set<number>()
   let anchor = -1
   let head = -1
@@ -2446,11 +2446,21 @@ function buildPanel<S extends Schema>(
     selected.clear()
     paintSelection()
   }
-  /** What a command acts on: the selection, else the focused row. */
+  /** A group's rows, by index. */
+  const groupIndices = (group: string) =>
+    rows.flatMap((r, i) => (r.group === group && r.keys.length ? [i] : []))
+  /** The group whose heading `node` is in (not one of its rows). */
+  const headGroup = (node: EventTarget | null) =>
+    node instanceof Element
+      ? node.closest<HTMLElement>(".knobs-group-head")?.dataset.group
+      : undefined
+  /** What a command acts on: the selection, else the focused row, else the focused group. */
   const targets = () => {
     if (selected.size) return [...selected].sort((a, b) => a - b)
     const at = rowAt(doc.activeElement)
-    return at >= 0 ? [at] : []
+    if (at >= 0) return [at]
+    const group = headGroup(doc.activeElement)
+    return group ? groupIndices(group) : []
   }
   const selectionKeys = () =>
     selected.size ? keysOf([...selected].sort((a, b) => a - b)) : undefined
@@ -2470,11 +2480,22 @@ function buildPanel<S extends Schema>(
     rows[i]?.input.focus({ preventScroll: Boolean(page), focusVisible: false } as FocusOptions)
 
   let menu: Menu | undefined
-  const showMenu = (at: { x: number; y: number }, keyboard: boolean, from?: number) => {
-    const indices = targets()
+  const showMenu = (
+    at: { x: number; y: number },
+    keyboard: boolean,
+    from?: number,
+    group?: string,
+  ) => {
+    const indices = group ? groupIndices(group) : targets()
     if (!indices.length) return
     // The menu's rows stay selected, so its shortcuts mean the same thing after it closes.
-    if (!selected.size) {
+    if (group) {
+      selected.clear()
+      for (const i of indices) selected.add(i)
+      anchor = indices[0]!
+      head = indices.at(-1)!
+      paintSelection()
+    } else if (!selected.size) {
       anchor = head = indices[0]!
       selectRange(anchor, head)
     }
@@ -2483,6 +2504,7 @@ function buildPanel<S extends Schema>(
     const locked = chosen.every((k) => controls.isLocked(k))
     const active = doc.activeElement as HTMLElement | null
     const returnTo = active && root.contains(active) ? active : rows[from ?? indices[0]!]!.input
+    const of = group ? " group" : ""
     menu?.close(false)
     menu = openMenu(
       doc,
@@ -2491,7 +2513,7 @@ function buildPanel<S extends Schema>(
         ...(bound("lock")
           ? [
               {
-                label: locked ? "Unlock" : "Lock from Random",
+                label: locked ? `Unlock${of}` : `Lock${of} from Random`,
                 shortcut: show("lock"),
                 run: () => toggleLock(indices),
               },
@@ -2500,17 +2522,22 @@ function buildPanel<S extends Schema>(
         ...(bound("random")
           ? [
               {
-                label: "Randomize",
-                shortcut: show("random"),
+                label: `Randomize${of}`,
+                shortcut: show(group ? "group" : "random"),
                 disabled: locked,
-                run: () => run(() => reroll(chosen, false)),
+                run: () =>
+                  run(() =>
+                    group && groupDice.has(group)
+                      ? rerollGroup(group, false)
+                      : reroll(chosen, false),
+                  ),
               },
             ]
           : []),
         ...(bound("reset")
           ? [
               {
-                label: "Reset",
+                label: `Reset${of}`,
                 shortcut: keyLabel(keys.reset[0]!),
                 disabled: !controls.canReset(chosen),
                 run: () => {
@@ -2536,6 +2563,11 @@ function buildPanel<S extends Schema>(
     )
   }
   const menuFromKeyboard = () => {
+    const group = selected.size ? undefined : headGroup(doc.activeElement)
+    if (group) {
+      const r = (doc.activeElement as HTMLElement).getBoundingClientRect()
+      return showMenu({ x: r.left, y: r.bottom + 4 }, true, undefined, group)
+    }
     const at = targets()[0]
     const row = at === undefined ? undefined : rows[at]
     if (!row) return
@@ -3945,9 +3977,9 @@ function buildPanel<S extends Schema>(
     const foldKey =
       key === "Enter" || key === " "
         ? "toggle"
-        : key === "ArrowLeft" || (prefs.vim && key === "h")
+        : key === "ArrowLeft"
           ? true
-          : key === "ArrowRight" || (prefs.vim && key === "l")
+          : key === "ArrowRight"
             ? false
             : undefined
     if (foldKey !== undefined) {
@@ -4097,8 +4129,8 @@ function buildPanel<S extends Schema>(
     }
     const down = key === "ArrowDown" || (prefs.vim && key === "j")
     const up = key === "ArrowUp" || (prefs.vim && key === "k")
-    const right = key === "ArrowRight" || (prefs.vim && key === "l")
-    const left = key === "ArrowLeft" || (prefs.vim && key === "h")
+    const right = key === "ArrowRight"
+    const left = key === "ArrowLeft"
     const bar = actionBarButtons()
     const barIndex = bar.indexOf(target as HTMLButtonElement)
     if (barIndex >= 0) lastActionButton = bar[barIndex]
@@ -4212,7 +4244,6 @@ function buildPanel<S extends Schema>(
         ["ArrowLeft", "ArrowRight", "Enter", " ", "Home", "End", "PageUp", "PageDown"].includes(
           k,
         ) ||
-        (prefs.vim && (k === "h" || k === "l")) ||
         (!event.altKey && /^[0-9.\-]$/.test(k)) ||
         pressed("reset", event)
       if (!edit) return
@@ -4322,6 +4353,13 @@ function buildPanel<S extends Schema>(
     true,
   )
   root.addEventListener("contextmenu", (event) => {
+    const group = headGroup(event.target)
+    if (group && bound("menu") && groupIndices(group).length) {
+      // A group's heading: the same commands, for every row in the group.
+      event.preventDefault()
+      showMenu({ x: event.clientX, y: event.clientY }, false, undefined, group)
+      return
+    }
     const at = rowAt(event.target as Node)
     if (at < 0 || !bound("menu") || !rows[at]!.keys.length) return
     event.preventDefault()

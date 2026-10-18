@@ -11,7 +11,7 @@ const keys: [string, string][] = [
   ["[ ]", "Previous or next preset"],
   ["⌫", "Reset the row"],
   ["r  ⌥R", "Random or Mutate"],
-  ["⇧L", "Lock the row from Random"],
+  ["L", "Lock the row from Random"],
   ["hold \\", "Compare with before"],
   ["u  ⇧u", "Undo or redo"],
   ["⇧C", "Copy the values as code"],
@@ -115,7 +115,7 @@ export function RandomDemo() {
   const { l, c, h } = parseColor(v.base) ?? { l: 0.66, c: 0.16, h: 250 }
   const turn = { near: v.spread, opposite: 180, triad: 120 }[v.harmony]
   return (
-    <Demo controls={palette} caption="r · ⌥R · ⇧L · hold \">
+    <Demo controls={palette} caption="r · ⌥R · L · hold \">
       <div className="palette" data-round={v.round}>
         {Array.from({ length: v.steps }, (_, i) => {
           const t = v.steps > 1 ? i / (v.steps - 1) - 0.5 : 0

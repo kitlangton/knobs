@@ -266,7 +266,7 @@ export function App() {
 
         <Section title="Random, Mutate, locks and compare">
           <p>
-            <kbd>r</kbd> rolls new values and <kbd>⌥R</kbd> nudges the current ones. <kbd>⇧L</kbd>{" "}
+            <kbd>r</kbd> rolls new values and <kbd>⌥R</kbd> nudges the current ones. <kbd>L</kbd>{" "}
             keeps a row out of both, and holding <kbd>\</kbd> shows the values from before your last
             change.
           </p>

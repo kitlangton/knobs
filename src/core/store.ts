@@ -157,7 +157,7 @@ export type PanelCommand =
  * bindings. Unlisted commands keep their default key. `true` keeps the default.
  */
 export type PanelKeys = { readonly [C in PanelCommand]?: string | boolean } & {
-  /** `false` drops the j/k and h/l aliases: only the arrows move and adjust; the letters reach the page. */
+  /** `false` drops the j/k aliases: only the arrows move; the letters reach the page. */
   readonly vim?: boolean
   /**
    * `false` stops digits, `.`, `-` and Enter from opening a slider's inline number editor (they

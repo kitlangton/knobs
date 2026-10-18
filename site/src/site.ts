@@ -68,7 +68,7 @@ export const site = defineControls("site", siteSchema, {
 })
 
 // Random and Mutate would otherwise switch Motion off half the time, and with it the glide of
-// every later change. A fresh visitor starts with the row locked; ⇧L on it unlocks it.
+// every later change. A fresh visitor starts with the row locked; L on it unlocks it.
 if (typeof localStorage !== "undefined" && !localStorage.getItem("knobs:site:state:v1"))
   site.lock("motion")
 

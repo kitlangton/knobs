@@ -2,7 +2,7 @@ import type { PanelCommand, PanelKeys } from "../core/store.js"
 
 /** How a panel reads keys that aren't commands (see `PanelKeys`): resolved once per panel. */
 export interface KeyPrefs {
-  /** j/k and h/l as aliases for the arrows. */
+  /** j/k as aliases for ↑/↓ (l is Lock, so ←/→ have no letters). */
   readonly vim: boolean
   /** Digits, `.`, `-` and Enter on a slider open its inline number editor. */
   readonly edit: boolean
@@ -19,11 +19,10 @@ export function keyPrefs(node: EventTarget | null): KeyPrefs {
   const root = (node as Element | null)?.closest?.(".knobs-panel")
   return (root && byRoot.get(root)) || DEFAULT_PREFS
 }
-/** -1, 1 or 0 for ←/→ (and h/l unless the panel turned the letter aliases off). */
+/** -1, 1 or 0 for ←/→. */
 export function arrowOf(event: KeyboardEvent): -1 | 0 | 1 {
-  const vim = keyPrefs(event.target).vim
-  if (event.key === "ArrowLeft" || (vim && event.key === "h")) return -1
-  if (event.key === "ArrowRight" || (vim && event.key === "l")) return 1
+  if (event.key === "ArrowLeft") return -1
+  if (event.key === "ArrowRight") return 1
   return 0
 }
 /** ⇧'s multiplier for this event (1 without ⇧). */
@@ -41,7 +40,7 @@ const DEFAULT_KEYS: Readonly<Record<PanelCommand, readonly string[]>> = {
   redo: ["U", "Z"],
   copy: ["C"],
   save: ["S"],
-  lock: ["L"],
+  lock: ["l", "L"],
   presets: ["[", "]"],
   group: ["g"],
   first: ["f"],

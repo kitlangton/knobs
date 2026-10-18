@@ -54,7 +54,7 @@ const look = demoControls("panel-look", lookSchema, {
 })
 
 // A new renderer means a new panel, which can't glide from the old one, so Random and Mutate leave
-// the renderer alone until you unlock it (⇧L on the row).
+// the renderer alone until you unlock it (L on the row).
 if (typeof localStorage !== "undefined" && !localStorage.getItem("knobs:panel-look:state:v1"))
   look.lock("renderer")
 

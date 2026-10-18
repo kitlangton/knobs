@@ -432,6 +432,15 @@ describe("panel key bindings", () => {
     expect(keys.undo).toEqual(["u", "z"])
     expect(resolveKeys(undefined, true).leave).toEqual([])
     expect([keyLabel("R"), keyLabel("Backspace"), keyLabel("r", true)]).toEqual(["⇧R", "⌫", "⌥R"])
+    // A plain l locks (⇧L still does); a remapped lock gives both up.
+    expect(resolveKeys(undefined).lock).toEqual(["l", "L"])
+    expect(resolveKeys({ lock: "K" }).lock).toEqual(["K"])
+  })
+  it("leaves ←/→ to the arrows: l is Lock, not a step right", async () => {
+    const { arrowOf } = await import("../src/panel/prefs.js")
+    const key = (k: string) => ({ key: k, target: null }) as unknown as KeyboardEvent
+    expect([arrowOf(key("ArrowLeft")), arrowOf(key("ArrowRight"))]).toEqual([-1, 1])
+    expect([arrowOf(key("h")), arrowOf(key("l"))]).toEqual([0, 0])
   })
   it("reads vim, edit, bigStep and wrap per panel", async () => {
     const { DEFAULT_PREFS, keyPrefs } = await import("../src/panel/prefs.js")
