@@ -413,6 +413,7 @@ const css = `
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--k-radius);background:var(--k-surface);overflow:hidden}
 .knobs-card:last-child{margin-bottom:0}
 .knobs-card>*{position:relative;min-height:var(--k-row);transition:background var(--k-hover-t),opacity .2s}
+.knobs-panel [data-tab-opacity]{transition:none!important}
 /* Rubber-band ends (drawStretch in give.ts): past a limit a control stretches about its far end
    and thins a little, its stretching corners rounding off; a row draws past its card's edge
    meanwhile (keeping the card's corners where it has them), and its text stays put. */

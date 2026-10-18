@@ -61,6 +61,7 @@ import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
 import { toast } from "../ui/toast.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
+import { tabTransition } from "./tab-transition.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
 import { createOptionKeys } from "./optkeys.js"
 import {
@@ -677,7 +678,7 @@ function buildPanel<S extends Schema>(
   )
   // Tabs: a strip under the header once any field names one (or `tabs` lists some). A panel
   // remembers the one it showed, for the next mount and (with `session`) a reload.
-  const tabStrip = createTabStrip(doc, (id) => selectTab(id))
+  const tabStrip = createTabStrip(doc, (id, animate) => selectTab(id, animate))
   let activeTab: string | undefined
   // Search: a field that filters rows as you type, with chips that narrow them further.
   const searchOptions = typeof options.search === "object" ? options.search : {}
@@ -721,6 +722,7 @@ function buildPanel<S extends Schema>(
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
   ]
   const body = el("div")
+  const tabMotion = tabTransition(body, () => wakeGpu())
   // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
   // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
   interface Block {
@@ -2258,7 +2260,7 @@ function buildPanel<S extends Schema>(
     const list = tabStrip.tabs
     if (list.length < 2) return false
     const at = list.findIndex((t) => t.id === activeTab)
-    selectTab(list[(at + direction + list.length) % list.length]!.id)
+    selectTab(list[(at + direction + list.length) % list.length]!.id, false)
     return true
   }
 
@@ -2331,15 +2333,22 @@ function buildPanel<S extends Schema>(
   }
   /**
    * Brings the DOM to what should show: at once (`instant`), folding (`reveal`), or as a tab
-   * change, where what arrives starts just after what leaves so they cross.
+   * change, which replaces content in place without squashing the rows.
    */
   function applyVisibility(mode: "instant" | "reveal" | "tab") {
     if (page) return
     const want = wantedVisibility()
+    if (mode === "tab") {
+      tabMotion.to(want)
+      positioned?.constrain()
+      wakeGpu()
+      return
+    }
+    if (tabMotion.running) tabMotion.finish()
     const showing = (n: HTMLElement) => !n.hidden && n.dataset.leaving !== "true"
     const set = (node: HTMLElement, show: boolean, animate: boolean) => {
       if (showing(node) === show) return
-      if (animate || shifting.has(node)) shift(node, show, mode === "tab" && show ? 40 : 0)
+      if (animate || shifting.has(node)) shift(node, show, 0)
       else node.hidden = !show
     }
     // Cards first: inside a card that's arriving (or staying shut), rows just take their state;
@@ -3826,7 +3835,7 @@ function buildPanel<S extends Schema>(
         const tab = tabStrip.tabs[Number(digit[1]) - 1]
         if (tab) {
           event.preventDefault()
-          selectTab(tab.id)
+          selectTab(tab.id, false)
         }
         return
       }
@@ -4642,7 +4651,7 @@ function buildPanel<S extends Schema>(
     lens,
     ...(crumbs ? { crumbs: crumbs.element } : {}),
     morph: (now) => morph?.frame(now) ?? presence.frame(now),
-    presence: () => presenceRuns > 0 || shifting.size > 0,
+    presence: () => presenceRuns > 0 || shifting.size > 0 || tabMotion.running,
     landing: () => "landing" in root.dataset,
     ...(layout
       ? {
@@ -4769,6 +4778,7 @@ function buildPanel<S extends Schema>(
       for (const c of groupChips.values()) c.dispose()
       presetStrip.dispose()
       tabStrip.dispose()
+      tabMotion.finish()
       doc.removeEventListener("keydown", onGlobalKey)
       layout?.dispose()
       tileSizes.disconnect()

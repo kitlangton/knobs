@@ -32,7 +32,10 @@ export interface TabStrip {
   dispose(): void
 }
 
-export function createTabStrip(doc: Document, choose: (id: string) => void): TabStrip {
+export function createTabStrip(
+  doc: Document,
+  choose: (id: string, animate?: boolean) => void,
+): TabStrip {
   const element = doc.createElement("div")
   element.className = "knobs-tabs"
   element.setAttribute("role", "tablist")
@@ -156,7 +159,7 @@ export function createTabStrip(doc: Document, choose: (id: string) => void): Tab
     event.stopPropagation()
     const at = tabs.findIndex((t) => t.id === active)
     const next = tabs[(at + dir + tabs.length) % tabs.length]!
-    choose(next.id)
+    choose(next.id, false)
     strip.focus({ preventScroll: true })
   })
   return strip
