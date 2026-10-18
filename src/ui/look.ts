@@ -140,6 +140,17 @@ const css = `
 }
 @supports not (animation-timeline:scroll()){.knobs-scroll-fade-x{text-overflow:ellipsis}}
 
+/* Overlay scrollbars (trees, activity rails): a thin thumb over the content, so the rows never
+   give up width to a scrollbar as they start or stop overflowing. It shows while the content
+   scrolls or the pointer is over it. */
+:is(.knobs-tree,.knobs-activity)::-webkit-scrollbar{display:none}
+.knobs-scrollbar{position:sticky;top:0;z-index:3;height:0;pointer-events:none}
+.knobs-scrollbar[hidden]{display:none}
+.knobs-scrollbar-thumb{position:absolute;top:0;right:2px;width:5px;border-radius:3px;background:color-mix(in srgb,var(--ku-text) 30%,transparent);opacity:0;
+  transition:opacity .3s ease-out,background .15s}
+:hover>.knobs-scrollbar>.knobs-scrollbar-thumb,.knobs-scrollbar:is([data-active],[data-dragging])>.knobs-scrollbar-thumb{opacity:1;pointer-events:auto;transition-duration:.12s,.15s}
+.knobs-scrollbar-thumb:hover,.knobs-scrollbar[data-dragging]>.knobs-scrollbar-thumb{background:color-mix(in srgb,var(--ku-text) 48%,transparent)}
+
 /* Split: panes along a row or column, hairline dividers with a wider grip. */
 .knobs-split{position:relative;display:flex;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden}
 .knobs-split[data-direction="column"]{flex-direction:column}
@@ -176,7 +187,11 @@ const css = `
 .knobs-split[data-direction="column"]>.knobs-pane[data-edge="start"]>.knobs-pane-rail{bottom:0}
 .knobs-split[data-direction="column"]>.knobs-pane[data-edge="end"]>.knobs-pane-rail{top:0}
 .knobs-pane[data-collapsed]>.knobs-pane-rail{pointer-events:auto}
-.knobs-ui .knobs-pane[data-collapsed]>.knobs-pane-rail:is(:hover,:focus-visible){background-image:linear-gradient(var(--ku-wash),var(--ku-wash));color:var(--ku-text)}
+/* Its hover wash fades, rather than going in one frame as a click opens the pane. */
+.knobs-ui .knobs-pane-rail::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--ku-wash);opacity:0;transition:opacity .15s;pointer-events:none}
+.knobs-pane-rail>*{position:relative}
+.knobs-ui .knobs-pane[data-collapsed]>.knobs-pane-rail:is(:hover,:focus-visible){color:var(--ku-text)}
+.knobs-ui .knobs-pane[data-collapsed]>.knobs-pane-rail:is(:hover,:focus-visible)::before{opacity:1}
 .knobs-pane-rail-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .knobs-pane-chevron{display:flex;flex:none;width:11px;height:11px;writing-mode:horizontal-tb;color:var(--ku-dim)}
 .knobs-pane-turn{display:flex;width:100%;height:100%;transform-origin:50% 50%}
@@ -213,7 +228,7 @@ const css = `
 :root[data-knobs-resizing] :is(iframe,canvas:not(.knobs-gpu-canvas)){pointer-events:none}
 
 /* Tree: one scroller, rows placed by transform, only those near the view in the DOM. */
-.knobs-tree{position:relative;overflow:auto;height:100%;outline:none;scrollbar-width:thin;overscroll-behavior:contain;user-select:none;-webkit-user-select:none}
+.knobs-tree{position:relative;overflow:auto;height:100%;outline:none;scrollbar-width:none;overscroll-behavior:contain;user-select:none;-webkit-user-select:none}
 .knobs-tree-space{position:relative;width:100%;pointer-events:none}
 .knobs-tree-row{position:absolute;left:var(--ku-row-x);right:var(--ku-row-x);top:0;display:flex;align-items:center;height:var(--ku-row);padding-right:calc(var(--ku-inset) - 4px);
   color:var(--ku-text);white-space:nowrap;cursor:default;will-change:transform;contain:layout style}

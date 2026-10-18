@@ -274,11 +274,12 @@ export function chevronTurn(p: number, edge: "start" | "end"): number {
 }
 
 /**
- * The fold's chevron, flipping: its width (scaleX) against the rail's chevron at flip progress
- * `f` (0 open, 1 folded). The arms close in to a flat line halfway and open out the other way.
+ * The fold's chevron, flipping over: its turn about its vertical axis (degrees, drawn with depth)
+ * against the rail's chevron at flip progress `f` (0 open, 1 folded). Edge-on halfway, it comes
+ * round mirrored, rolling the way the pane's edge travels.
  */
-export function chevronFlip(f: number): number {
-  return 2 * clamp01(f) - 1
+export function chevronFlip(f: number, edge: "start" | "end"): number {
+  return chevronTurn(f, edge)
 }
 
 /** How a pane folds: see `SplitOptions.fold`. */
@@ -289,7 +290,7 @@ export interface FoldStyle {
   readonly duration: number
 }
 
-export const FOLD_STYLE: FoldStyle = { chevron: "flip", title: "travel", duration: 0.3 }
+export const FOLD_STYLE: FoldStyle = { chevron: "flip", title: "travel", duration: 0.25 }
 
 export function foldStyle(options: Partial<FoldStyle> = {}): FoldStyle {
   const duration = options.duration

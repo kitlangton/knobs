@@ -260,23 +260,24 @@ describe("split folds", () => {
     expect(f).toEqual(OPEN)
   })
 
-  it("flips the chevron flat halfway and out the other way", () => {
-    expect(chevronFlip(0)).toBe(-1)
-    expect(chevronFlip(0.5)).toBe(0)
-    expect(chevronFlip(1)).toBe(1)
-    expect(chevronFlip(1.2)).toBe(1)
+  it("flips the chevron over: mirrored open, edge-on halfway, the rail's own folded", () => {
+    expect(chevronFlip(0, "start")).toBe(180)
+    expect(chevronFlip(0.5, "start")).toBe(90)
+    expect(chevronFlip(1, "start")).toBe(0)
+    expect(chevronFlip(0.5, "end")).toBe(-90)
+    expect(chevronFlip(1.2, "end")).toBeCloseTo(0)
   })
 
-  it("flips on a spring quick enough to finish in about 0.2 s, and turns back mid-flip", () => {
-    const { omega, zeta } = springMotion({ duration: 0.18, bounce: 0 })
+  it("flips on a snappy spring, edge-on by ~0.08 s, and turns back mid-flip", () => {
+    const { omega, zeta } = springMotion({ duration: 0.25, bounce: 0 })
     const s = new Spring(0, omega, zeta, 0.002).set(1)
     let flat = 0
     for (let t = 1; t <= 30 && !flat; t++) {
       s.step(1 / 60)
-      if (chevronFlip(s.x) >= 0) flat = t / 60
+      if (chevronFlip(s.x, "start") <= 90) flat = t / 60
     }
-    // Flat by ~0.07 s, and nearly all the way by 0.2 s.
-    expect(flat).toBeLessThan(0.09)
+    // Edge-on by ~0.08 s, and nearly all the way by a quarter second.
+    expect(flat).toBeLessThan(0.1)
     for (let t = 0; t < 8; t++) s.step(1 / 60)
     expect(s.x).toBeGreaterThan(0.95)
     // Toggled back halfway through a flip, it carries on from where it is.
@@ -288,14 +289,14 @@ describe("split folds", () => {
     expect(Math.abs(r.x - at)).toBeLessThan(0.15)
   })
 
-  it("defaults to a flip, a travelling title and a 0.3 s fold", () => {
-    expect(foldStyle()).toEqual({ chevron: "flip", title: "travel", duration: 0.3 })
+  it("defaults to a flip, a travelling title and a 0.25 s fold", () => {
+    expect(foldStyle()).toEqual({ chevron: "flip", title: "travel", duration: 0.25 })
     expect(foldStyle({ chevron: "turn", title: "fade", duration: 0.45 })).toEqual({
       chevron: "turn",
       title: "fade",
       duration: 0.45,
     })
-    expect(foldStyle({ duration: -1 }).duration).toBe(0.3)
+    expect(foldStyle({ duration: -1 }).duration).toBe(0.25)
   })
 
   it("travels the title from the header to the rail, whichever edge the pane folds to", () => {

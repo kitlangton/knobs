@@ -80,8 +80,9 @@ export interface SplitOptions extends UiLook {
 /** How a pane folds (each part has a default). */
 export interface SplitFold {
   /**
-   * The collapse chevron: `"flip"` (default) closes it to a flat line and opens it the other way,
-   * quickly, on its own snappy spring; `"turn"` spins it half a turn with the fold.
+   * The collapse chevron: `"flip"` (default) turns it over about its vertical axis, with depth,
+   * mirrored as it travels, on its own snappy spring; `"turn"` spins it half a turn flat, with
+   * the fold.
    */
   readonly chevron?: "flip" | "turn"
   /**
@@ -89,7 +90,7 @@ export interface SplitFold {
    * element all the way; `"fade"` fades it out with the header as the rail's label fades in.
    */
   readonly title?: "travel" | "fade"
-  /** The fold's spring, in seconds (no bounce): 0.3 unless set. */
+  /** The fold's spring, in seconds (no bounce): 0.25 unless set. */
   readonly duration?: number
 }
 
@@ -120,12 +121,15 @@ export interface Split {
   dispose(): void
 }
 
-// The chevron's flip: very quick, on its own snappy spring with no bounce.
-const FLIP = springMotion({ duration: 0.18, bounce: 0 })
+// The chevron's flip: on its own snappy spring with no bounce, seen in depth from this far (px).
+const FLIP = springMotion({ duration: 0.25, bounce: 0 })
+const FLIP_DEPTH = 28
 const SETTLE = springMotion({ duration: 0.3, bounce: 0 })
 /** The content's blur as it fades out (px), and the rail label's. */
 const CONTENT_BLUR = 3
 const LABEL_BLUR = 2
+/** How near the end of an opening (fold progress) the title's count fades in, clear of the label. */
+const COUNT_CLEAR = 0.12
 
 /** Sets an inline style property only when it changes. */
 const put = (el: HTMLElement | SVGElement, prop: string, value: string) => {
@@ -154,9 +158,10 @@ const iconNode = (doc: Document, icon: string | Node | undefined, label: string)
 /**
  * Resizable panes along a row or a column, divided by hairlines with a wider grip. Drag a divider
  * to resize (each pane slows into its min and max), double-click it to reset, or focus it and use
- * the arrow keys (⇧ for bigger steps) and Enter to collapse. Collapsing springs the pane down to a
- * slim rail, or to its header in a column, which opens it again. Sizes persist and restore before
- * the first paint. Splits nest: call `split` on another split's pane body.
+ * the arrow keys (⇧ for bigger steps) and Enter to collapse; in a row, double-click a pane's header
+ * to collapse it too. Collapsing springs the pane down to a slim rail, or to its header in a
+ * column, which opens it again. Sizes persist and restore before the first paint. Splits nest:
+ * call `split` on another split's pane body.
  */
 export function split(container: HTMLElement, options: SplitOptions): Split {
   const doc = container.ownerDocument
@@ -298,11 +303,16 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
           setCollapsed(spec.id, !collapsed[spec.id])
         })
         head.append(b)
-        // In a column the header is the fold: a click on it folds and opens the pane.
+        // In a column the header is the fold: a click on it folds and opens the pane. In a row a
+        // double-click on it folds the pane to its rail (its buttons keep their own clicks).
         if (!row) {
           head.dataset.toggles = ""
           head.addEventListener("click", () => setCollapsed(spec.id, !collapsed[spec.id]))
-        }
+        } else
+          head.addEventListener("dblclick", (e) => {
+            if ((e.target as Element).closest(".knobs-pane-btn")) return
+            setCollapsed(spec.id, true)
+          })
       }
       inner.append(head)
       view.head = head
@@ -505,6 +515,13 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     // Open and still, the header shows its own title (crisp, unturned); the label stands in for it,
     // on the same spot, from the moment the pane starts to fold.
     v.el.toggleAttribute("data-travel", travel && folding)
+    // The count beside the title waits for the travelling label to land (it would pass over it).
+    if (v.countEl)
+      put(
+        v.countEl,
+        "opacity",
+        travel && folding && p > 0 ? Math.max(0, 1 - p / COUNT_CLEAR).toFixed(3) : "",
+      )
     const k = 1 - p
     if (travel && !folding) {
       put(label, "opacity", "0")
@@ -548,13 +565,16 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
           k === 0 ? "" : `${move} rotate(${chevronTurn(p, v.edge).toFixed(2)}deg) ${size}`,
         )
       else {
-        // It travels with the fold and flips on its own spring: flat halfway, then the other way.
-        const w = chevronFlip(v.flip.x)
-        put(
-          v.turn!,
-          "transform",
-          k === 0 && w === 1 ? "" : `${move} ${size} scaleX(${w.toFixed(4)})`,
-        )
+        // It travels with the fold and flips over on its own spring: edge-on halfway, then
+        // mirrored, its near side swelling in depth so it reads as a turn over, not a spin. At
+        // rest it's drawn flat (a mirror), so the icon stays crisp.
+        const turn = chevronFlip(v.flip.x, v.edge)
+        const over = v.flip.resting
+          ? turn === 0
+            ? ""
+            : "scaleX(-1)"
+          : `perspective(${FLIP_DEPTH}px) rotateY(${turn.toFixed(2)}deg)`
+        put(v.turn!, "transform", k === 0 && !over ? "" : `${move} ${size} ${over}`)
       }
     } else {
       // No header to morph from (or a slot of a nested split): the rail fades in whole.

@@ -62,7 +62,8 @@ export function uiSections({
       wide: true,
     })
     const box = h("div", "ui-box")
-    box.style.height = "220px"
+    // Concentric with the cards inside it, half a gap in.
+    box.style.cssText += ";height:220px;border-radius:calc(var(--k-panel-radius,12px) + 3px)"
     s.slot.append(box)
     const note = (text: string) => {
       const p = h("div")
@@ -109,7 +110,18 @@ export function uiSections({
         ],
       })
     }
-    const files = note("index.ts · scene.ts · look.ts")
+    // The files are an outliner of their own, in the pane.
+    const files = h("div")
+    files.style.cssText = "position:absolute;inset:0"
+    const fileIcon =
+      '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M4 2h5.2L12 4.8V14H4Z"/><path d="M9 2v3h3"/></svg>'
+    tree(files, {
+      theme: theme(),
+      label: "Files",
+      items: ["index.ts", "scene.ts", "look.ts"].map((id) => ({ id, label: id })),
+      icon: () => fileIcon,
+      onSelect: (ids) => (canvas.textContent = ids[0] ?? "Canvas"),
+    })
     const inspector = note("Panels mount in panes, and stay drawn through a drag or a collapse.")
     const { store, on } = define("split-fold", "Split fold", {
       chevron: choice("flip", ["flip", "turn"], {
@@ -120,7 +132,7 @@ export function uiSections({
         label: "Title",
         labels: { travel: "Travel", fade: "Fade" },
       }),
-      duration: knob(0.3, { min: 0.15, max: 0.6, step: 0.01, unit: "s", label: "Fold" }),
+      duration: knob(0.25, { min: 0.15, max: 0.6, step: 0.01, unit: "s", label: "Fold" }),
     })
     on((v) => build(v))
     const row = h("div", "chips")
@@ -171,8 +183,11 @@ export function uiSections({
       { id: "fog", label: "Fog volume", icon: "◌" },
     ]
     const hidden = new Set<string>(["fill"])
+    // A panel's shape, its rows inset as far from the top and bottom as from the sides, so their
+    // corners sit concentric with its own.
     const box = h("div", "ui-box")
-    box.style.cssText += ";height:236px;padding:4px 0"
+    box.style.cssText +=
+      ";height:236px;padding:var(--k-ui-row-x,6px) 0;border-radius:var(--k-panel-radius,12px)"
     s.slot.append(box)
     const picked = h("p", "note", "Nothing selected")
     s.side.prepend(picked)
@@ -290,8 +305,9 @@ export function uiSections({
       }))
     let top = false
     const view = () => live(story, (top ? story[0] : story[story.length - 1])?.id)
+    // The rail insets its rows by the same amount all round (concentric with a panel's corners).
     const box = h("div", "ui-box")
-    box.style.cssText += ";height:340px;padding:2px 0"
+    box.style.cssText += ";height:340px;border-radius:var(--k-panel-radius,12px)"
     s.slot.append(box)
     const status = h("p", "note", "Nothing selected")
     status.style.minHeight = "18px"

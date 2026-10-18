@@ -30,6 +30,7 @@ import {
   tune,
   type UiLook,
 } from "./look.js"
+import { overlayScrollbar } from "./scrollbar.js"
 
 export interface ActivityOptions extends UiLook {
   readonly events: readonly ActivityEvent[]
@@ -109,7 +110,7 @@ const ACTIVITY_ICONS: Record<string, string> = {
 const PLAY =
   '<svg viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 1v6l5.2-3Z" fill="currentColor"/></svg>'
 
-const REFLOW = springMotion({ duration: 0.4, bounce: 0 })
+const REFLOW = springMotion({ duration: 0.3, bounce: 0 })
 const OPEN = springMotion({ duration: 0.22, bounce: 0 })
 const CLOSE = springMotion({ duration: 0.18, bounce: 0 })
 const BLOOM = springMotion({ duration: 0.3, bounce: 0 })
@@ -187,6 +188,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
   space.append(hl, line)
   root.append(empty, space)
   container.append(root)
+  const scrollbar = overlayScrollbar(root, space)
 
   // Row heights from the tokens.
   let heights: [number, number] = [32, 26]
@@ -487,7 +489,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
 
   /**
    * Brings the views in line with `rows`. `"snap"` places everything; `"set"` glides rows that
-   * stay (calm), blooms new ones in from the newest side and softens gone ones out; `"open"` and
+   * stay (.3 s), blooms new ones in from the newest side and softens gone ones out; `"open"` and
    * `"close"` move the toggled group's children out from under it (or back) with the rows below,
    * like a drawer, on the reveal springs (.22 s open, .18 s close).
    */
@@ -831,6 +833,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     destroy() {
       loop.stop()
       ro.disconnect()
+      scrollbar.dispose()
       if (keysFrom === "page") {
         win.removeEventListener("keydown", onKey)
         win.removeEventListener("pointerdown", onPointer, true)

@@ -1,6 +1,7 @@
 import { Spring, springMotion } from "../core/spring.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
 import { applyLook, frameLoop, ICONS, reducedMotion, syncFrame, type UiLook } from "./look.js"
+import { overlayScrollbar } from "./scrollbar.js"
 import {
   dropTarget,
   flatten,
@@ -111,7 +112,7 @@ export interface Tree<T> {
   dispose(): void
 }
 
-const MOVE = springMotion({ duration: 0.34, bounce: 0.02 })
+const MOVE = springMotion({ duration: 0.3, bounce: 0 })
 const EDGE = 28
 
 interface View<T> {
@@ -178,6 +179,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   empty.hidden = true
   root.append(space, line, empty)
   container.append(root)
+  const scrollbar = overlayScrollbar(root, space)
 
   // Sizes from the tokens: row height, indent and inset.
   let h = 26
@@ -1028,6 +1030,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       loop.stop()
       autoScroll.stop()
       ro.disconnect()
+      scrollbar.dispose()
       dragging?.ghost.remove()
       root.remove()
     },
