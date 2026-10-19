@@ -9,10 +9,12 @@ const port = Number(process.env.PORT) || 5178
 export default defineConfig(({ command, mode }) => ({
   root: "examples",
   optimizeDeps: {
-    include: ["solid-js", "solid-js/web", "solid-js/html"],
+    include: ["solid-js", "solid-js/web", "solid-js/html", "@pierre/diffs"],
     entries: [
       "studies.html",
       "lab.html",
+      "lab-diff.html",
+      "walkthrough.html",
       "controls.html",
       "contracts.html",
       "meta.html",
@@ -37,6 +39,8 @@ export default defineConfig(({ command, mode }) => ({
         main: resolve(import.meta.dirname, "index.html"),
         studies: resolve(import.meta.dirname, "studies.html"),
         lab: resolve(import.meta.dirname, "lab.html"),
+        labDiff: resolve(import.meta.dirname, "lab-diff.html"),
+        walkthrough: resolve(import.meta.dirname, "walkthrough.html"),
         controls: resolve(import.meta.dirname, "controls.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),

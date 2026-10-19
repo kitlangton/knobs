@@ -70,10 +70,14 @@
     "prepublishOnly": "bun run typecheck && bun run test && bun run build"
   },
   "peerDependencies": {
+    "@pierre/diffs": "^1.5.2",
     "react": ">=18",
     "solid-js": ">=1.8"
   },
   "peerDependenciesMeta": {
+    "@pierre/diffs": {
+      "optional": true
+    },
     "react": {
       "optional": true
     },
@@ -83,6 +87,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",
+    "@pierre/diffs": "^1.5.2",
     "@playwright/test": "^1.55.0",
     "@types/bun": "^1.2.0",
     "@types/react": "^19.1.0",

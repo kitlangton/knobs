@@ -3,6 +3,7 @@ import rollingCss from "../panel/rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
 import { activityCss } from "./activity-css.js"
 import { bentoCss } from "./bento-css.js"
+import { compareCss } from "./compare-css.js"
 import { overlayCss } from "./overlay-css.js"
 import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
@@ -102,6 +103,14 @@ const css = `
 :where(.knobs-ui)[data-frame="flat"]{--ku-gap:var(--k-ui-gap,0px);--ku-pane-bg:var(--k-ui-pane,transparent);--ku-pane-radius:0px;--ku-pane-ring:none;
   --ku-divider:var(--k-ui-divider,var(--ku-line));--ku-row-x:var(--k-ui-row-x,0px);--ku-row-radius:0px;
   --ku-select:var(--k-ui-select,color-mix(in srgb,var(--ku-accent) 24%,transparent));--ku-select-focus:var(--k-ui-select-focus,color-mix(in srgb,var(--ku-accent) 34%,transparent))}
+/* One surface per thing: a piece on another surface draws no card of its own. Whatever draws a
+   card (a walkthrough's step, a host's own) carries .knobs-surface, and a split's pane that's a
+   card (not only a slot for another split) counts as one; any piece inside it, or one
+   marked data-nested, loses its fill and ring and parts its own panes on hairlines as the flat
+   frame does, so cards never stack two or three borders deep. Pieces draw their card from
+   --ku-pane-bg and --ku-pane-ring so this reaches them. */
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-ui:not(.knobs-surface),.knobs-ui[data-nested]{--ku-gap:var(--k-ui-gap,0px);--ku-pane-bg:transparent;--ku-pane-ring:none;
+  --ku-divider:var(--k-ui-divider,var(--ku-line));--k-diff-bg:transparent}
 :where(.knobs-ui)[data-theme="light"],
 :where(:root[data-theme="light"]) :where(.knobs-ui)[data-theme="auto"]{${lightBlock}}
 @media(prefers-color-scheme:light){:where(:root:not([data-theme="dark"])) :where(.knobs-ui)[data-theme="auto"]{${lightBlock}}}
@@ -239,6 +248,12 @@ const css = `
 .knobs-tree:focus .knobs-tree-row[data-active][aria-selected="true"]::before{background:var(--ku-select-focus)}
 .knobs-tree-row[data-drop="into"]::before{opacity:1;background:color-mix(in srgb,var(--ku-accent) 30%,transparent)}
 .knobs-tree-row[data-dragged]{opacity:.38}
+/* glide: one highlight under the selected row that glides between rows (the row's own stays off). */
+.knobs-tree-cursor{position:absolute;left:var(--ku-row-x);right:var(--ku-row-x);top:0;height:var(--ku-row);border-radius:var(--ku-row-radius);background:var(--ku-select);
+  opacity:0;pointer-events:none;will-change:transform;transition:opacity .15s ease-out,background .12s}
+.knobs-tree-cursor[data-on]{opacity:1}
+.knobs-tree:focus .knobs-tree-cursor{background:var(--ku-select-focus)}
+.knobs-tree[data-glide] .knobs-tree-row[aria-selected="true"]::before{opacity:0!important}
 .knobs-tree-row>*{position:relative}
 .knobs-tree-caret{flex:none;display:flex;align-items:center;justify-content:center;width:16px;height:100%;color:var(--ku-dim);transition:transform var(--ku-ease-ms) var(--ku-ease)}
 .knobs-tree-caret svg{width:9px;height:9px}
@@ -337,7 +352,7 @@ export function injectUiStyles(doc: Document) {
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
   style.textContent =
-    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + rollingCss
+    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + rollingCss
   doc.head.append(style)
 }
 

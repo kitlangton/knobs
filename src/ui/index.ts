@@ -72,6 +72,7 @@ export {
   type SeekSource,
   type Timeline,
   type TimelineMarker,
+  type TimelineListener,
   type TimelineOptions,
   type TimelineRange,
 } from "./timeline.js"
@@ -92,6 +93,42 @@ export {
   type TimeUnits,
   type TimeView,
 } from "./timeline-model.js"
+export {
+  compare,
+  COMPARE_FFMPEG,
+  type Compare,
+  type CompareLoop,
+  type CompareMode,
+  type CompareOptions,
+  type CompareSource,
+  type CompareView,
+  type MediaKind,
+  type ZoomRegion,
+} from "./compare.js"
+export { compareStrip, type CompareStrip, type CompareStripOptions } from "./compare-strip.js"
+export {
+  compareLayout,
+  frameMidpoint,
+  frameOf,
+  letterbox,
+  mediaKind,
+  meanAbsDiff,
+  requestSeek,
+  seeked,
+  seekTime,
+  stripColumns,
+  stripPeaks,
+  syncAction,
+  wipeAt,
+  wipeGrab,
+  wipeKey,
+  wipeX,
+  zoomAbout,
+  type CompareLayout,
+  type SeekState,
+  type StripColumn,
+  type SyncAction,
+} from "./compare-model.js"
 export { tree, type Tree, type TreeOptions, type TreeRowContext, type TreeToggle } from "./tree.js"
 export {
   applyMove,
@@ -114,6 +151,42 @@ export {
   type TreeFilter,
   type TreeMove,
 } from "./tree-model.js"
+export {
+  codeDiff,
+  diffCounts,
+  diffReview,
+  diffStatus,
+  type CodeDiff,
+  type CodeDiffOptions,
+  type CodeDiffUpdate,
+  type DiffLayout,
+  type DiffLines,
+  type DiffReview,
+  type DiffReviewOptions,
+} from "./diff.js"
+export {
+  compareText,
+  comparePaths,
+  countChanges,
+  diffBar,
+  diffFiles,
+  diffFolders,
+  diffStats,
+  diffTree,
+  fileKey,
+  filesUnder,
+  keepFile,
+  matchPath,
+  parsePatch,
+  splitPath,
+  stepFile,
+  type DiffChange,
+  type DiffFile,
+  type DiffInput,
+  type DiffRows,
+  type DiffSource,
+  type DiffTreeItem,
+} from "./diff-model.js"
 export { bento, type Bento, type BentoItem, type BentoOptions } from "./bento.js"
 export {
   fitRect,
@@ -158,3 +231,43 @@ export {
   type PickerOption,
 } from "./picker.js"
 export { claimsDigit, digitPick, keepPick, stepPick } from "./picker-model.js"
+export {
+  tasteTest,
+  walkthrough,
+  type TasteTest,
+  type TasteTestOptions,
+  type Walkthrough,
+  type WalkthroughOptions,
+} from "./walkthrough.js"
+export { mediaSlot, type MediaSlot, type MediaSlotOptions } from "./walkthrough-media.js"
+export {
+  collectFeedback,
+  feedbackMarkdown,
+  inlineMarkdown,
+  normalizeWalkthrough,
+  readState as readWalkthroughState,
+  walkthroughProgress,
+  type ContextEvent,
+  type FeedbackItem,
+  type FeedbackNote,
+  type FeedItem,
+  type MediaContext,
+  type NoteContext,
+  type WalkInk,
+  type WalkNote,
+  type WalkVoice,
+  type WalkthroughQA,
+  type WalkthroughUpdate,
+  type WalkPage,
+  type WalkStep,
+  type WalkthroughDoc,
+  type WalkthroughFeedback,
+  type WalkthroughMedia,
+  type WalkthroughMeta,
+  type WalkthroughOption,
+  type WalkthroughSection,
+  type WalkthroughSource,
+  type WalkthroughState,
+  type WalkthroughStatus,
+  type WalkthroughStep,
+} from "./walkthrough-model.js"

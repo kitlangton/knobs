@@ -31,7 +31,14 @@ for (const [name, entry] of [
     target: "browser",
     format: "esm",
     jsx: { development: false },
-    external: ["react", "react/jsx-runtime", "react-dom", "solid-js", "solid-js/web"],
+    external: [
+      "react",
+      "react/jsx-runtime",
+      "react-dom",
+      "solid-js",
+      "solid-js/web",
+      "@pierre/diffs",
+    ],
     banner: name === "react" || name === "ui-react" ? '"use client";' : undefined,
   })
   if (!result.success) throw new AggregateError(result.logs, `${name} build failed`)
@@ -43,6 +50,9 @@ if (/import\(["']|knobs-panel|createPanel|ResizeObserver/.test(production))
 const ui = await Bun.file("dist/ui.js").text()
 if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(ui))
   throw new Error("The panel leaked into knobs/ui.")
+// The diff's renderer (and Shiki under it) is an optional peer, reached only when a diff is drawn.
+if (!/import\(["']@pierre\/diffs["']\)/.test(ui))
+  throw new Error("@pierre/diffs must stay a lazy import in knobs/ui.")
 const built = await import(new URL("../dist/index.js", import.meta.url).href)
 const locked = built.defineControls(
   "production-proof",

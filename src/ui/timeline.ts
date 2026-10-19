@@ -60,6 +60,11 @@ export interface TimelineOptions extends UiLook {
   readonly speed?: number
   /** Playback starts over at the end when there's no loop range (`false`: it stops). */
   readonly repeat?: boolean
+  /**
+   * What ←/→ move: frames (one, ten with ⇧) by default, or seconds (`{ step: 0.5, shift: 2 }`),
+   * the playhead gliding there; `,` and `.` step a frame either way.
+   */
+  readonly arrows?: "frames" | { readonly step: number; readonly shift: number }
   readonly label?: string
   /** The time moved: scrubbed, stepped, jumped, played (every frame) or set from code. */
   onSeek?(time: number, source: SeekSource): void
@@ -70,6 +75,8 @@ export interface TimelineOptions extends UiLook {
   onRanges?(ranges: readonly TimelineRange[]): void
   /** Playback passed a marker. */
   onCross?(marker: TimelineMarker): void
+  /** The visible window moved: a zoom, a pan, a fit or a follow. */
+  onView?(view: TimeView): void
   /**
    * Play, each marker and the playhead take codes in the page's hint mode (`s`), on by default:
    * a marker's code jumps to it, the playhead's focuses the timeline.
@@ -77,27 +84,49 @@ export interface TimelineOptions extends UiLook {
   readonly hints?: boolean
 }
 
+/** What `listen` reports: the same as the options' callbacks, for pieces bound to a timeline. */
+export interface TimelineListener {
+  onSeek?(time: number, source: SeekSource): void
+  onPlay?(playing: boolean): void
+  onView?(view: TimeView): void
+  /** A scrub of the playhead started (`true`) or let go (`false`). */
+  onScrub?(active: boolean): void
+  /** Ranges were set, moved or cleared (the whole list). */
+  onRanges?(ranges: readonly TimelineRange[]): void
+}
+
 export interface Timeline {
   readonly element: HTMLElement
   readonly time: number
   readonly playing: boolean
+  readonly duration: number
+  readonly fps: number
   readonly markers: readonly TimelineMarker[]
   readonly ranges: readonly TimelineRange[]
   readonly view: TimeView
-  seek(time: number): void
+  /** `glide`: the playhead springs there (the time, and what it drives, land at once). */
+  seek(time: number, options?: { readonly glide?: boolean }): void
   play(): void
   pause(): void
   toggle(): void
   /** New duration, markers, ranges, fps, units or speed; the time and view stay. */
   update(
     next: Partial<
-      Omit<TimelineOptions, "onSeek" | "onPlay" | "onMarkers" | "onRanges" | "onCross">
+      Omit<TimelineOptions, "onSeek" | "onPlay" | "onMarkers" | "onRanges" | "onCross" | "onView">
     >,
   ): void
   /** Shows the whole duration (animated). */
   fit(): void
   /** Zooms by `factor` (above 1 zooms in) around a time (the playhead's by default). */
   zoom(factor: number, at?: number): void
+  /** Hears seeks, play and pause, and view moves alongside the options' callbacks; returns a stop. */
+  listen(listener: TimelineListener): () => void
+  /**
+   * While playing, time follows `clock` (seconds, `Infinity` once it has run out: a video's
+   * `currentTime`, say) instead of the timeline's own frame clock, so the two never drift; loops
+   * and the end still apply. `null` hands time back.
+   */
+  drive(clock: (() => number) | null): void
   focus(): void
   dispose(): void
 }
@@ -107,6 +136,9 @@ const RULER = 22
 // timeline makes itself (following the playhead, fitting) glide on calm (.4 s, no bounce).
 const INSTANT = springMotion({ duration: 0.1, bounce: 0 })
 const CALM = springMotion({ duration: 0.4, bounce: 0 })
+// A keyed or coded jump (`seek(t, { glide })`, ←/→ in seconds): the playhead glides on .22 s, no
+// bounce; the time itself lands at once.
+const GLIDE = springMotion({ duration: 0.22, bounce: 0 })
 let uid = 0
 
 export function timeline(container: HTMLElement, options: TimelineOptions): Timeline {
@@ -117,6 +149,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let units: TimeUnits = options.units ?? "seconds"
   let speed = options.speed ?? 1
   let repeat = options.repeat ?? true
+  const arrows = options.arrows ?? "frames"
   let time = Math.min(duration, Math.max(0, options.time ?? 0))
   let playing = false
   let markers: TimelineMarker[] = [...(options.markers ?? [])]
@@ -126,6 +159,16 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const snapFrames = typeof snapOpt === "object" ? snapOpt.frames !== false : snapOpt
   const snapMarkers = typeof snapOpt === "object" ? snapOpt.markers !== false : snapOpt
   const id = `knobs-tl-${++uid}`
+  const listeners = new Set<TimelineListener>()
+  const emitSeek = (t: number, source: SeekSource) => {
+    options.onSeek?.(t, source)
+    for (const l of listeners) l.onSeek?.(t, source)
+  }
+  const emitPlay = (on: boolean) => {
+    options.onPlay?.(on)
+    for (const l of listeners) l.onPlay?.(on)
+  }
+  let driver: (() => number) | null = null
 
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => {
     const n = doc.createElement(tag)
@@ -137,7 +180,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   root.setAttribute("role", "group")
   root.setAttribute("aria-roledescription", "timeline")
   root.setAttribute("aria-label", options.label ?? "Timeline")
-  root.setAttribute("aria-keyshortcuts", "Space ArrowLeft ArrowRight Home End [ ] I O M")
+  root.setAttribute("aria-keyshortcuts", "Space ArrowLeft ArrowRight , . Home End [ ] I O M")
   applyLook(root, options)
   const transport = el("div", "knobs-tl-transport")
   const playBtn = el("button", "knobs-tl-play")
@@ -354,7 +397,17 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     head.setAttribute("aria-valuenow", time.toFixed(3))
     head.setAttribute("aria-valuetext", `${time.toFixed(2)} seconds, frame ${toFrame(time, fps)}`)
   }
+  let viewSent = ""
   const render = () => {
+    if (options.onView || listeners.size) {
+      const v = view()
+      const key = `${v.start}:${v.span}`
+      if (key !== viewSent) {
+        viewSent = key
+        options.onView?.(v)
+        for (const l of listeners) l.onView?.(v)
+      }
+    }
     drawRuler()
     placeMarkers()
     placeRanges()
@@ -367,13 +420,23 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   }
 
   // ——— time ———
-  const setTime = (t: number, source: SeekSource, shown = t) => {
+  const caret = new Spring(time, GLIDE.omega, GLIDE.zeta, 1e-5)
+  let gliding = false
+  const setTime = (t: number, source: SeekSource, shown = t, glide = false) => {
     const next = Math.min(duration, Math.max(0, t))
-    shownHead = shown
+    if (glide && !reducedMotion(win)) {
+      if (!gliding) caret.snap(shownHead)
+      caret.set(next)
+      gliding = true
+      loop.wake()
+    } else {
+      gliding = false
+      shownHead = shown
+    }
     const moved = next !== time
     time = next
     renderHead()
-    if (moved || source === "scrub") options.onSeek?.(time, source)
+    if (moved || source === "scrub") emitSeek(time, source)
     // A jump the hand didn't make keeps the playhead in view.
     if (source !== "scrub") keepInView()
   }
@@ -383,12 +446,25 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   }
   const loopRange = () => ranges.find((r) => r.loop) ?? null
 
+  // Playback's next time: the frame clock's, or a driving clock's (a video's) with the same loops.
+  const clocked = (r: TimelineRange | null, dt: number) => {
+    const ext = driver?.()
+    if (ext === undefined || Number.isNaN(ext))
+      return advance(time, dt * speed, { duration, loop: r, repeat })
+    const lo = r ? r.start : 0
+    const hi = r ? r.end : duration
+    if (ext < hi - 1e-6) return { t: Math.max(0, ext), ended: false, wrapped: false }
+    return r || repeat
+      ? { t: lo, ended: false, wrapped: true }
+      : { t: hi, ended: true, wrapped: false }
+  }
+
   let built = false
   const loop = frameLoop(win, (dt) => {
     if (playing) {
       const before = time
       const r = loopRange()
-      const step = advance(time, dt * speed, { duration, loop: r, repeat })
+      const step = clocked(r, dt)
       const crossedTo = step.wrapped ? (r ? r.end : duration) : step.t
       for (const m of markers)
         if (m.time > before && m.time <= crossedTo + 1e-9) options.onCross?.(m)
@@ -397,18 +473,26 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
           if (m.time >= (r ? r.start : 0) && m.time <= step.t) options.onCross?.(m)
       time = step.t
       shownHead = time
-      options.onSeek?.(time, "play")
+      gliding = false
+      emitSeek(time, "play")
       keepInView()
       if (step.ended) {
         playing = false
         syncPlay()
-        options.onPlay?.(false)
+        emitPlay(false)
+      }
+    }
+    if (gliding) {
+      shownHead = caret.step(dt)
+      if (caret.resting) {
+        gliding = false
+        shownHead = time
       }
     }
     vStart.step(dt)
     vSpan.step(dt)
     render()
-    return playing || !vStart.resting || !vSpan.resting
+    return playing || gliding || !vStart.resting || !vSpan.resting
   })
 
   const play = () => {
@@ -418,16 +502,18 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     else if (!r && time >= duration - 0.5 / fps) setTime(0, "code")
     playing = true
     syncPlay()
-    options.onPlay?.(true)
+    emitPlay(true)
     loop.wake()
   }
   const pause = () => {
     if (!playing) return
     playing = false
-    // Paused between frames, it rests on the nearest one.
-    if (snapFrames) setTime(frameTime(time, fps), "code")
+    // Paused between frames, it rests on the nearest one; driven by a video, on the frame that
+    // video is showing, so pausing never moves the picture.
+    if (snapFrames)
+      setTime(driver ? Math.floor(time * fps + 1e-4) / fps : frameTime(time, fps), "code")
     syncPlay()
-    options.onPlay?.(false)
+    emitPlay(false)
   }
   const toggle = () => (playing ? pause() : play())
   playBtn.addEventListener("click", () => {
@@ -437,7 +523,10 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
 
   // ——— markers and ranges ———
   const emitMarkers = () => options.onMarkers?.(markers)
-  const emitRanges = () => options.onRanges?.(ranges)
+  const emitRanges = () => {
+    options.onRanges?.(ranges)
+    for (const l of listeners) l.onRanges?.(ranges)
+  }
   const select = (next: typeof selected) => {
     selected = next
     syncMarkers()
@@ -613,6 +702,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         syncPlay()
       }
       root.dataset.scrubbing = ""
+      for (const l of listeners) l.onScrub?.(true)
       scrubTo(localX(e))
     }
     e.preventDefault()
@@ -665,6 +755,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       // Let go off a marker's pull, it rests where the time is.
       shownHead = time
       renderHead()
+      for (const l of listeners) l.onScrub?.(false)
       if (d.wasPlaying) play()
     } else if (d.kind === "marker") {
       if (d.moved) {
@@ -729,14 +820,29 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     switch (e.key) {
       case " ":
         claim()
-        return toggle()
+        // Held, it toggles once: key repeat would stutter play and pause.
+        if (!e.repeat) toggle()
+        return
       case "ArrowLeft":
       case "ArrowRight": {
         claim()
+        const dir = e.key === "ArrowLeft" ? -1 : 1
+        if (arrows !== "frames") {
+          // Seconds: playing carries on from there.
+          const t = Math.min(
+            duration,
+            Math.max(0, time + dir * (e.shiftKey ? arrows.shift : arrows.step)),
+          )
+          return setTime(snapFrames ? frameTime(t, fps) : t, "key", t, true)
+        }
         if (playing) pause()
-        const by = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1)
-        return setTime(frameTime(time, fps) + by * frame, "key")
+        return setTime(frameTime(time, fps) + dir * (e.shiftKey ? 10 : 1) * frame, "key")
       }
+      case ",":
+      case ".":
+        claim()
+        if (playing) pause()
+        return setTime(frameTime(time, fps) + (e.key === "," ? -1 : 1) * frame, "key")
       case "Home":
         claim()
         return setTime(0, "key")
@@ -943,12 +1049,23 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     get view() {
       return view()
     },
-    seek: (t) => setTime(t, "code"),
+    get duration() {
+      return duration
+    },
+    get fps() {
+      return fps
+    },
+    seek: (t, o) => setTime(t, "code", t, o?.glide === true),
     play,
     pause,
     toggle,
     update(next) {
+      // Showing the whole of it still (nobody zoomed or panned), a new length is shown whole too,
+      // at once: a length learned on load (a video's metadata) never animates.
+      let refit = false
       if (next.duration !== undefined) {
+        const was = fitView()
+        refit = Math.abs(target.start - was.start) < 1e-6 && Math.abs(target.span - was.span) < 1e-6
         duration = Math.max(1e-3, next.duration)
         head.setAttribute("aria-valuemax", String(duration))
       }
@@ -957,21 +1074,37 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       if (next.speed !== undefined) speed = next.speed
       if (next.repeat !== undefined) repeat = next.repeat
       if (next.markers) markers = [...next.markers]
-      if (next.ranges) ranges = [...next.ranges]
+      if (next.ranges) {
+        ranges = [...next.ranges]
+        for (const l of listeners) l.onRanges?.(ranges)
+      }
       if (next.time !== undefined) setTime(next.time, "code")
       if (next.playing !== undefined) next.playing ? play() : pause()
       if (time > duration) setTime(duration, "code")
       drawn = ""
       syncMarkers()
       syncRanges()
-      if (next.duration !== undefined || next.fps !== undefined) retarget(target, CALM)
+      if (refit) {
+        target = fitView()
+        vStart.snap(target.start)
+        vSpan.snap(target.span)
+        render()
+      } else if (next.duration !== undefined || next.fps !== undefined) retarget(target, CALM)
       else render()
     },
     fit,
     zoom,
+    listen(listener) {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
+    drive(next) {
+      driver = next
+    },
     focus: () => root.focus({ preventScroll: true }),
     dispose() {
       unregisterHints?.()
+      listeners.clear()
       loop.stop()
       ro.disconnect()
       menu.dispose()

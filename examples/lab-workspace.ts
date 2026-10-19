@@ -6,6 +6,7 @@ import { applyMove, split, toast, tree, type TreeAccess, type TreeMove } from "k
 import { startLive } from "./lab-live"
 import { uiLook } from "./lab-look"
 import { startTimeline } from "./lab-timeline"
+import { startCompare } from "./lab-compare"
 
 interface SceneItem {
   id: string
@@ -363,6 +364,7 @@ const moveTo = (ids: readonly string[], parent: string) => {
 }
 
 export const sceneTime = startTimeline(center.pane("timeline").body)
+export const compareView = startCompare(viewport, sceneTime.timeline)
 
 export const liveFeed = startLive(
   document.getElementById("sets")!,
@@ -404,6 +406,7 @@ export const workspace = {
 Object.assign(window, {
   __live: liveFeed,
   __timeline: sceneTime,
+  __compare: compareView,
   __workspace: {
     main,
     left,

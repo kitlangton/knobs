@@ -2,8 +2,8 @@
  * A thin scrollbar drawn over a scroller's content, in place of the native one beside it. A native
  * scrollbar that's always shown (as a system may be set) takes its width from the rows the moment
  * the content overflows, so every row jumps sideways, and gives it back when it stops; this one
- * takes no room. It shows while the content scrolls and while the pointer is over the scroller,
- * and drags. `content` is the element whose height makes the scroll: it's watched for changes.
+ * takes no room. It shows while the pointer is over the scroller, while you scroll it and while
+ * you drag it; a scroll from code (a reveal, a restored position) doesn't flash it. `content` is the element whose height makes the scroll: it's watched for changes.
  * The scroller hides its own (`scrollbar-width: none`) and is positioned.
  */
 export function overlayScrollbar(scroller: HTMLElement, content: Element) {
@@ -32,8 +32,16 @@ export function overlayScrollbar(scroller: HTMLElement, content: Element) {
   }
 
   let idle = 0
+  // When you last wheeled, touched or keyed in it: a scroll soon after is yours.
+  let input = Number.NEGATIVE_INFINITY
+  const touched = () => {
+    input = win.performance.now()
+  }
+  for (const type of ["wheel", "touchmove", "keydown"])
+    scroller.addEventListener(type, touched, { passive: true })
   const onScroll = () => {
     update()
+    if (win.performance.now() - input > 600 && !("dragging" in track.dataset)) return
     track.dataset.active = ""
     win.clearTimeout(idle)
     idle = win.setTimeout(() => delete track.dataset.active, 800)
@@ -75,6 +83,8 @@ export function overlayScrollbar(scroller: HTMLElement, content: Element) {
       ro.disconnect()
       win.clearTimeout(idle)
       scroller.removeEventListener("scroll", onScroll)
+      for (const type of ["wheel", "touchmove", "keydown"])
+        scroller.removeEventListener(type, touched)
       track.remove()
     },
   }

@@ -12,6 +12,14 @@ import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
 import {
+  codeDiff,
+  diffReview,
+  type CodeDiff as CodeDiffHandle,
+  type CodeDiffOptions,
+  type DiffReview as DiffReviewHandle,
+  type DiffReviewOptions,
+} from "./diff.js"
+import {
   optionPicker,
   type OptionPicker as OptionPickerHandle,
   type OptionPickerOptions,
@@ -19,7 +27,26 @@ import {
 } from "./picker.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
+import { compare, type Compare as CompareHandle, type CompareOptions } from "./compare.js"
+import {
+  compareStrip,
+  type CompareStrip as CompareStripHandle,
+  type CompareStripOptions,
+} from "./compare-strip.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
+import {
+  tasteTest,
+  walkthrough,
+  type TasteTest as TasteTestHandle,
+  type TasteTestOptions,
+  type Walkthrough as WalkthroughHandle,
+  type WalkthroughOptions,
+} from "./walkthrough.js"
+import {
+  mediaSlot,
+  type MediaSlot as MediaSlotHandle,
+  type MediaSlotOptions,
+} from "./walkthrough-media.js"
 
 /**
  * Props that follow into the piece made from them, in one effect: whichever changed (since the
@@ -107,6 +134,73 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
   return host as unknown as JSX.Element
 }
 
+export type CodeDiffProps = CodeDiffOptions & { onReady?: (diff: CodeDiffHandle) => void }
+
+const diffProps = (props: CodeDiffOptions) => () => ({
+  patch: props.patch,
+  files: props.files,
+  file: props.file,
+  layout: props.layout,
+  wrap: props.wrap,
+  viewed: props.viewed,
+  height: props.height,
+  maxHeight: props.maxHeight,
+})
+
+/**
+ * `codeDiff()` as a component. `patch`, `files`, `file`, `layout`, `wrap`, `viewed`, `height` and
+ * `maxHeight` follow their
+ * props; callbacks always call the latest props.
+ */
+export function CodeDiff(props: CodeDiffProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  if (untrack(() => props.height) !== "auto") host.style.height = "100%"
+  const d = untrack(() =>
+    codeDiff(host, {
+      ...props,
+      onFile: (name) => props.onFile?.(name),
+      onLayout: (layout) => props.onLayout?.(layout),
+      onWrap: (wrap) => props.onWrap?.(wrap),
+      onLines: props.onLines && ((lines, file) => props.onLines?.(lines, file)),
+      onViewed: props.onViewed && ((viewed, file) => props.onViewed?.(viewed, file)),
+    }),
+  )
+  untrack(() => props.onReady?.(d))
+  follow(diffProps(props), (c) => {
+    if (c.height) host.style.height = c.height === "auto" ? "" : "100%"
+    d.update(c)
+  })
+  onCleanup(() => d.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type DiffReviewProps = DiffReviewOptions & { onReady?: (review: DiffReviewHandle) => void }
+
+/** `diffReview()` as a component: the file tree beside the diff; follows as `CodeDiff` does. */
+export function DiffReview(props: DiffReviewProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  if (untrack(() => props.height) !== "auto") host.style.height = "100%"
+  const r = untrack(() =>
+    diffReview(host, {
+      ...props,
+      onFile: (name) => props.onFile?.(name),
+      onLayout: (layout) => props.onLayout?.(layout),
+      onWrap: (wrap) => props.onWrap?.(wrap),
+      onLines: props.onLines && ((lines, file) => props.onLines?.(lines, file)),
+      onViewed: (viewed, file) => props.onViewed?.(viewed, file),
+    }),
+  )
+  untrack(() => props.onReady?.(r))
+  follow(diffProps(props), (c) => {
+    if (c.height) host.style.height = c.height === "auto" ? "" : "100%"
+    r.update(c)
+  })
+  onCleanup(() => r.dispose())
+  return host as unknown as JSX.Element
+}
+
 export type TimelineProps = TimelineOptions & { onReady?: (timeline: TimelineHandle) => void }
 
 /**
@@ -146,6 +240,68 @@ export function Timeline(props: TimelineProps): JSX.Element {
     },
   )
   onCleanup(() => t.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type CompareProps = CompareOptions & { onReady?: (compare: CompareHandle) => void }
+
+/**
+ * `compare()` as a component, made once (with the `timeline`, `strip` and `renderer` it starts
+ * with). `before`, `after` (by `src`), `mode`, `wipe`, `loupe`, `threshold` and `fps` follow
+ * their props; callbacks always call the latest props.
+ */
+export function Compare(props: CompareProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const c = untrack(() =>
+    compare(host, {
+      ...props,
+      onMode: (mode) => props.onMode?.(mode),
+      onWipe: (wipe) => props.onWipe?.(wipe),
+      onView: (view) => props.onView?.(view),
+    }),
+  )
+  untrack(() => props.onReady?.(c))
+  follow(
+    () => ({
+      before: props.before,
+      after: props.after,
+      mode: props.mode,
+      wipe: props.wipe,
+      loupe: props.loupe,
+      threshold: props.threshold,
+      fps: props.fps,
+    }),
+    (changed) => {
+      const next = Object.fromEntries(Object.entries(changed).filter(([, v]) => v !== undefined))
+      if (anyChanged(next)) c.update(next)
+    },
+  )
+  onCleanup(() => c.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type CompareStripProps = CompareStripOptions & {
+  onReady?: (strip: CompareStripHandle) => void
+}
+
+/** `compareStrip()` as a component, on a timeline handle; new sources (by `src`) follow. */
+export function CompareStrip(props: CompareStripProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const s = untrack(() => compareStrip(host, { ...props, onPick: (time) => props.onPick?.(time) }))
+  untrack(() => props.onReady?.(s))
+  follow(
+    () => ({ before: props.before.src, after: props.after.src }),
+    (changed) =>
+      s.update({
+        ...("before" in changed ? { before: props.before } : {}),
+        ...("after" in changed ? { after: props.after } : {}),
+      }),
+  )
+  onCleanup(() => s.dispose())
   return host as unknown as JSX.Element
 }
 
@@ -259,3 +415,56 @@ export function OptionPicker(props: OptionPickerProps): JSX.Element {
 
 export type { ActivityEvent } from "./activity-model.js"
 export type { PickerOption } from "./picker.js"
+
+export type WalkthroughProps = WalkthroughOptions & {
+  onReady?: (walkthrough: WalkthroughHandle) => void
+}
+
+/**
+ * `walkthrough()` as a component: a new `doc` is a new draft (answers carry over by step key);
+ * `onFeedback` always calls the latest prop.
+ */
+export function Walkthrough(props: WalkthroughProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  const w = untrack(() =>
+    walkthrough(host, { ...props, onFeedback: (feedback) => props.onFeedback?.(feedback) }),
+  )
+  untrack(() => props.onReady?.(w))
+  follow(
+    () => ({ doc: props.doc }),
+    (c) => c.doc && w.set(c.doc),
+  )
+  onCleanup(() => w.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type TasteTestProps = TasteTestOptions & { onReady?: (test: TasteTestHandle) => void }
+
+/** `tasteTest()` as a component: `picked` follows its prop. */
+export function TasteTest(props: TasteTestProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  const t = untrack(() => tasteTest(host, { ...props, onPick: (id) => props.onPick?.(id) }))
+  untrack(() => props.onReady?.(t))
+  follow(
+    () => ({ picked: props.picked }),
+    (c) => "picked" in c && t.pick(c.picked ?? null),
+  )
+  onCleanup(() => t.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type MediaSlotProps = MediaSlotOptions & { onReady?: (slot: MediaSlotHandle) => void }
+
+/** `mediaSlot()` as a component: one walkthrough media slot. */
+export function MediaSlot(props: MediaSlotProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  const s = untrack(() => mediaSlot(host, props))
+  untrack(() => props.onReady?.(s))
+  onCleanup(() => s.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type { WalkthroughDoc, WalkthroughFeedback } from "./walkthrough-model.js"

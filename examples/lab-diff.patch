@@ -1,0 +1,52 @@
+commit a5bc1ec82f926e5efcaaa8bae584b07b3fafecf4
+Author: Kit Langton <kit.langton@gmail.com>
+Date:   Thu Oct 15 22:44:13 2026 -0700
+
+    OptionPicker numbers every row, 10, 11 and on past the ninth, in tabular digits in a column two digits wide so the names stay aligned; digits still pick only 1–9
+
+diff --git a/src/ui/picker-css.ts b/src/ui/picker-css.ts
+index a1dbf70..a16c034 100644
+--- a/src/ui/picker-css.ts
++++ b/src/ui/picker-css.ts
+@@ -23,7 +23,9 @@ export const pickerCss = `
+ .knobs-picker-head:focus-visible::before{opacity:1;background:var(--ku-wash-hi);transition-duration:0s}
+ .knobs-picker-head>*{position:relative}
+ .knobs-picker-option[data-selected] .knobs-picker-head{color:var(--ku-text)}
+-.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:5px;background:var(--ku-surface);
++/* Every row is numbered (only 1–9 are keys): tabular digits in a column two digits wide, so the
++   names line up past the ninth. */
++.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;width:max(17px,calc(2ch + 6px));height:17px;padding:0;border-radius:5px;background:var(--ku-surface);
+   color:var(--ku-dim);font:var(--ku-label-weight) calc(var(--ku-font-size) - 1.5px)/1 var(--ku-font);font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
+ .knobs-picker-key:empty{visibility:hidden}
+ .knobs-picker-option[data-selected] .knobs-picker-key{background:var(--ku-surface-hi);color:var(--ku-text)}
+diff --git a/src/ui/picker-model.ts b/src/ui/picker-model.ts
+index 6c035d5..cc2c253 100644
+--- a/src/ui/picker-model.ts
++++ b/src/ui/picker-model.ts
+@@ -51,8 +51,8 @@ export function askPick(
+ export const stillWanted = (ids: readonly string[], wanted: string | null): string | null =>
+   wanted !== null && ids.includes(wanted) ? null : wanted
+ 
+-/** The digit an option shows: its place, 1–9; none past the ninth. */
+-export const pickDigit = (index: number): string => (index < 9 ? String(index + 1) : "")
++/** The number an option shows: its place, 1, 2, … 12 (only 1–9 are keys that pick). */
++export const pickDigit = (index: number): string => String(index + 1)
+ 
+ /**
+  * Whether a key event goes to the picker's digits: a bare 1–9 that nothing focused claimed (a
+diff --git a/tests/picker.test.ts b/tests/picker.test.ts
+index 12af7f8..9c2e13d 100644
+--- a/tests/picker.test.ts
++++ b/tests/picker.test.ts
+@@ -18,7 +18,10 @@ describe("option picker", () => {
+     expect(digitPick(options, "4")).toBeUndefined()
+     expect(digitPick(options, "0")).toBeUndefined()
+     expect(pickDigit(0)).toBe("1")
+-    expect(pickDigit(9)).toBe("")
++    // Every row is numbered; past 9 the number shows but no digit picks it.
++    expect(pickDigit(9)).toBe("10")
++    expect(pickDigit(11)).toBe("12")
++    expect(digitPick(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"], "1")).toBe("A")
+   })
+   test("↑/↓ step and stop at the ends; Home/End", () => {
+     expect(stepPick(options, "A", "ArrowDown")).toBe("B")

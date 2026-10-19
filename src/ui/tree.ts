@@ -54,8 +54,8 @@ export interface TreeOptions<T> extends UiLook {
   readonly getLabel?: (item: T) => string
   /** A glyph, SVG markup or node before the label. */
   readonly icon?: (item: T) => string | Node | undefined
-  /** Dimmed text after the label (a count, a kind). */
-  readonly detail?: (item: T) => string | undefined
+  /** Dimmed text (or a node of your own) after the label: a count, a kind. */
+  readonly detail?: (item: T) => string | Node | undefined
   /** Your own content in place of the label. */
   readonly render?: (item: T, row: TreeRowContext) => Node | string | undefined | void
   readonly selection?: Iterable<string>
@@ -88,6 +88,11 @@ export interface TreeOptions<T> extends UiLook {
    * row as a click does. While the page has hint mode, `s` goes to it rather than type-ahead.
    */
   readonly hints?: boolean
+  /**
+   * The selected row (one) shows as one highlight that glides to the next row selected, on the
+   * rows' own spring, instead of each row lighting in place. Several selected rows light in place.
+   */
+  readonly glide?: boolean
 }
 
 export interface Tree<T> {
@@ -177,7 +182,33 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   const empty = doc.createElement("div")
   empty.className = "knobs-tree-empty"
   empty.hidden = true
-  root.append(space, line, empty)
+  // The gliding selection (`glide`): under the rows, in their coordinates.
+  const cursor = doc.createElement("div")
+  cursor.className = "knobs-tree-cursor"
+  root.append(space, cursor, line, empty)
+  const cursorY = new Spring(0, MOVE.omega, MOVE.zeta, 0.1)
+  let cursorOn = false
+  const drawCursor = () => {
+    cursor.style.transform = `translate3d(0,${Math.round(cursorY.x * 2) / 2}px,0)`
+  }
+  /** Puts the highlight on the selected row: gliding there if it's on show, else in place. */
+  const placeCursor = (animate: boolean) => {
+    if (!options.glide) return
+    const id = sel.ids.length === 1 ? sel.ids[0]! : null
+    const i = id === null ? undefined : rowIndex.get(id)
+    root.toggleAttribute("data-glide", i !== undefined)
+    if (i === undefined) {
+      cursor.removeAttribute("data-on")
+      cursorOn = false
+      return
+    }
+    if (cursorOn && animate && !reducedMotion(win)) cursorY.set(i * h)
+    else cursorY.snap(i * h)
+    cursorOn = true
+    cursor.setAttribute("data-on", "")
+    drawCursor()
+    if (!cursorY.resting) loop.wake()
+  }
   container.append(root)
   const scrollbar = overlayScrollbar(root, space)
 
@@ -313,7 +344,8 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       }
       const detail = options.detail?.(row.item)
       v.detail.hidden = !detail
-      v.detail.textContent = detail ?? ""
+      if (detail instanceof Node) v.detail.replaceChildren(detail)
+      else v.detail.textContent = detail ?? ""
     }
     const off: string[] = []
     if (options.toggles?.length) {
@@ -379,6 +411,11 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   function frame(dt: number): boolean {
     let moving = false
     let bottom = rows.length * h
+    if (options.glide && !cursorY.resting) {
+      cursorY.step(dt)
+      drawCursor()
+      if (!cursorY.resting) moving = true
+    }
     for (const v of views.values()) {
       v.y.step(dt)
       if (!v.y.resting) moving = true
@@ -515,6 +552,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     if (moving) loop.wake()
     else setSpace(rows.length * h)
     updateActiveDescendant()
+    placeCursor(mode !== "snap")
   }
 
   const isUnder = (id: string, ancestor: string) => {
@@ -555,6 +593,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     selected = new Set(next.ids)
     if (primary !== null) active = primary
     rebindAll()
+    placeCursor(true)
     if (notify) options.onSelect?.(next.ids, primary)
   }
 

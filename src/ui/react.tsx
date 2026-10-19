@@ -11,6 +11,14 @@ import {
 import { createPortal } from "react-dom"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import {
+  codeDiff,
+  diffReview,
+  type CodeDiff as CodeDiffHandle,
+  type CodeDiffOptions,
+  type DiffReview as DiffReviewHandle,
+  type DiffReviewOptions,
+} from "./diff.js"
 import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import {
   optionPicker,
@@ -20,7 +28,26 @@ import {
 } from "./picker.js"
 import { split, type Split as SplitHandle, type SplitOptions } from "./split.js"
 import { timeline, type Timeline as TimelineHandle, type TimelineOptions } from "./timeline.js"
+import { compare, type Compare as CompareHandle, type CompareOptions } from "./compare.js"
+import {
+  compareStrip,
+  type CompareStrip as CompareStripHandle,
+  type CompareStripOptions,
+} from "./compare-strip.js"
 import { tree, type Tree as TreeHandle, type TreeOptions } from "./tree.js"
+import {
+  tasteTest,
+  walkthrough,
+  type TasteTest as TasteTestHandle,
+  type TasteTestOptions,
+  type Walkthrough as WalkthroughHandle,
+  type WalkthroughOptions,
+} from "./walkthrough.js"
+import {
+  mediaSlot,
+  type MediaSlot as MediaSlotHandle,
+  type MediaSlotOptions,
+} from "./walkthrough-media.js"
 
 /**
  * Props that follow into the piece made from them, in one effect after each render: whichever
@@ -127,6 +154,102 @@ export function Tree<T>(props: TreeProps<T>) {
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
+export type CodeDiffProps = CodeDiffOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (diff: CodeDiffHandle) => void
+}
+
+/**
+ * `codeDiff()` as a component. `patch`, `files`, `file`, `layout`, `wrap`, `viewed`, `height` and
+ * `maxHeight` follow their
+ * props; callbacks always call the latest props.
+ */
+export function CodeDiff(props: CodeDiffProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<CodeDiffHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const p = latest.current
+    const d = codeDiff(ref.current!, {
+      ...p,
+      onFile: (name) => latest.current.onFile?.(name),
+      onLayout: (layout) => latest.current.onLayout?.(layout),
+      onWrap: (wrap) => latest.current.onWrap?.(wrap),
+      onLines: p.onLines && ((lines, file) => latest.current.onLines?.(lines, file)),
+      onViewed: p.onViewed && ((viewed, file) => latest.current.onViewed?.(viewed, file)),
+    })
+    handle.current = d
+    p.onReady?.(d)
+    return () => {
+      d.dispose()
+      handle.current = null
+    }
+  }, [])
+  useFollow(
+    {
+      patch: props.patch,
+      files: props.files,
+      file: props.file,
+      layout: props.layout,
+      wrap: props.wrap,
+      viewed: props.viewed,
+      height: props.height,
+      maxHeight: props.maxHeight,
+    },
+    (c) => handle.current?.update(c),
+  )
+  const height = props.height === "auto" ? undefined : "100%"
+  return <div ref={ref} className={props.className} style={{ height, ...props.style }} />
+}
+
+export type DiffReviewProps = DiffReviewOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (review: DiffReviewHandle) => void
+}
+
+/** `diffReview()` as a component: the file tree beside the diff; follows as `CodeDiff` does. */
+export function DiffReview(props: DiffReviewProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<DiffReviewHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const p = latest.current
+    const r = diffReview(ref.current!, {
+      ...p,
+      onFile: (name) => latest.current.onFile?.(name),
+      onLayout: (layout) => latest.current.onLayout?.(layout),
+      onWrap: (wrap) => latest.current.onWrap?.(wrap),
+      onLines: p.onLines && ((lines, file) => latest.current.onLines?.(lines, file)),
+      onViewed: (viewed, file) => latest.current.onViewed?.(viewed, file),
+    })
+    handle.current = r
+    p.onReady?.(r)
+    return () => {
+      r.dispose()
+      handle.current = null
+    }
+  }, [])
+  useFollow(
+    {
+      patch: props.patch,
+      files: props.files,
+      file: props.file,
+      layout: props.layout,
+      wrap: props.wrap,
+      viewed: props.viewed,
+      height: props.height,
+      maxHeight: props.maxHeight,
+    },
+    (c) => handle.current?.update(c),
+  )
+  const height = props.height === "auto" ? undefined : "100%"
+  return <div ref={ref} className={props.className} style={{ height, ...props.style }} />
+}
+
 export type TimelineProps = TimelineOptions & {
   className?: string
   style?: CSSProperties
@@ -176,6 +299,91 @@ export function Timeline(props: TimelineProps) {
       if (t && next && anyChanged(next)) t.update(next)
     },
   )
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type CompareProps = CompareOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (compare: CompareHandle) => void
+}
+
+/**
+ * `compare()` as a component. `before`, `after` (by `src`), `mode`, `wipe`, `loupe`, `threshold`
+ * and `fps` follow their props; a new `timeline` handle, `strip` or `renderer` makes it afresh;
+ * callbacks always call the latest props.
+ */
+export function Compare(props: CompareProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<CompareHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const c = compare(ref.current!, {
+      ...latest.current,
+      onMode: (mode) => latest.current.onMode?.(mode),
+      onWipe: (wipe) => latest.current.onWipe?.(wipe),
+      onView: (view) => latest.current.onView?.(view),
+    })
+    handle.current = c
+    latest.current.onReady?.(c)
+    return () => {
+      c.dispose()
+      handle.current = null
+    }
+  }, [props.timeline, props.strip, props.renderer])
+  useFollow(
+    {
+      before: props.before,
+      after: props.after,
+      mode: props.mode,
+      wipe: props.wipe,
+      loupe: props.loupe,
+      threshold: props.threshold,
+      fps: props.fps,
+    },
+    (c) => {
+      const next = Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined))
+      if (anyChanged(next)) handle.current?.update(next)
+    },
+  )
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type CompareStripProps = CompareStripOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (strip: CompareStripHandle) => void
+}
+
+/** `compareStrip()` as a component, on a timeline handle; new sources (by `src`) follow. */
+export function CompareStrip(props: CompareStripProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<CompareStripHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const s = compareStrip(ref.current!, {
+      ...latest.current,
+      onPick: (time) => latest.current.onPick?.(time),
+    })
+    handle.current = s
+    latest.current.onReady?.(s)
+    return () => {
+      s.dispose()
+      handle.current = null
+    }
+  }, [props.timeline, props.align])
+  const srcs = useRef({ before: props.before.src, after: props.after.src })
+  useEffect(() => {
+    const was = srcs.current
+    srcs.current = { before: props.before.src, after: props.after.src }
+    const next = {
+      ...(was.before !== props.before.src ? { before: props.before } : {}),
+      ...(was.after !== props.after.src ? { after: props.after } : {}),
+    }
+    if (anyChanged(next)) handle.current?.update(next)
+  })
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
 
@@ -310,3 +518,87 @@ export function OptionPicker(props: OptionPickerProps) {
 
 export type { ActivityEvent } from "./activity-model.js"
 export type { PickerOption } from "./picker.js"
+
+export type WalkthroughProps = WalkthroughOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (walkthrough: WalkthroughHandle) => void
+}
+
+/**
+ * `walkthrough()` as a component: a new `doc` is a new draft (answers carry over by step key);
+ * `onFeedback` always calls the latest prop.
+ */
+export function Walkthrough(props: WalkthroughProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<WalkthroughHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const w = walkthrough(ref.current!, {
+      ...latest.current,
+      onFeedback: (feedback) => latest.current.onFeedback?.(feedback),
+    })
+    handle.current = w
+    latest.current.onReady?.(w)
+    return () => {
+      w.dispose()
+      handle.current = null
+    }
+  }, [])
+  useFollow({ doc: props.doc }, (c) => {
+    if (c.doc) handle.current?.set(c.doc)
+  })
+  return <div ref={ref} className={props.className} style={props.style} />
+}
+
+export type TasteTestProps = TasteTestOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (test: TasteTestHandle) => void
+}
+
+/** `tasteTest()` as a component: `picked` follows its prop; new `options` make it afresh. */
+export function TasteTest(props: TasteTestProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<TasteTestHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const t = tasteTest(ref.current!, {
+      ...latest.current,
+      onPick: (id) => latest.current.onPick?.(id),
+    })
+    handle.current = t
+    latest.current.onReady?.(t)
+    return () => {
+      t.dispose()
+      handle.current = null
+    }
+  }, [props.options])
+  useFollow({ picked: props.picked }, (c) => {
+    if ("picked" in c) handle.current?.pick(c.picked ?? null)
+  })
+  return <div ref={ref} className={props.className} style={props.style} />
+}
+
+export type MediaSlotProps = MediaSlotOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (slot: MediaSlotHandle) => void
+}
+
+/** `mediaSlot()` as a component: one walkthrough media slot; new `media` mounts afresh. */
+export function MediaSlot(props: MediaSlotProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const s = mediaSlot(ref.current!, latest.current)
+    latest.current.onReady?.(s)
+    return () => s.dispose()
+  }, [props.media])
+  return <div ref={ref} className={props.className} style={props.style} />
+}
+
+export type { WalkthroughDoc, WalkthroughFeedback } from "./walkthrough-model.js"

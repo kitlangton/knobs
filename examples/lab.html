@@ -54,6 +54,9 @@
       .card .mono { font-family: var(--mono); color: var(--label); }
       .card a { color: var(--blue); text-decoration: none; }
       .viewport { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 55% 45%, #2a2019 0%, #17130f 45%, #0d0c0d 80%); }
+      /* The compare layer (examples/lab-compare.ts): over the viewport, fading in and out. */
+      .compare-layer { position: absolute; inset: 0; z-index: 2; padding: 6px 8px 4px; background: var(--card); opacity: 0; pointer-events: none; transition: opacity .16s cubic-bezier(.4, 0, 1, 1); }
+      .compare-layer[data-shown] { opacity: 1; pointer-events: auto; transition: opacity .2s cubic-bezier(.2, .8, .2, 1); }
       .viewport .tag { position: absolute; left: 8px; top: 8px; padding: 2px 8px; background: #101114; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
       .dock { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(260px, 1.25fr) minmax(260px, 1.25fr); gap: 6px; padding: 0 6px 6px; height: 100%; background: var(--dock); }
       /* Each of the dock's columns scrolls on its own, fading where it runs under the dock's header
@@ -164,10 +167,13 @@
       <div class="top" data-hint-group>
         <b>Lab</b>
         <div class="seg"><button class="on" data-tip="Edit the scene" data-hint>Edit</button><button data-tip="Play in the viewport" data-hint="Play">▶ Play</button><button data-tip="Show bounding boxes" data-hint>Box</button></div>
+        <div class="seg" id="view-seg" role="radiogroup" aria-label="View"><button role="radio" data-view="scene" data-tip="The weather scene" data-hint>Scene</button><button role="radio" data-view="videos" data-tip="Before and after videos on the scene's timeline" data-hint="Compare">Compare</button><button role="radio" data-view="stills" data-tip="Before and after stills" data-hint>Stills</button></div>
         <button id="restart" aria-label="Restart" data-tip="Restart the station" data-hint>⟲</button><button id="pause" aria-label="Pause the live feed" data-hint>❚❚</button><button data-tip="Playback speed" data-hint="Speed">1×</button>
         <span class="mono" style="font-family: var(--mono); margin-left: 6px">0.06s · f2</span>
         <span class="spacer"></span>
         <a class="nav" href="controls.html" data-tip="Every control, one by one" data-hint>Controls</a>
+        <a class="nav" href="lab-diff.html" data-tip="A code review: files beside their diff" data-hint>Diff</a>
+        <a class="nav" href="walkthrough.html" data-tip="An agent's walkthrough: before/after, taste tests, feedback" data-hint>Walkthrough</a>
         <div class="seg look-switch" role="radiogroup" aria-label="Look"><button role="radio" data-look="knobs" data-tip="knobs' own look" data-hint>knobs</button><button role="radio" data-look="lab" data-tip="Arcade's Lab: square and flat" data-hint>Lab</button></div>
         <button class="theme" id="theme" aria-label="Light or dark" data-tip="Light or dark" data-hint>☾</button>
         <button class="sound" id="sound" aria-label="Sound" data-hint="Sound"></button>
