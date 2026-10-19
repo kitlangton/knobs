@@ -722,7 +722,7 @@ function buildPanel<S extends Schema>(
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
   ]
   const body = el("div")
-  const tabMotion = tabTransition(body, () => wakeGpu())
+  const tabMotion = tabTransition(body, root, () => wakeGpu())
   // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
   // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
   interface Block {
