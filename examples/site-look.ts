@@ -68,7 +68,14 @@ const schema = {
     random: false,
   }),
   accent: color("#ffffff", { label: "Accent", group: "look" }),
-  contrast: knob(0, { min: -0.5, max: 1, step: 0.01, decimals: 2, label: "Contrast", group: "look" }),
+  contrast: knob(0, {
+    min: -0.5,
+    max: 1,
+    step: 0.01,
+    decimals: 2,
+    label: "Contrast",
+    group: "look",
+  }),
   grain: knob(0, { min: 0, max: 1, step: 0.01, decimals: 2, label: "Grain", group: "look" }),
   speed: knob(1, {
     min: 0.5,

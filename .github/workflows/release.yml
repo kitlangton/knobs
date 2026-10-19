@@ -25,7 +25,13 @@ jobs:
       - run: npm install -g npm@latest
       # prepublishOnly runs the typecheck, the tests and the build.
       # A prerelease (0.4.0-next.0) goes to the "next" tag, so "latest" only moves on a full release.
-      - run: npm publish --tag "$(node -p "require('./package.json').version.includes('-') ? 'next' : 'latest'")"
-      - run: gh release create "$GITHUB_REF_NAME" --generate-notes $(node -p "require('./package.json').version.includes('-') ? '--prerelease' : ''")
+      - run: |
+          if node -e "process.exit(require('./package.json').version.includes('-') ? 0 : 1)"; then
+            npm publish --tag next
+            gh release create "$GITHUB_REF_NAME" --generate-notes --prerelease
+          else
+            npm publish
+            gh release create "$GITHUB_REF_NAME" --generate-notes
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
