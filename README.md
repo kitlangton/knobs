@@ -1328,6 +1328,68 @@ Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one cont
 
 The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
 
+### Walkthrough
+
+```ts
+import { walkthrough, type WalkthroughDoc } from "knobs/ui"
+
+const doc: WalkthroughDoc = {
+  id: "2026-10-19-onboarding-prs",
+  title: "Onboarding audit: before / after",
+  sections: [
+    {
+      title: "Refresh models globally",
+      link: "https://github.com/anomalyco/opencode/pull/57148",
+      status: "ready",
+      steps: [{ title: "Desktop model picker", media: { kind: "compare", before: "a.mp4", after: "b.mp4" } }],
+    },
+  ],
+}
+const w = walkthrough(container, { doc, onFeedback: (fb) => send(fb) })
+```
+
+**`walkthrough(container, { doc })`** is the page an agent writes to show its work: a plain document (JSON) of sections and steps, each step one card holding a caption, its media and what it asks (a note, or a pick between options). Notes come from a bar docked at the bottom, typed, spoken or inked, each carrying what was on show (a video's time and chapter, a compare's loop and zoom, a diff's file) and a short log of what led up to it; `onFeedback`, `w.feedback` and `w.markdown()` hand it back. `j` / `k` move between steps, `←` / `→` seek, `f` goes full window, `n` writes a note, `1`–`9` pick. Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`, `code`, `terminal`, `metric`, `callout`, `text`, `history`, `stack`, `table`, or `mount` (your own, `(el) => cleanup`; the one that isn't JSON). A step's card is the surface, so media inside draw no card of their own. Wherever media name a step (`step` on a history event, a stack item or a table cell) they take its key, id or number (`"1.2"`), and clicking goes there as `j` / `k` do. The demo is `examples/walkthrough.html`.
+
+**`history`**: dated events down a spine, a tone dot each (`good`, `warn`, `bad`, `info`, `dim`), under quiet group headings. `provenance` says whether an event was seen in the record (`"verified"`) or worked out from behaviour (`"inferred"`, a ring for a dot and a dashed tag), and `source` where (`"verified · git"`). `evidence` is small tags, linked or not; `type: "release"` draws a diamond, `"audit"` a square. Groups take `events` or `rows`; a bare `events` list is one group. In a narrow card the date goes over the event.
+
+```json
+{ "kind": "history", "groups": [{ "heading": "v2 dropped it", "summary": "Jun 26 – Jul 30", "events": [
+  { "date": "Jun 26, 2026", "age": "116d ago", "title": "The v2 TUI rewrite leaves out DialogRetryAction",
+    "detail": "`session/index.tsx` replaced without the listener.", "tone": "bad",
+    "provenance": "verified", "source": "git", "evidence": [{ "label": "e6f660fecf" }] },
+  { "date": "Oct 20, 2026", "title": "/install still 307s to v1", "tone": "warn",
+    "provenance": "inferred", "source": "edge", "step": "4.8" } ] }] }
+```
+
+**`stack`**: PRs in merge order as a branch graph. `branch` is `"head → base"` (or `head` and `base`); an item whose base is another's head hangs under it, joined by a drawn rail, and the rest sit on the trunk (`base`, else the branch most items merge into), named at the top. An item on a branch that's neither shows it. `delta` is `"+164 / -18"` or `{ add, del }`, drawn green and red; `status` and `tone` make its chip; `step` (or `stepId`) makes its title go to that step; `href` links its PR number.
+
+```json
+{ "kind": "stack", "base": "dev", "items": [
+  { "order": "01", "pr": "#57146", "href": "https://github.com/anomalyco/opencode/pull/57146", "title": "Typed free-limit error",
+    "branch": "free-limit-card → dev", "delta": "+193 / -8", "status": "Stack base", "tone": "good", "step": "4.1" },
+  { "pr": "#57466", "title": "Restore the Desktop dialog", "branch": "free-limit-desktop → free-limit-card",
+    "delta": { "add": 446, "del": 47 }, "status": "Stacked on #57146", "tone": "good", "summary": "Modal, notice and prompt recall." } ] }
+```
+
+**`table`**: a real `<table>` for audits and matrices. Rows are cells by column key, bare or under `cells`; a cell is text, a number, or `{ text, href?, code?, badge?, tone?, step? }` (a `badge` is a tone chip). Columns take `mono` and `align` (number columns go right by themselves). Figures are tabular; a tall table keeps its head stuck, a wide one scrolls across, its edges fade where there's more, and its bars show thin on hover. `caption` goes under it.
+
+```json
+{ "kind": "table", "caption": "From a clean HOME, Oct 20", "columns": [
+    { "key": "channel", "label": "Entry point", "mono": true }, { "key": "days", "label": "Days on v2" },
+    { "key": "state", "label": "State", "align": "right" } ],
+  "rows": [ { "cells": { "channel": { "text": "npm i -g @opencode-ai/cli", "code": true }, "days": 39,
+                         "state": { "text": "Broken", "badge": "bad" } } },
+            { "channel": "brew install …/opencode-v2", "days": 31, "state": { "text": "Pending", "badge": "info", "step": "4.6" } } ] }
+```
+
+**`chapters`** on a `video` (or a `compare`): timestamp pills under it. A click seeks there and plays, and goes in the note's log; one highlight springs to the chapter playing as it plays (.4 s, no bounce), and a note's `media` names it (`chapter`). A chapter ends at `end`, else `start + duration`, else the next one's start. On a compare they're also its timeline's markers. A video's `captions` (or `captionsSrc`) is a WebVTT URL, shown by default.
+
+```json
+{ "kind": "video", "src": "journey.mp4", "poster": "journey.png", "captions": "captions.vtt", "chapters": [
+  { "id": "scorecard", "label": "Scorecard", "start": 0, "duration": 9.57 },
+  { "label": "Today (broken)", "start": 9.57 }, { "label": "After", "start": 35.38 } ] }
+```
+
 ## Theming, Density & WebGPU Renderer
 
 Panels take a `theme`, an `appearance`, `density: "compact" | "default" | "comfortable"` and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), on `defineControls`, `mountPanel` or `<KnobsPanel />`; every `knobs/ui` piece takes the same `theme` and `appearance`, and `restyle(target, look)` changes them on what's already on screen. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
@@ -1818,6 +1880,7 @@ The package has two core exports selected through the standard `development` con
 | `optionPicker(container, { options, selected?, chosen?, onSelect?, onChoose?, body?, digits? })` | Options 1–n on a gliding card, the selected one's parameters (a panel) open under it. |
 | `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
 | `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
+| `walkthrough(container, { doc, onFeedback?, storage?, keys?, rail?, advance? })` / `mediaSlot(container, { media, steps? })` | The review page an agent writes (sections, steps, media from compares to histories, stacks and tables, notes and picks handed back); one step's media on its own. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
 | `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
 | `restyle(target, { preset?, theme?, density? })` | Re-themes the pieces and panels already on screen, live; on a document, later overlays too. |
