@@ -29,7 +29,7 @@ const springAfter = `export function springMotion({ duration, bounce }: SpringVa
 const doc: WalkthroughDoc = {
   id: "catalog-walkthrough",
   title: "Card and badge: before / after",
-  summary: "Before = `main`, after = the branch. Two sections, four steps.",
+  summary: "Before = `main`, after = the branch. Three sections, seven steps.",
   meta: { before: "main", branch: "card-motion" },
   sections: [
     {
@@ -39,7 +39,17 @@ const doc: WalkthroughDoc = {
         {
           title: "The page, before and after",
           caption: "From 1.5 s the card slides over, the button turns and a badge flashes.",
-          media: { kind: "compare", before: clip.before, after: clip.after, aspect: 16 / 9 },
+          media: {
+            kind: "compare",
+            before: clip.before,
+            after: clip.after,
+            aspect: 16 / 9,
+            chapters: [
+              { label: "At rest", start: 0, duration: 1.5 },
+              { label: "Card slides", start: 1.5, duration: 1.5 },
+              { label: "Badge flashes", start: 3 },
+            ],
+          },
         },
         {
           title: "Frame time",
@@ -76,6 +86,118 @@ const doc: WalkthroughDoc = {
             { label: "Before", media: { kind: "image", src: still.before } },
             { label: "After", suggested: true, media: { kind: "image", src: still.after } },
           ],
+        },
+      ],
+    },
+    {
+      title: "Where it stands",
+      status: "ready",
+      steps: [
+        {
+          title: "Merge order",
+          caption: "The badge is stacked on the card's branch. A title goes to its step.",
+          ask: "none",
+          media: {
+            kind: "stack",
+            base: "main",
+            items: [
+              {
+                pr: 412,
+                title: "springMotion takes a negative bounce",
+                branch: "spring-bounce → main",
+                delta: "+12 / -3",
+                status: "Merged",
+                tone: "good",
+                step: "2.1",
+              },
+              {
+                pr: 415,
+                title: "The card slides on the calm spring",
+                branch: "card-motion → main",
+                delta: "+86 / -20",
+                status: "Ready",
+                tone: "good",
+                step: "1.1",
+              },
+              {
+                pr: 416,
+                title: "The badge flashes once it lands",
+                branch: "badge-flash → card-motion",
+                delta: "+31 / -4",
+                status: "Stacked on #415",
+                tone: "info",
+                step: "2.2",
+              },
+            ],
+          },
+        },
+        {
+          title: "How it got here",
+          ask: "none",
+          media: {
+            kind: "history",
+            events: [
+              {
+                date: "Oct 14",
+                title: "The card's slide measured at 9.4 ms a frame",
+                evidence: [{ label: "trace-0414.json" }],
+                tone: "warn",
+                provenance: "verified",
+                source: "trace",
+                type: "audit",
+              },
+              {
+                date: "Oct 16",
+                title: "Spring fix merged",
+                evidence: [{ label: "#412" }],
+                tone: "good",
+                provenance: "verified",
+                source: "git",
+              },
+              {
+                date: "Oct 18",
+                title: "The badge's flash looked late on slow phones",
+                detail: "From one screen recording; not measured yet.",
+                tone: "info",
+                provenance: "inferred",
+                source: "video",
+                step: "2.2",
+              },
+            ],
+          },
+        },
+        {
+          title: "Frame time by device",
+          ask: "none",
+          media: {
+            kind: "table",
+            columns: [
+              { key: "device", label: "Device" },
+              { key: "before", label: "Before (ms)" },
+              { key: "after", label: "After (ms)" },
+              { key: "state", label: "Budget", align: "right" },
+            ],
+            rows: [
+              {
+                device: "MacBook Pro",
+                before: 6.2,
+                after: 4.1,
+                state: { text: "Under", badge: "good" },
+              },
+              {
+                device: "iPhone 15",
+                before: 9.4,
+                after: 6.1,
+                state: { text: "Under", badge: "good" },
+              },
+              {
+                device: "Pixel 6a",
+                before: 18.9,
+                after: 15.2,
+                state: { text: "Near", badge: "warn" },
+              },
+            ],
+          },
         },
       ],
     },

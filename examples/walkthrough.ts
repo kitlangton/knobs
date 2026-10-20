@@ -1,6 +1,7 @@
 // A walkthrough from knobs/ui: the onboarding PRs' before/after page (2026-10-19), written as the
 // plain document an agent would emit, with a feed of updates and an answer at the top, plus the
-// rest of the kit: a taste test, a code diff, metrics, a terminal block. Kit's notes (typed,
+// rest of the kit: a taste test, a code diff, metrics, a merge stack, a history, a table, a
+// chaptered video with captions and a terminal block. Kit's notes (typed,
 // spoken or inked, each with what he was looking at) and picks are kept per document id; "Copy
 // feedback" hands them back as Markdown. The videos are 540p re-encodes (every 15th frame a
 // keyframe, so scrubbing is instant) of ~/code/home/artifacts/2026-10-19-onboarding-prs.
@@ -16,6 +17,12 @@ const pair = (stem: string, pr: string, aspect: string) => ({
 })
 
 const DESKTOP_PICKER = "1100/900"
+const PICKER_CHAPTERS = [
+  { label: "Stale snapshot", start: 0, duration: 4 },
+  { label: "Picker opened", start: 4, duration: 5 },
+  { label: "models.dev refresh", start: 9, duration: 4 },
+  { label: "Picker again", start: 13 },
+]
 const DESKTOP = "1100/760"
 const TUI = "2052/1224"
 
@@ -90,7 +97,7 @@ export const doc: WalkthroughDoc = {
           title: "Desktop model picker",
           caption:
             "Real dev server + desktop app. The bundled snapshot is made stale (3 models not yet marked deprecated), then models.dev refreshes ~9s in. Reopen the picker after the refresh.",
-          media: pair("57148-picker", "#57148", DESKTOP_PICKER),
+          media: { ...pair("57148-picker", "#57148", DESKTOP_PICKER), chapters: PICKER_CHAPTERS },
         },
         {
           title: "Retired model (HTTP 410), desktop",
@@ -134,7 +141,7 @@ export const doc: WalkthroughDoc = {
       title: "The rest of the kit (demo data)",
       status: "needs-taste",
       summary:
-        "Not from the audit: made-up steps that show the other pieces. A taste test, a code diff, a metric and a terminal block.",
+        "Not from the audit: made-up steps that show the other pieces. A taste test, a code diff, metrics, a merge stack, a history, a table, a chaptered video and a terminal block.",
       steps: [
         {
           title: "Retired-model card copy",
@@ -190,6 +197,275 @@ export const doc: WalkthroughDoc = {
               better: "down",
             },
           ],
+        },
+        {
+          title: "Merge order",
+          caption:
+            "A stack: each PR on the branch it merges into, `dev` at the top. Click a title to go to its step.",
+          ask: "none",
+          media: {
+            kind: "stack",
+            base: "dev",
+            items: [
+              {
+                order: "01",
+                pr: "#57148",
+                href: "https://github.com/anomalyco/opencode/pull/57148",
+                step: "1.1",
+                title: "fix(core): refresh models.dev on cold boot and recover from retired models",
+                branch: "models-dev-refresh → dev",
+                delta: "+164 / -18",
+                status: "Ready · CI green",
+                tone: "good",
+                summary:
+                  "Reloads the catalog as soon as the cold-boot models.dev fetch lands, and moves off 404/410 retired free models.",
+              },
+              {
+                order: "02",
+                pr: "#57151",
+                href: "https://github.com/anomalyco/opencode/pull/57151",
+                step: "2.1",
+                title: "fix(cli): show Zen Free models first when no providers are connected",
+                branch: "models-free-first → dev",
+                delta: "+58 / -9",
+                status: "Ready · CI green",
+                tone: "good",
+              },
+              {
+                order: "03",
+                pr: "#57158",
+                href: "https://github.com/anomalyco/opencode/pull/57158",
+                step: "4.8",
+                title: "fix(console,ci): serve the v2 installer at /install",
+                branch: "install-v2-url → dev",
+                delta: "+14 / -14",
+                status: "Needs an edge rule",
+                tone: "warn",
+              },
+              {
+                order: "04",
+                pr: "#57155",
+                href: "https://github.com/anomalyco/opencode/pull/57155",
+                step: "3.1",
+                title: "feat(core,app,tui): sign in to OpenCode Go with browser OAuth",
+                branch: "opencode-go-oauth → dev",
+                delta: { add: 362, del: 65 },
+                status: "Mocked Console",
+                tone: "info",
+              },
+              {
+                order: "05 · 1/4",
+                pr: "#57146",
+                href: "https://github.com/anomalyco/opencode/pull/57146",
+                title: "feat(core): typed free-limit error with reset time",
+                branch: "free-limit-card → dev",
+                delta: "+193 / -8",
+                status: "Stack base",
+                tone: "good",
+              },
+              {
+                order: "06 · 2/4",
+                pr: "#57466",
+                href: "https://github.com/anomalyco/opencode/pull/57466",
+                title: "fix(app): restore the free-tier limit dialog and prompt recall",
+                branch: "free-limit-desktop → free-limit-card",
+                delta: "+446 / -47",
+                status: "Stacked on #57146",
+                tone: "good",
+              },
+              {
+                order: "07 · 3/4",
+                pr: "#57467",
+                href: "https://github.com/anomalyco/opencode/pull/57467",
+                title: "feat(tui): free-limit notice, prompt recall, no failure toast",
+                branch: "free-limit-tui-notice → free-limit-card",
+                delta: "+283 / -5",
+                status: "Stacked on #57146",
+                tone: "good",
+              },
+              {
+                order: "08 · 4/4",
+                pr: "#57471",
+                href: "https://github.com/anomalyco/opencode/pull/57471",
+                title: "feat(tui): restore the animated Go upsell modal",
+                branch: "free-limit-tui-modal → free-limit-tui-notice",
+                delta: "+926 / -21",
+                status: "Stacked on #57467",
+                tone: "good",
+              },
+            ],
+          },
+        },
+        {
+          title: "How it broke",
+          caption:
+            "A history: every date from git and release tags, except the edge redirect, which lives outside git and is inferred from how the edge behaves.",
+          ask: "none",
+          media: {
+            kind: "history",
+            groups: [
+              {
+                heading: "v1 built it",
+                summary: "Apr 9 – May 18",
+                events: [
+                  {
+                    date: "Apr 9, 2026",
+                    title: "TUI Go upsell dialog and the free_tier_limit classifier ship",
+                    detail:
+                      "`dialog-go-upsell.tsx` added, and `retry.ts` parses FreeUsageLimitError into `free_tier_limit`.",
+                    evidence: [
+                      { label: "#21583", href: "https://github.com/anomalyco/opencode/pull/21583" },
+                      { label: "489f57974d" },
+                    ],
+                    tone: "good",
+                    provenance: "verified",
+                    source: "git",
+                    type: "commit",
+                  },
+                  {
+                    date: "May 18, 2026",
+                    title: "Desktop usage-exceeded modal ships in v1.12",
+                    evidence: [{ label: "v1.12.0" }],
+                    tone: "good",
+                    provenance: "verified",
+                    source: "tag",
+                    type: "release",
+                  },
+                ],
+              },
+              {
+                heading: "v2 dropped it",
+                summary: "Jun 26 – Jul 30",
+                events: [
+                  {
+                    date: "Jun 26, 2026",
+                    age: "116d ago",
+                    title: "The v2 TUI rewrite leaves out DialogRetryAction",
+                    detail: "`session/index.tsx` replaced without the free-limit listener.",
+                    evidence: [{ label: "e6f660fecf" }],
+                    tone: "bad",
+                    provenance: "verified",
+                    source: "git",
+                  },
+                  {
+                    date: "Jul 20, 2026",
+                    age: "92d ago",
+                    title: "Deleting packages/opencode takes retry.ts and its 440 lines of tests",
+                    evidence: [{ label: "44b6938b2a" }],
+                    tone: "bad",
+                    provenance: "verified",
+                    source: "git",
+                  },
+                ],
+              },
+              {
+                heading: "Users got it",
+                summary: "Sep 19 – today",
+                events: [
+                  {
+                    date: "Sep 19, 2026",
+                    age: "31d ago",
+                    title: "opencode.ai/download switches to v2",
+                    evidence: [
+                      { label: "#49874", href: "https://github.com/anomalyco/opencode/pull/49874" },
+                    ],
+                    tone: "warn",
+                    provenance: "verified",
+                    source: "git",
+                    type: "channel",
+                  },
+                  {
+                    date: "Oct 20, 2026",
+                    age: "today",
+                    title: "opencode.ai/install still 307s to the v1 installer",
+                    detail:
+                      "Git points `/install` at dev; a Cloudflare redirect answers first. Seen with `curl -sI`.",
+                    tone: "warn",
+                    provenance: "inferred",
+                    source: "edge",
+                    type: "audit",
+                    step: "4.8",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          title: "Where a new user lands",
+          caption: "A table: a channel matrix, its head stuck while it scrolls.",
+          ask: "none",
+          media: {
+            kind: "table",
+            caption: "Checked from a clean HOME on 2026-10-20.",
+            columns: [
+              { key: "channel", label: "Entry point", mono: true },
+              { key: "serves", label: "Serves", mono: true },
+              { key: "days", label: "Days on v2" },
+              { key: "first", label: "What a cold user hits" },
+              { key: "state", label: "State", align: "right" },
+            ],
+            rows: [
+              {
+                cells: {
+                  channel: { text: "opencode.ai/download", href: "https://opencode.ai/download" },
+                  serves: "v2.0.35",
+                  days: 31,
+                  first:
+                    "Two of four free models hidden on cold boot; the daily free limit wipes the prompt.",
+                  state: { text: "Broken", badge: "bad" },
+                },
+              },
+              {
+                cells: {
+                  channel: { text: "curl …/v2/install | bash", code: true },
+                  serves: "v2.0.35",
+                  days: 43,
+                  first: "Skips PATH setup when ~/.zshrc is missing.",
+                  state: { text: "Broken", badge: "bad", step: "4.8" },
+                },
+              },
+              {
+                cells: {
+                  channel: { text: "npm i -g @opencode-ai/cli", code: true },
+                  serves: "v2.0.35",
+                  days: 39,
+                  first: "Same cold-boot gap and free-limit toast.",
+                  state: { text: "Broken", badge: "bad" },
+                },
+              },
+              {
+                cells: {
+                  channel: { text: "curl …/install | bash", code: true },
+                  serves: "v1.14.19",
+                  days: { text: "—", tone: "dim" },
+                  first: "The edge 307s to the v1 installer.",
+                  state: { text: "Wrong version", badge: "warn" },
+                },
+              },
+              {
+                cells: {
+                  channel: { text: "brew install …/opencode-v2", code: true },
+                  serves: "v2.0.35",
+                  days: 31,
+                  first: "Fine once the free-limit fixes land.",
+                  state: { text: "Pending", badge: "info" },
+                },
+              },
+            ],
+          },
+        },
+        {
+          title: "The picker, narrated",
+          caption:
+            "A video with chapters and captions: click a chapter to jump there; the lit one follows playback.",
+          media: {
+            kind: "video",
+            src: asset("57148-picker-after.mp4"),
+            aspect: DESKTOP_PICKER,
+            captions: asset("57148-picker.vtt"),
+            chapters: PICKER_CHAPTERS,
+          },
         },
         {
           title: "Installer redirect",
