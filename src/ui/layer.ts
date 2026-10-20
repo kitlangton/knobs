@@ -2,6 +2,7 @@
 // brings a layer in and out (scale, blur and a nudge from where it came from, interruptible both
 // ways), a stack so Esc and outside clicks reach the topmost layer only, and focus helpers.
 import { Spring } from "../core/spring.js"
+import { FADE } from "../core/motion.js"
 import { applyLook, frameLoop, lookDefaults, reducedMotion, type UiLook } from "./look.js"
 
 /** The look every overlay takes unless given its own (a preset and theme, as panels take). */
@@ -100,7 +101,7 @@ export function presence(el: HTMLElement, o: PresenceOptions = {}): Presence {
   })
   const tune = (seconds: number, zeta: number) => {
     const reduced = reducedMotion(win)
-    spring.omega = (2 * Math.PI) / (reduced ? 0.16 : seconds)
+    spring.omega = (2 * Math.PI) / (reduced ? FADE.duration : seconds)
     spring.zeta = reduced ? 1 : zeta
   }
   render()

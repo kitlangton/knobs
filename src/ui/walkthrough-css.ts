@@ -1,11 +1,12 @@
 import { springCss } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 
 // kit-motion: nothing moves on load; state changes ease on springs given as a duration with no
 // bounce: picks and note rows on the snappy .25 s, the progress bar on the calm .4 s (the
 // contents' pill, the page's scroll and full-window spring in walkthrough.ts). Reduced motion keeps
 // short fades and drops the travel.
-const snappy = springCss({ duration: 0.25, bounce: 0 })
-const calm = springCss({ duration: 0.4, bounce: 0 })
+const snappy = springCss(SPRINGS.snappy)
+const calm = springCss(SPRINGS.calm)
 
 // The walkthrough: a page an agent writes for Kit. A sticky contents rail beside a column of
 // sections, under a feed of the agent's updates and with a note bar docked at the bottom; each

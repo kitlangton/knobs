@@ -1,4 +1,5 @@
 import { springMotion } from "../core/spring.js"
+import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import type { MorphFrame } from "./morph.js"
 import { clamp, Spring } from "./motion.js"
 
@@ -9,9 +10,9 @@ import { clamp, Spring } from "./motion.js"
 // folds its space shut, its content gone before the last of the height, so nothing below jumps.
 // Reduced motion keeps only a short fade. Hidden, the panel is `hidden` and `inert`: no space, no
 // focus, no hint codes, and the GPU overlay skips it.
-const EXIT = springMotion({ duration: 0.25, bounce: 0 })
-const ENTER = springMotion({ duration: 0.32, bounce: 0 })
-const FADE = springMotion({ duration: 0.18, bounce: 0 })
+const EXIT = springMotion(SPRINGS.snappy)
+const ENTER = springMotion(SPRINGS.default)
+const FADE = springMotion(FADE_SPRING)
 const BLUR = 4
 const SCALE = 0.96
 /** An inline panel's content has faded by the time this much of its height is left. */

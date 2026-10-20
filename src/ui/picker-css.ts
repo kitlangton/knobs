@@ -1,6 +1,6 @@
-import { springEasing } from "../core/spring.js"
+import { springLinear, SPRINGS } from "../core/motion.js"
 
-const snappy = springEasing((2 * Math.PI) / 0.25, 1)
+const snappy = springLinear(SPRINGS.snappy)
 
 // The option picker: a column of options, the selected one on a card that glides between them
 // and holds its parameters (whatever `body` mounts, usually a knobs panel) opening under it.

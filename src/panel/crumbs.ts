@@ -4,11 +4,11 @@
 // that changes fades out as the new one fades in beside it, nothing pops. A click on a crumb (or
 // on the title) takes focus to its level. The GPU overlay draws the same spans (see renderer).
 
-import { springEasing } from "./motion.js"
+import { springLinear, SPRINGS } from "../core/motion.js"
 import { type Crumb, type CrumbLevel, fitCrumbs } from "./scope.js"
 
 /** Crumbs glide on Kit's "default" spring (.3 s, no bounce). */
-const glide = springEasing((2 * Math.PI) / 0.3, 1)
+const glide = springLinear(SPRINGS.default)
 export const CRUMB_GLIDE = `${glide.ms}ms ${glide.easing}`
 /** How far a crumb arriving (or leaving) travels as it fades (px). */
 const SLIDE = 5

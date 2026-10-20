@@ -14,6 +14,7 @@
 // half a second (⇧ two); f full-window for the step (Esc leaves); n the note bar; 1–9 pick in a
 // taste test (again clears it).
 import { Spring, springMotion } from "../core/spring.js"
+import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { browserStorage, storageKey, type StoragePort } from "../core/storage.js"
 import { hints } from "../panel/page-hints.js"
 import { confirm } from "./confirm.js"
@@ -104,8 +105,8 @@ const ICON = {
 // kit-motion: the page's own moves are springs given as a duration with no bounce: the contents'
 // pill and the page scrolling to a step on .4 s, a step opening to the full window and back on
 // .45 s. Reduced motion drops the travel (the scroll and the pill go at once; full-window fades).
-const CALM = springMotion({ duration: 0.4, bounce: 0 })
-const SMOOTH = springMotion({ duration: 0.45, bounce: 0 })
+const CALM = springMotion(SPRINGS.calm)
+const SMOOTH = springMotion(SPRINGS.smooth)
 const BACK_MS = 4500
 
 // ——— a taste test: options side by side, one picked ———
@@ -576,12 +577,12 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         placeFull(full)
         win.addEventListener("resize", onFullResize)
       }
-      tune(full.p, reduced() ? springMotion({ duration: 0.2, bounce: 0 }) : SMOOTH)
+      tune(full.p, reduced() ? springMotion(FADE_SPRING) : SMOOTH)
       full.p.set(1)
       record({ what: "full", step: v.step.key, detail: "on" })
     } else {
       if (!full) return
-      tune(full.p, reduced() ? springMotion({ duration: 0.16, bounce: 0 }) : SMOOTH)
+      tune(full.p, reduced() ? springMotion(FADE_SPRING) : SMOOTH)
       full.p.set(0)
       record({ what: "full", step: full.v.step.key, detail: "off" })
     }

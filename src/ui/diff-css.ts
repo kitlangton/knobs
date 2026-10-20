@@ -1,6 +1,7 @@
 import { springCss } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 
-const snappy = springCss({ duration: 0.25, bounce: 0 })
+const snappy = springCss(SPRINGS.snappy)
 
 // The code diff's card: a header (the path, its counts, ‹ n of m ›, wrap and Split | Unified)
 // over the diff, drawn by @pierre/diffs in its own shadow root. Its colours come through the

@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { browserStorage, storageKey, type StoragePort } from "../core/storage.js"
 import { diffCss } from "./diff-css.js"
 import { codeBars, edgeFades, rendererCss, type CodeBars, type EdgeFades } from "./diff-scroll.js"
@@ -141,11 +142,11 @@ const SYNTAX = { dark: "pierre-dark", light: "pierre-light" }
 // A file or layout replacing the last in place: the new one comes in on the default spring, the
 // old goes a little quicker, each with a soft blur while it fades; under reduced motion, a
 // short fade with no blur. The card's height (height: "auto") moves on the calm spring.
-const IN = springMotion({ duration: 0.3, bounce: 0 })
-const OUT = springMotion({ duration: 0.24, bounce: 0 })
-const FADE = springMotion({ duration: 0.16, bounce: 0 })
-const HEIGHT = springMotion({ duration: 0.4, bounce: 0 })
-const DRAWER = springMotion({ duration: 0.4, bounce: 0 })
+const IN = springMotion(SPRINGS.default)
+const OUT = springMotion(SPRINGS.snappy)
+const FADE = springMotion(FADE_SPRING)
+const HEIGHT = springMotion(SPRINGS.calm)
+const DRAWER = springMotion(SPRINGS.calm)
 const BLUR = 3
 
 const WRAP = svg(

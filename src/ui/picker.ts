@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { CLOSE as CLOSE_SPRING, FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import {
   applyLook,
   frameLoop,
@@ -84,10 +85,10 @@ export interface OptionPicker {
   dispose(): void
 }
 
-const OPEN = springMotion({ duration: 0.22, bounce: 0 })
-const CLOSE = springMotion({ duration: 0.18, bounce: 0 })
-const CARD = springMotion({ duration: 0.3, bounce: 0 })
-const FADE = springMotion({ duration: 0.16, bounce: 0 })
+const OPEN = springMotion(SPRINGS.snappy)
+const CLOSE = springMotion(CLOSE_SPRING)
+const CARD = springMotion(SPRINGS.default)
+const FADE = springMotion(FADE_SPRING)
 /** How far the parameters drift with the opening edge (px). */
 const DRIFT = 6
 const CHECK = svg('<path d="m3.5 8.4 3 3 6-6.6"/>')

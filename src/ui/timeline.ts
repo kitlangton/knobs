@@ -4,6 +4,7 @@
 // add, drag, label and jump between; in/out loop ranges; playback on one rAF clock that moves
 // the playhead every frame and sleeps when nothing moves.
 import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 import { hints } from "../panel/page-hints.js"
 import { contextMenu, type MenuEntry } from "./menu.js"
 import { applyLook, frameLoop, reducedMotion, type UiLook } from "./look.js"
@@ -134,11 +135,11 @@ export interface Timeline {
 const RULER = 22
 // kit-motion: the view follows wheel and pinch on the instant spring (.1 s, no bounce); pans the
 // timeline makes itself (following the playhead, fitting) glide on calm (.4 s, no bounce).
-const INSTANT = springMotion({ duration: 0.1, bounce: 0 })
-const CALM = springMotion({ duration: 0.4, bounce: 0 })
-// A keyed or coded jump (`seek(t, { glide })`, ←/→ in seconds): the playhead glides on .22 s, no
+const INSTANT = springMotion(SPRINGS.instant)
+const CALM = springMotion(SPRINGS.calm)
+// A keyed or coded jump (`seek(t, { glide })`, ←/→ in seconds): the playhead glides on snappy (.25 s), no
 // bounce; the time itself lands at once.
-const GLIDE = springMotion({ duration: 0.22, bounce: 0 })
+const GLIDE = springMotion(SPRINGS.snappy)
 let uid = 0
 
 export function timeline(container: HTMLElement, options: TimelineOptions): Timeline {

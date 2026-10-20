@@ -2,6 +2,7 @@
 // EditorRow (see editors.ts): it owns its DOM, its pointer and arrow keys, and hands the GPU
 // overlay the elements and numbers it draws from, so both renderers place things identically.
 import { comboFromEvent, comboLabel, heldMods, matchesCombo } from "../core/keys.js"
+import { springLinear, SPRINGS } from "../core/motion.js"
 import {
   toolbarShortcut,
   wrapAngle,
@@ -36,7 +37,7 @@ import type {
 } from "./gpu/renderer.js"
 import { createRollingNumber } from "@kitlangton/rolling-number"
 import { iconSvg } from "./icons.js"
-import { clamp, springEasing } from "./motion.js"
+import { clamp } from "./motion.js"
 import { arrowOf, bigOf, keyPrefs } from "./prefs.js"
 import { decimals as stepDecimals, type DigitPlace } from "./slider.js"
 import { rollingReadout, rollMs, syncPlaces, type RollingReadout } from "./reel.js"
@@ -1177,7 +1178,7 @@ export function seedRow(c: RowContext<SeedField>): EditorRow {
 // ——— keybind ———
 
 /** A key cap's width change: snappy, no bounce (.25 s). */
-const CAP_MORPH = springEasing((2 * Math.PI) / 0.25, 1)
+const CAP_MORPH = springLinear(SPRINGS.snappy)
 
 export interface KeyCap {
   readonly chip: HTMLButtonElement

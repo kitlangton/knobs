@@ -1,4 +1,5 @@
 import { maxChroma, oklchToRgb } from "../../core/color.js"
+import { MOTION } from "../../core/motion.js"
 import type { RendererMode } from "../../core/store.js"
 import { DIE_LOOK, dieBox, type HeaderDie } from "../die.js"
 import { CHECK_POINTS, iconPath, type IconName } from "../icons.js"
@@ -3620,7 +3621,7 @@ class GpuOverlayManager {
     const still = this.curReduced
     const capturing = cap.capturing()
     const on = interactive && (this.isHovered(el) || this.isFocused(el))
-    const w = this.ease(el, "capw", r.width, still ? SNAP_OMEGA : (2 * Math.PI) / 0.25)
+    const w = this.ease(el, "capw", r.width, still ? SNAP_OMEGA : MOTION.snappy.omega)
     let texts = this.capTexts.get(el)
     if (!texts) this.capTexts.set(el, (texts = { now: text, was: "" }))
     if (texts.now !== text) {
@@ -4056,7 +4057,7 @@ class GpuOverlayManager {
         panel.root,
         "armed",
         panel.root.hasAttribute("data-k-armed") ? 1 : 0,
-        reducedMotion ? SNAP_OMEGA : (2 * Math.PI) / 0.3,
+        reducedMotion ? SNAP_OMEGA : MOTION.default.omega,
       )
       this.curDt = reducedMotion ? 1 : dt
       this.curReduced = reducedMotion

@@ -1,7 +1,8 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 
 /** Layout moves and the surface's height: Kit's "default" spring. */
-const LAYOUT = springMotion({ duration: 0.3, bounce: 0 })
+const LAYOUT = springMotion(SPRINGS.default)
 /** Arrivals fade in a little slower than leavers fade out. */
 const IN = springMotion({ duration: 0.2, bounce: 0 })
 const OUT = springMotion({ duration: 0.14, bounce: 0 })

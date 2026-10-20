@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 import { storageKey, browserStorage, type StoragePort } from "../core/storage.js"
 import {
   applyLook,
@@ -122,9 +123,9 @@ export interface Split {
 }
 
 // The chevron's flip: on its own snappy spring with no bounce, seen in depth from this far (px).
-const FLIP = springMotion({ duration: 0.25, bounce: 0 })
+const FLIP = springMotion(SPRINGS.snappy)
 const FLIP_DEPTH = 28
-const SETTLE = springMotion({ duration: 0.3, bounce: 0 })
+const SETTLE = springMotion(SPRINGS.default)
 /** The content's blur as it fades out (px), and the rail label's. */
 const CONTENT_BLUR = 3
 const LABEL_BLUR = 2

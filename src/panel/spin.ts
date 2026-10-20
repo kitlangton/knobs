@@ -1,11 +1,12 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 
 /**
  * Reset's ↺ turns once, the way its arrow points (counter-clockwise), each time it resets: Kit's
  * "smooth" spring (.45 s, bounce 0), so it sets off at once and settles softly. A press mid-turn
  * adds a turn to where it's headed, keeping its speed. With reduced motion it blinks instead.
  */
-const TURN = springMotion({ duration: 0.45, bounce: 0 })
+const TURN = springMotion(SPRINGS.smooth)
 /** The reduced-motion blink: the glyph dips to 45% and back over this long (ms). */
 const BLINK_MS = 180
 

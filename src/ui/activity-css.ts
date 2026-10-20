@@ -1,6 +1,6 @@
-import { springEasing } from "../core/spring.js"
+import { springLinear, SPRINGS } from "../core/motion.js"
 
-const open = springEasing((2 * Math.PI) / 0.22, 1)
+const open = springLinear(SPRINGS.snappy)
 
 // The activity rail: rows placed by transform over one scroller, a single line drawn through the
 // nodes (an SVG path the frame loop keeps clear of each node), and the selection's tint gliding

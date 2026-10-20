@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
 import { applyLook, frameLoop, ICONS, reducedMotion, syncFrame, type UiLook } from "./look.js"
 import { overlayScrollbar } from "./scrollbar.js"
@@ -117,7 +118,7 @@ export interface Tree<T> {
   dispose(): void
 }
 
-const MOVE = springMotion({ duration: 0.3, bounce: 0 })
+const MOVE = springMotion(SPRINGS.default)
 const EDGE = 28
 
 interface View<T> {

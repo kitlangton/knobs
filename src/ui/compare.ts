@@ -8,6 +8,7 @@
 // never fight. Sources load when the viewer nears the screen and are let go when it's well off,
 // so a long page can hold many; every viewer shares one GPU device.
 import { Spring, springMotion } from "../core/spring.js"
+import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
 import { acquireFrames, type CachedFrame, type FrameCache } from "./compare-frames.js"
 import { createCompareGpu, MODE_INDEX, type CompareGpu } from "./compare-gpu.js"
@@ -161,8 +162,8 @@ export interface Compare {
 // A zoom's reset, a double-click or a key's zoom is a state change too: .35 s, no bounce (snapped
 // with reduced motion). The wipe, the loupe, scrubbing, pans and pinches follow the hand 1:1.
 const LAYOUT = springMotion({ duration: 0.35, bounce: 0 })
-const FADE = springMotion({ duration: 0.25, bounce: 0 })
-const FADE_REDUCED = springMotion({ duration: 0.15, bounce: 0 })
+const FADE = springMotion(SPRINGS.snappy)
+const FADE_REDUCED = springMotion(FADE_SPRING)
 const ZOOM = springMotion({ duration: 0.35, bounce: 0 })
 const FLICKER_MS = 400
 const SLOP = 12

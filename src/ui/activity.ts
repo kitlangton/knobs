@@ -1,4 +1,5 @@
 import { createRollingText, type RollingTextController } from "@kitlangton/rolling-number"
+import { CLOSE as CLOSE_SPRING, FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { Spring, springMotion } from "../core/spring.js"
 import {
   diffActivity,
@@ -110,12 +111,12 @@ const ACTIVITY_ICONS: Record<string, string> = {
 const PLAY =
   '<svg viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 1v6l5.2-3Z" fill="currentColor"/></svg>'
 
-const REFLOW = springMotion({ duration: 0.3, bounce: 0 })
-const OPEN = springMotion({ duration: 0.22, bounce: 0 })
-const CLOSE = springMotion({ duration: 0.18, bounce: 0 })
-const BLOOM = springMotion({ duration: 0.3, bounce: 0 })
-const EXIT = springMotion({ duration: 0.24, bounce: 0 })
-const FADE = springMotion({ duration: 0.16, bounce: 0 })
+const REFLOW = springMotion(SPRINGS.default)
+const OPEN = springMotion(SPRINGS.snappy)
+const CLOSE = springMotion(CLOSE_SPRING)
+const BLOOM = springMotion(SPRINGS.default)
+const EXIT = springMotion(SPRINGS.snappy)
+const FADE = springMotion(FADE_SPRING)
 /** How far the line keeps clear of a node: an event's icon, a child's dot. */
 const CLEAR = [11, 5] as const
 const PAD = 6
@@ -491,7 +492,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
    * Brings the views in line with `rows`. `"snap"` places everything; `"set"` glides rows that
    * stay (.3 s), blooms new ones in from the newest side and softens gone ones out; `"open"` and
    * `"close"` move the toggled group's children out from under it (or back) with the rows below,
-   * like a drawer, on the reveal springs (.22 s open, .18 s close).
+   * like a drawer, on the reveal springs (.25 s open, .18 s close).
    */
   function sync(cause: Cause, toggled?: string) {
     const reduced = reducedMotion(win)
@@ -671,7 +672,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
     else if (y + h + PAD > top + view) root.scrollTo({ top: y + h + PAD - view, behavior })
   }
 
-  /** Selects `id`: the tint glides there (by distance, .3 s or .42 s) when it shows. */
+  /** Selects `id`: the tint glides there (by distance, default or calm) when it shows. */
   const choose = (id: string | null, source: "key" | "pointer" | "code") => {
     if (source === "key") {
       const wasShowing = showing
@@ -688,9 +689,7 @@ export function activity(container: HTMLElement, options: ActivityOptions): Acti
       const far = from !== undefined && to !== undefined && Math.abs(to - from) > 400
       const reduced = reducedMotion(win)
       moveHighlight(
-        reduced || from === undefined
-          ? null
-          : springMotion({ duration: far ? 0.42 : 0.3, bounce: 0 }),
+        reduced || from === undefined ? null : springMotion(far ? SPRINGS.calm : SPRINGS.default),
       )
       root.setAttribute("aria-activedescendant", domId(id))
       if (source === "key") {

@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import {
   fitRect,
   motionBlur,
@@ -85,17 +86,17 @@ export interface Bento {
 
 // Kit's palette, duration / bounce: layout moves calm, the zoom smooth and its return shorter,
 // a neighbour's slide default, exits snappy, and fades under reduced motion.
-const LAYOUT = springMotion({ duration: 0.4, bounce: 0 })
-const ZOOM_IN = springMotion({ duration: 0.45, bounce: 0 })
-const ZOOM_OUT = springMotion({ duration: 0.38, bounce: 0 })
-const SLIDE = springMotion({ duration: 0.3, bounce: 0 })
-const SLIDE_OUT = springMotion({ duration: 0.25, bounce: 0 })
-const ENTER = springMotion({ duration: 0.3, bounce: 0 })
-const EXIT = springMotion({ duration: 0.25, bounce: 0 })
-const WASH = springMotion({ duration: 0.25, bounce: 0 })
-const FADE = springMotion({ duration: 0.18, bounce: 0 })
+const LAYOUT = springMotion(SPRINGS.calm)
+const ZOOM_IN = springMotion(SPRINGS.smooth)
+const ZOOM_OUT = springMotion(SPRINGS.calm)
+const SLIDE = springMotion(SPRINGS.default)
+const SLIDE_OUT = springMotion(SPRINGS.snappy)
+const ENTER = springMotion(SPRINGS.default)
+const EXIT = springMotion(SPRINGS.snappy)
+const WASH = springMotion(SPRINGS.snappy)
+const FADE = springMotion(FADE_SPRING)
 /** A mouse wheel's notches under ⌘ step the zoom on the instant spring rather than jump. */
-const INSTANT = springMotion({ duration: 0.1, bounce: 0 })
+const INSTANT = springMotion(SPRINGS.instant)
 /** A neighbour slides this share of the view's width. */
 const SLIDE_BY = 0.12
 const EXIT_BLUR = 3
