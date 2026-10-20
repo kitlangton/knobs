@@ -6,11 +6,11 @@ import {
   isTypingTarget,
   notifyLayout,
   reducedMotion,
-  svg,
   syncFrame,
   tune,
   type UiLook,
 } from "./look.js"
+import { icon } from "./icons.js"
 import {
   askPick,
   cardTarget,
@@ -91,7 +91,7 @@ const CARD = springMotion(SPRINGS.default)
 const FADE = springMotion(FADE_SPRING)
 /** How far the parameters drift with the opening edge (px). */
 const DRIFT = 6
-const CHECK = svg('<path d="m3.5 8.4 3 3 6-6.6"/>')
+const CHECK = icon("check", { small: true })
 
 interface Entry {
   option: PickerOption

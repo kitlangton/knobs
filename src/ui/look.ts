@@ -201,11 +201,9 @@ const css = `
 .knobs-tree:focus .knobs-tree-row[data-active][aria-selected="true"]::before{background:var(--_ku-select-focus)}
 .knobs-tree-row[data-drop="into"]::before{opacity:1;background:color-mix(in srgb,var(--_k-accent) 30%,transparent)}
 .knobs-tree-row[data-dragged]{opacity:.38}
-/* glide: one highlight under the selected row that glides between rows (the row's own stays off). */
-.knobs-tree-cursor{position:absolute;left:var(--_ku-row-x);right:var(--_ku-row-x);top:0;height:var(--_k-row);border-radius:var(--_ku-row-radius);background:var(--_ku-select);
-  opacity:0;pointer-events:none;will-change:transform;transition:opacity .15s ease-out,background .12s}
-.knobs-tree-cursor[data-on]{opacity:1}
-.knobs-tree:focus .knobs-tree-cursor{background:var(--_ku-select-focus)}
+/* glide: the selection pill on the selected row, in the selection's colour (the row's own stays off). */
+.knobs-tree>.knobs-pick-pill{background:var(--_ku-select)}
+.knobs-tree:focus>.knobs-pick-pill{background:var(--_ku-select-focus)}
 .knobs-tree[data-glide] .knobs-tree-row[aria-selected="true"]::before{opacity:0!important}
 .knobs-tree-row>*{position:relative}
 .knobs-tree-caret{flex:none;display:flex;align-items:center;justify-content:center;width:16px;height:100%;color:var(--_k-fg-3);transition:transform var(--_ku-ease-ms) var(--_ku-ease)}

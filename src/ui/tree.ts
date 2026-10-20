@@ -4,6 +4,7 @@ import { SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
 import { applyLook, frameLoop, ICONS, reducedMotion, syncFrame, type UiLook } from "./look.js"
 import { overlayScrollbar } from "./scrollbar.js"
+import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import {
   dropTarget,
   flatten,
@@ -91,8 +92,9 @@ export interface TreeOptions<T> extends UiLook {
    */
   readonly hints?: boolean
   /**
-   * The selected row (one) shows as one highlight that glides to the next row selected, on the
-   * rows' own spring, instead of each row lighting in place. Several selected rows light in place.
+   * The selected row (one) shows as the selection pill (`selectionPill`): one highlight that slides
+   * to the next row selected on the state spring, the row's text sharp and bright under it, instead
+   * of each row lighting in place. Several selected rows light in place.
    */
   readonly glide?: boolean
 }
@@ -184,32 +186,28 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   const empty = doc.createElement("div")
   empty.className = "knobs-tree-empty"
   empty.hidden = true
-  // The gliding selection (`glide`): under the rows, in their coordinates.
-  const cursor = doc.createElement("div")
-  cursor.className = "knobs-tree-cursor"
-  root.append(space, cursor, line, empty)
-  const cursorY = new Spring(0, MOVE.omega, MOVE.zeta, 0.1)
-  let cursorOn = false
-  const drawCursor = () => {
-    cursor.style.transform = `translate3d(0,${Math.round(cursorY.x * 2) / 2}px,0)`
-  }
-  /** Puts the highlight on the selected row: gliding there if it's on show, else in place. */
-  const placeCursor = (animate: boolean) => {
-    if (!options.glide) return
+  root.append(space, line, empty)
+  // The gliding selection (`glide`): the selection pill over the rows, in their coordinates.
+  let pill: SelectionPill | null = null
+  /** The row it last went to, and until when it's on its way there (ms). */
+  let picked: string | null = null
+  let travelUntil = 0
+  const pickedRow = () => {
     const id = sel.ids.length === 1 ? sel.ids[0]! : null
-    const i = id === null ? undefined : rowIndex.get(id)
-    root.toggleAttribute("data-glide", i !== undefined)
-    if (i === undefined) {
-      cursor.removeAttribute("data-on")
-      cursorOn = false
-      return
-    }
-    if (cursorOn && animate && !reducedMotion(win)) cursorY.set(i * h)
-    else cursorY.snap(i * h)
-    cursorOn = true
-    cursor.setAttribute("data-on", "")
-    drawCursor()
-    if (!cursorY.resting) loop.wake()
+    const v = id === null ? undefined : views.get(id)
+    return v && !v.leaving && rowIndex.has(v.id) ? v : null
+  }
+  /** Puts the highlight on the selected row: travelling there when it's a new pick, else in place. */
+  const placeCursor = (animate: boolean) => {
+    if (!pill) return
+    const id = sel.ids.length === 1 ? sel.ids[0]! : null
+    root.toggleAttribute("data-glide", id !== null && rowIndex.has(id))
+    const fresh = id !== picked
+    picked = id
+    if (animate && fresh) {
+      travelUntil = performance.now() + 450
+      pill.update()
+    } else if (performance.now() >= travelUntil) pill.update({ snap: true })
   }
   container.append(root)
   const scrollbar = overlayScrollbar(root, space)
@@ -242,6 +240,14 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
 
   const views = new Map<string, View<T>>()
   const pool: View<T>[] = []
+  if (options.glide)
+    pill = selectionPill(root, {
+      rows: () => [...views.values()].filter((v) => !v.leaving).map((v) => v.el),
+      selected: () => pickedRow()?.el ?? null,
+      // A row's wash is its ::before, so that's whose corners the pill takes.
+      radius: (row) =>
+        Number.parseFloat(win.getComputedStyle(row, "::before").borderTopLeftRadius) || 0,
+    })
   const makeView = (id: string): View<T> => {
     const v = pool.pop() ?? createView()
     v.id = id
@@ -413,11 +419,6 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   function frame(dt: number): boolean {
     let moving = false
     let bottom = rows.length * h
-    if (options.glide && !cursorY.resting) {
-      cursorY.step(dt)
-      drawCursor()
-      if (!cursorY.resting) moving = true
-    }
     for (const v of views.values()) {
       v.y.step(dt)
       if (!v.y.resting) moving = true
@@ -435,6 +436,8 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     }
     setSpace(moving ? bottom : rows.length * h)
     trim()
+    // Rows moving (a folder opening above, a reorder) carry the pill with the selected one.
+    if (pill && moving && performance.now() >= travelUntil) pill.update({ snap: true })
     return moving
   }
 
@@ -1071,6 +1074,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       autoScroll.stop()
       ro.disconnect()
       scrollbar.dispose()
+      pill?.dispose()
       dragging?.ghost.remove()
       root.remove()
     },

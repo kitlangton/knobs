@@ -55,33 +55,29 @@ export const diffCss = `
 .knobs-diff-fill{flex:1}
 .knobs-diff-nav{flex:none;display:inline-flex;align-items:center;gap:1px;color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-variant-numeric:tabular-nums}
 .knobs-diff-nav>span{min-width:3.6em;text-align:center}
-:where(.knobs-ui) :is(.knobs-diff-btn,.knobs-diff-seg>button,.knobs-diff-viewed,.knobs-diff-filter>input,.knobs-diff-filter>button){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;border-radius:0;
+:where(.knobs-ui) :is(.knobs-diff-btn,.knobs-diff-choice,.knobs-diff-viewed,.knobs-diff-filter>input,.knobs-diff-filter>button){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;border-radius:0;
   margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
-.knobs-ui .knobs-diff-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:calc(var(--_k-radius) * 999);color:var(--_k-fg-3);cursor:pointer;
+.knobs-ui .knobs-diff-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:calc(var(--_k-radius) * 999);color:var(--_k-fg-3);cursor:pointer;
   transition:background .15s,color .15s,opacity .15s}
 .knobs-ui .knobs-diff-btn:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 .knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
 .knobs-ui .knobs-diff-btn:disabled{opacity:.35;cursor:default;background:transparent}
-.knobs-diff-btn svg{width:13px;height:13px}
+.knobs-diff-btn svg{width:16px;height:16px}
 /* Viewed: a check with its word, as on GitHub; the path dims once it's ticked. */
 .knobs-ui .knobs-diff-viewed{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--_k-control-h);padding:0 8px 0 6px;border-radius:var(--kd-ctl);color:var(--_k-fg-2);
   font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
 .knobs-ui .knobs-diff-viewed:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 .knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
-.knobs-diff-viewed svg{width:13px;height:13px}
+.knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
 .knobs-diff-path{transition:opacity .2s}
 .knobs-diff[data-viewed]>.knobs-diff-head .knobs-diff-path,.knobs-diff-part[data-viewed] .knobs-diff-path{opacity:.6}
-/* Split | Unified: one pill that glides between the two, raised as a panel's segments are (a
-   lighter bg in dark, near white in light). */
-.knobs-diff-seg{position:relative;flex:none;display:grid;grid-template-columns:1fr 1fr;height:var(--_k-control-h);padding:2px;border-radius:var(--kd-ctl);background:var(--_k-segmented-track)}
-.knobs-ui .knobs-diff-seg>button{position:relative;z-index:1;padding:0 9px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-text-meta);
-  font-weight:var(--_k-weight-label);white-space:nowrap;cursor:pointer;transition:color .15s}
-.knobs-ui .knobs-diff-seg>button:is(:hover,:focus-visible),.knobs-ui .knobs-diff-seg>button[aria-checked="true"]{color:var(--_k-fg)}
-.knobs-diff-pill{position:absolute;top:2px;bottom:2px;left:2px;width:calc(50% - 2px);border-radius:max(0px,calc(var(--kd-ctl) - 2px));background:color-mix(in srgb,var(--_k-accent) 18%,var(--_k-segmented-active));
-  box-shadow:0 1px 2px rgba(0,0,0,calc(.16 * var(--k-lift,1)));transition:transform var(--_ku-ease-ms) var(--_ku-ease)}
-.knobs-diff-seg[data-value="unified"]>.knobs-diff-pill{transform:translateX(100%)}
-.knobs-diff[data-frame="flat"] .knobs-diff-pill{box-shadow:none}
+/* Split | Unified: the selection pill on the one picked, its bright copy the picked one's text; a
+   choice isn't brighter for being picked. Choices are styled by class, as the copy holds them too. */
+.knobs-diff-seg{position:relative;flex:none;display:grid;grid-template-columns:1fr 1fr;height:var(--_k-control-h);padding:2px;border-radius:var(--kd-ctl);background:var(--_k-fill)}
+.knobs-ui .knobs-diff-choice{padding:0 9px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-text-meta);
+  font-weight:var(--_k-weight-label);white-space:nowrap;cursor:pointer;transition:color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-diff-choice:is(:hover,:focus-visible){color:var(--_k-fg)}
 /* The diff: one layer per file or layout on show, the old fading under the new. */
 .knobs-diff-body{position:relative;flex:1;min-height:0}
 .knobs-diff-probe{position:absolute;left:0;top:0;width:0;height:var(--kd-line);visibility:hidden;pointer-events:none}
@@ -176,7 +172,7 @@ export const diffCss = `
 .knobs-ui .knobs-diff-filter>input::placeholder{color:var(--_k-fg-3)}
 .knobs-ui .knobs-diff-filter>button{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;color:var(--_k-fg-3);cursor:pointer;transition:background .12s,color .12s,opacity .12s}
 .knobs-ui .knobs-diff-filter>button:hover{background:var(--_ku-wash-hi);color:var(--_k-fg)}
-.knobs-diff-filter>button svg{width:10px;height:10px}
+.knobs-diff-filter>button svg{width:12px;height:12px}
 .knobs-diff-list{position:relative;flex:1;min-height:0}
 .knobs-diff-files .knobs-diff-counts{font-size:var(--_k-text-meta);align-items:center}
 .knobs-diff-files .knobs-diff-counts{gap:5px}

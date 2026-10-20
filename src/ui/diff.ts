@@ -25,16 +25,16 @@ import {
 import {
   applyLook,
   frameLoop,
-  ICONS,
   notifyLayout,
   reducedMotion,
-  svg,
   syncFrame,
   tune,
   type UiLook,
 } from "./look.js"
 import { parseCssColor, rgbaCss, type Rgba } from "./rgba.js"
+import { icon } from "./icons.js"
 import { overlayScrollbar } from "./scrollbar.js"
+import { selectionPill } from "./selection-pill.js"
 import { tree, type Tree } from "./tree.js"
 
 export type DiffLayout = "split" | "unified"
@@ -150,15 +150,14 @@ const HEIGHT = springMotion(SPRINGS.calm)
 const DRAWER = springMotion(SPRINGS.calm)
 const BLUR = 3
 
-const WRAP = svg(
-  '<path d="M2.5 4h11"/><path d="M2.5 8h9a2 2 0 0 1 0 4H8.5"/><path d="M10 10.5 8.5 12l1.5 1.5"/><path d="M2.5 12h3"/>',
-)
-const PREV = svg('<path d="M10 3.5 5.5 8l4.5 4.5"/>')
-const UNVIEWED = svg('<circle cx="8" cy="8" r="5.5"/>')
-const VIEWED = svg('<circle cx="8" cy="8" r="5.5"/><path d="m5.6 8.1 1.7 1.7 3.2-3.5"/>')
-const SEARCH = svg('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>')
-const CLEAR = svg('<path d="m5 5 6 6M11 5l-6 6"/>')
-const SIDEBAR = svg('<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6.5 3v10"/>')
+const WRAP = icon("arrowUDownLeft")
+const PREV = icon("caretLeft")
+const NEXT = icon("caretRight")
+const UNVIEWED = icon("circle")
+const VIEWED = icon("checkCircle")
+const SEARCH = icon("magnifyingGlass", { small: true })
+const CLEAR = icon("x", { small: true })
+const SIDEBAR = icon("sidebar")
 // A hunk separator's height in @pierre/diffs, for the height reserved before it loads (its block
 // gap is the card's inset; the scrollbar under the code takes none, see diff-scroll.ts).
 const SEPARATOR = 32
@@ -322,7 +321,7 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   }
   const nav = make("span", "knobs-diff-nav")
   const prev = button("Previous file", PREV)
-  const next = button("Next file", ICONS.caret)
+  const next = button("Next file", NEXT)
   const place = make("span", "")
   nav.append(prev, place, next)
   const wrapButton = button("Wrap lines", WRAP)
@@ -342,9 +341,8 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   const seg = make("div", "knobs-diff-seg")
   seg.setAttribute("role", "radiogroup")
   seg.setAttribute("aria-label", "Layout")
-  const pill = make("i", "knobs-diff-pill")
   const choice = (value: DiffLayout, label: string) => {
-    const b = make("button", "")
+    const b = make("button", "knobs-diff-choice")
     b.type = "button"
     b.setAttribute("role", "radio")
     b.dataset.value = value
@@ -353,7 +351,7 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   }
   const splitButton = choice("split", "Split")
   const unifiedButton = choice("unified", "Unified")
-  seg.append(pill, splitButton, unifiedButton)
+  seg.append(splitButton, unifiedButton)
   if (options.lead) head.append(options.lead)
   head.append(path, stat, make("span", "knobs-diff-fill"), nav, wrapButton, seg, viewedButton)
   const body = make("div", "knobs-diff-body")
@@ -364,6 +362,12 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   body.append(note, probe)
   root.append(head, body)
   container.append(root)
+  // Split | Unified: the selection pill slides to the one picked.
+  const segPill = selectionPill(seg, {
+    rows: () => [splitButton, unifiedButton],
+    selected: () => (layout === "split" ? splitButton : unifiedButton),
+  })
+  let pilled = layout
 
   const fileNow = () => files.find((f) => f.name === current) ?? null
 
@@ -399,6 +403,10 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
     next.disabled = at >= files.length - 1
     wrapButton.setAttribute("aria-pressed", String(wrap))
     seg.dataset.value = layout
+    if (pilled !== layout) {
+      pilled = layout
+      segPill.update()
+    }
     splitButton.setAttribute("aria-checked", String(layout === "split"))
     unifiedButton.setAttribute("aria-checked", String(layout === "unified"))
     splitButton.tabIndex = layout === "split" ? 0 : -1
@@ -1282,6 +1290,7 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
     dispose() {
       disposed = true
       loop.stop()
+      segPill.dispose()
       sizes.disconnect()
       attaching.disconnect()
       resized.disconnect()

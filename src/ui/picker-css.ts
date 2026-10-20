@@ -42,7 +42,7 @@ export const pickerCss = `
 .knobs-picker-suggested{flex:none;color:var(--_k-fg-3);font-size:var(--_k-text-meta)}
 .knobs-picker-check{flex:none;display:flex;width:14px;height:14px;color:var(--_k-accent);opacity:0;scale:.6;filter:blur(2px);
   transition:opacity .11s ease-in,scale .11s ease-in,filter .11s ease-in}
-.knobs-picker-check svg{display:block;width:14px;height:14px}
+.knobs-picker-check svg{display:block;width:12px;height:12px}
 .knobs-picker-option[data-chosen] .knobs-picker-check{opacity:1;scale:1;filter:none;transition:opacity .15s ease-out,scale var(--kp-snappy-ms) var(--kp-snappy),filter .15s ease-out}
 .knobs-picker-body{position:relative;overflow:visible}
 .knobs-picker-body[data-moving]{overflow:hidden}

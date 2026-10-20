@@ -1,5 +1,6 @@
 // A code review from knobs/ui: diffReview() puts the changed files in a tree (folders folded into
-// paths, +/− per file) beside the diff, in a split; under it, codeDiff() on its own as a card
+// paths, +/− per file; the file on show under the selection pill, which slides as you pick, as
+// Split | Unified's does) beside the diff, in a split; under it, codeDiff() on its own as a card
 // that grows to each file (height: "auto"), from before and after text. Both follow the top
 // bar's look (knobs or Lab, dark or light) through restyle(). Last, a walkthrough's column: step
 // cards (.knobs-surface) holding diffs, so each shows one surface, and many diffs down a long page
