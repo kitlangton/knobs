@@ -48,7 +48,7 @@ export const historyCss = `
 .knobs-hy-sel[data-on]{opacity:.6}
 
 /* Spans: a soft bar in their state's tone, inferred ones hatched; the tag at the end. */
-.knobs-hy-span{position:absolute;top:calc((var(--hy-lane) - var(--hy-bar)) / 2);height:var(--hy-bar);border-radius:var(--_k-radius-sm);cursor:pointer;
+.knobs-hy-span{position:absolute;top:calc((var(--hy-lane) - var(--hy-bar)) / 2);height:var(--hy-bar);border-radius:var(--_k-radius-sm);cursor:default;
   background:color-mix(in oklch,var(--hy-c) 24%,transparent);transition:background calc(var(--_k-hover-out) * 1ms),box-shadow calc(var(--_k-hover-out) * 1ms)}
 .knobs-hy-span[data-inferred]{background:repeating-linear-gradient(135deg,color-mix(in oklch,var(--hy-c) 34%,transparent) 0 2px,color-mix(in oklch,var(--hy-c) 9%,transparent) 2px 6px)}
 .knobs-hy-span[data-hover]{background-color:color-mix(in oklch,var(--hy-c) 34%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
@@ -62,7 +62,7 @@ export const historyCss = `
 
 /* Event marks (their kind named in the tooltip): a dot for a commit, a diamond for a release, a cross for a deletion, a square for a
    channel's switch, a triangle for a finding; inferred ones hollow. */
-.knobs-hy-ev{position:absolute;top:0;width:16px;height:var(--hy-lane);margin-left:-8px;cursor:pointer;--hy-c:var(--_k-fg-2);--hy-s:9px}
+.knobs-hy-ev{position:absolute;top:0;width:16px;height:var(--hy-lane);margin-left:-8px;cursor:default;--hy-c:var(--_k-fg-2);--hy-s:9px}
 .knobs-hy-ev::before{content:"";position:absolute;left:50%;top:50%;width:var(--hy-s);height:var(--hy-s);margin:calc(var(--hy-s) / -2) 0 0 calc(var(--hy-s) / -2);
   border-radius:50%;background:var(--hy-c);transition:scale calc(var(--_k-motion-snappy-ms) * 1ms) var(--_k-motion-snappy)}
 .knobs-hy-ev[data-range]{width:calc(var(--hy-w) + 16px)}
@@ -80,7 +80,7 @@ export const historyCss = `
 /* Held-back marks (commits, by default) come up while the pointer is on their lane, and stay with
    "Show commits" or while selected. */
 .knobs-hy-ev[data-quiet]{opacity:0;transition:opacity calc(var(--_k-hover-out) * 1ms)}
-.knobs-hy-track:hover .knobs-hy-ev[data-quiet]{opacity:.6;transition-duration:calc(var(--_k-motion-snappy-ms) * 1ms)}
+.knobs-hy-track:hover .knobs-hy-ev[data-quiet]{opacity:.6;transition-duration:calc(var(--_k-hover-in) * 1ms)}
 :is(.knobs-history[data-all] .knobs-hy-ev[data-quiet],.knobs-hy-ev[data-quiet]:is([data-selected],[data-hover])){opacity:1}
 .knobs-hy-ev[data-hover]::before{scale:1.25}
 .knobs-hy-ev[data-selected]::before{scale:1.3}
@@ -94,9 +94,9 @@ export const historyCss = `
 .knobs-hy-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--_k-space-inside) var(--_k-space-title);margin-top:var(--_k-space-sibling);padding-left:var(--hy-gutter);
   font-size:var(--_k-type-small);line-height:var(--_k-leading-small);color:var(--_k-fg-3)}
 .knobs-hy-legend{display:flex;flex-wrap:wrap;gap:var(--_k-space-inside) var(--_k-space-title)}
-.knobs-ui .knobs-hy-more{height:20px;margin-left:-6px;padding:0 6px;border-radius:var(--_k-radius-sm);color:var(--_k-fg-3);cursor:pointer;
+.knobs-ui .knobs-hy-more{height:20px;margin-left:-6px;padding:0 6px;border-radius:var(--_k-radius-sm);color:var(--_k-fg-3);cursor:default;
   transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-hy-more:is(:hover,:focus-visible){background:var(--_k-fill);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-hy-more:is(:hover,:focus-visible){background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-hy-key{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .knobs-hy-swatch{flex:none;width:14px;height:8px;border-radius:2px;background:color-mix(in oklch,var(--hy-c) 34%,transparent)}
 .knobs-hy-swatch[data-inferred]{background:repeating-linear-gradient(135deg,color-mix(in oklch,var(--hy-c) 60%,transparent) 0 1.5px,transparent 1.5px 4px)}
@@ -117,9 +117,9 @@ export const historyCss = `
 .knobs-hy-evidence{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:var(--_k-radius-sm);background:var(--_k-fill);color:var(--_k-fg-2);
   font:var(--_k-type-small)/1 var(--_k-mono);text-decoration:none;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
 a.knobs-hy-evidence:hover{background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-hy-jump{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px 0 8px;border-radius:var(--_k-radius-sm);color:var(--_k-fg-2);cursor:pointer;
+.knobs-ui .knobs-hy-jump{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 5px 0 6px;border-radius:var(--_k-radius-sm);color:var(--_k-fg-2);cursor:default;
   font-size:var(--_k-type-small);transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-hy-jump:is(:hover,:focus-visible){background:var(--_k-fill);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-hy-jump:is(:hover,:focus-visible){background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-hy-jump svg{width:12px;height:12px}
 
 /* ——— the pointer's tooltip: title, date, one line ——— */

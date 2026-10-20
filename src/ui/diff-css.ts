@@ -62,14 +62,14 @@ export const diffCss = `
   transition:background calc(var(--_k-hover-out) * 1ms),opacity .15s}
 /* Hover is a quiet fill under the arrow cursor (no hand, no brightening), there at once. */
 .knobs-ui .knobs-diff-btn:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_k-fill-selected)}
 .knobs-ui .knobs-diff-btn:disabled{opacity:.35;cursor:default;background:transparent}
 .knobs-diff-btn svg{width:16px;height:16px}
 /* Viewed: a check with its word, as on GitHub; the path dims once it's ticked. */
 .knobs-ui .knobs-diff-viewed{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--_k-control-h);padding:0 8px 0 6px;border-radius:var(--kd-ctl);color:var(--_k-fg-2);
-  font-size:var(--_k-type-small);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color .15s}
+  font-size:var(--_k-type-small);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-diff-viewed:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_k-fill-selected)}
 .knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
 /* Narrow, the header gives up words before anything is cut off at its end: Viewed keeps its
@@ -86,7 +86,7 @@ export const diffCss = `
 /* Split | Unified: the selection pill on the one picked, its bright copy the picked one's text; a
    choice isn't brighter for being picked. Choices are styled by class, as the copy holds them too. */
 .knobs-diff-seg{position:relative;flex:none;display:grid;grid-template-columns:1fr 1fr;height:var(--_k-control-h);padding:2px;border-radius:var(--kd-ctl);background:var(--_k-fill)}
-.knobs-ui .knobs-diff-choice{padding:0 9px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-type-small);
+.knobs-ui .knobs-diff-choice{padding:0 8px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-type-small);
   font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-diff-choice:not([aria-checked="true"]):is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* The diff: one layer per file or layout on show, the old fading under the new. */
@@ -108,7 +108,7 @@ export const diffCss = `
 .knobs-diff-layer{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
 .knobs-diff-hbar{position:absolute;height:5px;pointer-events:none}
 .knobs-diff-hbar>i{position:absolute;left:0;top:0;height:5px;border-radius:3px;background:color-mix(in srgb,var(--_k-fg) 30%,transparent);opacity:0;pointer-events:none;
-  transition:opacity .3s,background .15s}
+  transition:opacity .3s,background calc(var(--_k-hover-out) * 1ms)}
 .knobs-diff-body:hover .knobs-diff-hbar>i,.knobs-diff-hbar:is([data-active],[data-dragging])>i{opacity:1;pointer-events:auto;transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-diff-hbar>i:hover,.knobs-diff-hbar[data-dragging]>i{background:color-mix(in srgb,var(--_k-fg) 48%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* stack: every file down one scroller, each header sticking until the next pushes it off. It's

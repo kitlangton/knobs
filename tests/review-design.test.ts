@@ -90,6 +90,46 @@ describe("space", () => {
   })
 })
 
+/** Each rule's selector and body, comments dropped. */
+const rules = (css: string) =>
+  [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    selector: m[1]!.trim(),
+    body: m[2]!,
+  }))
+
+describe("the hand", () => {
+  for (const [name, css] of Object.entries(SHEETS)) {
+    test(`${name}: the arrow, never a hand`, () => {
+      expect(
+        declarations(css).filter((d) => d.property === "cursor" && /pointer|grab/.test(d.value)),
+      ).toEqual([])
+    })
+
+    test(`${name}: a hover's background or colour lands at once and eases out`, () => {
+      const off: string[] = []
+      for (const { selector, body } of rules(css)) {
+        const hover = /:hover|\[data-hover\]/.test(selector.replace(/:not\([^)]*\)/g, ""))
+        const paints =
+          /(?:^|;)\s*(background(?:-color|-image)?|color|text-decoration-color)\s*:/.test(body)
+        if (
+          hover &&
+          paints &&
+          !/transition-duration:calc\(var\(--_k-hover-in\) \* 1ms\)/.test(body)
+        )
+          off.push(selector)
+        for (const m of body.matchAll(/transition:([^;]+)/g))
+          for (const part of m[1]!.split(/,(?![^(]*\))/))
+            if (
+              /^\s*(background|color)\b/.test(part) &&
+              /(?<!\*\s*)(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s\b/.test(part)
+            )
+              off.push(`${selector} → ${part.trim()}`)
+      }
+      expect(off).toEqual([])
+    })
+  }
+})
+
 describe("edges", () => {
   // A box is a fill or a hairline, never both: only the card itself (cards mode) and what floats
   // over the page (the notes bar, its launcher, the back button, a step opened full) are surfaces.
