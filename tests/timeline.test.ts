@@ -4,11 +4,13 @@ import {
   adjacentMarker,
   advance,
   CATCH_UP,
+  chapterBounds,
   clampView,
   currentMarker,
   followView,
   frameTime,
   magnet,
+  minutes,
   moveHead,
   rulerTicks,
   scrubTime,
@@ -141,7 +143,11 @@ describe("playhead catch-up", () => {
     expect(moveHead(at(1), 4, "jump", false)).toEqual({ x: 1, target: 4, catching: true })
   })
   test("a jump within the gap just lands", () => {
-    expect(moveHead(at(1), 1.01, "jump", false, 0.02)).toEqual({ x: 1.01, target: 1.01, catching: false })
+    expect(moveHead(at(1), 1.01, "jump", false, 0.02)).toEqual({
+      x: 1.01,
+      target: 1.01,
+      catching: false,
+    })
   })
   test("a drag is 1:1", () => {
     expect(moveHead(at(1), 3, "follow", false)).toEqual({ x: 3, target: 3, catching: false })
@@ -169,5 +175,17 @@ describe("playhead catch-up", () => {
     expect(currentMarker(ms, 1.99, 30)?.id).toBe("b")
     expect(currentMarker(ms, 9, 30)?.id).toBe("c")
     expect(currentMarker([{ id: "x", time: 1 }], 0.5, 30)).toBeNull()
+  })
+})
+
+describe("the line", () => {
+  test("a segment per chapter: 0, each start inside the length once, the end", () => {
+    expect(chapterBounds([], 10)).toEqual([0, 10])
+    expect(chapterBounds([0, 4, 2, 4, 12], 10)).toEqual([0, 2, 4, 10])
+  })
+  test("times as a player shows them", () => {
+    expect(minutes(0)).toBe("0:00")
+    expect(minutes(65.9)).toBe("1:05")
+    expect(minutes(3725)).toBe("1:02:05")
   })
 })

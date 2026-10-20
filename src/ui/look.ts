@@ -12,6 +12,7 @@ import {
 import { activityCss } from "./activity-css.js"
 import { bentoCss } from "./bento-css.js"
 import { compareCss } from "./compare-css.js"
+import { playerCss } from "./player-css.js"
 import { overlayCss } from "./overlay-css.js"
 import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
@@ -313,6 +314,23 @@ const css = `
 .knobs-timeline[data-variant="lane"] .knobs-tl-head::before{top:0}
 .knobs-timeline[data-variant="lane"] .knobs-tl-head::after{content:none}
 .knobs-timeline[data-variant="lane"] .knobs-tl-tag{top:2px;bottom:auto}
+/* The line (variant: "line"): a player's progress under its media. One 2px line, fg-3 with fg
+   filling it, a segment per chapter; it thickens under the pointer and while scrubbing. The
+   chapter and time under the pointer float over it; nothing else shows. */
+.knobs-ui.knobs-timeline[data-variant="line"]{height:auto;min-height:0;padding:0;gap:0}
+.knobs-timeline[data-variant="line"] .knobs-tl-transport{display:none}
+.knobs-ui.knobs-timeline[data-variant="line"] .knobs-tl-track{height:16px;overflow:visible;border-radius:var(--_k-radius);background:transparent;box-shadow:none;cursor:pointer}
+.knobs-timeline[data-variant="line"] :is(.knobs-tl-ruler,.knobs-tl-lane,.knobs-tl-hover,.knobs-tl-head,.knobs-tl-rlabel){display:none}
+.knobs-tl-segs{position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;pointer-events:none;transition:scale calc(var(--_k-hover-out) * 1ms) var(--_ku-ease)}
+.knobs-tl-seg{position:absolute;left:0;top:0;height:100%;overflow:hidden;border-radius:1px;background:var(--_k-fg-3);will-change:transform}
+.knobs-tl-seg-fill{position:absolute;inset:0;background:var(--_k-fg);transform-origin:0 0;will-change:transform}
+.knobs-timeline[data-variant="line"] .knobs-tl-track:hover .knobs-tl-segs,.knobs-timeline[data-variant="line"][data-scrubbing] .knobs-tl-segs{scale:1 2}
+.knobs-timeline[data-variant="line"] .knobs-tl-range{top:3px;bottom:3px;border-radius:3px}
+.knobs-timeline[data-variant="line"]:focus-visible .knobs-tl-track,.knobs-timeline[data-variant="line"][data-keyboard]:focus .knobs-tl-track{background:transparent;box-shadow:0 0 0 2px color-mix(in srgb,var(--_k-accent) 60%,transparent)}
+.knobs-timeline[data-variant="line"] .knobs-tl-tag{top:auto;bottom:calc(100% + 2px);display:flex;gap:6px;padding:0 6px;border-radius:calc(var(--_k-radius) * 999);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 0 0 .5px var(--_k-border)}
+.knobs-tl-tag-label{color:var(--_k-fg-2)}
+.knobs-tl-tag-label:empty{display:none}
 @media(prefers-reduced-motion:reduce){.knobs-timeline :where(*,::before,::after){transition:none!important}}
 @media(prefers-reduced-motion:reduce){:is(.knobs-tree,.knobs-split>.knobs-divider,.knobs-pane-head,.knobs-pane-rail) :where(*,::before,::after){transition:none!important}}
 `
@@ -320,7 +338,15 @@ const css = `
 /** The pieces' stylesheet, as `injectUiStyles` writes it (after the token sheet). */
 export const uiCss = () =>
   aliased(
-    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + selectionPillCss,
+    css +
+      readoutCss +
+      overlayCss +
+      bentoCss +
+      activityCss +
+      pickerCss +
+      compareCss +
+      playerCss +
+      selectionPillCss,
   ) +
   rollingCss
 

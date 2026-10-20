@@ -14,10 +14,12 @@ import {
   adjacentMarker,
   advance,
   CATCH_UP,
+  chapterBounds,
   clampView,
   currentMarker,
   followView,
   frameTime,
+  minutes,
   moveHead,
   rulerTicks,
   scrubTime,
@@ -76,9 +78,12 @@ export interface TimelineOptions extends UiLook {
    * and no labels, markers as faint chapter ticks (the current one in text colour) and nothing to
    * edit. A pinch, ⌘/ctrl-wheel or = and - zoom it around the pointer, a sideways scroll pans it,
    * both following the hand 1:1; a double-click or 0 fits it again. An up-and-down wheel is left
-   * to the page.
+   * to the page. `"line"`: a player's progress, a single thin line under a video or a compare (no
+   * play button: the media and Space play), one segment per chapter with a small gap between,
+   * each filling as the time passes it, thicker under the pointer; click or drag anywhere on it
+   * to seek, 1:1, and the chapter and time under the pointer show over it. Zooms as a lane does.
    */
-  readonly variant?: "editor" | "lane"
+  readonly variant?: "editor" | "lane" | "line"
   readonly label?: string
   /** The time moved: scrubbed, stepped, jumped, played (every frame) or set from code. */
   onSeek?(time: number, source: SeekSource): void
@@ -149,6 +154,8 @@ export interface Timeline {
 }
 
 const RULER = 22
+/** The gap between a line's chapter segments (px). */
+const SEG_GAP = 3
 // kit-motion: the view follows wheel and pinch on the instant spring (.1 s, no bounce); pans the
 // timeline makes itself (following the playhead, fitting) glide on calm (.4 s, no bounce).
 const INSTANT = springMotion(SPRINGS.instant)
@@ -168,7 +175,9 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let speed = options.speed ?? 1
   let repeat = options.repeat ?? true
   const arrows = options.arrows ?? "frames"
-  const lane = options.variant === "lane"
+  const line = options.variant === "line"
+  // A lane or a line: slim, nothing to edit, and the wheel the page's unless it's a zoom or a pan.
+  const lane = line || options.variant === "lane"
   let time = Math.min(duration, Math.max(0, options.time ?? 0))
   let playing = false
   let markers: TimelineMarker[] = [...(options.markers ?? [])]
@@ -201,7 +210,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   root.setAttribute("aria-label", options.label ?? "Timeline")
   root.setAttribute("aria-keyshortcuts", "Space ArrowLeft ArrowRight , . Home End [ ] I O M")
   applyLook(root, options)
-  if (lane) root.dataset.variant = "lane"
+  if (lane) root.dataset.variant = line ? "line" : "lane"
   // No clock beside play: the time shows under the pointer on the track (`tag`), in seconds.
   const transport = el("div", "knobs-tl-transport")
   const playBtn = el("button", "knobs-tl-play")
@@ -215,6 +224,12 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const hover = el("div", "knobs-tl-hover")
   const tag = el("span", "knobs-tl-tag")
   tag.setAttribute("aria-hidden", "true")
+  // A line's tag names the chapter under the pointer before its time.
+  const tagLabel = el("span", "knobs-tl-tag-label")
+  const tagTime = el("span", "knobs-tl-tag-time")
+  tag.append(tagLabel, tagTime)
+  // A line's chapters: one segment each, a small gap between, each filling as the time passes it.
+  const segs = el("div", "knobs-tl-segs")
   const head = el("div", "knobs-tl-head")
   // The playhead is the slider screen readers and keys work with.
   head.id = `${id}-head`
@@ -223,13 +238,16 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   head.setAttribute("aria-valuemin", "0")
   head.setAttribute("aria-valuemax", String(duration))
   track.append(canvas, markerLane, hover, head, tag)
+  if (line) track.insertBefore(segs, markerLane)
   root.append(transport, track)
   container.append(root)
 
   // ——— the view: shown on two springs, retargeted by the wheel, a pinch, a fit or a follow ———
   let width = 1
   let height = 1
-  const fitView = (): TimeView => clampView({ start: 0, span: duration }, duration, { pad: 0.02 })
+  // A line runs edge to edge under its media, so fitted it shows exactly the whole length.
+  const fitView = (): TimeView =>
+    clampView({ start: 0, span: duration }, duration, { pad: line ? 0 : 0.02 })
   let target = fitView()
   const vStart = new Spring(target.start, INSTANT.omega, 1, 1e-5)
   const vSpan = new Spring(target.span, INSTANT.omega, 1, 1e-5)
@@ -240,7 +258,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const minSpan = () => Math.max(4 / fps, 0.05)
   /** `hand`: a lane's pinch or scroll, there at once. */
   const retarget = (next: TimeView, motion = INSTANT, hand = false) => {
-    target = clampView(next, duration, { pad: 0.04, minSpan: minSpan() })
+    target = clampView(next, duration, { pad: line ? 0 : 0.04, minSpan: minSpan() })
     for (const s of [vStart, vSpan]) {
       s.omega = motion.omega
       s.zeta = motion.zeta
@@ -271,6 +289,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   }
   let drawn = ""
   const drawRuler = () => {
+    // A line draws no ruler: its chapters are its segments.
+    if (line) return
     const v = view()
     const key = `${v.start.toFixed(6)}:${v.span.toFixed(6)}:${width}:${height}:${units}:${fps}`
     if (key === drawn) return
@@ -349,12 +369,45 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       n.title = `${m.label ? `${m.label} · ` : ""}${clock(m.time)}`
     }
     placeMarkers()
+    if (line) syncSegments()
   }
   const placeMarkers = () => {
     for (const m of markers) {
       const n = markerEls.get(m.id)
       if (n) n.style.transform = `translateX(${xOf(m.time).toFixed(2)}px)`
     }
+  }
+  /** Where a line's segments start and end: 0, each chapter inside the length, the end. */
+  let bounds: number[] = []
+  const segEls: { el: HTMLElement; fill: HTMLElement }[] = []
+  const syncSegments = () => {
+    bounds = chapterBounds(
+      markers.map((m) => m.time),
+      duration,
+    )
+    while (segEls.length > bounds.length - 1) segEls.pop()!.el.remove()
+    while (segEls.length < bounds.length - 1) {
+      const n = el("i", "knobs-tl-seg")
+      const fill = el("b", "knobs-tl-seg-fill")
+      n.append(fill)
+      segs.append(n)
+      segEls.push({ el: n, fill })
+    }
+    placeSegments()
+  }
+  const placeSegments = () => {
+    if (!line) return
+    const last = segEls.length - 1
+    segEls.forEach((s, i) => {
+      const a = bounds[i]!
+      const b = bounds[i + 1]!
+      const x0 = xOf(a) + (i > 0 ? SEG_GAP / 2 : 0)
+      const x1 = xOf(b) - (i < last ? SEG_GAP / 2 : 0)
+      s.el.style.transform = `translateX(${x0.toFixed(2)}px)`
+      s.el.style.width = `${Math.max(0, x1 - x0).toFixed(2)}px`
+      const k = Math.min(1, Math.max(0, (shownHead - a) / Math.max(1e-9, b - a)))
+      s.fill.style.transform = `scaleX(${k.toFixed(4)})`
+    })
   }
   const syncRanges = () => {
     const keep = new Set(ranges.map((r) => r.id))
@@ -370,7 +423,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         b.dataset.edge = "end"
         const label = el("span", "knobs-tl-rlabel")
         n.append(label, a, b)
-        track.insertBefore(n, markerLane)
+        track.insertBefore(n, line ? segs : markerLane)
         rangeEls.set(r.id, n)
         if (built) enter(n)
       }
@@ -426,6 +479,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let currentId: string | null = null
   const renderHead = () => {
     head.style.transform = `translateX(${xOf(shownHead).toFixed(2)}px)`
+    placeSegments()
     head.setAttribute("aria-valuenow", time.toFixed(3))
     head.setAttribute("aria-valuetext", `${time.toFixed(2)} seconds, frame ${toFrame(time, fps)}`)
     // The current chapter: the last marker at or before the time, its tick in text colour.
@@ -718,11 +772,20 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   // The time under the pointer, in seconds, while it's over the track or scrubbing.
   const showTag = (x: number) => {
     const at = Math.min(duration, Math.max(0, tOf(x)))
-    const text = `${at.toFixed(2)} s`
-    if (tag.textContent !== text) tag.textContent = text
+    const text = line ? minutes(at) : `${at.toFixed(2)} s`
+    if (tagTime.textContent !== text) tagTime.textContent = text
+    const label = line ? (currentMarker(markers, at, fps)?.label ?? "") : ""
+    if (tagLabel.textContent !== label) tagLabel.textContent = label
     const cx = Math.min(width, Math.max(0, x))
-    const flip = cx > width - tag.offsetWidth - 12
-    tag.style.transform = `translateX(${cx.toFixed(1)}px) translateX(${flip ? "calc(-100% - 4px)" : "4px"})`
+    if (line) {
+      // Over the line, centred on the pointer and kept inside its ends.
+      const w = tag.offsetWidth
+      const left = Math.min(Math.max(0, width - w), Math.max(0, cx - w / 2))
+      tag.style.transform = `translateX(${left.toFixed(1)}px)`
+    } else {
+      const flip = cx > width - tag.offsetWidth - 12
+      tag.style.transform = `translateX(${cx.toFixed(1)}px) translateX(${flip ? "calc(-100% - 4px)" : "4px"})`
+    }
     tag.dataset.on = ""
   }
   const hideTag = () => delete tag.dataset.on
@@ -1220,7 +1283,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   return api
 }
 
-const PLAY =
+export const PLAY =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.6v8.8c0 .5.5.8.9.5l6.6-4.4c.4-.3.4-.8 0-1L5.9 3.1c-.4-.3-.9 0-.9.5Z" fill="currentColor"/></svg>'
-const PAUSE =
+export const PAUSE =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/><rect x="9.2" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/></svg>'

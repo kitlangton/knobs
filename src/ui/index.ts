@@ -108,6 +108,7 @@ export {
   moveHead,
   rulerTicks,
   scrubTime,
+  minutes,
   timeLabel,
   toFrame,
   zoomView,
@@ -130,6 +131,7 @@ export {
   type ZoomRegion,
 } from "./compare.js"
 export { compareStrip, type CompareStrip, type CompareStripOptions } from "./compare-strip.js"
+export { player, type Player, type PlayerChapter, type PlayerOptions } from "./player.js"
 export {
   compareLayout,
   compareModes,

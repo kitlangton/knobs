@@ -3,7 +3,7 @@
 // light chrome: the modes as a segmented control above it (the selection pill on the one picked),
 // Before and After as small glass labels in their sides' corners (wiping, either side of the
 // seam), the wipe as a hairline with a raised grip in its middle, and, zoomed, a glass pill with
-// the zoom and a reset. Its timeline, a slim lane, sits under it.
+// the zoom and a reset. Its timeline, a player's thin progress line, sits under it.
 export const compareCss = `
 :where(.knobs-compare,.knobs-compare *,.knobs-cmp-strip,.knobs-cmp-strip *){box-sizing:border-box}
 .knobs-ui.knobs-compare{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));--_ku-cmp-line:var(--_k-compare-divider);
@@ -36,6 +36,8 @@ export const compareCss = `
 .knobs-cmp-stage{position:relative;flex:1;min-height:96px;overflow:hidden;border-radius:var(--_k-radius-panel);background:var(--_ku-cmp-stage);touch-action:pan-y;outline:none}
 .knobs-compare[data-frame="flat"] .knobs-cmp-stage{border-radius:0}
 .knobs-compare[data-mode="wipe"] .knobs-cmp-stage{cursor:ew-resize}
+/* Videos: a click on the stage plays and pauses. */
+.knobs-compare[data-video]:not([data-mode="wipe"],[data-zoomed]) .knobs-cmp-stage{cursor:pointer}
 /* Unzoomed, a finger still scrolls the page up and down; zoomed, the stage takes every gesture. */
 .knobs-compare[data-zoomed] .knobs-cmp-stage{cursor:grab;touch-action:none}
 .knobs-compare[data-panning],.knobs-compare[data-panning] *{cursor:grabbing!important}
