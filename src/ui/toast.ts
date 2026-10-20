@@ -34,7 +34,7 @@ export function toast(message: string, options: ToastOptions = {}): Toast {
   let r = regions.get(key)
   if (!r || !r.el.isConnected) {
     const el = options.within
-      ? Object.assign(doc.createElement("div"), { className: "knobs-ui knobs-toast" })
+      ? Object.assign(doc.createElement("div"), { className: "knobs-root knobs-ui knobs-toast" })
       : layerElement(doc, "knobs-layer knobs-toast", options.look)
     if (options.within) {
       injectUiStyles(doc)

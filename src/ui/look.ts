@@ -7,6 +7,7 @@ import { compareCss } from "./compare-css.js"
 import { overlayCss } from "./overlay-css.js"
 import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
+import { DERIVED_TOKENS, rootCss } from "../core/root.js"
 
 export type UiTheme = "dark" | "light" | "auto"
 
@@ -21,6 +22,7 @@ const ease = springEasing(26, 1)
 
 // The pieces read knobs' public tokens (--k-*), set by a host, a preset or the panel's own :root
 // defaults; each falls back to the panel's default, so a piece standing alone looks the same.
+// Tokens the knobs root derives (sizes by density, surfaces by contrast) come from there.
 const TOKENS: Record<string, string> = {
   bg: "#1c1c1e",
   surface: "rgba(255,255,255,.055)",
@@ -72,10 +74,12 @@ const lightBlock = `${Object.entries(LIGHT)
 
 const css = `
 :where(.knobs-ui){${Object.entries(TOKENS)
-  .map(([k, v]) => `--ku-${k}:var(--k-${k},${v})`)
+  .map(
+    ([k, v]) => `--ku-${k}:${DERIVED_TOKENS.includes(k) ? `var(--_k-${k})` : `var(--k-${k},${v})`}`,
+  )
   .join(";")};
   --ku-control-h:var(--k-control-h,calc(var(--ku-row) - 8px));
-  --ku-value-font:var(--k-value-font,var(--ku-font));
+  --ku-value-font:var(--_k-value-font);
   --ku-value-size:var(--kc-value-size,calc(var(--ku-font-size) - .5px));
   --ku-text-meta:var(--k-text-meta,calc(var(--ku-font-size) - 1px));
   --ku-hit:var(--k-ui-hit,9px);
@@ -90,7 +94,7 @@ const css = `
      inside its slot, so panes sit a gap apart with the dividers' grips between them; tree rows
      inset as soft rounded washes. --k-frame: flat (labPreset) puts panes edge to edge on
      hairlines, square, as a dense editor's columns. */
-  --ku-panel-radius:var(--k-panel-radius,calc(var(--ku-radius) + 4px));
+  --ku-panel-radius:var(--_k-panel-radius);
   --ku-gap:var(--k-ui-gap,6px);
   --ku-pane-m:calc(var(--ku-gap) / 2);
   --ku-pane-bg:var(--k-ui-pane,var(--ku-bg));
@@ -352,7 +356,15 @@ export function injectUiStyles(doc: Document) {
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
   style.textContent =
-    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + rollingCss
+    rootCss +
+    css +
+    readoutCss +
+    overlayCss +
+    bentoCss +
+    activityCss +
+    pickerCss +
+    compareCss +
+    rollingCss
   doc.head.append(style)
 }
 
@@ -376,7 +388,7 @@ function injectUiPreset(doc: Document, preset: TokenPreset) {
 export function applyLook(root: HTMLElement, look: UiLook) {
   const doc = root.ownerDocument
   injectUiStyles(doc)
-  root.classList.add("knobs-ui")
+  root.classList.add("knobs-root", "knobs-ui")
   if (look.preset) {
     injectUiPreset(doc, look.preset)
     root.dataset.preset = look.preset.name

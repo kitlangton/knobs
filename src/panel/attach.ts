@@ -19,7 +19,7 @@ export function attach<S extends Schema>(
   const reveal = options.reveal ?? controls.chip.reveal
   const shortcut = options.shortcut ?? controls.chip.shortcut
   const chip = doc.createElement("button")
-  chip.className = "knobs-chip"
+  chip.className = "knobs-root knobs-chip"
   chip.dataset.theme = controls.theme
   chip.type = "button"
   /** The cog, with the label beside it when there is one. */
@@ -287,7 +287,7 @@ function showStatus(doc: Document, text: string, theme: string) {
   let toast = doc.querySelector<HTMLElement>(".knobs-toast")
   if (!toast) {
     toast = doc.createElement("div")
-    toast.className = "knobs-toast"
+    toast.className = "knobs-root knobs-toast"
     toast.setAttribute("role", "status")
     toast.dataset.shown = "false"
     doc.body.append(toast)

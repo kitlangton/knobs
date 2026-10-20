@@ -726,7 +726,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
   function beginDrag(id: string) {
     const ids = topmost(items, access, isSelected(id) ? sel.ids : [id])
     const ghost = doc.createElement("div")
-    ghost.className = "knobs-ui knobs-tree-ghost"
+    ghost.className = "knobs-root knobs-ui knobs-tree-ghost"
     if (options.preset) ghost.dataset.preset = options.preset.name
     if (options.theme) ghost.dataset.theme = options.theme
     ghost.textContent =

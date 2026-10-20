@@ -5,6 +5,7 @@ import { FILL, LEAD, springEasing, TRAIL } from "./motion.js"
 import { FLASH_MS } from "./flash.js"
 import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
 import { CRUMB_GLIDE } from "./crumbs.js"
+import { DERIVED_TOKENS, rootCss } from "../core/root.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
@@ -79,6 +80,8 @@ const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "panel-radius", "
 const NUMBER_TOKENS = ["label-weight", "blur", "glow", "glass", "glass-tone"]
 const ANIMATED = [...COLOR_TOKENS, ...LENGTH_TOKENS, ...NUMBER_TOKENS, "width"]
 const TOKEN_TRANSITIONS = ANIMATED.map((t) => `--kt-${t} var(--k-token-t)`).join(",")
+/** A driver follows the derived value where the root derives one, else the public token. */
+const source = (t: string) => (DERIVED_TOKENS.includes(t) ? `--_k-${t}` : `--k-${t}`)
 const register = (names: readonly string[], syntax: string, initial: string) =>
   names
     .map((n) => `@property --kt-${n}{syntax:"${syntax}";inherits:false;initial-value:${initial}}`)
@@ -87,10 +90,16 @@ const DRIVERS = `${register(COLOR_TOKENS, "<color>", "transparent")}
 ${register(LENGTH_TOKENS, "<length>", "0px")}
 ${register(NUMBER_TOKENS, "<number>", "0")}
 ${register(["width"], "<length-percentage>", "288px")}
-.knobs-panel,.knobs-chip,.knobs-toast{${ANIMATED.map((t) => `--kt-${t}:var(--k-${t});--kv-${t}:var(--kt-${t})`).join(";")}}`
-/** The panel's rules read the gliding aliases; the :root defaults keep the public names. */
+.knobs-panel,.knobs-chip,.knobs-toast{${ANIMATED.map((t) => `--kt-${t}:var(${source(t)});--kv-${t}:var(--kt-${t})`).join(";")}}`
+/**
+ * The panel's rules read the gliding aliases, and tokens derived on the knobs root (see
+ * core/root.ts) by their private names; the :root defaults keep the public names.
+ */
+const STILL_DERIVED = DERIVED_TOKENS.filter((t) => !ANIMATED.includes(t))
 const aliased = (css: string) =>
-  css.replace(new RegExp(`var\\(--k-(${ANIMATED.join("|")})\\)`, "g"), "var(--kv-$1)")
+  css
+    .replace(new RegExp(`var\\(--k-(${ANIMATED.join("|")})\\)`, "g"), "var(--kv-$1)")
+    .replace(new RegExp(`var\\(--k-(${STILL_DERIVED.join("|")})\\)`, "g"), "var(--_k-$1)")
 
 const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
@@ -118,22 +127,23 @@ const defaultsCss = `
 @property --kr-show-hi{syntax:"<number>";inherits:true;initial-value:0}
 ${GRAD_PROPS}
 :where(:root,:host){
-  --k-bg:#1c1c1e;--k-contrast:1;--k-surface:rgba(255,255,255,calc(.055 * var(--k-contrast)));--k-surface-hi:rgba(255,255,255,calc(.11 * var(--k-contrast)));--k-line:rgba(255,255,255,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(255,255,255,calc(.18 * var(--k-contrast)));
+  --k-bg:#1c1c1e;--k-contrast:1;
   --k-text:rgba(255,255,255,.92);--k-label:rgba(255,255,255,.64);--k-dim:rgba(255,255,255,.42);--k-accent:#fff;--k-modified:rgba(255,255,255,.5);
-  --k-seg-bg:rgba(0,0,0,.26);--k-seg-active:var(--k-surface-hi);--k-toggle-track:rgba(255,255,255,.14);--k-toggle-thumb:var(--k-bg);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
-  --k-rim:rgba(255,255,255,.1);--k-edge:rgba(255,255,255,calc(.07 * var(--k-contrast)));--k-rim-width:1px;--k-glass-tone:.5;--k-page:#101012;
+  --k-seg-bg:rgba(0,0,0,.26);--k-toggle-track:rgba(255,255,255,.14);--k-shadow:0 12px 36px rgba(0,0,0,.52),0 1px 2px rgba(0,0,0,.3);
+  --k-rim:rgba(255,255,255,.1);--k-rim-width:1px;--k-glass-tone:.5;--k-page:#101012;
   --k-group-ink:rgba(255,255,255,.48);
-  --k-unit:4px;--k-density:1;--k-width:288px;--k-row:round(calc(32px * var(--k-density)),2px);--k-pad:round(calc(10px * var(--k-density)),2px);--k-inset:var(--k-pad);--k-gap:round(calc(var(--k-unit) * var(--k-density)),1px);--k-radius:round(calc(8px * var(--k-density)),2px);--k-panel-radius:calc(var(--k-radius) + var(--k-unit));
-  --k-font-size:round(calc(12px * var(--k-density)),.5px);--k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
+  --k-unit:4px;--k-density:1;--k-width:288px;
+  --k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
-  --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);--k-reveal-ease:var(--k-ease);
+  --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
-  --k-row-gap:0px;--k-hover-in:0;--k-hover-out:120;--k-fill-base:var(--k-surface-hi);--k-fill-rest-mix:20%;--k-fill-hover-mix:var(--k-fill-rest-mix);--k-fill-active-mix:30%;--k-chrome:1;--k-handle:var(--k-accent);--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;--k-value-font:var(--k-font);
+  --k-row-gap:0px;--k-hover-in:0;--k-hover-out:120;--k-fill-rest-mix:20%;--k-fill-active-mix:30%;--k-chrome:1;--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
   --k-lens-ms:180;--k-lens-lead:1;--k-lens-wash:.9;--k-lens-line:.65;--k-lens-panel-wash:.35;--k-lens-inset:0px;--k-lens-panel-inset:0px;
   --k-armed-edge:.1;--k-armed-glow:0;--k-armed-glow-a:0;--k-title-rest:.6;--k-esc-hint-ms:1800;
 }
+${rootCss}
 /* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
 @media(min-resolution:1.5dppx){:where(:root,:host){--k-rim-width:.67px}}
 @media(min-resolution:2dppx){:where(:root,:host){--k-rim-width:.5px}}
@@ -144,8 +154,8 @@ ${GRAD_PROPS}
 @media(prefers-color-scheme:light){
   :where(:root:not([data-theme="dark"])) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
 }
-:where(.knobs-panel)[data-density="compact"]{--k-density:.875;--k-row:28px;--k-gap:3px;--k-radius:6px;--k-panel-radius:calc(var(--k-radius) + var(--k-unit));--k-pad:8px;--k-inset:8px;--k-font-size:11px}
-:where(.knobs-panel)[data-density="comfortable"]{--k-density:1.1875;--k-row:38px;--k-gap:6px;--k-radius:10px;--k-panel-radius:calc(var(--k-radius) + var(--k-unit));--k-pad:12px;--k-inset:12px;--k-font-size:13px}
+:where(.knobs-panel)[data-density="compact"]{--k-density:.875}
+:where(.knobs-panel)[data-density="comfortable"]{--k-density:1.1875}
 `
 
 const css = `

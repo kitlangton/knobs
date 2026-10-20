@@ -119,4 +119,22 @@ describe("panel stylesheet", () => {
         expect(compare(specificity(r.selector), [0, 1, 1]), r.selector).toBeGreaterThan(0)
     },
   )
+
+  // Derived tokens resolve where they're declared: on :root they'd freeze to :root's inputs, so a
+  // light panel's accent, a subtree's density or a panel's contrast wouldn't reach them.
+  it("declares only input tokens on :root", () => {
+    const root = /:where\(:root,:host\)\{([^}]*)\}/.exec(css)![1]!
+    expect(root).toContain("--k-bg:")
+    expect(root).not.toMatch(/var\(--_?k-/)
+  })
+
+  it("derives on the knobs root", () => {
+    expect(css).toContain(":where(.knobs-root){--_k-surface:var(--k-surface,")
+    expect(css).toContain("--_k-handle:var(--k-handle,var(--k-accent")
+  })
+
+  it("sets density as --k-density alone", () => {
+    for (const m of css.matchAll(/\[data-density="\w+"\]\{([^}]*)\}/g))
+      expect(m[1]).toMatch(/^--k-density:[\d.]+$/)
+  })
 })

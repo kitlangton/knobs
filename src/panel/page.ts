@@ -780,7 +780,7 @@ export function createPageLayout(
       if (m.fold !== undefined) {
         const f = Math.min(1, m.fold > 0 ? h / m.fold : 0)
         // Borders can't fold, so the margin takes up what they keep.
-        node.style.paddingTop = node.style.paddingBottom = `calc(var(--k-pad) * ${f})`
+        node.style.paddingTop = node.style.paddingBottom = `calc(var(--kv-pad) * ${f})`
         node.style.marginBottom = `${-gapPx * (1 - f) - Math.max(0, 2 - h)}px`
         // A card folding away fades over its last third, so its borders don't linger as a line.
         if (!m.o) node.style.opacity = leaving.has(node) && f < 1 / 3 ? String(f * 3) : ""

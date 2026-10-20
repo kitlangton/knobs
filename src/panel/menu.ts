@@ -64,7 +64,7 @@ export function openMenu(
   const win = doc.defaultView!
   const previous = options.returnTo ?? (doc.activeElement as HTMLElement | null)
   const menu = doc.createElement("div")
-  menu.className = "knobs-menu"
+  menu.className = "knobs-root knobs-menu"
   menu.setAttribute("role", "menu")
   menu.tabIndex = -1
   const cs = win.getComputedStyle(panel)

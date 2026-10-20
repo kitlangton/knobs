@@ -289,7 +289,7 @@ export function morphFromChip(
     const r = parseFloat(cs.getPropertyValue("--kv-panel-radius"))
     if (Number.isFinite(r)) panelRadius = r
     shape = doc.createElement("div")
-    shape.className = "knobs-morph"
+    shape.className = "knobs-root knobs-morph"
     shape.setAttribute("aria-hidden", "true")
     for (const t of ["bg", "line", "rim", "edge", "glass", "glass-tone"])
       shape.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))

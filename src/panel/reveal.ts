@@ -48,7 +48,7 @@ export function resize(node: HTMLElement, from: number) {
     return
   }
   node.style.overflow = "hidden"
-  const ease = win.getComputedStyle(node).getPropertyValue("--k-reveal-ease").trim() || EASE_OUT
+  const ease = win.getComputedStyle(node).getPropertyValue("--_k-reveal-ease").trim() || EASE_OUT
   const animation = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
     duration: 200,
     easing: ease,

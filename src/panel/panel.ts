@@ -210,10 +210,10 @@ function buildPanel<S extends Schema>(
   const close = options.close ?? options.onClose
   const root: HTMLElement = el(page ? "div" : "aside")
   root.className = page
-    ? "knobs-panel knobs-inline knobs-page"
+    ? "knobs-root knobs-panel knobs-inline knobs-page"
     : inline
-      ? "knobs-panel knobs-inline"
-      : "knobs-panel"
+      ? "knobs-root knobs-panel knobs-inline"
+      : "knobs-root knobs-panel"
   root.dataset.controls = controls.id
   const untrackHas = trackHas(root)
   root.dataset.theme = options.theme ?? controls.theme

@@ -425,7 +425,7 @@ function valueBox(doc: Document, grew?: () => void) {
 
 function createWatch(env: ReadoutEnv): ReadoutView {
   const el = make(env.doc)
-  const root = el("span", "knobs-ui knobs-rd knobs-rd-watch")
+  const root = el("span", "knobs-root knobs-ui knobs-rd knobs-rd-watch")
   let field = env.field as WatchField
   const value = valueBox(env.doc)
   root.append(value.box)
@@ -463,7 +463,7 @@ function createWatch(env: ReadoutEnv): ReadoutView {
 
 function createSparkline(env: ReadoutEnv): ReadoutView {
   const el = make(env.doc)
-  const root = el("span", "knobs-ui knobs-rd knobs-rd-spark")
+  const root = el("span", "knobs-root knobs-ui knobs-rd knobs-rd-spark")
   let field = env.field as SparklineField
   const canvas = plot(env.doc, "knobs-rd-plot", () => {
     dirty = true
@@ -570,7 +570,7 @@ function createSparkline(env: ReadoutEnv): ReadoutView {
 
 function createGraph(env: ReadoutEnv): ReadoutView {
   const el = make(env.doc)
-  const root = el("div", "knobs-ui knobs-rd knobs-rd-graph knobs-rd-block")
+  const root = el("div", "knobs-root knobs-ui knobs-rd knobs-rd-graph knobs-rd-block")
   let field = env.field as GraphField
   const head = el("div", "knobs-rd-head")
   if (env.label) head.append(env.label)
@@ -838,7 +838,7 @@ function createGraph(env: ReadoutEnv): ReadoutView {
 
 function createMeter(env: ReadoutEnv): ReadoutView {
   const el = make(env.doc)
-  const root = el("span", "knobs-ui knobs-rd knobs-rd-meter")
+  const root = el("span", "knobs-root knobs-ui knobs-rd knobs-rd-meter")
   let field = env.field as MeterField
   const canvas = plot(env.doc, "knobs-rd-plot", () => {
     dirty = true
@@ -966,7 +966,7 @@ const isNumeric = (v: unknown) =>
 
 function createTable(env: ReadoutEnv): ReadoutView {
   const el = make(env.doc)
-  const root = el("div", "knobs-ui knobs-rd knobs-rd-table knobs-rd-block")
+  const root = el("div", "knobs-root knobs-ui knobs-rd knobs-rd-table knobs-rd-block")
   let field = env.field as TableField
   const grid = el("div", "knobs-rd-grid")
   grid.tabIndex = -1
@@ -1127,7 +1127,7 @@ const levelColor = (p: Palette, level: LogLevel | undefined) =>
 function createLog(env: ReadoutEnv): ReadoutView {
   const doc = env.doc
   const el = make(doc)
-  const root = el("div", "knobs-ui knobs-rd knobs-rd-log knobs-rd-block")
+  const root = el("div", "knobs-root knobs-ui knobs-rd knobs-rd-log knobs-rd-block")
   let field = env.field as LogField
   const head = el("div", "knobs-rd-head")
   if (env.label) head.append(env.label)
