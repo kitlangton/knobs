@@ -1376,6 +1376,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       pill = selectionPill(tocEl, {
         selected: () => viewOf(current)?.toc ?? null,
         rows: () => tocRows,
+        spring: SPRINGS.snappy,
       })
     syncProgress()
     current = null

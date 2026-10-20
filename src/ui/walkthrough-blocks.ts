@@ -450,6 +450,7 @@ export function chapterPills(
   const pill = selectionPill(list, {
     selected: () => rows[at] ?? null,
     rows: () => rows,
+    spring: SPRINGS.snappy,
   })
   const select = (i: number) => {
     if (i === at) return
