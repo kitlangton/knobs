@@ -42,6 +42,7 @@ export default defineConfig(({ command, mode }) => ({
         lab: resolve(import.meta.dirname, "lab.html"),
         labDiff: resolve(import.meta.dirname, "lab-diff.html"),
         walkthrough: resolve(import.meta.dirname, "walkthrough.html"),
+        story: resolve(import.meta.dirname, "story.html"),
         controls: resolve(import.meta.dirname, "controls.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
