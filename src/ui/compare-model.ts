@@ -149,7 +149,10 @@ export interface CompareLayout {
    * up), each side in its half; `split` is the middle's x.
    */
   readonly side: { readonly before: Rect; readonly after: Rect; readonly split: number }
-  /** Overlaid (wipe, difference): both in the same place. */
+  /**
+   * Overlaid (wipe, difference): both in the same place, one side's size, centred on the split,
+   * so fusing never resizes anything.
+   */
   readonly overlay: { readonly before: Rect; readonly after: Rect }
 }
 
@@ -158,14 +161,66 @@ export function compareLayout(box: Rect, before: Size, after: Size): CompareLayo
   const shape = after.w > 0 && after.h > 0 ? after : before
   const pair = letterbox({ w: shape.w * 2, h: shape.h }, box)
   const half = pair.w / 2
+  const fused = { x: pair.x + half / 2, y: pair.y, w: half, h: pair.h }
   return {
     side: {
       before: letterbox(before, { x: pair.x, y: pair.y, w: half, h: pair.h }),
       after: letterbox(after, { x: pair.x + half, y: pair.y, w: half, h: pair.h }),
       split: pair.x + half,
     },
-    overlay: { before: letterbox(before, box), after: letterbox(after, box) },
+    overlay: { before: letterbox(before, fused), after: letterbox(after, fused) },
   }
+}
+
+/** The fuse's feather at its middle, the seam's blur as it starts and the overlap it fades in over (px). */
+export const FUSE = { feather: 24, blur: 4, seamFade: 48 } as const
+
+export interface FuseFrame {
+  /** Where Before is cut: the split side by side, the wipe's line fused. */
+  readonly cut: number
+  /** The cut's soft edge, px either side of it. */
+  readonly feather: number
+  /** The seam's (and the wipe handle's) opacity, 0–1. */
+  readonly seam: number
+  /** The seam's blur (px), gone once fused. */
+  readonly blur: number
+}
+
+/**
+ * Kit Motion's Comparison fuse, one frame of it: side by side (`k` 0) the panes glide together
+ * into one (`k` 1). Before is cut only where the inner edges overlap, with a feather that swells
+ * mid-transition; the seam fades in as they overlap, blurred until they've fused. `before` and
+ * `after` are where the sides are drawn this frame.
+ */
+export function fuseFrame(
+  L: CompareLayout,
+  before: Rect,
+  after: Rect,
+  k: number,
+  wipe: number,
+): FuseFrame {
+  const t = Math.min(1, Math.max(0, k))
+  const o = L.overlay
+  const left = Math.min(o.before.x, o.after.x)
+  const line = wipeX(
+    { x: left, y: 0, w: Math.max(o.before.x + o.before.w, o.after.x + o.after.w) - left, h: 0 },
+    wipe,
+  )
+  const cut = L.side.split + (line - L.side.split) * t
+  const contact = Math.max(0, Math.min(cut - after.x, before.x + before.w - cut))
+  const feather = Math.min(contact, 1 + FUSE.feather * Math.sin(Math.PI * t))
+  const overlap = before.x + before.w - after.x
+  const seam =
+    t > 0.001 && overlap >= 0
+      ? Math.min(1, Math.max(0, overlap / FUSE.seamFade)) * Math.min(1, t * 4)
+      : 0
+  return { cut, feather, seam, blur: t < 0.995 ? FUSE.blur * (1 - t) : 0 }
+}
+
+/** A label folded `fold` (0 open, 1 folded to its name): its mark's width and opacity. */
+export const labelFold = (fold: number, mark: number) => {
+  const open = 1 - Math.min(1, Math.max(0, fold))
+  return { width: mark * open, opacity: Math.min(1, Math.max(0, (open - 0.2) / 0.8)) }
 }
 
 /** The height a split screen of `w` needs so neither side has margins: half its width, in shape. */
@@ -259,7 +314,14 @@ export function wipeGrab(x: number, rect: Rect, wipe: number, slop = 12) {
  * Wiping, Before and After ride either side of the seam at `x`, `gap` from it, each fading out as
  * its side runs out of room (`left`/`right`: the wipe's edges; `wb`/`wa`: the labels' widths).
  */
-export function seamLabels(x: number, left: number, right: number, wb: number, wa: number, gap = 8) {
+export function seamLabels(
+  x: number,
+  left: number,
+  right: number,
+  wb: number,
+  wa: number,
+  gap = 8,
+) {
   const room = (space: number, w: number) => Math.min(1, Math.max(0, (space - w - 2 * gap) / gap))
   return {
     before: { x: x - gap - wb, opacity: room(x - left, wb) },

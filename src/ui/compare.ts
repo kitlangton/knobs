@@ -19,7 +19,9 @@ import {
   compareModes,
   frameMidpoint,
   frameOf,
+  fuseFrame,
   gripTop,
+  labelFold,
   lastFrame,
   lerpRect,
   loopAround,
@@ -41,7 +43,6 @@ import {
   wipeAt,
   wipeGrab,
   wipeKey,
-  wipeX,
   ZOOM_FIT,
   zoomAbout,
   zoomedRect,
@@ -176,12 +177,14 @@ export interface Compare {
   dispose(): void
 }
 
-// kit-motion: a mode change is a state change. Side ↔ overlaid glides on .35 s, no bounce; one
-// mode's look crossfades into the next on .25 s (.15 s with reduced motion, which drops the glide).
-// A zoom's reset, a double-click or a key's zoom is a state change too: .35 s, no bounce (snapped
-// with reduced motion). The wipe, the loupe, scrubbing, pans and pinches follow the hand 1:1; a
-// press on the stage away from the wipe's line catches up from where it is (.15 s, no bounce).
-const LAYOUT = springMotion({ duration: 0.35, bounce: 0 })
+// kit-motion: a mode change is a state change. Side ↔ Wipe is Kit Motion's Comparison fuse: the
+// panes glide together on .3 s, no bounce, nothing resizing (see fuseFrame); the difference's look
+// crossfades in on .25 s (.15 s with reduced motion, which drops the glide). A zoom's reset, a
+// double-click or a key's zoom is a state change too: .35 s, no bounce (snapped with reduced
+// motion). The wipe, the loupe, scrubbing, pans and pinches follow the hand 1:1; a press on the
+// stage away from the wipe's line catches up from where it is (.15 s, no bounce), and let go, the
+// grip settles back to the line's middle (.3 s).
+const LAYOUT = springMotion(SPRINGS.default)
 const FADE = springMotion(SPRINGS.snappy)
 const FADE_REDUCED = springMotion(FADE_SPRING)
 const ZOOM = springMotion({ duration: 0.35, bounce: 0 })
@@ -189,8 +192,10 @@ const WIPE_CATCH = springMotion(CATCH_UP)
 const SLOP = 12
 /** Labels sit this far inside their side's corner, and this far from the wipe's seam. */
 const INSET = 8
-/** The wipe's grip: a raised capsule on the line at the pointer's height. */
+/** The wipe's grip: a raised capsule in the line's middle, at the pointer's height while dragged. */
 const GRIP = { w: 16, h: 28 }
+/** A label's mark and the gap after it, which fold away as the sides fuse. */
+const MARK = { w: 12, gap: 4 }
 const LOUPE = { r: 88, zoom: 4 }
 /** Mid-scrub with no decoded frame this close, a keyframe seek (`fastSeek`) answers first. */
 const FAST_SEEK_FRAMES = 15
@@ -344,6 +349,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     const name = l.lastElementChild as HTMLElement
     if (name.textContent !== text) name.textContent = text
   }
+  // Mid-fuse, a blurred strip over the seam hides where the sides meet.
+  const seam = el("div", "knobs-cmp-seam")
+  seam.setAttribute("aria-hidden", "true")
   const handle = el("div", "knobs-cmp-handle")
   handle.setAttribute("role", "slider")
   handle.setAttribute("aria-label", "Wipe")
@@ -353,7 +361,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   grip.setAttribute("aria-hidden", "true")
   handle.append(grip)
   const note = el("div", "knobs-cmp-note")
-  stage.append(canvas, split, labels[0], labels[1], handle, zoomPill, note)
+  stage.append(canvas, split, seam, labels[0], labels[1], handle, zoomPill, note)
   root.append(bar, stage)
 
   // ——— the clock: a bound timeline, one of its own, or none (its own time) ———
@@ -394,8 +402,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   // The wipe's line as drawn: it catches up to `wipe` after a press away from it, else lands.
   const wipeLine = new Spring(wipe, WIPE_CATCH.omega, WIPE_CATCH.zeta, 1e-4)
   let wipeCatching = false
-  /** The pointer's height over the stage, where the grip rides (null: the middle). */
-  let gripY: number | null = null
+  /** Where the grip rides down the line (0–1): the middle, or the pointer's height while dragging. */
+  const gripAt = new Spring(0.5, LAYOUT.omega, LAYOUT.zeta, 1e-4)
   let loupeHeld = false
   let pointer: { x: number; y: number } | null = null
   type Drag =
@@ -683,6 +691,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     for (const s of sides) {
       const st = s.el.style
       st.clipPath = ""
+      st.maskImage = ""
+      st.setProperty("-webkit-mask-image", "")
       st.mixBlendMode = ""
       st.opacity = ""
       s.shown = null
@@ -907,54 +917,69 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     options.onView({ zoom: clampZoom(z), loop: l })
   }
 
-  /** Each label's place and opacity in a mode: its side's top corner, or wiping, the seam. */
-  const labelsIn = (
-    m: CompareMode,
-    r: ReturnType<typeof layoutNow>,
-    wr: Rect,
-    wx: number,
-  ): [{ x: number; opacity: number }, { x: number; opacity: number }] => {
-    if (m === "wipe") {
-      const at = seamLabels(wx, wr.x, wr.x + wr.w, labelW[0], labelW[1], INSET)
-      return [at.before, at.after]
-    }
-    // After's moves from its left (side by side) to its right (overlaid), clear of Before's.
-    const ax = r.after.x + INSET + (r.after.w - labelW[1] - INSET * 2) * lay.x
-    return [
-      { x: r.before.x + INSET, opacity: 1 },
-      { x: ax, opacity: 1 },
-    ]
+  /** How far the look is the difference's (0–1): the cut, the seam and the folded labels give way to it. */
+  const differenceWeight = () => {
+    const f = Math.min(1, Math.max(0, fade.x))
+    return (fromMode === "difference" ? 1 - f : 0) + (toMode === "difference" ? f : 0)
   }
-  /** The grip rides the line at the pointer's height (the middle until there's a pointer). */
+  /** The grip in the line's middle, or at the pointer's height while dragging. */
   const placeGrip = (wr: Rect) => {
-    const gy = gripTop(gripY ?? wr.y + wr.h / 2, wr, GRIP.h) - wr.y
+    const gy = gripTop(wr.y + gripAt.x * wr.h, wr, GRIP.h) - wr.y
     grip.style.transform = `translate3d(0,${gy.toFixed(2)}px,0)`
   }
+  let folded = 0
   const draw = () => {
     dirty = false
     const r = layoutNow()
     const wr = wipeRect(r.L.overlay)
-    const wx = wipeX(wr, wipeLine.x)
-    const k = lay.x
-    // Labels sit inside their sides' top corners; wiping, they ride either side of the seam,
-    // fading where there's no room. A mode change carries them between the two.
-    const a = labelsIn(fromMode, r, wr, wx)
-    const b = labelsIn(toMode, r, wr, wx)
-    const f = Math.min(1, Math.max(0, fade.x))
+    const k = Math.min(1, Math.max(0, lay.x))
+    const fu = fuseFrame(r.L, r.before, r.after, k, wipeLine.x)
+    const dw = differenceWeight()
+    const fusing = 1 - dw
+    // Labels: in their sides' top corners apart; fusing, they fold to their names and ride either
+    // side of the seam, fading where there's no room; in a difference, back in the corners.
+    folded = k * fusing
+    const fold = labelFold(folded, MARK.w)
+    const w = labelW.map((x) => x - (MARK.w - fold.width) - MARK.gap * folded) as [number, number]
+    const ride = seamLabels(fu.cut, r.before.x, r.after.x + r.after.w, w[0], w[1], INSET)
+    const apart = [r.before.x + INSET, r.after.x + INSET]
+    const corner = [r.before.x + INSET, r.after.x + r.after.w - labelW[1] - INSET]
+    const rides = [ride.before, ride.after] as const
     const ys = [r.before.y + INSET, r.after.y + INSET]
     for (const i of [0, 1] as const) {
-      const x = a[i].x + (b[i].x - a[i].x) * f
-      labels[i].style.transform = `translate(${x.toFixed(2)}px,${ys[i]!.toFixed(2)}px)`
-      labels[i].style.opacity = (a[i].opacity + (b[i].opacity - a[i].opacity) * f).toFixed(3)
+      const fused = apart[i]! + (rides[i].x - apart[i]!) * k
+      const x = fused + (corner[i]! - fused) * dw
+      const opacity = (1 - k + k * rides[i].opacity) * fusing + dw
+      const l = labels[i]
+      l.style.transform = `translate(${x.toFixed(2)}px,${ys[i]!.toFixed(2)}px)`
+      l.style.opacity = opacity.toFixed(3)
+      const mark = l.firstElementChild as HTMLElement | null
+      if (mark) {
+        mark.style.width = `${fold.width.toFixed(2)}px`
+        mark.style.marginRight = `${(-MARK.gap * folded).toFixed(2)}px`
+        mark.style.opacity = fold.opacity.toFixed(3)
+      }
     }
     // The split's hairline, down the middle side by side, gone as the sides come together.
     const top = Math.min(r.L.side.before.y, r.L.side.after.y)
     split.style.transform = `translate(${r.L.side.split.toFixed(2)}px,${top.toFixed(2)}px)`
     split.style.height = `${Math.max(0, r.L.side.after.h).toFixed(2)}px`
     split.style.opacity = String(Math.max(0, 1 - k * 2))
+    // The seam: a blurred strip while fusing, and the wipe's handle, both fading in as the sides
+    // overlap.
+    const seamOn = fu.seam * fusing
+    const blur = fu.blur > 0.01 ? `blur(${fu.blur.toFixed(2)}px)` : "none"
+    seam.style.transform = `translate(${fu.cut.toFixed(2)}px,${wr.y.toFixed(2)}px) translateX(-50%)`
+    seam.style.width = `${(8 + 2 * fu.feather).toFixed(2)}px`
+    seam.style.height = `${Math.max(0, wr.h).toFixed(2)}px`
+    seam.style.opacity = (blur === "none" ? 0 : seamOn).toFixed(3)
+    seam.style.backdropFilter = blur
+    seam.style.setProperty("-webkit-backdrop-filter", blur)
     handle.toggleAttribute("data-on", mode === "wipe")
-    handle.style.transform = `translate(${wx.toFixed(2)}px,${wr.y.toFixed(2)}px)`
+    handle.style.transform = `translate(${fu.cut.toFixed(2)}px,${wr.y.toFixed(2)}px)`
     handle.style.height = `${Math.max(0, wr.h).toFixed(2)}px`
+    handle.style.opacity = seamOn.toFixed(3)
+    handle.style.filter = blur
     placeGrip(wr)
     handle.setAttribute("aria-valuenow", String(Math.round(wipe * 100)))
     handle.setAttribute("aria-valuetext", `${Math.round(wipe * 100)}% Before`)
@@ -966,29 +991,37 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
 
     if (pending) return
     if (renderer === "dom") {
-      const place = (n: HTMLElement, rect: Rect, clip: Rect, cutAt: number) => {
+      // Before is cut at the seam, feathered mid-fuse (a difference shows it whole).
+      const cut = mode === "difference" ? null : fu
+      const place = (n: HTMLElement, rect: Rect, clip: Rect, before: boolean) => {
         const st = n.style
         st.transform = `translate(${rect.x.toFixed(2)}px,${rect.y.toFixed(2)}px)`
         st.width = `${rect.w.toFixed(2)}px`
         st.height = `${rect.h.toFixed(2)}px`
+        const edge = before && cut ? cut.cut + cut.feather : Number.POSITIVE_INFINITY
         const t = Math.max(0, clip.y - rect.y)
         const l = Math.max(0, clip.x - rect.x)
         const b = Math.max(0, rect.y + rect.h - (clip.y + clip.h))
-        const right = Math.max(0, rect.x + rect.w - Math.min(clip.x + clip.w, cutAt))
+        const right = Math.max(0, rect.x + rect.w - Math.min(clip.x + clip.w, edge))
         st.clipPath =
           t + l + b + right > 0.01
             ? `inset(${t.toFixed(2)}px ${right.toFixed(2)}px ${b.toFixed(2)}px ${l.toFixed(2)}px)`
             : ""
+        const mask =
+          before && cut && cut.feather > 0.5
+            ? `linear-gradient(to right,#000 ${(cut.cut - cut.feather - rect.x).toFixed(2)}px,transparent ${(edge - rect.x).toFixed(2)}px)`
+            : ""
+        st.maskImage = mask
+        st.setProperty("-webkit-mask-image", mask)
       }
-      const cut = mode === "wipe" ? wx : Number.POSITIVE_INFINITY
       for (const s of sides) {
         const rect = s.index === 0 ? r.zBefore : r.zAfter
         const clip = s.index === 0 ? r.before : r.after
-        const at = s.index === 0 ? cut : Number.POSITIVE_INFINITY
-        place(s.el, rect, clip, at)
-        place(s.preview, rect, clip, at)
+        place(s.el, rect, clip, s.index === 0)
+        place(s.preview, rect, clip, s.index === 0)
         if (s.index !== 0) continue
-        for (const n of [s.el, s.preview]) n.style.mixBlendMode = mode === "difference" ? "difference" : ""
+        for (const n of [s.el, s.preview])
+          n.style.mixBlendMode = mode === "difference" ? "difference" : ""
       }
       return
     }
@@ -1003,8 +1036,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       width: Math.max(1, Math.round(stageW * dpr)),
       height: Math.max(1, Math.round(stageH * dpr)),
       dpr,
-      wipeX: wx * dpr,
-      soft: 0.75 * dpr,
+      wipeX: fu.cut * dpr,
+      soft: Math.max(0.75, fu.feather) * dpr,
       from: MODE_INDEX[fromMode],
       to: MODE_INDEX[toMode],
       mix: Math.min(1, Math.max(0, fade.x)),
@@ -1033,6 +1066,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     zu.step(dt)
     zv.step(dt)
     zw.step(dt)
+    gripAt.step(dt)
     const playing = isPlaying()
     if (playing) {
       const m = master()
@@ -1058,10 +1092,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (gpu)
         for (const s of sides) if (videoOf(s) && performance.now() - s.frameAt > 120) pushFrame(s)
     }
-    const moving = !lay.resting || !fade.resting || !zoomResting() || wipeCatching
+    const moving =
+      !lay.resting || !fade.resting || !zoomResting() || wipeCatching || !gripAt.resting
     if (moving) dirty = true
-    // Sizing itself, its height follows the mode's glide.
-    if (auto && !lay.resting) fitHeight()
     if (dirty) draw()
     return playing || moving
   })
@@ -1087,14 +1120,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     requestDraw()
   }
 
-  /** The height a self-sizing viewer needs: a split screen with no margins (overlaid: one up). */
-  const autoHeight = (w: number) => {
-    const shape = sizeOf(sides[1])
-    const side = splitHeight(w, shape)
-    const over = (w * shape.h) / shape.w
-    const h = side + (over - side) * lay.x
-    return Math.max(60, Math.min(win.innerHeight * 0.8, h))
-  }
+  /** The height a self-sizing viewer needs: a split screen with no margins, in every mode. */
+  const autoHeight = (w: number) =>
+    Math.max(60, Math.min(win.innerHeight * 0.8, splitHeight(w, sizeOf(sides[1]))))
   const fitHeight = () => {
     const h = autoHeight(stageW)
     if (Math.abs(h - stageH) < 0.25) return
@@ -1105,7 +1133,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const readColors = () => {
     const c = tokenColor(win.getComputedStyle(root), "--_ku-cmp-diff", [0.49, 0.81, 0.61, 1])
     accent = [c[0], c[1], c[2]]
-    labelW = [labels[0].offsetWidth, labels[1].offsetWidth]
+    // Open widths, whatever the fold is now.
+    const unfold = MARK.w - labelFold(folded, MARK.w).width + MARK.gap * folded
+    labelW = [labels[0].offsetWidth + unfold, labels[1].offsetWidth + unfold]
     requestDraw()
   }
   const measure = () => {
@@ -1209,7 +1239,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (inside && (grab.onLine || !zoomed())) {
         drag = { kind: "wipe", offset: grab.offset }
         root.dataset.dragging = ""
-        gripY = p.y
+        gripAt.snap(wr.h > 0 ? (p.y - wr.y) / wr.h : 0.5)
         e.preventDefault()
         // Away from the line, it catches up to the hand from where it is; then it's 1:1.
         if (!grab.onLine) setWipe(wipeAt(p.x, wr), true, true)
@@ -1238,12 +1268,12 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       pinch = { d, x: mid.x, y: mid.y }
       return handZoom(zoomAbout(panned, k, q.pu, q.pv))
     }
-    if (mode === "wipe" && drag?.kind !== "pan") {
-      gripY = p.y
-      if (!drag) placeGrip(wipeRect(layoutNow().L.overlay))
-    }
-    if (drag?.kind === "wipe") setWipe(wipeAt(p.x, wipeRect(layoutNow().L.overlay), drag.offset))
-    else if (drag?.kind === "pan") {
+    if (drag?.kind === "wipe") {
+      const wr = wipeRect(layoutNow().L.overlay)
+      gripAt.snap(wr.h > 0 ? (p.y - wr.y) / wr.h : 0.5)
+      setWipe(wipeAt(p.x, wr, drag.offset))
+      placeGrip(wr)
+    } else if (drag?.kind === "pan") {
       const dx = p.x - drag.x
       const dy = p.y - drag.y
       drag.x = p.x
@@ -1256,6 +1286,12 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     touches.delete(e.pointerId)
     if (touches.size < 2) pinch = null
     if (!drag) return
+    // Let go of the wipe, the grip settles back to the line's middle.
+    if (drag.kind === "wipe") {
+      if (reducedMotion(win)) gripAt.snap(0.5)
+      else gripAt.set(0.5)
+      requestDraw()
+    }
     drag = null
     delete root.dataset.dragging
     delete root.dataset.panning

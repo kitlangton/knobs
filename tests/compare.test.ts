@@ -8,8 +8,11 @@ import {
   compareModes,
   frameMidpoint,
   frameOf,
+  fuseFrame,
   gripTop,
+  labelFold,
   lastFrame,
+  lerpRect,
   letterbox,
   loopAround,
   meanAbsDiff,
@@ -144,6 +147,44 @@ describe("layout and the wipe", () => {
     expect(L.side.after.x).toBeCloseTo(L.side.split)
     expect(L.side.before.h).toBeCloseTo(L.side.before.w * (9 / 16))
     expect(L.overlay.before).toEqual(L.overlay.after)
+  })
+  test("fused, one side's size in the middle: fusing resizes nothing", () => {
+    const L = compareLayout(box, { w: 16, h: 9 }, { w: 16, h: 9 })
+    const o = L.overlay.after
+    expect(o.w).toBeCloseTo(L.side.after.w)
+    expect(o.h).toBeCloseTo(L.side.after.h)
+    expect(o.y).toBeCloseTo(L.side.after.y)
+    expect(o.x + o.w / 2).toBeCloseTo(L.side.split)
+  })
+  test("the fuse: cut at the split apart, at the wipe's line fused, feathered between", () => {
+    const L = compareLayout(box, { w: 16, h: 9 }, { w: 16, h: 9 })
+    const at = (k: number, wipe = 0.5) =>
+      fuseFrame(
+        L,
+        lerpRect(L.side.before, L.overlay.before, k),
+        lerpRect(L.side.after, L.overlay.after, k),
+        k,
+        wipe,
+      )
+    const apart = at(0)
+    expect(apart.cut).toBeCloseTo(L.side.split)
+    expect(apart.feather).toBe(0)
+    expect(apart.seam).toBe(0)
+    const fused = at(1, 0.25)
+    expect(fused.cut).toBeCloseTo(L.overlay.after.x + L.overlay.after.w * 0.25)
+    expect(fused.feather).toBeCloseTo(1)
+    expect(fused.seam).toBe(1)
+    expect(fused.blur).toBe(0)
+    // Mid-fuse the feather swells, never past where the sides overlap.
+    const mid = at(0.5)
+    expect(mid.feather).toBeGreaterThan(10)
+    expect(mid.feather).toBeLessThanOrEqual(25)
+    expect(mid.blur).toBeGreaterThan(0)
+  })
+  test("a label folds to its name: the mark narrows and fades", () => {
+    expect(labelFold(0, 12)).toEqual({ width: 12, opacity: 1 })
+    expect(labelFold(1, 12)).toEqual({ width: 0, opacity: 0 })
+    expect(labelFold(0.5, 12).width).toBe(6)
   })
   test("the line, and where a pointer puts it", () => {
     const r = { x: 100, y: 0, w: 400, h: 200 }
