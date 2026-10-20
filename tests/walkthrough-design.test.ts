@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest"
 import { rootCss } from "../src/core/root"
 import { TOKEN_BY_NAME, TOKENS, type TokenDef } from "../src/tokens/schema"
 import { placeMark, showsAt } from "../src/ui/walkthrough-annotations"
+import { prStatus } from "../src/ui/walkthrough-blocks"
 import {
   fillMedia,
   findStep,
@@ -208,6 +209,18 @@ describe("annotations", () => {
     expect([1, 2, 3, 4, 5].map((t) => showsAt(a, t))).toEqual([false, true, true, true, false])
     expect(showsAt(a, undefined)).toBe(true)
     expect(showsAt({ x: 0, y: 0 }, 9)).toBe(true)
+  })
+})
+
+describe("a stack row's PR state", () => {
+  test("comes from the status's first word, never its tone; checks are their own", () => {
+    expect(prStatus("Draft · Green")).toEqual({ state: "draft", checks: true })
+    expect(prStatus("merged")).toEqual({ state: "merged", checks: false })
+    expect(prStatus("OPEN, CI passing")).toEqual({ state: "open", checks: true })
+    expect(prStatus("Closed")).toEqual({ state: "closed", checks: false })
+    expect(prStatus("Stacked on #57146")).toEqual({ state: null, checks: false })
+    expect(prStatus("Ready · CI green").state).toBeNull()
+    expect(prStatus(undefined).state).toBeNull()
   })
 })
 

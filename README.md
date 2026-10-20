@@ -1393,7 +1393,7 @@ The demo is `examples/walkthrough.html`.
     "provenance": "inferred", "source": "edge", "step": "4.8" } ] }] }
 ```
 
-**`stack`**: PRs in merge order as a branch graph. `branch` is `"head → base"` (or `head` and `base`); an item whose base is another's head hangs under it, joined by a drawn rail, and the rest sit on the trunk (`base`, else the branch most items merge into), named at the top. An item on a branch that's neither shows it. `delta` is `"+164 / -18"` or `{ add, del }`, drawn green and red; `status` and `tone` make its chip; `step` (or `stepId`) makes its title go to that step; `href` links its PR number.
+**`stack`**: PRs in merge order as a branch graph. `branch` is `"head → base"` (or `head` and `base`); an item whose base is another's head hangs under it, joined by a drawn rail, and the rest sit on the trunk (`base`, else the branch most items merge into), named at the top. An item on a branch that's neither shows it. `delta` is `"+164 / -18"` or `{ add, del }`, drawn green and red; its PR's state shows the GitHub way, from the doc's `prs` or the first word of `status` (`merged`, `open`, `draft`, `closed`, any case), never from `tone`: the merge or pull-request glyph and word, open and merged quietly tinted, draft and closed faint, and a small check after it where `status` says the checks pass (`green`, `passing`, `CI`). Any other `status` is a chip in its `tone`. `step` (or `stepId`) makes the whole row go to that step, its title underlining under the pointer, with nothing trailing it; the PR number links out (`href`, else the doc's `prs` or `repo`).
 
 ```json
 { "kind": "stack", "base": "dev", "items": [
