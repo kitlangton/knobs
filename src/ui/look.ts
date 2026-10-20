@@ -67,6 +67,12 @@ const css = `
    --_ku-pane-bg and --_ku-pane-ring so this reaches them. */
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-ui:not(.knobs-surface),.knobs-ui[data-nested]{--_ku-gap:var(--k-ui-gap,0px);--_ku-pane-bg:transparent;--_ku-pane-ring:none;
   --_ku-divider:var(--_k-split-gutter);--_kd-bg:transparent}
+/* What draws its box without those: a picker's card keeps its fill as the highlight but drops its
+   ring; a timeline's track drops its well for a hairline under the lane; an inline panel sheds its
+   card (--k-chrome 0). A full-window step is the one raised exception (it is the surface). */
+:is(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-picker-card,.knobs-ui[data-nested] .knobs-picker-card{box-shadow:none}
+:is(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-tl-track,.knobs-ui[data-nested] .knobs-tl-track{background:transparent;border-radius:0;box-shadow:inset 0 -1px 0 var(--_k-border-subtle)}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-panel.knobs-inline:not(.knobs-page){--k-chrome:0}
 /* Only the pieces' own elements take their type and resets: what you put in a pane is yours. */
 .knobs-ui{box-sizing:border-box}
 :where(.knobs-split>*,.knobs-pane-clip,.knobs-pane-inner,.knobs-pane-body,.knobs-pane-head,.knobs-pane-head *,.knobs-pane-rail,.knobs-pane-rail *,.knobs-tree,.knobs-tree *,.knobs-tree-ghost){box-sizing:border-box}

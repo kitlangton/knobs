@@ -1,21 +1,34 @@
 // The walkthrough's data blocks, light enough to draw at once: a history (dated events on a spine,
 // where each came from), a merge stack (PRs as a branch graph off the trunk), a table (a real
-// <table>, its head stuck while it scrolls), and the chapter pills under a video or compare. Each
-// sits on the step's card, so none draws a card of its own: hairlines and fills only.
-import { MOTION, reducedMotion } from "../core/motion.js"
-import { Spring } from "../core/spring.js"
+// <table>, its head stuck while it scrolls, or its rows as blocks where the step is too narrow),
+// the chapters under a video or compare (a readout list under the selection pill), and the quiet
+// disclosure that folds a feed item's context away. Each sits on the step's card, so none draws a
+// card of its own: hairlines only.
+import { reducedMotion, SPRINGS } from "../core/motion.js"
+import { Spring, springMotion } from "../core/spring.js"
+import { icon } from "./icons.js"
 import { frameLoop } from "./look.js"
+import { selectionPill } from "./selection-pill.js"
 import {
   chapterAt,
   clock,
   type ContextEvent,
   inlineMarkdown,
   stackLayout,
+  tableStacks,
   type WalkChapter,
   type WalkMedia,
+  type WalkTableCell,
+  type WalkTableColumn,
   type WalkthroughEvidence,
   type WalkthroughHistoryEvent,
 } from "./walkthrough-model.js"
+
+/** The glyphs the blocks draw. */
+export const GLYPH = {
+  go: icon("caretRight", { small: true }),
+  caret: icon("caretRight", { small: true }),
+}
 
 /** How media reach the page's steps: `step` on a history event, a stack item or a table cell. */
 export interface StepLinks {
@@ -63,13 +76,14 @@ const link = (doc: Document, cls: string, label: string, href: string | undefine
   return a
 }
 
-/** The step's number as a small button that goes there; null when the ref names no step. */
-function stepButton(doc: Document, ref: string | undefined, steps: StepLinks | undefined) {
+/** A small arrow that goes to the step a ref names; null when it names none. */
+export function stepButton(doc: Document, ref: string | undefined, steps: StepLinks | undefined) {
   const s = ref && steps?.find(ref)
   if (!s || !steps) return null
-  const b = text(doc, "button", "knobs-wt-steplink", s.number)
+  const b = el(doc, "button", "knobs-wt-steplink")
+  b.innerHTML = GLYPH.go
   b.type = "button"
-  b.title = `Go to ${s.number} ${s.title}`
+  b.title = `Go to “${s.title}”`
   b.setAttribute("aria-label", b.title)
   b.addEventListener("click", (e) => {
     e.stopPropagation()
@@ -203,7 +217,7 @@ export function mountStack(
     if (target && steps) {
       const title = text(doc, "button", "knobs-wt-stitle", it.title)
       title.type = "button"
-      title.title = `Go to ${target.number} ${target.title}`
+      title.title = `Go to “${target.title}”`
       title.addEventListener("click", (e) => {
         e.stopPropagation()
         steps.go(target.key)
@@ -255,6 +269,33 @@ function delta(doc: Document, d: string | { add: number; del: number }) {
 
 // ——— table ———
 
+/** A cell's content: a chip for a badge, a link, code, toned text, and its step's arrow. */
+function cellContent(doc: Document, into: HTMLElement, cell: WalkTableCell, steps: StepLinks | undefined) {
+  let content: HTMLElement
+  if (cell.badge) {
+    content = link(doc, "knobs-wt-chip", cell.text, cell.href)
+    content.dataset.tone = cell.badge
+  } else {
+    const inner = cell.code ? text(doc, "code", "", cell.text) : null
+    if (cell.href) {
+      content = link(doc, "knobs-wt-clink", inner ? "" : cell.text, cell.href)
+      if (inner) content.append(inner)
+    } else content = inner ?? text(doc, "span", "", cell.text)
+    if (cell.tone) {
+      content.classList.add("knobs-wt-ctone")
+      content.dataset.tone = cell.tone
+    }
+  }
+  into.append(content)
+  const go = stepButton(doc, cell.step, steps)
+  if (go) into.append(go)
+}
+
+const cellAttrs = (td: HTMLElement, c: WalkTableColumn) => {
+  td.dataset.align = c.align
+  if (c.mono) td.dataset.mono = ""
+}
+
 export function mountTable(
   host: HTMLElement,
   m: Extract<WalkMedia, { kind: "table" }>,
@@ -262,6 +303,7 @@ export function mountTable(
 ): Block {
   const doc = host.ownerDocument
   const win = doc.defaultView
+  const box = el(doc, "div", "knobs-wt-tablebox")
   const scroller = el(doc, "div", "knobs-wt-table")
   const table = el(doc, "table")
   if (m.caption) table.append(text(doc, "caption", "", m.caption))
@@ -279,29 +321,11 @@ export function mountTable(
     const tr = el(doc, "tr")
     for (const c of m.columns) {
       const td = el(doc, "td")
-      td.dataset.align = c.align
-      if (c.mono) td.dataset.mono = ""
+      cellAttrs(td, c)
       const cell = r[c.key]
       if (cell) {
         if (cell.text.length > 40 && !c.mono && !cell.code) td.dataset.long = ""
-        let content: HTMLElement
-        if (cell.badge) {
-          content = link(doc, "knobs-wt-chip", cell.text, cell.href)
-          content.dataset.tone = cell.badge
-        } else {
-          const inner = cell.code ? text(doc, "code", "", cell.text) : null
-          if (cell.href) {
-            content = link(doc, "knobs-wt-clink", inner ? "" : cell.text, cell.href)
-            if (inner) content.append(inner)
-          } else content = inner ?? text(doc, "span", "", cell.text)
-          if (cell.tone) {
-            content.classList.add("knobs-wt-ctone")
-            content.dataset.tone = cell.tone
-          }
-        }
-        td.append(content)
-        const go = stepButton(doc, cell.step, steps)
-        if (go) td.append(go)
+        cellContent(doc, td, cell, steps)
       }
       tr.append(td)
     }
@@ -309,13 +333,72 @@ export function mountTable(
   }
   table.append(head, body)
   scroller.append(table)
-  host.append(scroller)
+
+  // The same rows as blocks: the primary cell titles each, the rest as term and value.
+  const stack = el(doc, "div", "knobs-wt-tstack")
+  stack.setAttribute("role", "list")
+  if (m.caption) stack.setAttribute("aria-label", m.caption)
+  const primary = m.columns.find((c) => c.key === m.primary) ?? m.columns[0]
+  for (const r of m.rows) {
+    const item = el(doc, "div", "knobs-wt-trow")
+    item.setAttribute("role", "listitem")
+    const title = el(doc, "div", "knobs-wt-ttitle")
+    if (primary) {
+      cellAttrs(title, primary)
+      const cell = r[primary.key]
+      if (cell) cellContent(doc, title, cell, steps)
+    }
+    // Badges ride on the title's line, at its end; the rest go under it as term and value.
+    const line = el(doc, "div", "knobs-wt-tline")
+    line.append(title)
+    const badges = el(doc, "div", "knobs-wt-tbadges")
+    for (const c of m.columns) {
+      const cell = r[c.key]
+      if (c !== primary && cell?.badge) cellContent(doc, badges, cell, steps)
+    }
+    if (badges.childNodes.length) line.append(badges)
+    item.append(line)
+    const terms = el(doc, "dl", "knobs-wt-tterms")
+    for (const c of m.columns) {
+      if (c === primary) continue
+      const cell = r[c.key]
+      if (!cell || cell.text === "" || cell.badge) continue
+      const dd = el(doc, "dd")
+      cellAttrs(dd, c)
+      dd.removeAttribute("data-align")
+      cellContent(doc, dd, cell, steps)
+      terms.append(text(doc, "dt", "", c.label), dd)
+    }
+    if (terms.childNodes.length) item.append(terms)
+    stack.append(item)
+  }
+  if (m.caption) stack.append(text(doc, "p", "knobs-wt-tcaption", m.caption))
+  box.append(scroller, stack)
+  host.append(box)
+
+  // The columns' natural width: the table at its narrowest without anything spilling (long text
+  // keeps its measure, code and mono cells stay on one line), read once it's laid out.
+  let natural = 0
+  const measureNatural = () => {
+    if (!box.isConnected) return 0
+    const was = box.dataset.stacked
+    delete box.dataset.stacked
+    box.dataset.measure = ""
+    const w = table.getBoundingClientRect().width
+    delete box.dataset.measure
+    if (was !== undefined) box.dataset.stacked = was
+    return w
+  }
   // The top fade starts under the stuck head; a table that scrolls takes the keyboard's arrows.
   const measure = () => {
+    if (!natural) natural = measureNatural()
+    const stacked = tableStacks(m.stack, box.clientWidth, natural)
+    box.toggleAttribute("data-stacked", stacked)
     scroller.style.setProperty("--kw-thead", `${head.offsetHeight}px`)
     const scrolls =
-      scroller.scrollWidth > scroller.clientWidth + 1 ||
-      scroller.scrollHeight > scroller.clientHeight + 1
+      !stacked &&
+      (scroller.scrollWidth > scroller.clientWidth + 1 ||
+        scroller.scrollHeight > scroller.clientHeight + 1)
     if (scrolls) {
       scroller.tabIndex = 0
       scroller.setAttribute("role", "region")
@@ -326,33 +409,39 @@ export function mountTable(
       scroller.removeAttribute("aria-label")
     }
   }
+  if (m.stack === "always") box.dataset.stacked = ""
   const ro = win && "ResizeObserver" in win ? new win.ResizeObserver(measure) : null
-  ro?.observe(scroller)
+  ro?.observe(box)
   measure()
+  // Web fonts change the natural width once they arrive.
+  void doc.fonts?.ready.then(() => {
+    if (!box.isConnected) return
+    natural = 0
+    measure()
+  })
   return {
     dispose: () => {
       ro?.disconnect()
-      scroller.remove()
+      box.remove()
     },
     context: () => ({ kind: "table" }),
   }
 }
 
-// ——— chapters: pills under a video or compare, one highlight springing to the one playing ———
+// ——— chapters: a readout list under a video or compare, the selection pill on the one playing ———
 
 export interface ChapterPills {
-  /** The chapter the time is in (call as it plays or seeks): the highlight springs to it. */
+  /** The chapter the time is in (call as it plays or seeks): the pill slides to it. */
   sync(): void
   /** The chapter playing, or null. */
   readonly current: WalkChapter | null
   dispose(): void
 }
 
-// kit-motion: the highlight moves on the calm spring (.4 s, no bounce) as the contents' pill does;
-// it lands at once on first draw, a resize, or under reduced motion, and fades in or out (never
-// travelling from where it last was) when playback enters or leaves the chapters.
-const grid = (v: number) => Math.round(v * 64) / 64
-
+// Each chapter a row: its number, label and start. The current one is the last that started at
+// or before the playhead; a click selects it at once while the media seeks there. The selection
+// pill slides between rows on the state spring and fades out in place when playback leaves the
+// chapters; nothing moves on first paint.
 export function chapterPills(
   host: HTMLElement,
   chapters: readonly WalkChapter[],
@@ -365,90 +454,138 @@ export function chapterPills(
   },
 ): ChapterPills {
   const doc = host.ownerDocument
-  const win = doc.defaultView!
-  const bar = el(doc, "div", "knobs-wt-chapters")
-  bar.setAttribute("role", "group")
-  bar.setAttribute("aria-label", "Chapters")
-  const mark = el(doc, "span", "knobs-wt-chapter-mark")
-  mark.setAttribute("aria-hidden", "true")
-  bar.append(mark)
-  const pills = chapters.map((c) => {
+  const list = el(doc, "div", "knobs-wt-chapters")
+  list.setAttribute("role", "group")
+  list.setAttribute("aria-label", "Chapters")
+  let at = -2
+  const rows = chapters.map((c, i) => {
     const b = el(doc, "button", "knobs-wt-chapter")
     b.type = "button"
-    b.append(text(doc, "span", "knobs-wt-chapter-time", clock(c.start)))
+    b.append(text(doc, "span", "knobs-wt-chapter-n", String(i + 1)))
     b.append(text(doc, "span", "knobs-wt-chapter-label", c.label))
+    b.append(text(doc, "span", "knobs-wt-chapter-time", clock(c.start)))
     b.addEventListener("click", () => {
       io.onEvent?.({ what: "seek", time: Math.round(c.start * 100) / 100, detail: c.label })
       io.seek(c.start)
-      sync()
+      select(i)
     })
-    bar.append(b)
+    list.append(b)
     return b
   })
-  host.append(bar)
-
-  const x = new Spring(0, MOTION.calm.omega, MOTION.calm.zeta, 0.25)
-  const y = new Spring(0, MOTION.calm.omega, MOTION.calm.zeta, 0.25)
-  const w = new Spring(0, MOTION.calm.omega, MOTION.calm.zeta, 0.25)
-  const draw = () => {
-    const left = grid(x.x)
-    mark.style.transform = `translate(${left}px,${grid(y.x)}px)`
-    mark.style.width = `${grid(x.x + w.x) - left}px`
-  }
-  const loop = frameLoop(win, (dt) => {
-    x.step(dt)
-    y.step(dt)
-    w.step(dt)
-    draw()
-    return !x.resting || !y.resting || !w.resting
+  host.append(list)
+  const pill = selectionPill(list, {
+    selected: () => rows[at] ?? null,
+    rows: () => rows,
   })
-  let at = -2
-  let shown = false
-  const place = (snap: boolean) => {
-    const p = pills[at]
-    if (!p) {
-      mark.removeAttribute("data-on")
-      pills.forEach((b) => b.removeAttribute("aria-current"))
-      shown = false
-      return
-    }
-    pills.forEach((b, i) =>
-      i === at ? b.setAttribute("aria-current", "true") : b.removeAttribute("aria-current"),
+  const select = (i: number) => {
+    if (i === at) return
+    at = i
+    rows.forEach((b, k) =>
+      k === at ? b.setAttribute("aria-current", "true") : b.removeAttribute("aria-current"),
     )
-    const to = [p.offsetLeft, p.offsetTop, p.offsetWidth] as const
-    if (snap || !shown || reducedMotion(win)) {
-      x.snap(to[0])
-      y.snap(to[1])
-      w.snap(to[2])
-      draw()
-    } else {
-      x.set(to[0])
-      y.set(to[1])
-      w.set(to[2])
-      loop.wake()
-    }
-    mark.style.height = `${p.offsetHeight}px`
-    mark.dataset.on = ""
-    shown = true
+    pill.update()
   }
-  const sync = () => {
-    const next = chapterAt(chapters, io.now())
-    if (next === at) return
-    at = next
-    place(false)
-  }
+  const sync = () => select(chapterAt(chapters, io.now()))
   sync()
-  const ro = "ResizeObserver" in win ? new win.ResizeObserver(() => place(true)) : null
-  ro?.observe(bar)
   return {
     sync,
     get current() {
       return chapters[at] ?? null
     },
     dispose() {
-      loop.stop()
-      ro?.disconnect()
-      bar.remove()
+      pill.dispose()
+      list.remove()
     },
   }
+}
+
+// ——— disclosure: a quiet toggle that folds context away ———
+
+export interface Disclosure {
+  readonly element: HTMLElement
+  readonly open: boolean
+  toggle(open?: boolean): void
+  dispose(): void
+}
+
+// kit-motion: the body's height springs on the state spring (.3 s, no bounce) while its content
+// fades in place, top-anchored, under a soft bottom mask; at rest it's plain flow (auto height,
+// nothing clipped). The first paint is the resting state; reduced motion keeps a short fade.
+export function disclosure(
+  host: HTMLElement,
+  options: { label: string; count?: number; open?: boolean; content: HTMLElement },
+): Disclosure {
+  const doc = host.ownerDocument
+  const win = doc.defaultView!
+  let open = options.open === true
+  const root = el(doc, "div", "knobs-wt-disc")
+  const toggle = el(doc, "button", "knobs-wt-disc-toggle")
+  toggle.type = "button"
+  toggle.innerHTML = GLYPH.caret
+  toggle.append(text(doc, "span", "", options.label))
+  if (options.count !== undefined)
+    toggle.append(text(doc, "span", "knobs-wt-disc-count", String(options.count)))
+  const viewport = el(doc, "div", "knobs-wt-disc-body")
+  const content = el(doc, "div", "knobs-wt-disc-content")
+  content.append(options.content)
+  viewport.append(content)
+  root.append(toggle, viewport)
+  host.append(root)
+  const STATE = springMotion(SPRINGS.default)
+  const h = new Spring(0, STATE.omega, STATE.zeta, 0.25)
+  let full = 0
+  const paint = (moving: boolean) => {
+    const k = full > 0 ? Math.max(0, Math.min(1, h.x / full)) : open ? 1 : 0
+    viewport.style.height = !moving && open ? "" : `${Math.max(0, h.x).toFixed(2)}px`
+    viewport.toggleAttribute("data-moving", moving)
+    content.style.opacity = (open ? Math.min(1, k * 1.25) : Math.max(0, k * 1.5 - 0.5)).toFixed(3)
+  }
+  const loop = frameLoop(win, (dt) => {
+    h.step(dt)
+    const moving = !h.resting
+    paint(moving)
+    return moving
+  })
+  const sync = () => {
+    root.toggleAttribute("data-open", open)
+    toggle.setAttribute("aria-expanded", String(open))
+    viewport.inert = !open
+  }
+  sync()
+  h.snap(0)
+  paint(false)
+  if (open) {
+    viewport.style.height = ""
+    content.style.opacity = "1"
+  }
+  const api: Disclosure = {
+    element: root,
+    get open() {
+      return open
+    },
+    toggle(next = !open) {
+      if (next === open) return
+      open = next
+      sync()
+      full = content.offsetHeight
+      if (reducedMotion(win)) {
+        loop.stop()
+        h.snap(open ? full : 0)
+        viewport.style.height = open ? "" : "0px"
+        content.style.opacity = open ? "1" : "0"
+        return
+      }
+      // From the height on screen, so a reversal mid-flight carries on.
+      if (h.resting) h.snap(open ? 0 : full)
+      h.set(open ? full : 0)
+      paint(true)
+      loop.wake()
+    },
+    dispose() {
+      loop.stop()
+      root.remove()
+    },
+  }
+  toggle.addEventListener("click", () => api.toggle())
+  return api
 }

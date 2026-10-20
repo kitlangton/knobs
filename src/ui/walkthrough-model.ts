@@ -172,6 +172,14 @@ export type WalkthroughMedia =
       readonly columns: readonly WalkthroughTableColumn[]
       readonly rows: readonly WalkthroughTableRow[]
       readonly caption?: string
+      /**
+       * Where the step is too narrow for its columns, each row becomes a block: its primary cell
+       * as a title over the rest as term and value (`"auto"`, the default); always; or never
+       * (the table scrolls sideways instead).
+       */
+      readonly stack?: "auto" | "always" | "never"
+      /** The column that titles a stacked row (its key); the first by default. */
+      readonly primary?: string
     }
   | { readonly kind: "image"; readonly src: string; readonly label?: string; readonly alt?: string }
   | {
@@ -231,8 +239,12 @@ export interface WalkthroughStep {
   readonly title: string
   /** A line or two: what it shows and how it was made. `code`, **bold** and [links](…) work. */
   readonly caption?: string
-  /** One slot; two or more sit side by side, stacking where it's narrow. */
+  /** One slot, or several one under another (`columns` sets them side by side). */
   readonly media?: WalkthroughMedia | readonly WalkthroughMedia[]
+  /** Media side by side, this many to a row where there's room; one under another by default. */
+  readonly columns?: 1 | 2 | 3
+  /** The media after the first fold away under a quiet toggle with these words ("More clips"). */
+  readonly more?: string
   /** A taste test: Kit picks one. */
   readonly options?: readonly WalkthroughOption[]
   /**
@@ -249,6 +261,12 @@ export interface WalkthroughSection {
   readonly title: string
   /** A PR or issue: its URL (labelled `#123` from a GitHub URL), or a label and URL. */
   readonly link?: string | { readonly href: string; readonly label?: string }
+  /**
+   * The words that lead its meta line, in text colour: `"PR 2 of 5"` by default where `link` is a
+   * pull request (counted among the sections that link one), else none; your own words, or
+   * `false` for none.
+   */
+  readonly kicker?: string | false
   readonly status?: WalkthroughStatus
   readonly summary?: string
   readonly steps: readonly WalkthroughStep[]
@@ -267,6 +285,10 @@ export interface WalkthroughUpdate {
   readonly text: string
   /** The step it's about: its key, id or number ("1.2"). */
   readonly step?: string
+  /** Its state in a word or two (`"shipped"`, `"changes"`), last on its meta line. */
+  readonly status?: string
+  /** Context, folded away under the item: one line each, `"0:04 · Played the compare"`. */
+  readonly trail?: readonly string[]
 }
 
 /** A question Kit asked and the agent's answer. */
@@ -276,6 +298,10 @@ export interface WalkthroughQA {
   readonly q: string
   readonly a: string
   readonly step?: string
+  /** `"shipped"` or `"changes"` (shown as "Changes queued"), or your own words. */
+  readonly status?: string
+  /** What Kit did before asking, folded away under the answer: `"0:04 · Played the compare"`. */
+  readonly trail?: readonly string[]
 }
 
 /** The document an agent writes: plain data, JSON but for `mount` media. */
@@ -370,6 +396,9 @@ export type WalkMedia =
       readonly columns: readonly WalkTableColumn[]
       readonly rows: readonly Readonly<Record<string, WalkTableCell>>[]
       readonly caption?: string
+      readonly stack: "auto" | "always" | "never"
+      /** The key of the column that titles a stacked row. */
+      readonly primary: string
     }
 
 export interface WalkOption {
@@ -393,6 +422,9 @@ export interface WalkStep {
   readonly caption?: string
   readonly question?: string
   readonly media: readonly WalkMedia[]
+  /** Media to a row: 1 (one under another) unless the step asked for more. */
+  readonly columns: number
+  readonly more?: string
   readonly options: readonly WalkOption[]
   readonly ask: "note" | "pick" | "none"
 }
@@ -401,6 +433,8 @@ export interface WalkSection {
   readonly id: string
   readonly title: string
   readonly link?: { readonly href: string; readonly label: string }
+  /** What leads its meta line ("PR 2 of 5"), when anything does. */
+  readonly kicker?: string
   readonly status?: WalkthroughStatus
   readonly summary?: string
   readonly steps: readonly WalkStep[]
@@ -421,6 +455,8 @@ export interface FeedItem {
   readonly q?: string
   /** The step's key, when it names one that's there. */
   readonly step: string | null
+  readonly status?: string
+  readonly trail: readonly string[]
 }
 
 export interface WalkPage {
@@ -701,7 +737,15 @@ function fillTable(m: Extract<WalkthroughMedia, { kind: "table" }>): WalkMedia {
     for (const [k, v] of Object.entries(r)) if (v !== undefined && v !== null) out[k] = fillCell(v)
     return out
   })
-  return { kind: "table", columns, rows, ...(m.caption ? { caption: m.caption } : {}) }
+  const primary = columns.find((c) => c.key === m.primary)?.key ?? columns[0]?.key ?? ""
+  return {
+    kind: "table",
+    columns,
+    rows,
+    ...(m.caption ? { caption: m.caption } : {}),
+    stack: m.stack ?? "auto",
+    primary,
+  }
 }
 
 /** Chapters with ids and, where it can be known, an end: given, `start + duration`, or the next. */
@@ -799,6 +843,8 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         ...(step.caption ? { caption: step.caption } : {}),
         ...(step.question ? { question: step.question } : {}),
         media: (list as readonly WalkthroughMedia[]).map((m) => fillMedia(m, doc.base)),
+        columns: Math.max(1, Math.min(3, Math.round(step.columns ?? 1))),
+        ...(step.more?.trim() && list.length > 1 ? { more: step.more.trim() } : {}),
         options,
         ask,
       }
@@ -815,6 +861,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
       id,
       title: s.title,
       ...(link ? { link } : {}),
+      ...(typeof s.kicker === "string" && s.kicker.trim() ? { kicker: s.kicker.trim() } : {}),
       ...(s.status ? { status: s.status } : {}),
       ...(s.summary ? { summary: s.summary } : {}),
       steps: own,
@@ -827,9 +874,19 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         value,
       }))
   const stepRef = (ref: string | undefined) => findStep(steps, ref)?.key ?? null
+  const extra = (x: { status?: string; trail?: readonly string[] }) => ({
+    ...(x.status?.trim() ? { status: x.status.trim() } : {}),
+    trail: (x.trail ?? []).filter((t) => typeof t === "string" && t.trim()),
+  })
   const feed = sortFeed([
     ...(doc.updates ?? []).map(
-      (u): FeedItem => ({ kind: "update", at: parseAt(u.at), text: u.text, step: stepRef(u.step) }),
+      (u): FeedItem => ({
+        kind: "update",
+        at: parseAt(u.at),
+        text: u.text,
+        step: stepRef(u.step),
+        ...extra(u),
+      }),
     ),
     ...(doc.qa ?? []).map(
       (x): FeedItem => ({
@@ -838,6 +895,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         text: x.a,
         q: x.q,
         step: stepRef(x.step),
+        ...extra(x),
       }),
     ),
   ])
@@ -851,9 +909,50 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
       id: slug(v),
       label: label(v),
     })),
-    sections,
+    sections: withKickers(sections, doc.sections),
     steps,
   }
+}
+
+/** Whether a link is a pull (or merge) request: GitHub's `/pull/123`, GitLab's merge requests. */
+export const isPullRequest = (href: string) => /\/(?:pull|merge_requests)\/\d+(?:[/?#]|$)/.test(href)
+
+/**
+ * Each section's kicker: its own words, none for `false`, else "PR i of N" where it links a pull
+ * request, counted among the sections that do.
+ */
+function withKickers(
+  sections: readonly WalkSection[],
+  source: readonly WalkthroughSection[],
+): WalkSection[] {
+  const prs = sections.filter((s) => s.link && isPullRequest(s.link.href))
+  return sections.map((s, i) => {
+    const own = source[i]?.kicker
+    if (own !== undefined || s.kicker) return s
+    const at = prs.indexOf(s)
+    return at < 0 ? s : { ...s, kicker: `PR ${at + 1} of ${prs.length}` }
+  })
+}
+
+/**
+ * Whether a table stacks its rows into blocks: always, never, or (auto) when the room it has is
+ * less than its columns' natural width.
+ */
+export function tableStacks(
+  stack: "auto" | "always" | "never",
+  room: number,
+  natural: number,
+): boolean {
+  if (stack !== "auto") return stack === "always"
+  return room > 0 && natural > room + 1
+}
+
+/**
+ * The page's bottom reserve for the docked note bar: its height, the gap it floats above the
+ * page's edge, and a gap above it, so the last step and a step gone to never sit under it.
+ */
+export function noteBarReserve(bar: number, inset: number, gap: number): number {
+  return Math.max(0, Math.ceil(bar)) + inset + gap
 }
 
 /** An ISO time as epoch ms; null when it isn't one. */
@@ -1372,6 +1471,17 @@ const escapeHtml = (s: string) =>
  * Inline Markdown as safe HTML: `code`, **bold**, *italic* and [links](https://…), the rest
  * escaped. Links take http(s), relative and # URLs only; blank lines make paragraphs' breaks.
  */
+/** Inline Markdown as plain words, for a contents row, a label or a title attribute. */
+export function plainMarkdown(text: string): string {
+  return text
+    .replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1$2")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 export function inlineMarkdown(text: string): string {
   const codes: string[] = []
   let s = text.replace(/`([^`\n]+)`/g, (_, c: string) => {

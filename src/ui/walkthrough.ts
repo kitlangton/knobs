@@ -18,6 +18,7 @@ import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { browserStorage, storageKey, type StoragePort } from "../core/storage.js"
 import { hints } from "../panel/page-hints.js"
 import { confirm } from "./confirm.js"
+import { icon } from "./icons.js"
 import {
   applyLook,
   frameLoop,
@@ -27,7 +28,9 @@ import {
   tune,
   type UiLook,
 } from "./look.js"
+import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
+import { disclosure, type Disclosure } from "./walkthrough-blocks.js"
 import {
   CHECK,
   injectWalkthroughStyles,
@@ -53,6 +56,8 @@ import {
   isAnswered,
   type MediaContext,
   normalizeWalkthrough,
+  noteBarReserve,
+  plainMarkdown,
   notesOn,
   pushContext,
   readState,
@@ -96,18 +101,22 @@ const lookOf = (o: UiLook): UiLook => ({
 const grid = (v: number) => Math.round(v * 64) / 64
 
 const ICON = {
-  full: svg('<path d="M3 6.5V3h3.5M13 6.5V3H9.5M3 9.5V13h3.5M13 9.5V13H9.5"/>'),
-  exit: svg('<path d="M6.5 3v3.5H3M9.5 3v3.5H13M6.5 13V9.5H3M9.5 13V9.5H13"/>'),
-  pen: svg('<path d="M10.5 3.2 12.8 5.5 5.8 12.5 3 13l.5-2.8z"/><path d="M9.3 4.4l2.3 2.3"/>'),
-  mic: svg(
-    '<rect x="6" y="2.5" width="4" height="7" rx="2"/><path d="M3.8 8a4.2 4.2 0 0 0 8.4 0M8 12.2v1.8"/>',
-  ),
+  full: icon("cornersOut"),
+  exit: icon("cornersIn"),
+  pen: icon("pencilSimple"),
+  mic: icon("microphone"),
   stop: svg(
     '<rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor" stroke="none"/>',
   ),
-  send: svg('<path d="M8 13V3.5M4 7.5 8 3.5l4 4"/>'),
-  close: svg('<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>'),
+  send: icon("paperPlaneRight"),
+  close: icon("x", { small: true }),
+  back: icon("arrowLeft", { small: true }),
+  out: icon("arrowUpRight", { small: true }),
 }
+
+/** The gap the note bar floats above the window's bottom edge, and the gap kept above it. */
+const DOCK_INSET = 12
+const DOCK_GAP = 12
 
 // kit-motion: the page's own moves are springs given as a duration with no bounce: the contents'
 // pill and the page scrolling to a step on .4 s, a step opening to the full window and back on
@@ -249,8 +258,16 @@ export interface WalkthroughOptions extends UiLook {
   readonly onFeedback?: (feedback: WalkthroughFeedback) => void
   /** The page's keys (on by default). */
   readonly keys?: boolean
-  /** The contents and progress rail (on by default). */
-  readonly rail?: boolean
+  /** The contents and progress rail (on by default), beside the column on the right or left. */
+  readonly rail?: boolean | "right" | "left"
+  /** Each step on a card of its own (off by default: steps sit on the page, hairlines between). */
+  readonly cards?: boolean
+  /**
+   * The note bar: a small launcher in the column's corner that opens into the bar on a click, n,
+   * a recording or ink, and folds back when it's empty (`"collapsed"`, the default); the bar
+   * always there (`"docked"`); or none (`"hidden"`; `send()` still works).
+   */
+  readonly noteBar?: "collapsed" | "docked" | "hidden"
   /** Sending a note moves on to the next step (on by default). */
   readonly advance?: boolean
 }
@@ -335,8 +352,13 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   let count: HTMLElement | null = null
   let fill: HTMLElement | null = null
   let tocEl: HTMLElement | null = null
-  let mark: HTMLElement | null = null
+  let pill: SelectionPill | null = null
+  let tocRows: HTMLElement[] = []
+  let discs: Disclosure[] = []
   let full: Full | null = null
+  const noteMode = options.noteBar ?? "collapsed"
+  /** The note bar's height and the gaps around it, kept clear at the page's bottom. */
+  let reserve = noteBarReserve(52, DOCK_INSET, DOCK_GAP)
 
   const viewOf = (key: string | null) => views.find((v) => v.step.key === key)
   const feedback = () => collectFeedback(page, state)
@@ -361,10 +383,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     else run()
   }
 
-  // ——— motion: the contents' pill, the page's scroll, full-window, on one loop ———
-  const pillY = new Spring(0, CALM.omega, CALM.zeta, 0.25)
-  const pillH = new Spring(0, CALM.omega, CALM.zeta, 0.25)
-  let pillPlaced = false
+  // ——— motion: the page's scroll and full-window, on one loop ———
   const scroll = {
     spring: new Spring(0, CALM.omega, CALM.zeta, 0.5),
     to: null as StepView | null,
@@ -372,13 +391,6 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   }
   const motion = frameLoop(win, (dt) => {
     let more = false
-    if (mark) {
-      pillY.step(dt)
-      pillH.step(dt)
-      mark.style.transform = `translateY(${grid(pillY.x)}px)`
-      mark.style.height = `${grid(pillY.x + pillH.x) - grid(pillY.x)}px`
-      more ||= !pillY.resting || !pillH.resting
-    }
     if (scroll.to && scroll.el) {
       // Aimed afresh each frame, so cards above that settle their height don't throw it off.
       scroll.spring.set(scrollTarget(scroll.to, scroll.el))
@@ -456,19 +468,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
             : "dim"
   }
   const placeMark = () => {
-    if (!mark || !tocEl) return
+    if (!pill || !tocEl) return
+    pill.update()
     const row = viewOf(current)?.toc
-    if (!row) return void mark.removeAttribute("data-on")
-    mark.dataset.on = ""
-    if (!pillPlaced || reduced()) {
-      pillY.snap(row.offsetTop)
-      pillH.snap(row.offsetHeight)
-      pillPlaced = true
-    } else {
-      pillY.set(row.offsetTop)
-      pillH.set(row.offsetHeight)
-    }
-    motion.wake()
+    if (!row) return
     // The row stays in the rail's view.
     const top = row.offsetTop
     const bottom = top + row.offsetHeight
@@ -484,6 +487,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     const v = viewOf(key)
     v?.card.setAttribute("data-current", "")
     v?.toc?.setAttribute("aria-current", "step")
+    for (const r of tocRows)
+      if (r.dataset.section) r.toggleAttribute("data-active", r.dataset.section === v?.step.section)
     if (key) record({ what: "step", step: key })
     placeMark()
     bar.sync()
@@ -496,6 +501,18 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     for (const v of views) {
       if (v.card.getBoundingClientRect().top <= line) pick = v.step.key
       else break
+    }
+    // At the page's end the last cards can't reach the line: the last one in view is current.
+    const s = scrollerOf(root)
+    if (s.scrollTop > 0 && s.scrollTop >= s.scrollHeight - s.clientHeight - 2) {
+      const bottom =
+        (s === doc.scrollingElement ? win.innerHeight : s.getBoundingClientRect().bottom) - reserve
+      for (let i = views.length - 1; i >= 0; i--) {
+        if (views[i]!.card.getBoundingClientRect().top < bottom) {
+          pick = views[i]!.step.key
+          break
+        }
+      }
     }
     setCurrent(pick)
   }
@@ -542,7 +559,13 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   // ——— full-window ———
   const scrim = el(doc, "div", "knobs-wt-scrim")
   scrim.addEventListener("click", () => setFull(false))
-  const fullRect = () => ({ x: 12, y: 12, w: win.innerWidth - 24, h: win.innerHeight - 24 })
+  // The full window stops above the note bar, so the bar never covers it.
+  const fullRect = () => ({
+    x: DOCK_INSET,
+    y: DOCK_INSET,
+    w: win.innerWidth - DOCK_INSET * 2,
+    h: win.innerHeight - DOCK_INSET - reserve,
+  })
   const placeFull = (f: Full) => {
     const a = f.hold.getBoundingClientRect()
     const b = fullRect()
@@ -678,6 +701,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     ink.on = true
     ink.layer.dataset.on = ""
     root.dataset.inking = ""
+    bar.setOpen(true)
     bar.sync()
   }
 
@@ -716,6 +740,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       })
       voice.recorder = rec
       voice.started = performance.now()
+      bar.setOpen(true)
       rec.start()
       voice.timer = win.setInterval(() => bar.sync(), 250)
       bar.sync()
@@ -742,7 +767,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     const v = viewOf(key)
     if (!v) return
     backTo = key
-    backPill.textContent = `← Back to ${v.step.number}`
+    backPill.innerHTML = ICON.back
+    const words = el(doc, "span", "knobs-wt-back-label")
+    words.textContent = `Back to ${plainMarkdown(v.step.title)}`
+    backPill.append(words)
     backPill.dataset.on = ""
     win.clearTimeout(backTimer)
     backTimer = win.setTimeout(hideBack, BACK_MS)
@@ -775,7 +803,44 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     sendBtn.dataset.send = ""
     row.append(input, attach, fullBtn, penBtn, micBtn, sendBtn)
     box.append(on, row)
-    dock.append(backPill, box)
+    // Collapsed, a small launcher in the column's corner stands in for the bar; the two swap in
+    // place (a quick fade with a little scale and blur), so the bar never covers the page unasked.
+    const launch = el(doc, "button", "knobs-wt-launch")
+    launch.type = "button"
+    launch.innerHTML = ICON.pen
+    launch.append("Note")
+    const kbd = el(doc, "kbd")
+    kbd.textContent = "n"
+    launch.append(kbd)
+    launch.setAttribute("aria-label", "Write a note (n)")
+    launch.addEventListener("click", () => setOpen(true, true))
+    dock.dataset.mode = noteMode
+    dock.append(backPill, box, launch)
+    let open = noteMode !== "collapsed"
+    const setOpen = (on: boolean, focus = false) => {
+      if (noteMode === "collapsed" && on !== open) {
+        open = on
+        dock.toggleAttribute("data-open", on)
+        box.inert = !on
+        launch.inert = on
+        syncReserve()
+      }
+      if (on && focus) input.focus({ preventScroll: true })
+    }
+    dock.toggleAttribute("data-open", open)
+    box.inert = !open
+    launch.inert = open
+    /** Nothing written, recorded or drawn: the bar may fold away. */
+    const empty = () => !input.value.trim() && !voice.pending && !voice.recorder && !ink.on && !ink.paths.length
+    const onOutside = (e: PointerEvent) => {
+      if (open && noteMode === "collapsed" && !dock.contains(e.target as Node) && empty())
+        setOpen(false)
+    }
+    doc.addEventListener("pointerdown", onOutside, true)
+    // Its height (it grows with a long note) is kept clear at the page's bottom.
+    const ro = "ResizeObserver" in win ? new win.ResizeObserver(() => syncReserve()) : null
+    ro?.observe(box)
+    ro?.observe(launch)
     const fit = () => {
       input.style.height = "auto"
       input.style.height = `${Math.min(140, input.scrollHeight)}px`
@@ -791,6 +856,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       } else if (e.key === "Escape") {
         e.preventDefault()
         input.blur()
+        if (empty()) setOpen(false)
         viewOf(current)?.card.focus({ preventScroll: true })
       }
     })
@@ -810,13 +876,13 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     const sync = () => {
       const v = viewOf(current)
       const ctx = describeMedia(mediaContext(v))
-      const where = v ? `${v.step.number} ${v.step.title}` : "General note"
+      const where = v ? plainMarkdown(v.step.title) : "General note"
       const text = ctx ? `${where} · ${ctx}` : where
       if (text !== lastOn) {
         on.textContent = text
         lastOn = text
       }
-      input.placeholder = v ? `Note on ${v.step.number}…  (n)` : "A note on the whole page…  (n)"
+      input.placeholder = v ? "A note on this step…  (n)" : "A note on the whole page…  (n)"
       // Rebuilt only when what's attached changes, so a chip under the pointer stays put.
       const attached = `${voice.pending?.url ?? ""}|${ink.paths.length}`
       if (attached !== lastAttached) {
@@ -861,14 +927,42 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     }
     return {
       dock,
+      box,
+      launch,
       input,
       sync,
+      get open() {
+        return open
+      },
+      setOpen,
+      empty,
+      unobserve: () => {
+        ro?.disconnect()
+        doc.removeEventListener("pointerdown", onOutside, true)
+      },
       clear() {
         input.value = ""
         fit()
       },
     }
   })()
+  // The bar's height and its gaps: the page keeps them clear at its end (the dock holds its own
+  // place there), and scrolling to a step (j / k, go(), focus) keeps it out from under the bar.
+  let padded: { el: HTMLElement; was: string } | null = null
+  function syncReserve() {
+    if (disposed) return
+    const h = (bar.open ? bar.box : bar.launch).offsetHeight
+    if (noteMode === "hidden") reserve = 0
+    else if (h) reserve = noteBarReserve(h, DOCK_INSET, DOCK_GAP)
+    root.style.setProperty("--kw-reserve", `${reserve}px`)
+    const s = scrollerOf(root)
+    if (padded?.el !== s) {
+      if (padded) padded.el.style.scrollPaddingBottom = padded.was
+      padded = { el: s, was: s.style.scrollPaddingBottom }
+    }
+    s.style.scrollPaddingBottom = `${reserve}px`
+    if (full) placeFull(full)
+  }
   // The bar's context line follows a playing video.
   const ticker = win.setInterval(() => !doc.hidden && bar.sync(), 500)
 
@@ -905,6 +999,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     syncProgress()
     emit()
     bar.sync()
+    if (noteMode === "collapsed") {
+      bar.input.blur()
+      bar.setOpen(false)
+    }
     // On to the next step, with a way back.
     if (v && options.advance !== false) {
       const to = adjacentStep(
@@ -916,7 +1014,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         if (full) setFull(false)
         go(to)
         showBack(v.step.key)
-        bar.input.focus({ preventScroll: true })
+        if (noteMode === "docked") bar.input.focus({ preventScroll: true })
       }
     }
   }
@@ -1000,22 +1098,105 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   }
 
   // ——— building it ———
+  /** One small faint line of facts joined by `·`, its trailing edge fading. */
+  const metaLine = (cls: string) => el(doc, "div", `knobs-wt-metaline ${cls}`)
+  const metaText = (line: HTMLElement, text: string, cls?: string) => {
+    const s = el(doc, "span", cls)
+    s.textContent = text
+    line.append(s)
+    return s
+  }
+  const metaLink = (line: HTMLElement, text: string, href: string) => {
+    const a = el(doc, "a")
+    a.href = href
+    a.target = "_blank"
+    a.rel = "noreferrer"
+    a.textContent = text
+    a.insertAdjacentHTML("beforeend", ICON.out)
+    line.append(a)
+    return a
+  }
+
+  const feedItem = (f: WalkPage["feed"][number], now: number) => {
+    const li = el(doc, "li", "knobs-wt-fi")
+    li.dataset.kind = f.kind
+    const q = el(doc, "div", "knobs-wt-fi-q")
+    const meta = metaLine("knobs-wt-fi-meta")
+    if (f.at !== null) {
+      const when = metaText(meta, ago(f.at, now))
+      when.title = new Date(f.at).toLocaleString()
+    } else metaText(meta, f.kind === "qa" ? "Answer" : "Update")
+    const step = f.step ? page.steps.find((s) => s.key === f.step) : undefined
+    if (step) {
+      const section = page.sections.find((s) => s.id === step.section)
+      const b = el(doc, "button", "knobs-wt-fi-step")
+      b.type = "button"
+      b.textContent = section?.link?.label ?? plainMarkdown(step.title)
+      b.title = `Go to “${plainMarkdown(step.title)}”`
+      b.addEventListener("click", () => go(step.key))
+      meta.append(b)
+    }
+    if (f.status) {
+      const id = f.status.toLowerCase()
+      const shipped = /^(ship|shipped|merged|done)$/.test(id)
+      const changes = /^(changes?|changes queued)$/.test(id)
+      const s = metaText(meta, shipped ? "Shipped" : changes ? "Changes queued" : f.status)
+      s.dataset.status = shipped ? "on" : changes ? "warn" : ""
+    }
+    q.append(meta)
+    if (f.q) q.append(prose(doc, "p", "knobs-wt-fi-ask", f.q))
+    else q.append(prose(doc, "p", "knobs-wt-fi-text", f.text))
+    li.append(q)
+    if (f.q || f.trail.length) {
+      const a = el(doc, "div", "knobs-wt-fi-a")
+      if (f.q) a.append(prose(doc, "div", "knobs-wt-fi-answer", f.text))
+      if (f.trail.length) {
+        const list = el(doc, "ol", "knobs-wt-trail")
+        for (const line of f.trail) {
+          const i = line.indexOf(" · ")
+          const row = el(doc, "li")
+          const words = el(doc, "span", "knobs-wt-trail-text")
+          words.textContent = i < 0 ? line : line.slice(i + 3)
+          row.append(words)
+          if (i >= 0) {
+            const at = el(doc, "span", "knobs-wt-trail-at")
+            at.textContent = line.slice(0, i)
+            row.append(at)
+          }
+          list.append(row)
+        }
+        discs.push(disclosure(a, { label: "Context", count: f.trail.length, content: list }))
+      }
+      li.append(a)
+    }
+    return li
+  }
+
   const build = () => {
     for (const v of views) {
       v.slots.forEach((s) => s.dispose())
       v.taste?.dispose()
     }
+    for (const d of discs) d.dispose()
+    discs = []
+    pill?.dispose()
+    pill = null
+    tocRows = []
     if (full) {
       full.p.snap(0)
       closeFull()
     }
     clearInk()
     views = []
-    pillPlaced = false
     root.textContent = ""
     root.removeAttribute("data-settled")
+    root.dataset.rail = options.rail === false ? "none" : options.rail === "left" ? "left" : "right"
+    root.toggleAttribute("data-cards", options.cards === true)
     const layout = el(doc, "div", "knobs-wt-layout")
     const main = el(doc, "div", "knobs-wt-main")
+    // The page's blocks, a section's room apart with a hairline in the middle: the intro, the
+    // updates, each section.
+    const flow = el(doc, "div", "knobs-wt-flow")
 
     // The head.
     const head = el(doc, "header", "knobs-wt-head")
@@ -1042,44 +1223,30 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       }
       head.append(meta)
     }
-    main.append(head)
+    flow.append(head)
 
-    // The feed: the agent's updates and answers, newest first.
+    // The feed: the agent's updates and answers, newest first, a group's room apart.
+    let feedEl: HTMLElement | null = null
     if (page.feed.length) {
-      const feed = el(doc, "section", "knobs-wt-feed")
-      feed.setAttribute("aria-label", "Latest")
-      const list = el(doc, "ol", "knobs-wt-feed-list knobs-scroll-fade")
+      feedEl = el(doc, "section", "knobs-wt-feed")
+      feedEl.id = "wt-latest"
+      feedEl.setAttribute("aria-label", "Updates and answers")
+      const fh = el(doc, "header", "knobs-wt-feed-head")
+      const h = el(doc, "h2", "knobs-wt-feed-title")
+      h.textContent = page.feed.some((f) => f.kind === "qa") ? "Updates & Q&A" : "Updates"
+      const n = el(doc, "span", "knobs-wt-feed-count")
+      n.textContent = String(page.feed.length)
+      fh.append(h, n)
+      const list = el(doc, "ol", "knobs-wt-feed-list")
       const now = Date.now()
-      for (const f of page.feed) {
-        const li = el(doc, "li", "knobs-wt-fi")
-        li.dataset.kind = f.kind
-        const when = el(doc, "span", "knobs-wt-fi-when")
-        when.textContent = f.at === null ? "" : ago(f.at, now)
-        if (f.at !== null) when.title = new Date(f.at).toLocaleString()
-        const kind = el(doc, "span", "knobs-wt-fi-kind")
-        kind.textContent = f.kind === "qa" ? "Answer" : "Update"
-        const body = el(doc, "div", "knobs-wt-fi-body")
-        if (f.q) body.append(prose(doc, "p", "knobs-wt-fi-q", f.q))
-        body.append(prose(doc, "p", "knobs-wt-fi-text", f.text))
-        li.append(when, kind, body)
-        if (f.step) {
-          const target = f.step
-          const link = el(doc, "button", "knobs-wt-fi-step")
-          link.type = "button"
-          link.textContent = page.steps.find((s) => s.key === target)?.number ?? ""
-          link.title = "Go to the step"
-          link.addEventListener("click", () => go(target))
-          li.append(link)
-        }
-        list.append(li)
-      }
-      feed.append(list)
-      main.append(feed)
+      for (const f of page.feed) list.append(feedItem(f, now))
+      feedEl.append(fh, list)
+      flow.append(feedEl)
     }
 
     // The rail.
     let rail: HTMLElement | null = null
-    count = fill = tocEl = mark = null
+    count = fill = tocEl = null
     if (options.rail !== false) {
       rail = el(doc, "aside", "knobs-wt-rail")
       rail.setAttribute("aria-label", "Progress")
@@ -1091,8 +1258,21 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       progress.append(count, meter)
       tocEl = el(doc, "nav", "knobs-wt-toc")
       tocEl.setAttribute("aria-label", "Contents")
-      mark = el(doc, "div", "knobs-wt-toc-mark")
-      tocEl.append(mark)
+      // A leading column for a section's PR, as wide as the longest (none when no section has one).
+      const ns = page.sections.map((s) => (s.kicker && s.link ? s.link.label : ""))
+      const nw = Math.max(0, ...ns.map((n) => n.length))
+      tocEl.style.setProperty("--kw-toc-n", nw ? `${nw + 0.5}ch` : "0px")
+      if (!nw) tocEl.dataset.bare = ""
+      if (feedEl) {
+        const group = el(doc, "div", "knobs-wt-toc-group")
+        const target = feedEl
+        group.append(
+          tocRow("Latest", "", String(page.feed.length), false, () =>
+            target.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" }),
+          ),
+        )
+        tocEl.append(group)
+      }
       rail.append(progress, tocEl, actions(true))
       if (options.keys !== false) {
         const keys = el(doc, "div", "knobs-wt-keys")
@@ -1108,44 +1288,44 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const sec = el(doc, "section", "knobs-wt-section")
       sec.id = `wt-${section.id}`
       const sh = el(doc, "header", "knobs-wt-shead")
-      if (section.link || section.status) {
-        const kicker = el(doc, "div", "knobs-wt-kicker")
-        if (section.link) {
-          const a = el(doc, "a")
-          a.href = section.link.href
-          a.target = "_blank"
-          a.rel = "noreferrer"
-          a.textContent = `${section.link.label} ↗`
-          kicker.append(a)
-        }
+      // The meta line leads with the kicker in text colour, then the link and the status.
+      if (section.kicker || section.link || section.status) {
+        const meta = metaLine("knobs-wt-kicker")
+        if (section.kicker) metaText(meta, section.kicker, "knobs-wt-kicker-lead")
+        if (section.link) metaLink(meta, section.link.label, section.link.href)
         if (section.status) {
           const s = statusLook(section.status)
-          const chip = el(doc, "span", "knobs-wt-chip")
-          chip.dataset.tone = s.tone
-          chip.textContent = s.label
-          kicker.append(chip)
+          metaText(meta, s.label, "knobs-wt-status").dataset.tone = s.tone
         }
-        sh.append(kicker)
+        sh.append(meta)
       }
-      const h2 = el(doc, "h2", "knobs-wt-stitle")
-      h2.textContent = section.title
+      const h2 = el(doc, "h2", "knobs-wt-heading")
+      h2.innerHTML = inlineMarkdown(section.title)
       sh.append(h2)
-      if (section.summary) sh.append(prose(doc, "p", "knobs-wt-ssum", section.summary))
-      sec.append(sh)
+      // The header and the prose it heads, as one group.
+      const intro = el(doc, "div", "knobs-wt-sintro")
+      intro.append(sh)
+      if (section.summary) intro.append(prose(doc, "p", "knobs-wt-ssum", section.summary))
+      sec.append(intro)
+      let group: HTMLElement | null = null
       if (tocEl) {
-        const t = el(doc, "div", "knobs-wt-toc-section")
-        t.textContent = section.link ? `${section.link.label} ${section.title}` : section.title
-        t.title = section.title
-        tocEl.append(t)
+        group = el(doc, "div", "knobs-wt-toc-group")
+        const first = section.steps[0]?.key
+        const n = section.kicker && section.link ? section.link.label : ""
+        group.append(
+          tocRow(plainMarkdown(section.title), n, "", false, () => (first ? go(first) : undefined), section.id),
+        )
+        tocEl.append(group)
       }
       for (const step of section.steps) {
-        const v = stepView(step)
+        const v = stepView(step, group)
         sec.append(v.card)
         views.push(v)
       }
-      main.append(sec)
+      flow.append(sec)
     }
-    main.append(bar.dock)
+    main.append(flow)
+    if (noteMode !== "hidden") main.append(bar.dock)
 
     if (rail) layout.append(rail)
     layout.append(main)
@@ -1154,17 +1334,50 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       syncGlyph(v)
       for (const n of notesOn(state, v.step.key)) renderNote(v, n)
     }
+    // One pill for the contents, sliding to the step Kit is on; base rows never brighten.
+    if (tocEl)
+      pill = selectionPill(tocEl, {
+        selected: () => viewOf(current)?.toc ?? null,
+        rows: () => tocRows,
+      })
     syncProgress()
     current = null
     fromScroll()
     placeMark()
     bar.sync()
+    syncReserve()
     // Transitions start once the first frame is drawn: nothing moves on load.
     win.requestAnimationFrame(() =>
       win.requestAnimationFrame(() => {
         if (!disposed && !reduced()) root.dataset.settled = ""
       }),
     )
+  }
+
+  /** A contents row: a title row (32 high) or a step under it (20 high), on one spine. */
+  const tocRow = (
+    label: string,
+    n: string,
+    end: string,
+    sub: boolean,
+    run: () => void,
+    section?: string,
+  ) => {
+    const b = el(doc, "button", sub ? "knobs-wt-toc-row knobs-wt-toc-sub" : "knobs-wt-toc-row")
+    b.type = "button"
+    if (section) b.dataset.section = section
+    const ncol = el(doc, "span", "knobs-wt-toc-n")
+    ncol.textContent = n
+    const t = el(doc, "span", "knobs-wt-toc-label")
+    t.textContent = label
+    const e = el(doc, "span", "knobs-wt-toc-end")
+    e.textContent = end
+    b.title = label
+    b.append(ncol, t, e)
+    b.addEventListener("mousedown", (ev) => ev.preventDefault())
+    b.addEventListener("click", run)
+    tocRows.push(b)
+    return b
   }
 
   const actions = (rail: boolean) => {
@@ -1206,29 +1419,43 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     }
   }
 
-  const stepView = (step: WalkStep): StepView => {
-    const card = el(doc, "article", "knobs-wt-step knobs-surface")
+  const stepView = (step: WalkStep, group: HTMLElement | null): StepView => {
+    // On a card, the step is the one surface its pieces sit on; on the page, the media are.
+    const card = el(doc, "article", options.cards ? "knobs-wt-step knobs-surface" : "knobs-wt-step")
     card.id = `wt-${step.key.replace("/", "--")}`
     card.tabIndex = -1
     card.dataset.key = step.key
-    card.setAttribute("aria-label", `${step.number} ${step.title}`)
+    card.setAttribute("aria-label", plainMarkdown(step.title))
+    // The title and its caption, as one thing; steps aren't numbered (refs still name them).
     const head = el(doc, "header", "knobs-wt-step-head")
-    const num = el(doc, "span", "knobs-wt-num")
-    num.textContent = step.number
     const h3 = el(doc, "h3", "knobs-wt-stepTitle")
-    h3.textContent = step.title
-    head.append(num, h3)
+    h3.innerHTML = inlineMarkdown(step.title)
+    head.append(h3)
+    if (step.caption) head.append(prose(doc, "p", "knobs-wt-caption", step.caption))
     card.append(head)
-    if (step.caption) card.append(prose(doc, "p", "knobs-wt-caption", step.caption))
     const slots: MediaSlot[] = []
     const onEvent = (e: Omit<ContextEvent, "at" | "step">) => record({ ...e, step: step.key })
     let media: HTMLElement | null = null
     if (step.media.length) {
-      media = el(doc, "div", "knobs-wt-media")
-      media.style.setProperty("--kw-n", String(Math.min(step.media.length, 3)))
-      for (const m of step.media)
-        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks }))
+      // One under another unless the step asks for columns; with `more`, the media after the first
+      // fold away under a quiet toggle.
+      const grid = (list: readonly WalkStep["media"][number][]) => {
+        const g = el(doc, "div", "knobs-wt-media")
+        g.style.setProperty("--kw-n", String(Math.min(list.length, step.columns)))
+        for (const m of list)
+          slots.push(mediaSlot(g, { ...look, media: m, onEvent, steps: stepLinks }))
+        return g
+      }
+      const [first, ...rest] = step.media
+      media = grid(step.more ? [first!] : step.media)
       card.append(media)
+      if (step.more && rest.length) {
+        const holder = el(doc, "div", "knobs-wt-more")
+        discs.push(
+          disclosure(holder, { label: step.more, count: rest.length, content: grid(rest) }),
+        )
+        card.append(holder)
+      }
     }
     let taste: TasteTest | null = null
     if (step.question) card.append(prose(doc, "p", "knobs-wt-question", step.question))
@@ -1251,16 +1478,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     })
     let toc: HTMLElement | null = null
     let glyph: HTMLElement | null = null
-    if (tocEl) {
-      toc = el(doc, "button", "knobs-wt-toc-step")
-      ;(toc as HTMLButtonElement).type = "button"
+    if (group) {
+      toc = tocRow(plainMarkdown(step.title), "", "", true, () => go(step.key))
       glyph = el(doc, "span", "knobs-wt-toc-glyph")
-      const label = el(doc, "span", "knobs-wt-toc-label")
-      label.textContent = step.title
-      toc.title = `${step.number} ${step.title}`
-      toc.append(glyph, label)
-      toc.addEventListener("click", () => go(step.key))
-      tocEl.append(toc)
+      toc.querySelector(".knobs-wt-toc-end")!.append(glyph)
+      group.append(toc)
     }
     return { step, card, media, notes, toc, glyph, taste, slots }
   }
@@ -1319,14 +1541,19 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       if (full) setFull(false)
       return go(next)
     }
+    if ((key === "Home" || key === "End") && views.length) {
+      claim()
+      if (full) setFull(false)
+      return go(views[key === "Home" ? 0 : views.length - 1]!.step.key)
+    }
     if (key === "ArrowLeft" || key === "ArrowRight") {
       const d = (key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 2 : 0.5)
       if (seekBy(d)) claim()
       return
     }
-    if (key === "n") {
+    if (key === "n" && noteMode !== "hidden") {
       claim()
-      bar.input.focus({ preventScroll: true })
+      bar.setOpen(true, true)
       return
     }
     const v = viewOf(current)
@@ -1407,6 +1634,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       for (const type of ["wheel", "touchstart"] as const) win.removeEventListener(type, stopScroll)
       doc.removeEventListener("keydown", onKey)
       unregisterHints()
+      bar.unobserve()
+      pill?.dispose()
+      for (const d of discs) d.dispose()
+      if (padded) padded.el.style.scrollPaddingBottom = padded.was
       for (const v of views) {
         v.slots.forEach((s) => s.dispose())
         v.taste?.dispose()
