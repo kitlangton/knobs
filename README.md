@@ -1335,10 +1335,14 @@ Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one cont
 
 The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
 
+### Review pieces (`knobs/review`)
+
+The walkthrough and what it shows (compare, player, code diff, history, facts, decision, taste test, `mediaSlot`) are their own subsystem: `knobs/review` (and `knobs/review/react`, `knobs/review/solid`). They have their own quiet look, `themes.review` (true black, flat, hairlines held to an APCA target, the platform's own face), one type scale and a short set of rules: [docs/review-design.md](docs/review-design.md), with every piece alone in `examples/review.html`. `knobs/ui` still exports them. `reviewFont(document, { href, sans: "Inter" })` gives the review look in a webfont.
+
 ### Walkthrough
 
 ```ts
-import { walkthrough, type WalkthroughDoc } from "knobs/ui"
+import { walkthrough, type WalkthroughDoc } from "knobs/review"
 
 const doc: WalkthroughDoc = {
   id: "2026-10-19-onboarding-prs",

@@ -1,0 +1,107 @@
+// knobs/review: the pieces an agent uses to show its work and ask for a person's judgement, in
+// their own quiet look (docs/review-design.md). knobs/ui re-exports them for now.
+export {
+  FEATURES,
+  FILLS,
+  FONT,
+  HAIRLINES,
+  MEASURE,
+  MOTION,
+  RADII,
+  SPACE,
+  TRACKING,
+  TYPE,
+  trackingAt,
+  type TypeRole,
+} from "./foundations.js"
+export { reviewFont, type ReviewFontOptions } from "./font.js"
+export { reviewTheme } from "../themes/review.js"
+export { injectUiStyles, restyle, type RestyleLook, type UiLook } from "../ui/look.js"
+export {
+  tasteTest,
+  walkthrough,
+  type TasteTest,
+  type TasteTestOptions,
+  type Walkthrough,
+  type WalkthroughOptions,
+} from "../ui/walkthrough.js"
+export {
+  mediaSlot,
+  type MediaSlot,
+  type MediaSlotOptions,
+  type StepLinks,
+} from "../ui/walkthrough-media.js"
+export {
+  compare,
+  type Compare,
+  type CompareLoop,
+  type CompareMode,
+  type CompareOptions,
+  type CompareSource,
+  type CompareView,
+  type ZoomRegion,
+} from "../ui/compare.js"
+export { compareStrip, type CompareStrip, type CompareStripOptions } from "../ui/compare-strip.js"
+export { player, type Player, type PlayerChapter, type PlayerOptions } from "../ui/player.js"
+export {
+  codeDiff,
+  diffReview,
+  type CodeDiff,
+  type CodeDiffOptions,
+  type CodeDiffUpdate,
+  type DiffLayout,
+  type DiffReview,
+  type DiffReviewOptions,
+} from "../ui/diff.js"
+export type { DiffSource } from "../ui/diff-model.js"
+export {
+  history,
+  type History,
+  type HistoryBand,
+  type HistoryData,
+  type HistoryEvent,
+  type HistoryEvidence,
+  type HistoryGroup,
+  type HistoryLane,
+  type HistoryOptions,
+  type HistoryProvenance,
+  type HistorySpan,
+  type HistoryState,
+  type HistoryTone,
+} from "../ui/history.js"
+export {
+  collectFeedback,
+  feedbackMarkdown,
+  inlineMarkdown,
+  normalizeWalkthrough,
+  plainMarkdown,
+  readState as readWalkthroughState,
+  walkthroughProgress,
+  type FeedbackItem,
+  type FeedbackNote,
+  type WalkPage,
+  type WalkStep,
+  type WalkthroughAnnotation,
+  type WalkthroughChapter,
+  type WalkthroughDoc,
+  type WalkthroughEvidence,
+  type WalkthroughFeedback,
+  type WalkthroughHistoryEvent,
+  type WalkthroughHistoryGroup,
+  type WalkthroughMedia,
+  type WalkthroughMeta,
+  type WalkthroughOption,
+  type WalkthroughPR,
+  type WalkthroughQA,
+  type WalkthroughSection,
+  type WalkthroughSource,
+  type WalkthroughStackItem,
+  type WalkthroughState,
+  type WalkthroughStatus,
+  type WalkthroughStep,
+  type WalkthroughTableCell,
+  type WalkthroughTableColumn,
+  type WalkthroughTableRow,
+  type WalkthroughTone,
+  type WalkthroughUpdate,
+} from "../ui/walkthrough-model.js"
