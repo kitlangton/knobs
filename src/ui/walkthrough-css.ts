@@ -18,7 +18,7 @@ const quick = springCss(FADE)
 // each step is one .knobs-surface and nothing inside draws a fill and a ring of its own). Rhythm
 // and type come from the page tokens (--k-space-*, --k-pad-*, --k-type-*, --k-leading-*);
 // spacing lives on parents.
-const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent)"
+const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)"
 export const walkthroughCss = `
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
 .knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}
@@ -30,7 +30,7 @@ export const walkthroughCss = `
 .knobs-walkthrough [hidden]{display:none!important}
 /* (0,0,1): a host's element rules stop here, and every class rule below wins over it. */
 :where(.knobs-walkthrough) :is(h1,h2,h3,p,ol,ul,dl,dd){margin:0;font:inherit;letter-spacing:inherit}
-.knobs-walkthrough a{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color .15s}
+.knobs-walkthrough a{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
 .knobs-walkthrough a:hover{text-decoration-color:currentColor}
 .knobs-walkthrough code,.knobs-wt-slot code{font:var(--_k-type-label) var(--_k-mono);padding:1px 5px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-fill)}
 :where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-row,button.knobs-wt-stitle,.knobs-wt-chapter,.knobs-wt-disc-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;
@@ -273,14 +273,15 @@ export const walkthroughCss = `
 .knobs-wt-bar{position:relative;height:4px;border-radius:2px;overflow:hidden;background:var(--_k-fill)}
 .knobs-wt-fill{position:absolute;inset:0;border-radius:inherit;background:var(--_k-accent);transform-origin:0 50%;transform:scaleX(var(--kw-done,0))}
 .knobs-walkthrough[data-settled] .knobs-wt-fill{transition:transform var(--kw-calm-ms) var(--kw-calm)}
-/* The contents: every row on one text edge and in one colour, title rows (32 high, the control
-   radius) and the steps under them (20 high, half of it), bled out so their text sits on the
-   rail's edge; the selection pill slides to the current step, and base rows never brighten. */
-.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:0 calc(var(--_k-space-sibling) * -1);padding:0 0 8px}
+/* The contents: every row on one text edge and in one colour, title rows (28 high, the control
+   radius) and the steps under them (20 high, half of it), bled 6 px out so their text sits on the
+   rail's edge and the first title's words on the column's top line; a narrow fade where a title
+   runs out of room; the selection pill slides to the current step, and base rows never brighten. */
+.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:-4px -6px 0;padding:0 0 8px}
 .knobs-wt-toc::-webkit-scrollbar{display:none}
 .knobs-wt-toc-group{display:flex;flex-direction:column;min-width:0}
-.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:32px;
-  padding:0 var(--_k-space-sibling);border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:pointer;
+.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:28px;
+  padding:0 6px;border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:pointer;
   transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-toc-sub{height:20px;border-radius:calc(var(--_k-radius) / 2);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight)}
 .knobs-ui .knobs-wt-toc-row:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
@@ -342,8 +343,12 @@ export const walkthroughCss = `
 .knobs-wt-frame[data-natural]>img{position:static;height:auto}
 /* Diff, code and terminal: one plain container (no glass): a flat inset fill, a hairline ring, the
    control radius and room inside, so a diff's buttons and the code under them can breathe. */
-.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-space-sibling) var(--_k-pad-card) var(--_k-pad-card);border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
-.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-pad-card);border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
+/* The diff inside it: its header row 28 high on the container's padding, a hairline under it, and
+   no line of its own under the code (the container's ring closes it). */
+.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"]){--kd-head:28px;--kd-x:0px}
+.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"])::after{display:none}
+.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
 .knobs-surface :is(.knobs-wt-code,.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body){padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-code[data-terminal]{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -521,6 +526,11 @@ export const walkthroughCss = `
 .knobs-wt-chapter-label{min-width:0;overflow:hidden;${fade}}
 .knobs-wt-chapter-time{font:var(--_k-weight) var(--_k-type-small)/1 var(--_k-mono);color:var(--_k-fg-3)}
 .knobs-pick-copy :is(.knobs-wt-chapter-n,.knobs-wt-chapter-time){color:var(--_k-fg-2)}
+/* Every hover in the walkthrough lands at once (hover-in, 0 ms) and eases out (hover-out): links,
+   buttons, chips, rail, chapter, table and stack rows (its own; the pieces inside keep theirs). */
+:is(.knobs-walkthrough,.knobs-wt-slot) :is(a,button,[data-go])[class*="knobs-wt-"]:is(:hover,:focus-visible),
+.knobs-walkthrough a:not([class]):hover,
+:is(.knobs-walkthrough,.knobs-wt-slot) :is(.knobs-wt-srow,tr)[data-go]:is(:hover,:focus-visible) :is(td,.knobs-wt-stitle){transition-duration:calc(var(--_k-hover-in) * 1ms)}
 @media(prefers-reduced-motion:reduce){:is(.knobs-walkthrough,.knobs-wt-slot) :where(*,::before,::after){transition-duration:.15s!important;transition-property:opacity,background,color!important}}
 @media(prefers-reduced-motion:reduce){.knobs-wt-disc-content{transition:opacity .15s}}
 `
