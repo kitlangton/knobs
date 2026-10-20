@@ -36,7 +36,7 @@ export const walkthroughCss = `${foundationCss}
 /* (0,0,1): a host's element rules stop here, and every class rule below wins over it. */
 :where(.knobs-walkthrough) :is(h1,h2,h3,p,ol,ul,dl,dd){margin:0;font:inherit;letter-spacing:var(--_kr-track)}
 .knobs-walkthrough a{cursor:default;color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
-.knobs-walkthrough a:hover{text-decoration-color:currentColor}
+.knobs-walkthrough a:hover{text-decoration-color:currentColor;transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-walkthrough code,.knobs-wt-slot code{font:var(--_k-type-label) var(--_k-mono);padding:1px 5px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-fill)}
 :where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-row,button.knobs-wt-stitle,.knobs-wt-chapter,.knobs-wt-disc-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:var(--_kr-track);
   background:transparent;border:0;border-radius:0;margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
@@ -96,7 +96,7 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-shead{display:flex;flex-direction:column;gap:var(--_k-space-inside);min-width:0;scroll-margin-top:16px}
 .knobs-wt-heading{font-size:var(--_k-type-title)!important;line-height:var(--_k-leading-title);font-weight:var(--kw-strong)!important;text-wrap:balance}
 .knobs-wt-ssum{max-width:var(--kw-measure);color:var(--_k-fg-2);text-wrap:pretty}
-.knobs-wt-chip{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--_k-round);font-size:var(--_k-type-small);font-weight:var(--kw-strong);white-space:nowrap;
+.knobs-wt-chip{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 6px 0 5px;border-radius:var(--_k-round);font-size:var(--_k-type-small);font-weight:var(--kw-strong);white-space:nowrap;
   --kw-tone:var(--_k-fg-2);color:var(--kw-tone);background:color-mix(in srgb,var(--kw-tone) 14%,transparent)}
 .knobs-wt-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 :is(.knobs-wt-chip,.knobs-wt-toc-glyph)[data-tone="good"]{--kw-tone:var(--kw-good)}
@@ -166,8 +166,8 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-n[data-leaving]{opacity:0;filter:blur(3px);padding-block:0}
 .knobs-wt-n+.knobs-wt-n{box-shadow:inset 0 1px 0 var(--_k-border-subtle)}
 .knobs-wt-n-meta{flex:none;min-width:44px;color:var(--_k-fg-3);font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-body) var(--_k-mono)}
-.knobs-wt-n-meta[data-seek]{cursor:default}
-.knobs-wt-n-meta[data-seek]:hover{color:var(--_k-fg)}
+.knobs-wt-n-meta[data-seek]{cursor:default;transition:color calc(var(--_k-hover-out) * 1ms)}
+.knobs-wt-n-meta[data-seek]:hover{color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-n-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
 .knobs-wt-n-voice{height:30px;max-width:320px}
 .knobs-wt-n-ink{display:block;width:120px;max-height:80px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-fill)}
@@ -185,7 +185,7 @@ export const walkthroughCss = `${foundationCss}
 :where(.knobs-ui) .knobs-wt-launch{all:revert;box-sizing:border-box;justify-self:end;align-self:end;display:inline-flex;align-items:center;gap:6px;height:32px;margin:0;padding:0 10px 0 9px;border:0;border-radius:var(--_k-round);
   background:var(--_k-bg);color:var(--_k-fg-2);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font:var(--kw-strong) var(--_k-type-small)/1 var(--_k-font);cursor:default;outline:none;transform-origin:100% 100%;
   transition:color calc(var(--_k-hover-out) * 1ms),opacity var(--kw-quick-ms) var(--kw-quick),scale var(--kw-quick-ms) var(--kw-quick),filter var(--kw-quick-ms) var(--kw-quick)}
-.knobs-ui .knobs-wt-launch:is(:hover,:focus-visible){color:var(--_k-fg)}
+.knobs-ui .knobs-wt-launch:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-launch:focus-visible{box-shadow:var(--_k-focus-ring)}
 .knobs-wt-launch svg{width:16px;height:16px}
 .knobs-wt-launch kbd{font:inherit;font-weight:var(--_k-weight);color:var(--_k-fg-3)}
@@ -203,12 +203,12 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-attach{display:flex;gap:4px;align-items:center;align-self:center}
 .knobs-wt-attach:empty{display:none}
 .knobs-wt-chip-a{display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 2px 0 9px;border-radius:var(--_k-round);background:var(--_k-fill-selected);font-size:var(--_k-type-small);white-space:nowrap}
-.knobs-ui .knobs-wt-x{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;color:var(--_k-fg-3);cursor:default;transition:background .15s,color .15s}
-.knobs-ui .knobs-wt-x:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-wt-x{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;color:var(--_k-fg-3);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-x:is(:hover,:focus-visible){background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-x svg{width:12px;height:12px}
 .knobs-ui .knobs-wt-tool{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:32px;height:32px;padding:0 8px;border-radius:calc(var(--_k-radius) + 2px);
-  color:var(--_k-fg-2);cursor:default;transition:background .15s,color .15s}
-.knobs-ui .knobs-wt-tool:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+  color:var(--_k-fg-2);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-tool:is(:hover,:focus-visible){background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-tool[aria-pressed="true"]{background:var(--_k-fill-selected);color:var(--_k-fg)}
 .knobs-wt-tool svg{width:16px;height:16px}
 .knobs-wt-rec{font-size:var(--_k-type-small)}
@@ -220,7 +220,7 @@ export const walkthroughCss = `${foundationCss}
   border-radius:var(--_k-round);background:var(--_k-bg);color:var(--_k-fg);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font-size:var(--_k-type-small);font-weight:var(--kw-strong);cursor:default;
   opacity:0;scale:.96;filter:blur(3px);pointer-events:none;transition:opacity .11s cubic-bezier(.4,0,1,1),scale .11s cubic-bezier(.4,0,1,1),filter .11s cubic-bezier(.4,0,1,1)}
 .knobs-ui .knobs-wt-back[data-on]{opacity:1;scale:1;filter:none;pointer-events:auto;transition:opacity .15s cubic-bezier(.2,.8,.2,1),scale .15s cubic-bezier(.2,.8,.2,1),filter .15s cubic-bezier(.2,.8,.2,1)}
-.knobs-ui .knobs-wt-back:hover{background:var(--_k-fill-selected)}
+.knobs-ui .knobs-wt-back:hover{background-image:linear-gradient(var(--_k-fill-hover),var(--_k-fill-hover));transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-back svg{flex:none;width:12px;height:12px}
 .knobs-wt-back-label{min-width:0;overflow:hidden;white-space:nowrap;${fade}}
 
@@ -305,14 +305,14 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-fill{position:absolute;inset:0;border-radius:inherit;background:var(--_k-accent);transform-origin:0 50%;transform:scaleX(var(--kw-done,0))}
 .knobs-walkthrough[data-settled] .knobs-wt-fill{transition:transform var(--kw-calm-ms) var(--kw-calm)}
 /* The contents: every row on one text edge and in one colour, title rows (28 high, the control
-   radius) and the steps under them (20 high, half of it), bled 6 px out so their text sits on the
+   radius) and the steps under them (20 high, half of it), bled 8 px out, as every list row is, so their text sits on the
    rail's edge and the first title's words on the column's top line; a narrow fade where a title
    runs out of room; the selection pill slides to the current step, and base rows never brighten. */
-.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:-4px -6px 0;padding:0 0 8px}
+.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:-4px -8px 0;padding:0 0 8px}
 .knobs-wt-toc::-webkit-scrollbar{display:none}
 .knobs-wt-toc-group{display:flex;flex-direction:column;min-width:0}
 .knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:28px;
-  padding:0 6px;border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:default;
+  padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:default;
   transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-toc-sub{height:20px;border-radius:calc(var(--_k-radius) / 2);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight)}
 .knobs-ui .knobs-wt-toc-row:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
@@ -327,11 +327,11 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-toc-glyph[data-done]{background:var(--kw-tone)}
 .knobs-wt-toc-glyph[data-tone="none"]{box-shadow:inset 0 0 0 1px var(--_k-border)}
 .knobs-wt-actions{display:flex;flex-wrap:wrap;gap:4px}
-.knobs-ui .knobs-wt-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:default;white-space:nowrap;
-  transition:background .15s,color .15s}
-.knobs-ui .knobs-wt-btn:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-wt-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:default;white-space:nowrap;
+  transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-btn:is(:hover,:focus-visible){background:var(--_k-fill-hover);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-btn[data-primary]{background:var(--_k-fill-selected);color:var(--_k-fg)}
-.knobs-ui .knobs-wt-btn[data-primary]:is(:hover,:focus-visible){background:color-mix(in srgb,var(--_k-fg) 16%,transparent)}
+.knobs-ui .knobs-wt-btn[data-primary]:is(:hover,:focus-visible){background:color-mix(in srgb,var(--_k-fg) 16%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-keys{color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small)}
 .knobs-wt-keys kbd{font:inherit;color:var(--_k-fg-2)}
 /* Narrow: the contents go; with review on, the rail becomes a bar along the top with the
@@ -420,14 +420,14 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-mark[data-shape="box"]{border-radius:6px;box-shadow:0 0 0 1.5px var(--kw-mark),0 0 0 4px color-mix(in srgb,var(--_k-bg) 45%,transparent)}
 .knobs-wt-mark[data-shape="dot"]::before{content:"";position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:var(--kw-mark);box-shadow:0 0 0 3px color-mix(in srgb,var(--kw-mark) 30%,transparent)}
 .knobs-wt-anno-arrow{position:absolute;right:0;bottom:0;filter:drop-shadow(0 0 2px var(--_k-bg))}
-.knobs-wt-mark-label{position:absolute;left:0;bottom:calc(100% + 6px);max-width:240px;padding:2px 6px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-bg-overlay);color:var(--_k-fg);
-  font:var(--_k-weight-label) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);white-space:nowrap;overflow:hidden;box-shadow:var(--_k-shadow-overlay);${fade}}
+.knobs-wt-mark-label{position:absolute;left:0;bottom:calc(100% + 6px);max-width:240px;padding:2px 6px;border-radius:calc(var(--_k-radius) / 2);background:var(--_ku-media-scrim);color:var(--_ku-on-media);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  font:var(--_k-weight-label) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);white-space:nowrap;overflow:hidden;${fade}}
 .knobs-wt-mark:is([data-shape="dot"],[data-shape="arrow"]) .knobs-wt-mark-label{left:12px;bottom:auto;top:10px}
 .knobs-wt-mark[data-shape="arrow"] .knobs-wt-mark-label{left:auto;right:30px;top:auto;bottom:30px}
 .knobs-ui .knobs-wt-anno-toggle{all:revert;box-sizing:border-box;position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;margin:0;
-  border-radius:var(--_k-radius);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);color:var(--_k-fg-2);cursor:default;opacity:.6;outline:none;
+  border-radius:var(--_k-radius);background:var(--_ku-media-scrim);color:var(--_ku-on-media-2);cursor:default;opacity:.6;outline:none;
   transition:opacity calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-anno-toggle:is(:hover,:focus-visible){opacity:1;color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-anno-toggle:is(:hover,:focus-visible){opacity:1;color:var(--_ku-on-media);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-anno-toggle:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-cmp-stage>.knobs-wt-anno-toggle{top:auto;bottom:8px}
 
@@ -447,7 +447,7 @@ export const walkthroughCss = `${foundationCss}
   border-radius:max(0px,calc(var(--_k-radius-panel) - 8px));transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-wt-srow[data-trunk]{--kw-spb:0px;grid-template-columns:auto minmax(0,1fr)}
 .knobs-wt-srow[data-go]{cursor:default}
-.knobs-wt-srow[data-go]:hover{background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-srow[data-go]:hover{background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-lanes{display:flex;align-self:stretch;margin-block:calc(var(--kw-spt) * -1) calc(var(--kw-spb) * -1)}
 .knobs-wt-lane{position:relative;flex:none;width:16px}
 .knobs-wt-lane:is([data-rail="pass"],[data-rail="tee"],[data-down])::before{content:"";position:absolute;left:7.5px;top:0;bottom:0;width:1px;background:var(--kw-rail)}
@@ -460,10 +460,10 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-sline{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
 .knobs-wt-sord{font:var(--_k-weight) var(--_k-type-label)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3);white-space:nowrap}
 .knobs-ui .knobs-wt-spr{font:var(--_k-weight-label) var(--_k-type-label)/var(--kw-line) var(--_k-mono);color:var(--_k-fg-2);text-decoration:none;white-space:nowrap}
-.knobs-ui a.knobs-wt-spr:is(:hover,:focus-visible){color:var(--_k-fg);text-decoration:underline}
+.knobs-ui a.knobs-wt-spr:is(:hover,:focus-visible){color:var(--_k-fg);text-decoration:underline;transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-stitle{font-weight:var(--_k-weight-label);line-height:var(--kw-line);color:var(--_k-fg);text-align:left}
 .knobs-ui button.knobs-wt-stitle{cursor:default;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui :is(.knobs-wt-srow[data-go]:hover button.knobs-wt-stitle,button.knobs-wt-stitle:focus-visible){text-decoration-color:color-mix(in oklch,currentColor 45%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui button.knobs-wt-stitle:focus-visible{text-decoration-color:color-mix(in oklch,currentColor 45%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-ssummary{margin:0;max-width:var(--kw-measure);color:var(--_k-fg-2)}
 .knobs-wt-smeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;font:var(--_k-weight) var(--_k-type-small)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3)}
 .knobs-wt-delta{display:inline-flex;gap:6px}
@@ -480,7 +480,7 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-prstate svg{flex:none}
 .knobs-ui .knobs-wt-prchecks{display:inline-flex;margin-left:2px;color:var(--_k-fg-3)}
 .knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr) auto}
-.knobs-wt-stack[data-flat] .knobs-wt-srow+.knobs-wt-srow{box-shadow:inset 0 1px 0 var(--_k-border)}
+.knobs-wt-stack[data-flat] .knobs-wt-srow+.knobs-wt-srow{box-shadow:inset 0 1px 0 var(--_k-border-subtle)}
 @container knobs-wt-slot (max-width:520px){
   .knobs-wt-srow:not([data-trunk]){grid-template-columns:auto minmax(0,1fr)}
   .knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr)}
@@ -496,7 +496,7 @@ export const walkthroughCss = `${foundationCss}
    without one line up. */
 .knobs-wt-tablebox [data-go]{cursor:default;outline:none}
 .knobs-wt-tablebox tr[data-go]>td,.knobs-wt-trow[data-go]{transition:background calc(var(--_k-hover-out) * 1ms)}
-.knobs-wt-tablebox tr[data-go]:is(:hover,:focus-visible)>td,.knobs-wt-trow[data-go]:is(:hover,:focus-visible){background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-tablebox tr[data-go]:is(:hover,:focus-visible)>td,.knobs-wt-trow[data-go]:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-tablebox [data-go]:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-wt-tablebox[data-measure] table{width:min-content}
 .knobs-wt-tstack{display:none;flex-direction:column;min-width:0}
@@ -531,9 +531,9 @@ export const walkthroughCss = `${foundationCss}
 }
 .knobs-wt-table table{width:100%;margin:0;border-collapse:separate;border-spacing:0;font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-variant-numeric:tabular-nums;color:var(--_k-fg-2)}
 .knobs-wt-table caption{caption-side:bottom;padding-top:8px;text-align:left;color:var(--_k-fg-3);font-size:var(--_k-type-small)}
-.knobs-wt-table th{position:sticky;top:0;padding:0 12px 7px;text-align:left;vertical-align:bottom;font-weight:var(--_k-weight-label);font-size:var(--_k-type-small);color:var(--_k-fg-3);white-space:nowrap;
+.knobs-wt-table th{position:sticky;top:0;padding:0 12px 8px;text-align:left;vertical-align:bottom;font-weight:var(--_k-weight-label);font-size:var(--_k-type-small);color:var(--_k-fg-3);white-space:nowrap;
   background:var(--kw-under,var(--_k-pane-bg));box-shadow:inset 0 -1px 0 var(--_k-border)}
-.knobs-wt-table td{padding:8px 12px;vertical-align:baseline;box-shadow:inset 0 -1px 0 var(--_k-border)}
+.knobs-wt-table td{padding:8px 12px;vertical-align:baseline;box-shadow:inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-table tr:last-child td{box-shadow:none}
 .knobs-wt-table :is(th,td):first-child{padding-left:0}
 .knobs-wt-table :is(th,td):last-child{padding-right:0}

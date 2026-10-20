@@ -21,10 +21,10 @@ export const diffCss = `
 @property --kd-fb{syntax:"<length>";inherits:false;initial-value:0px}
 :where(.knobs-ui){--kd-add:var(--_k-diff-add);--kd-del:var(--_k-diff-del);--kd-mod:var(--_k-diff-mod);--kd-move:var(--k-diff-move,var(--_k-info))}
 :where(.knobs-diff,.knobs-diff *,.knobs-diff-files,.knobs-diff-files *){box-sizing:border-box}
-.knobs-ui.knobs-diff{--kd-bg:var(--k-diff-bg,var(--_kd-bg,transparent));--kd-solid:var(--kd-fill,var(--kd-bg));--kd-line:calc(var(--_k-font-size) * 1.5);
+.knobs-ui.knobs-diff{--kd-bg:var(--k-diff-bg,var(--_kd-bg,transparent));--kd-solid:var(--kd-fill,var(--kd-bg));--kd-line:calc(var(--_k-type-label) * 1.5);
   --kd-i:var(--k-diff-inset,8px);--kd-x:var(--kd-i);--kd-inner:max(3px,calc(var(--_ku-pane-radius) - var(--kd-i)));--kd-ctl:var(--kd-inner);
   --kd-head:calc(var(--_k-control-h) + 2 * var(--kd-i));--kd-fade:var(--k-diff-fade,20px);--kd-stick:0px;position:relative;display:flex;flex-direction:column;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;
-  background:var(--kd-bg);border-radius:var(--_ku-pane-radius);font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;
+  background:var(--kd-bg);border-radius:var(--_ku-pane-radius);font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);color:var(--_k-fg);text-align:left;
   letter-spacing:normal;word-spacing:normal;text-transform:none;-webkit-font-smoothing:antialiased}
 .knobs-ui.knobs-diff[data-height="auto"]{height:auto}
 .knobs-ui.knobs-diff:not([data-on="pane"])::after{content:"";position:absolute;inset:0;z-index:3;box-shadow:inset 0 -1px 0 var(--_k-border-subtle);pointer-events:none}
@@ -37,9 +37,9 @@ export const diffCss = `
 .knobs-diff[data-scrolled]>.knobs-diff-head{box-shadow:inset 0 -1px var(--_k-border)}
 .knobs-diff-path{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 .knobs-diff-dir,.knobs-diff-from{color:var(--_k-fg-3)}
-.knobs-diff-base{color:var(--_k-fg);font-weight:var(--_k-weight-title)}
-.knobs-diff-stat,.knobs-diff-counts{flex:none;display:inline-flex;gap:6px;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-diff-stat{font-size:var(--_k-text-meta);align-items:center}
+.knobs-diff-base{color:var(--_k-fg);font-weight:var(--_k-weight-label)}
+.knobs-diff-stat,.knobs-diff-counts{flex:none;display:inline-flex;gap:6px;font-variant-numeric:tabular-nums;font-feature-settings:var(--_kr-data,"tnum")}
+.knobs-diff-stat{font-size:var(--_k-type-small);align-items:center}
 /* +/− as five squares, GitHub's way. */
 .knobs-diff-bar{display:inline-flex;gap:1px;margin-left:1px}
 .knobs-diff-bar>i{width:6px;height:6px;border-radius:1.5px;background:color-mix(in srgb,var(--_k-fg) 14%,transparent)}
@@ -48,13 +48,13 @@ export const diffCss = `
 .knobs-diff-add{color:var(--kd-add)}
 .knobs-diff-del{color:var(--kd-del)}
 .knobs-diff-counts>:empty{display:none}
-.knobs-diff-status{font:600 calc(var(--_k-font-size) - 2px)/1 var(--_k-mono);color:var(--_k-fg-3)}
+.knobs-diff-status{font:var(--_k-weight-label) var(--_k-type-small)/1 var(--_k-mono);color:var(--_k-fg-3)}
 .knobs-diff-status[data-change="change"]{color:var(--kd-mod)}
 .knobs-diff-status[data-change="new"]{color:var(--kd-add)}
 .knobs-diff-status[data-change="deleted"]{color:var(--kd-del)}
 .knobs-diff-status[data-change="rename"]{color:var(--kd-move)}
 .knobs-diff-fill{flex:1}
-.knobs-diff-nav{flex:none;display:inline-flex;align-items:center;gap:1px;color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-variant-numeric:tabular-nums}
+.knobs-diff-nav{flex:none;display:inline-flex;align-items:center;gap:1px;color:var(--_k-fg-3);font-size:var(--_k-type-small);font-variant-numeric:tabular-nums}
 .knobs-diff-nav>span{min-width:3.6em;text-align:center}
 :where(.knobs-ui) :is(.knobs-diff-btn,.knobs-diff-choice,.knobs-diff-viewed,.knobs-diff-filter>input,.knobs-diff-filter>button){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;border-radius:0;
   margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
@@ -62,14 +62,14 @@ export const diffCss = `
   transition:background calc(var(--_k-hover-out) * 1ms),opacity .15s}
 /* Hover is a quiet fill under the arrow cursor (no hand, no brightening), there at once. */
 .knobs-ui .knobs-diff-btn:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_k-fill-selected)}
 .knobs-ui .knobs-diff-btn:disabled{opacity:.35;cursor:default;background:transparent}
 .knobs-diff-btn svg{width:16px;height:16px}
 /* Viewed: a check with its word, as on GitHub; the path dims once it's ticked. */
 .knobs-ui .knobs-diff-viewed{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--_k-control-h);padding:0 8px 0 6px;border-radius:var(--kd-ctl);color:var(--_k-fg-2);
-  font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color .15s}
+  font-size:var(--_k-type-small);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-diff-viewed:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_k-fill-selected)}
 .knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
 /* Narrow, the header gives up words before anything is cut off at its end: Viewed keeps its
@@ -86,7 +86,7 @@ export const diffCss = `
 /* Split | Unified: the selection pill on the one picked, its bright copy the picked one's text; a
    choice isn't brighter for being picked. Choices are styled by class, as the copy holds them too. */
 .knobs-diff-seg{position:relative;flex:none;display:grid;grid-template-columns:1fr 1fr;height:var(--_k-control-h);padding:2px;border-radius:var(--kd-ctl);background:var(--_k-fill)}
-.knobs-ui .knobs-diff-choice{padding:0 9px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-text-meta);
+.knobs-ui .knobs-diff-choice{padding:0 8px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-type-small);
   font-weight:var(--_k-weight-label);white-space:nowrap;cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-diff-choice:not([aria-checked="true"]):is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* The diff: one layer per file or layout on show, the old fading under the new. */
@@ -108,7 +108,7 @@ export const diffCss = `
 .knobs-diff-layer{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:hidden}
 .knobs-diff-hbar{position:absolute;height:5px;pointer-events:none}
 .knobs-diff-hbar>i{position:absolute;left:0;top:0;height:5px;border-radius:3px;background:color-mix(in srgb,var(--_k-fg) 30%,transparent);opacity:0;pointer-events:none;
-  transition:opacity .3s,background .15s}
+  transition:opacity .3s,background calc(var(--_k-hover-out) * 1ms)}
 .knobs-diff-body:hover .knobs-diff-hbar>i,.knobs-diff-hbar:is([data-active],[data-dragging])>i{opacity:1;pointer-events:auto;transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-diff-hbar>i:hover,.knobs-diff-hbar[data-dragging]>i{background:color-mix(in srgb,var(--_k-fg) 48%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* stack: every file down one scroller, each header sticking until the next pushes it off. It's
@@ -119,7 +119,7 @@ export const diffCss = `
 .knobs-diff-part-head{position:sticky;top:0;z-index:2;border-radius:0;display:flex;align-items:center;gap:8px;height:var(--_k-row);padding:0 var(--kd-x);background:var(--kd-solid);
   box-shadow:inset 0 0 transparent;transition:box-shadow .15s;user-select:none;-webkit-user-select:none}
 .knobs-diff-part>.knobs-diff-part-head[data-stuck]{box-shadow:inset 0 -1px var(--_k-border)}
-.knobs-diff-part-head .knobs-diff-counts{font-size:var(--_k-text-meta);align-items:center}
+.knobs-diff-part-head .knobs-diff-counts{font-size:var(--_k-type-small);align-items:center}
 .knobs-diff-part-head .knobs-diff-status{flex:none;width:10px}
 .knobs-diff-part-note{padding:var(--kd-i) var(--kd-x);color:var(--_k-fg-3)}
 .knobs-diff[data-height="auto"] .knobs-diff-scroll{overscroll-behavior:auto}
@@ -130,7 +130,7 @@ export const diffCss = `
   --diffs-bg:var(--kd-solid);
   --diffs-font-family:var(--_k-mono);
   --diffs-header-font-family:var(--_k-font);
-  --diffs-font-size:calc(var(--_k-font-size) - .5px);
+  --diffs-font-size:var(--_k-type-label);
   --diffs-line-height:var(--kd-line);
   --diffs-gap-inline:var(--kd-x);
   --diffs-gap-block:var(--kd-i);
@@ -157,7 +157,7 @@ export const diffCss = `
    the list inside is pinned to its right edge, so it slides out from under the diff), parted
    from the diff by a hairline; one hairline runs under both headers and one under it all. */
 .knobs-ui.knobs-diff-review{position:relative;display:flex;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;
-  font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased}
+  font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);color:var(--_k-fg);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased}
 .knobs-diff-review::after{content:"";position:absolute;inset:0;z-index:5;box-shadow:inset 0 -1px 0 var(--_k-border-subtle);pointer-events:none}
 :where(.knobs-diff-review,.knobs-diff-review *){box-sizing:border-box}
 .knobs-diff-drawer{position:relative;flex:none;width:0;height:100%;overflow:hidden;box-shadow:inset -1px 0 var(--_k-border-subtle)}
@@ -165,8 +165,8 @@ export const diffCss = `
 .knobs-diff-drawer-in{position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column}
 .knobs-diff-drawer-head{flex:none;display:flex;align-items:center;gap:6px;height:calc(var(--_k-control-h) + 2 * var(--k-diff-inset,8px));padding:0 var(--k-diff-inset,8px) 0 calc(var(--_ku-row-x) + 8px);
   box-shadow:inset 0 -1px var(--_k-border-subtle);user-select:none;-webkit-user-select:none}
-.knobs-diff-drawer-title{font-weight:var(--_k-weight-title)}
-.knobs-diff-drawer-count{color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-variant-numeric:tabular-nums}
+.knobs-diff-drawer-title{font-weight:var(--_k-weight-label)}
+.knobs-diff-drawer-count{color:var(--_k-fg-3);font-size:var(--_k-type-small);font-variant-numeric:tabular-nums}
 .knobs-diff-drawer-in>.knobs-diff-files{flex:1;min-height:0;height:auto}
 .knobs-diff-main{position:relative;flex:1;min-width:0;height:100%}
 /* height: "auto": the card as tall as its diff; the drawer stretches to it. */
@@ -182,13 +182,13 @@ export const diffCss = `
 /* The filter is a line of text, no box; focused, a hairline ring. */
 .knobs-diff-filter:focus-within{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--_k-accent) 45%,transparent)}
 .knobs-diff-filter svg{width:12px;height:12px;flex:none}
-.knobs-ui .knobs-diff-filter>input{flex:1;min-width:0;height:100%;font:var(--_k-weight) var(--_k-font-size)/1 var(--_k-font);color:var(--_k-fg);caret-color:var(--_k-accent);background:transparent}
+.knobs-ui .knobs-diff-filter>input{flex:1;min-width:0;height:100%;font:var(--_k-weight) var(--_k-type-body)/1 var(--_k-font);color:var(--_k-fg);caret-color:var(--_k-accent);background:transparent}
 .knobs-ui .knobs-diff-filter>input::placeholder{color:var(--_k-fg-3)}
 .knobs-ui .knobs-diff-filter>button{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;color:var(--_k-fg-3);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),opacity .12s}
 .knobs-ui .knobs-diff-filter>button:hover{background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-diff-filter>button svg{width:12px;height:12px}
 .knobs-diff-list{position:relative;flex:1;min-height:0}
-.knobs-diff-files .knobs-diff-counts{font-size:var(--_k-text-meta);align-items:center}
+.knobs-diff-files .knobs-diff-counts{font-size:var(--_k-type-small);align-items:center}
 .knobs-diff-files .knobs-diff-counts{gap:5px}
 .knobs-diff-files .knobs-diff-bar{margin-left:0}
 .knobs-diff-files .knobs-diff-bar>i{width:4px;height:4px;border-radius:1px}

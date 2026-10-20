@@ -3,6 +3,10 @@
 import { describe, expect, test } from "vitest"
 import { MEASURE, SPACE, TYPE, trackingAt } from "../src/review/foundations"
 import { TOKEN_BY_NAME, type TokenName } from "../src/tokens/schema"
+import { compareCss } from "../src/ui/compare-css"
+import { diffCss } from "../src/ui/diff-css"
+import { historyCss } from "../src/ui/history-css"
+import { playerCss } from "../src/ui/player-css"
 import { walkthroughCss } from "../src/ui/walkthrough-css"
 import { fillFacts, fillMedia, optionColumns } from "../src/ui/walkthrough-model"
 
@@ -21,7 +25,13 @@ const declarations = (css: string) =>
     (m) => ({ property: m[1]!, value: m[2]!.trim() }),
   )
 
-const SHEETS = { walkthrough: walkthroughCss }
+const SHEETS = {
+  walkthrough: walkthroughCss,
+  compare: compareCss,
+  player: playerCss,
+  diff: diffCss,
+  history: historyCss,
+}
 const SIZE = /var\(--_k-type-(heading|title|body|label|small)\)/
 
 describe("type", () => {
@@ -78,6 +88,46 @@ describe("space", () => {
     for (let i = from + 1; i < SPACE.length; i++)
       expect(SPACE[i]!.px).toBeGreaterThanOrEqual(SPACE[i - 1]!.px * 2)
   })
+})
+
+/** Each rule's selector and body, comments dropped. */
+const rules = (css: string) =>
+  [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    selector: m[1]!.trim(),
+    body: m[2]!,
+  }))
+
+describe("the hand", () => {
+  for (const [name, css] of Object.entries(SHEETS)) {
+    test(`${name}: the arrow, never a hand`, () => {
+      expect(
+        declarations(css).filter((d) => d.property === "cursor" && /pointer|grab/.test(d.value)),
+      ).toEqual([])
+    })
+
+    test(`${name}: a hover's background or colour lands at once and eases out`, () => {
+      const off: string[] = []
+      for (const { selector, body } of rules(css)) {
+        const hover = /:hover|\[data-hover\]/.test(selector.replace(/:not\([^)]*\)/g, ""))
+        const paints =
+          /(?:^|;)\s*(background(?:-color|-image)?|color|text-decoration-color)\s*:/.test(body)
+        if (
+          hover &&
+          paints &&
+          !/transition-duration:calc\(var\(--_k-hover-in\) \* 1ms\)/.test(body)
+        )
+          off.push(selector)
+        for (const m of body.matchAll(/transition:([^;]+)/g))
+          for (const part of m[1]!.split(/,(?![^(]*\))/))
+            if (
+              /^\s*(background|color)\b/.test(part) &&
+              /(?<!\*\s*)(?<![\w.-])(?:\d+\.?\d*|\.\d+)m?s\b/.test(part)
+            )
+              off.push(`${selector} → ${part.trim()}`)
+      }
+      expect(off).toEqual([])
+    })
+  }
 })
 
 describe("edges", () => {
