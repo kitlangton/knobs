@@ -70,6 +70,7 @@ export {
   type State,
 } from "./core/schema.js"
 export { springCss, springMotion, type SpringValue } from "./core/spring.js"
+export { reducedSpring, SPRINGS, type SpringName } from "./core/motion.js"
 export { colorHex, parseColor, type Oklch } from "./core/color.js"
 export {
   sampleGradient,

@@ -6,6 +6,7 @@ import { FLASH_MS } from "./flash.js"
 import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
 import { CRUMB_GLIDE } from "./crumbs.js"
 import { DERIVED_TOKENS, rootCss } from "../core/root.js"
+import { motionCss, SPRING_TOKEN, SPRINGS, springLinear } from "../core/motion.js"
 
 // CSS transitions run on the GPU renderer's springs (sampled into linear() easings), so both
 // renderers move alike. The trailing edge's time stretches with --k-blur, like trailScale().
@@ -20,13 +21,13 @@ const FILL_T = `calc(var(--k-fill-ms) * 1ms * clamp(var(--k-blur),.1,2)) var(--k
 const SLIDE_T = `calc(var(--k-fill-ms) * 1ms) var(--k-fill-ease)`
 // Header and group buttons that come and go bloom in place on Kit's "snappy" spring (.25 s,
 // bounce 0), leaving on one a fifth shorter. Copy's glyph comes back on the same spring.
-const snappy = springEasing((2 * Math.PI) / 0.25, 1)
-const snappyOut = springEasing((2 * Math.PI) / 0.2, 1)
+const snappy = springLinear(SPRINGS.snappy)
+const snappyOut = springLinear({ duration: 0.2, bounce: 0 })
 const BLOOM_IN = `${snappy.ms}ms ${snappy.easing}`
 const BLOOM_OUT = `${snappyOut.ms}ms ${snappyOut.easing}`
 const DELAY = "var(--k-delay,0ms)"
 // A panel arms (holds the keys) and disarms on Kit's "default" spring (.3 s, no bounce).
-const armed = springEasing((2 * Math.PI) / 0.3, 1)
+const armed = springLinear(SPRINGS.default)
 const ARMED_T = `${armed.ms}ms ${armed.easing}`
 /**
  * A panel whose rows the pointer is on (has.ts keeps `data-k-row-hover`), unless keys have taken
@@ -136,13 +137,14 @@ ${GRAD_PROPS}
   --k-label-weight:500;--k-blur:1;--k-glow:0.5;--k-roll:320;--k-drag-roll:0;--k-cascade:12;--k-glass:0.6;
   --k-font:system-ui,-apple-system,"SF Pro Text",sans-serif;
   --k-mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace;
-  --k-spring:0.24 0.16;--k-ease:cubic-bezier(.2,.8,.2,1);
+  --k-spring:${SPRING_TOKEN};--k-ease:cubic-bezier(.2,.8,.2,1);
   --k-font-weight:400;--k-title-weight:600;--k-thumb:#fff;--k-lift:1;--k-frame:card;
   --k-row-gap:0px;--k-hover-in:0;--k-hover-out:120;--k-fill-rest-mix:20%;--k-fill-active-mix:30%;--k-chrome:1;--k-handle-inset:0px;--k-handle-rest:0;--k-step-resist:0.25;--k-motion-blur:0;--k-range-blur:.5;--k-curve-blur:.5;--k-group-transform:uppercase;
   --k-lead:${lead.easing};--k-trail:${trail.easing};--k-fill-ease:${fill.easing};--k-fill-ms:${fill.ms};
   --k-lens-ms:180;--k-lens-lead:1;--k-lens-wash:.9;--k-lens-line:.65;--k-lens-panel-wash:.35;--k-lens-inset:0px;--k-lens-panel-inset:0px;
   --k-armed-edge:.1;--k-armed-glow:0;--k-armed-glow-a:0;--k-title-rest:.6;--k-esc-hint-ms:1800;
 }
+${motionCss}
 ${rootCss}
 /* Glass edges are hairlines: --k-rim-width is one device pixel at common pixel ratios. */
 @media(min-resolution:1.5dppx){:where(:root,:host){--k-rim-width:.67px}}

@@ -1,4 +1,5 @@
 import { springMotion } from "../../core/spring.js"
+import { MOTION } from "../../core/motion.js"
 import { mixRgba as mixColor, parseCssColor, type Rgba, withAlpha } from "../../ui/rgba.js"
 
 export { mixColor, parseCssColor, type Rgba, withAlpha }
@@ -221,7 +222,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   const fill =
     Number.isFinite(duration) && Number.isFinite(bounce)
       ? springMotion({ duration: duration!, bounce: bounce! })
-      : { omega: 30, zeta: 0.88 }
+      : MOTION.default
 
   const fontFamily =
     style.fontFamily ||

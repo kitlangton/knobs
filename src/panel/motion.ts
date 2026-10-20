@@ -1,9 +1,10 @@
-import { Spring } from "../core/spring.js"
+import { Spring, springMotion } from "../core/spring.js"
+import { SPRINGS } from "../core/motion.js"
 
 export { Spring, springEasing } from "../core/spring.js"
 
-/** The slider fill, and its rubber band springing back from past an end. */
-export const FILL = { omega: 30, zeta: 0.88 }
+/** The slider fill (the default spring, as --k-spring), and its rubber band springing back from past an end. */
+export const FILL = springMotion(SPRINGS.default)
 export const RELEASE = { omega: 32, zeta: 0.65 }
 export const LEAD = { omega: 34, zeta: 0.86 }
 export const TRAIL = { omega: 25, zeta: 1 }

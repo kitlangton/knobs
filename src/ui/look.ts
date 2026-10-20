@@ -1,4 +1,4 @@
-import { springEasing } from "../core/spring.js"
+import { motionCss, SPRINGS, springLinear } from "../core/motion.js"
 import rollingCss from "../panel/rolling-css.js"
 import { presetCss, type TokenPreset } from "../core/theme.js"
 import { activityCss } from "./activity-css.js"
@@ -18,7 +18,7 @@ export interface UiLook {
   readonly theme?: UiTheme
 }
 
-const ease = springEasing(26, 1)
+const ease = springLinear(SPRINGS.snappy)
 
 // The pieces read knobs' public tokens (--k-*), set by a host, a preset or the panel's own :root
 // defaults; each falls back to the panel's default, so a piece standing alone looks the same.
@@ -356,6 +356,7 @@ export function injectUiStyles(doc: Document) {
   const style = doc.createElement("style")
   style.dataset.knobsUi = ""
   style.textContent =
+    motionCss +
     rootCss +
     css +
     readoutCss +
@@ -469,8 +470,7 @@ function injectPanelPreset(doc: Document, preset: TokenPreset) {
   doc.head.append(style)
 }
 
-export const reducedMotion = (win: Window | null) =>
-  win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+export { reducedMotion } from "../core/motion.js"
 
 export const tune = <T extends { omega: number; zeta: number }>(
   s: T,

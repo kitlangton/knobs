@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { MOTION } from "../core/motion.js"
 import { arrowOf } from "./prefs.js"
 import type { StoragePort } from "../core/storage.js"
 import type { MountPanelOptions, SectionFolded } from "../core/store.js"
@@ -649,7 +650,7 @@ export function createPageLayout(
       .map(Number)
     return Number.isFinite(duration) && Number.isFinite(bounce)
       ? springMotion({ duration: duration!, bounce: bounce! })
-      : { omega: 30, zeta: 0.88 }
+      : MOTION.default
   }
   const idOf = (tile: HTMLElement) => tile.dataset.group ?? tile.dataset.card
   const focusedIn = (node: HTMLElement) => node.contains(doc.activeElement)
