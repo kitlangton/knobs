@@ -1353,7 +1353,23 @@ const doc: WalkthroughDoc = {
 const w = walkthrough(container, { doc, onFeedback: (fb) => send(fb) })
 ```
 
-**`walkthrough(container, { doc })`** is the page an agent writes to show its work: a plain document (JSON) of sections and steps, each step one card holding a caption, its media and what it asks (a note, or a pick between options). Notes come from a bar docked at the bottom, typed, spoken or inked, each carrying what was on show (a video's time and chapter, a compare's loop and zoom, a diff's file) and a short log of what led up to it; `onFeedback`, `w.feedback` and `w.markdown()` hand it back. `j` / `k` move between steps, `←` / `→` seek, `f` goes full window, `n` writes a note, `1`–`9` pick. Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`, `code`, `terminal`, `metric`, `callout`, `text`, `history`, `stack`, `table`, or `mount` (your own, `(el) => cleanup`; the one that isn't JSON). A step's card is the surface, so media inside draw no card of their own. Wherever media name a step (`step` on a history event, a stack item or a table cell) they take its key, id or number (`"1.2"`), and clicking goes there as `j` / `k` do. The demo is `examples/walkthrough.html`.
+**`walkthrough(container, { doc })`** is the page an agent writes to show its work: a plain document (JSON) of sections and steps, each step a title, a caption, its media and what it asks (a note, or a pick between options). It reads as one calm column at a readable width (`--k-walkthrough-width`, 680px), the contents rail beside it on the right (`rail: "left"`, or `false`), on the page tokens: the intro, the updates and each section a section's room apart (`--k-space-section`, 96px, a hairline in the middle), the groups and steps inside a section a group's room apart (`--k-space-group`, 48px), prose at 68ch. Steps sit on the page with a hairline between them; `cards: true` puts each on a card of its own, the one surface its media sit on (nothing inside draws a fill and a ring of its own). Titles take inline Markdown (`` `code` ``, `[links](…)`); the contents read them as plain words.
+
+A section's meta line leads with its **kicker** in text colour: `"PR 2 of 5"` by default where its `link` is a pull request (counted among the sections that link one), your own words with `kicker: "Part 3"`, none with `kicker: false`. Its PR link, status and so on follow in faint, joined by `·`. Its title (20/28) outranks the page's (16/24) and its steps' (13/20). Steps aren't numbered on screen, but a ref still names one by its key, id or number (`"1.2"`): `step` on an update, a history event, a stack item or a table cell, and clicking goes there as `j` / `k` do.
+
+Notes come from a launcher in the column's corner (`noteBar: "collapsed"`, the default) that opens into the bar on a click, `n`, a recording or ink, and folds back when it's empty; `"docked"` keeps the bar there, `"hidden"` drops it (`w.send()` still works). Typed, spoken or inked, each note carries what was on show (a video's time and chapter, a compare's loop and zoom, a diff's file) and a short log of what led up to it; `onFeedback`, `w.feedback` and `w.markdown()` hand it back. The page keeps the bar's height clear at its end and as its scroller's `scroll-padding-bottom`, so `j` / `k`, `go()` and the last step never land under it, and full window stops above it. `j` / `k` move between steps (`Home` / `End` to the first and last), `←` / `→` seek, `f` goes full window, `n` writes a note, `1`–`9` pick.
+
+Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`, `code`, `terminal`, `metric`, `callout`, `text`, `history`, `stack`, `table`, or `mount` (your own, `(el) => cleanup`; the one that isn't JSON). A step's media sit one under another (a group's room apart); `columns: 2` sets them side by side where there's room, and `more: "More clips"` folds everything after the first under a quiet toggle. Only a picture's frame and a code block are bounded; a metric, a callout, a table, a stack and a history sit on the page.
+
+**The feed** (`updates` and `qa`, newest first) is a calm list a group's room apart, a hairline between items and no boxes: a meta line (when · the step's PR · `status`), the question in text colour (or the update), its answer in dim prose, and its `trail` (what Kit did before asking, `"0:04 · Played the compare"`) folded under a small faint **Context** toggle whose height springs open on the state spring (.3 s) while the lines fade in place under a soft bottom edge. `status: "shipped"` reads Shipped, `"changes"` reads Changes queued.
+
+```json
+{ "qa": [{ "at": "2026-10-19T12:10:00-07:00", "q": "Why is there no video for #57158?",
+           "a": "It's the installer redirect: nothing to watch.", "step": "4.1", "status": "shipped",
+           "trail": ["0:03 · Viewed TUI /connect", "0:11 · Played the compare at 0:04"] }] }
+```
+
+The demo is `examples/walkthrough.html`.
 
 **`history`**: dated events down a spine, a tone dot each (`good`, `warn`, `bad`, `info`, `dim`), under quiet group headings. `provenance` says whether an event was seen in the record (`"verified"`) or worked out from behaviour (`"inferred"`, a ring for a dot and a dashed tag), and `source` where (`"verified · git"`). `evidence` is small tags, linked or not; `type: "release"` draws a diamond, `"audit"` a square. Groups take `events` or `rows`; a bare `events` list is one group. In a narrow card the date goes over the event.
 
@@ -1376,7 +1392,7 @@ const w = walkthrough(container, { doc, onFeedback: (fb) => send(fb) })
     "delta": { "add": 446, "del": 47 }, "status": "Stacked on #57146", "tone": "good", "summary": "Modal, notice and prompt recall." } ] }
 ```
 
-**`table`**: a real `<table>` for audits and matrices. Rows are cells by column key, bare or under `cells`; a cell is text, a number, or `{ text, href?, code?, badge?, tone?, step? }` (a `badge` is a tone chip). Columns take `mono` and `align` (number columns go right by themselves). Figures are tabular; a tall table keeps its head stuck, a wide one scrolls across, its edges fade where there's more, and its bars show thin on hover. `caption` goes under it.
+**`table`**: a real `<table>` for audits and matrices. Rows are cells by column key, bare or under `cells`; a cell is text, a number, or `{ text, href?, code?, badge?, tone?, step? }` (a `badge` is a tone chip). Columns take `mono` and `align` (number columns go right by themselves). Figures are tabular; a tall table keeps its head stuck, and its bars show thin on hover. `caption` goes under it. Where the step is narrower than the columns' natural width (long text keeping a measure, code on one line), each row becomes a block: its `primary` cell (the first column by default) as its title with its badges at the end of the line, the rest as term and value under it, the blocks parted by hairlines. `stack: "always"` always stacks; `stack: "never"` scrolls across instead, edges fading where there's more.
 
 ```json
 { "kind": "table", "caption": "From a clean HOME, Oct 20", "columns": [
@@ -1387,7 +1403,7 @@ const w = walkthrough(container, { doc, onFeedback: (fb) => send(fb) })
             { "channel": "brew install …/opencode-v2", "days": 31, "state": { "text": "Pending", "badge": "info", "step": "4.6" } } ] }
 ```
 
-**`chapters`** on a `video` (or a `compare`): timestamp pills under it. A click seeks there and plays, and goes in the note's log; one highlight springs to the chapter playing as it plays (.4 s, no bounce), and a note's `media` names it (`chapter`). A chapter ends at `end`, else `start + duration`, else the next one's start. On a compare they're also its timeline's markers. A video's `captions` (or `captionsSrc`) is a WebVTT URL, shown by default.
+**`chapters`** on a `video` (or a `compare`): a readout list under it, a row each (number · label · start). A click selects the chapter at once while the media seeks there and plays, and goes in the note's log; the selection pill slides to the chapter playing (the last that started at or before the playhead) and fades out in place outside them, and a note's `media` names it (`chapter`). A chapter ends at `end`, else `start + duration`, else the next one's start. On a compare they're also its timeline's markers. A video's `captions` (or `captionsSrc`) is a WebVTT URL, shown by default.
 
 ```json
 { "kind": "video", "src": "journey.mp4", "poster": "journey.png", "captions": "captions.vtt", "chapters": [

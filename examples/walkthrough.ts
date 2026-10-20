@@ -80,11 +80,25 @@ export const doc: WalkthroughDoc = {
       text: "Re-encoded every clip at 540p with a keyframe every 15 frames, so scrubbing is instant.",
     },
   ],
+  // An answer carries what Kit did before asking, folded away under it.
   qa: [
     {
       at: "2026-10-19T12:10:00-07:00",
       q: "Why is there no video for #57158?",
-      a: "It's the installer redirect: nothing to watch. The curl output is in its PR body.",
+      a: "It's the installer redirect: nothing to watch. The curl output is in its PR body, and in the last step here.",
+      step: "installer-redirect",
+      trail: [
+        "0:03 · Viewed TUI /connect → OpenCode Go",
+        "0:11 · Played the compare at 0:04",
+        "0:19 · Scrolled to the rest of the kit",
+      ],
+    },
+    {
+      at: "2026-10-19T12:40:00-07:00",
+      q: "Ship #57151?",
+      a: "Merged into `dev` at 12:38.",
+      step: "2.1",
+      status: "shipped",
     },
   ],
   sections: [
@@ -139,6 +153,7 @@ export const doc: WalkthroughDoc = {
     {
       id: "kit",
       title: "The rest of the kit (demo data)",
+      kicker: "Demo",
       status: "needs-taste",
       summary:
         "Not from the audit: made-up steps that show the other pieces. A taste test, a code diff, metrics, a merge stack, a history, a table, a chaptered video and a terminal block.",
@@ -186,6 +201,7 @@ export const doc: WalkthroughDoc = {
         {
           title: "Onboarding checks",
           caption: "Two numbers side by side: what passed before, and after.",
+          columns: 2,
           media: [
             { kind: "metric", label: "Checks passing", before: 315, after: 345, of: 345 },
             {
@@ -393,10 +409,12 @@ export const doc: WalkthroughDoc = {
         },
         {
           title: "Where a new user lands",
-          caption: "A table: a channel matrix, its head stuck while it scrolls.",
+          caption:
+            "A table: a channel matrix. Too wide for the column, each row stacks: the entry point over the rest, its state at the end of the line.",
           ask: "none",
           media: {
             kind: "table",
+            primary: "channel",
             caption: "Checked from a clean HOME on 2026-10-20.",
             columns: [
               { key: "channel", label: "Entry point", mono: true },
@@ -468,12 +486,21 @@ export const doc: WalkthroughDoc = {
           },
         },
         {
+          id: "installer-redirect",
           title: "Installer redirect",
-          caption: "A terminal block for evidence that isn't a video.",
-          media: {
-            kind: "terminal",
-            code: "$ curl -sI https://example.com/install\nHTTP/2 302\nlocation: https://example.com/install.sh",
-          },
+          caption: "A terminal block for evidence that isn't a video; the edge rule behind it folds away.",
+          media: [
+            {
+              kind: "terminal",
+              code: "$ curl -sI https://example.com/install\nHTTP/2 302\nlocation: https://example.com/install.sh",
+            },
+            {
+              kind: "code",
+              label: "The edge rule",
+              code: 'if (url.pathname === "/install") return Response.redirect(V1_INSTALLER, 302)',
+            },
+          ],
+          more: "The edge rule",
           ask: "none",
         },
       ],
@@ -483,9 +510,13 @@ export const doc: WalkthroughDoc = {
 
 const status = (text: string) => console.info(`[walkthrough] ${text}`)
 
+// ?cards puts each step on a card; ?bar=docked keeps the note bar open.
+const params = new URLSearchParams(location.search)
 const w = walkthrough(document.getElementById("page")!, {
   ...uiLook(),
   doc,
+  cards: params.has("cards"),
+  noteBar: params.get("bar") === "docked" ? "docked" : "collapsed",
   onFeedback: (fb) => status(`${fb.reviewed} of ${fb.total} reviewed`),
 })
 
