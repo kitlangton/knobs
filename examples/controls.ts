@@ -74,6 +74,7 @@ import {
 } from "./controls-motion"
 import { reviewSections } from "./controls-review"
 import { lampScene } from "./controls-scene-lamp"
+import { themesSection } from "./controls-themes"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
 import skyWgsl from "./controls-sky.wgsl?raw"
@@ -1350,6 +1351,7 @@ reviewSections({ section, h, theme: () => theme, whenNear })
 // ── Matching your app ────────────────────────────────────────────────────────────────────────
 
 category("Matching your app")
+themesSection({ section, h, theme: () => theme, define, mount, whenNear })
 
 {
   const s = section({
