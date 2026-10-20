@@ -2,7 +2,7 @@
 // page itself (site-look.ts); then a few scenes, each one panel of several
 // kinds of control driving something together (the lamp, the object and the dots and sky are
 // drawn by WebGPU through controls-gpu.ts); then the panel's structure, a remote store, knobs/ui
-// and the looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
+// with its review pieces (controls-review.ts), and the themes and looks. ?gpu draws the panels with the WebGPU renderer, ?nogpu keeps the previews on the
 // DOM, ?appearance=light starts light. ⌘K lists the page's sections and controls; ` hides and shows
 // every panel.
 import {
@@ -72,6 +72,7 @@ import {
   stretchFor,
   type Val,
 } from "./controls-motion"
+import { reviewSections } from "./controls-review"
 import { lampScene } from "./controls-scene-lamp"
 import { motionScene } from "./controls-scene-motion"
 import { objectScene } from "./controls-scene-object"
@@ -215,6 +216,18 @@ function mountUpTo(target: HTMLElement) {
   mountSection(sec)
 }
 
+/** Runs `fn` once `el`'s section nears the view, or a jump passes it. */
+export function whenNear(el: HTMLElement, fn: () => void) {
+  const sec = el.closest<HTMLElement>("section.demo") ?? el
+  let list = pendingBySection.get(sec)
+  if (!list) {
+    list = []
+    pendingBySection.set(sec, list)
+    mountIo.observe(sec)
+  }
+  list.push(fn)
+}
+
 /** A store that's on over the tailnet too, keeps nothing, and reports who changed it. */
 export function define<S extends Schema>(
   id: string,
@@ -265,19 +278,13 @@ export function mount(store: AnyControls, slot: HTMLElement, options: MountPanel
   }
   const minH = RESERVED_HEIGHT[store.id]
   if (minH) slot.style.minHeight = `${minH}px`
-  let list = pendingBySection.get(sec)
-  if (!list) {
-    list = []
-    pendingBySection.set(sec, list)
-    mountIo.observe(sec)
-  }
   let done = false
   const once = () => {
     if (done) return
     done = true
     run()
   }
-  list.push(once)
+  whenNear(sec, once)
   const prev = pendingByStore.get(store.id)
   pendingByStore.set(
     store.id,
@@ -1338,6 +1345,7 @@ category("Panel")
 
 category("knobs/ui")
 uiSections({ section, h, theme: () => theme, define, mount, panelOptions })
+reviewSections({ section, h, theme: () => theme, whenNear })
 
 // ── Matching your app ────────────────────────────────────────────────────────────────────────
 
