@@ -49,7 +49,7 @@ const detach = splat.attach(document.querySelector<HTMLElement>("#splat")!)
 
 // Or mount an inline panel inside a container:
 const unmount = splat.mount(document.querySelector<HTMLElement>("#sidebar")!, {
-  theme: "auto",
+  appearance: "system",
   density: "compact",
 })
 
@@ -1049,14 +1049,14 @@ Both renderers draw the page. With `?gpu`, the overlay draws the header's conten
 
 ## Workspaces (`knobs/ui`)
 
-`knobs/ui` has the pieces a tool's workspace is built from: resizable split panes and docks, and an outliner tree. They are plain DOM and framework-neutral, use the same tokens as panels (`--k-*`, `--k-control-h`, a `preset` such as `labPreset`), and work on their own or next to panels. A panel can mount inside a pane.
+`knobs/ui` has the pieces a tool's workspace is built from: resizable split panes and docks, and an outliner tree. They are plain DOM and framework-neutral, use the same tokens as panels (`--k-*`, and a `theme` and `appearance`, as panels take), and work on their own or next to panels. A panel can mount inside a pane.
 
 ```ts
-import { labPreset } from "knobs/themes"
+import { themes } from "knobs/themes"
 import { applyMove, split, tree } from "knobs/ui"
 import { mountPanel } from "knobs/panel"
 
-const look = { preset: labPreset, theme: "dark" as const }
+const look = { theme: themes.void, appearance: "dark" as const }
 const main = split(workspace, {
   ...look,
   id: "workspace", // saves sizes and collapsed panes
@@ -1133,12 +1133,12 @@ import { Split, Tree } from "knobs/ui/react" // or "knobs/ui/solid"
 
 ### Overlays: popovers, tooltips, the command palette, confirms and toasts
 
-`knobs/ui` also has the floating layers a workspace needs. They sit in one fixed layer above the page and the GPU overlay, come in on a spring (scale and blur from where they open, interruptible both ways; opacity only under reduced motion), and use the same tokens. `overlayLook({ preset, theme })` sets the look they all take; each also takes its own `look`.
+`knobs/ui` also has the floating layers a workspace needs. They sit in one fixed layer above the page and the GPU overlay, come in on a spring (scale and blur from where they open, interruptible both ways; opacity only under reduced motion), and use the same tokens. `overlayLook({ theme, appearance })` sets the look they all take; each also takes its own `look`.
 
 ```ts
 import { commandPalette, commandsFrom, confirm, overlayLook, popover, toast, tooltip, tooltips } from "knobs/ui"
 
-overlayLook({ preset: labPreset, theme: "dark" })
+overlayLook({ theme: themes.void, appearance: "dark" })
 
 const menu = popover(button, list, { placement: "bottom-end", role: "menu", label: "Games" })
 tooltip(pause, { text: "Pause the live feed", shortcut: "Alt+P" })
@@ -1330,53 +1330,48 @@ The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id
 
 ## Theming, Density & WebGPU Renderer
 
-Panels support `theme: "dark" | "light" | "auto"`, `density: "compact" | "default" | "comfortable"`, and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), configured on `defineControls`, `mountPanel`, or `<KnobsPanel />`. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
+Panels take a `theme`, an `appearance`, `density: "compact" | "default" | "comfortable"` and `renderer: "gpu" | "dom" | "auto"` (or `?gpu` in the URL), on `defineControls`, `mountPanel` or `<KnobsPanel />`; every `knobs/ui` piece takes the same `theme` and `appearance`, and `restyle(target, look)` changes them on what's already on screen. The header title defaults to the controls id, written as words (`"synth-voice"` reads "Synth voice"); pass `title` to override it or `title: false` to hide it.
 
-When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels share a single page-level WebGPU overlay canvas and `GPUDevice` with 480 Hz spring physics, velocity-driven directional motion blur, native-rasterized glyph atlas text, and per-column rolling digit smear, while keeping an invisible semantic DOM mirror for keyboard navigation and screen readers. The DOM renderer's transitions run on the same springs (sampled into CSS `linear()` easings), so both renderers move alike. The canvas can't sample the page, so each glass panel gets a `backdrop-filter` element just under the canvas; a panel lying over another panel firms up instead. When WebGPU is unavailable, panels fall back to the DOM/CSS renderer automatically.
+### Themes and appearance
 
-The overlay is one canvas at the top of the page, so a panel's DOM overlays (search, inline editors) can only stay above it if they aren't trapped in a stacking context. An inline panel inside an ancestor that creates one (a `transform`, `filter`, `opacity` below 1, a `z-index` on a positioned or flex item, `contain`, `isolation`, …) therefore draws with the DOM renderer, which looks the same, and is marked `data-gpu-trapped`. To keep such a panel on the GPU, take the stacking context off its ancestors. `knobs/ui` panes don't create any.
+Two themes ship in `knobs/themes`: **Knobs** (the default: a near-black glass panel, a white accent, alpha hairlines) and **Void** (true black and flat, solid hairlines, text capped at `#ededed`, a black stage behind compared media; for OLED screens and video review). Each has a dark and a light appearance.
 
-Override CSS variables on `:root`, `.knobs-panel` or any ancestor. Tokens derived from others (the handle from the accent, sizes from `--k-density`, surfaces from `--k-contrast`) are derived on each panel and knobs/ui piece, so an override anywhere above them carries through:
+```ts
+import { defineTheme, themes } from "knobs/themes"
+
+mountPanel(controls, column, { theme: themes.void })
+split(workspace, { theme: themes.void, appearance: "dark", panes })
+
+// A theme of your own from a few dials, both appearances generated (checked against APCA).
+const ocean = defineTheme({
+  name: "ocean",
+  extends: themes.knobs, // optional
+  gray: { hue: 240, chroma: 0.008 },
+  accent: "#4f8cff", // or { dark, light }
+  contrast: 60, // 0–100
+  radius: 6,
+  density: "compact",
+  material: "solid", // "glass" | "solid" | "flat"
+  tokens: { dark: { "bg-page": "#05070a" } }, // any token, per appearance
+})
+```
+
+`appearance` is `"dark"`, `"light"`, `"system"` (the OS setting) or `"inherit"`, the default: the page decides, through a `color-scheme`, a `.dark`/`.light` class, `[data-theme]` or `[data-appearance]` on an ancestor, or an outer knobs element, else the OS. A theme is a value: `theme.dark` and `theme.light` hold every token resolved, `theme.gpu` the colours as floats for WebGPU, and `theme.css()` its stylesheet. The old `theme: "dark" | "light" | "auto"` still works as an appearance, and `preset` (`labPreset`, `problemsPreset`) still lays its tokens over the theme; both are deprecated. `examples/themes.html` shows every piece in both themes and appearances, with a builder for `defineTheme`'s dials that copies the call as code.
+
+### Overriding tokens
+
+Set any token on `:root`, `.knobs-panel` or any ancestor; a host's value wins at whatever level it's set. Tokens derived from others (hover and selected fills from the surfaces, the slider handle from the accent, sizes from `--k-density`) are derived on each panel and knobs/ui piece, so an override anywhere above them carries through. The full list, with each theme's values, is under [Tokens](#tokens); the old names (`--k-surface`, `--k-text`, `--ku-*`) still work for now.
 
 ```css
 :root {
   --k-bg: #1c1c1e;
-  --k-surface: rgba(255, 255, 255, 0.055);
-  --k-surface-hi: rgba(255, 255, 255, 0.11);
-  --k-line: rgba(255, 255, 255, 0.1);
-  --k-text: rgba(255, 255, 255, 0.92);
-  --k-label: rgba(255, 255, 255, 0.64);
-  --k-accent: #fff;
-  --k-modified: rgba(255, 255, 255, 0.5);
-  --k-width: 288px;
-  --k-pad: 10px;
-  --k-inset: 10px;
-  --k-row: 32px;
-  --k-gap: 4px;
-  --k-radius: 8px;
-  --k-panel-radius: 12px;
-  --k-font-size: 12px;
-  --k-label-weight: 500;
-  --k-blur: 1;          /* motion strength: readout blur and pill stretch */
-  --k-motion-blur: 0;   /* up to 1: moving fill edges and pills smear by their speed */
-  --k-range-blur: .5;   /* up to 1: a range band's gliding ends smear by their speed */
-  --k-curve-blur: .5;   /* up to 1: morphing curves, easings and gradients smear by their speed */
-  --k-step-resist: 0.25; /* a stepped slider's pull off its stop (0 snaps, 1 follows) */
-  --k-glow: 0.5;
-  --k-roll: 320;        /* readout roll (ms) */
-  --k-drag-roll: 0;     /* roll while dragging (ms; 0 snaps) */
-  --k-cascade: 12;      /* preset ripple between rows (ms; 0 moves them together) */
-  --k-glass: 0.6;       /* 0 is opaque; up to 1 thins the panel over a blurred backdrop */
-  --k-glass-tone: 0.5;  /* backdrop brightness under full glass (light theme: 1.08) */
-  --k-spring: 0.3 0;    /* duration and bounce values settle on (GPU); pair with: */
-  --k-fill-ease: linear(...); /* springCss(value).easing, for CSS transitions */
-  --k-fill-ms: 433;     /* springCss(value).duration */
-  --k-reveal-ease: cubic-bezier(.2, .8, .2, 1); /* how editors and messages open */
-  --k-rim: rgba(255, 255, 255, 0.1);
-  --k-density: 1;       /* scales row, pad, gap, radius and font size (.875 compact, 1.1875 comfortable) */
-  --k-contrast: 1;      /* scales surface, line and edge alphas */
+  --k-accent: #4f8cff;
+  --k-radius: 6px;
+  --k-density: 0.875;
 }
 ```
+
+The panel's motion dials are tokens too: `--k-blur` (readout blur and pill stretch), `--k-motion-blur`, `--k-range-blur`, `--k-curve-blur`, `--k-step-resist`, `--k-roll` and `--k-drag-roll` (readout roll, ms), `--k-cascade` (preset ripple, ms), `--k-glass-tone`, `--k-reveal-ease`, and the spring values settle on, `--k-spring` (GPU) with `--k-fill-ease` and `--k-fill-ms` (`springCss(value)`, for CSS).
 
 Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
 
@@ -1401,6 +1396,254 @@ const die = defineControls("die", schema, {
 A reset that went back to the active preset rather than the defaults carries `base: true` in the third argument.
 
 `patch` holds only the fields that changed. The die page (`examples/die.ts`) rolls its demo dice this way.
+
+## Tokens
+
+Generated from the token schema (`bun run scripts/tokens-table.ts`), with the Knobs theme's values. Inputs are the dials a theme turns, semantic tokens are what pieces read, hooks style one component.
+
+<!-- tokens:start -->
+
+### Accent
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-accent` | input | `#ffffff` | `#1c1c1e` | The one accent: primary actions, handles, focus. Hover, soft and selection derive from it in CSS. |
+| `--k-accent-hover` | semantic | `#e5e5e5` | `#2e2e30` | Hovered accent. Derived: `color-mix(in oklch,var(--k-accent) 90%,var(--k-bg))`. |
+| `--k-accent-soft` | semantic | `#ffffff26` | `#1c1c1e26` | Accent tint behind accent content. Derived: `color-mix(in oklch,var(--k-accent) 15%,transparent)`. |
+| `--k-accent-fg` | semantic | `#ffffff` | `#1c1c1e` | Accent as text on bg (≥ Lc 60). |
+| `--k-on-accent` | semantic | `#111111` | `#ffffff` | Content placed on a solid accent. |
+
+### Inputs
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-contrast` | input | `1` | `1` | Contrast multiplier for fills and alpha borders (1 = default; the theme's 0–100 dial maps 50 → 1). |
+
+### Shape
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-radius` | input | `8px` | `8px` | Control corner radius. 0 squares everything, including capsules. Scales with density. |
+| `--k-radius-panel` | semantic | `calc(var(--k-radius) + var(--k-unit))` | `calc(var(--k-radius) + var(--k-unit))` | Panel and card radius, concentric with controls. Derived: `calc(var(--k-radius) + var(--k-unit))`. |
+| `--k-round` | semantic | `calc(var(--k-radius) * 999)` | `calc(var(--k-radius) * 999)` | Capsule radius that squares when --k-radius is 0. Use instead of 999px. Derived: `calc(var(--k-radius) * 999)`. |
+
+### Size
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-density` | input | `1` | `1` | Size multiplier: compact .875, default 1, comfortable 1.1875. |
+| `--k-unit` | semantic | `4px` | `4px` | The spacing unit. |
+| `--k-row` | semantic | `round(calc(32px * var(--k-density)),2px)` | `round(calc(32px * var(--k-density)),2px)` | Row height. Derived: `round(calc(32px * var(--k-density)),2px)`. |
+| `--k-width` | semantic | `288px` | `288px` | Panel width. |
+
+### Type
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-font` | input | `system-ui,-apple-system,"SF Pro Text",sans-serif` | `system-ui,-apple-system,"SF Pro Text",sans-serif` | UI font stack. |
+| `--k-mono` | input | `"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace` | `"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace` | Monospace font stack. |
+| `--k-font-size` | semantic | `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)` | `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)` | Body size; a 5-step scale derives privately. Derived: `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)`. |
+| `--k-value-font` | semantic | `var(--k-font)` | `var(--k-font)` | Font for readouts and values (labPreset: mono). Derived: `var(--k-font)`. |
+
+### Surfaces
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-bg-page` | semantic | `#0a0a0b` | `#e6e6e8` | The page behind panels; workspace backdrops. |
+| `--k-bg-inset` | semantic | `#151516` | `#ededef` | Wells sunk into a panel: tracks, inputs, segmented backgrounds. |
+| `--k-bg` | semantic | `#1c1c1d` | `#f5f5f7` | The panel surface. |
+| `--k-bg-raised` | semantic | `#232324` | `#ffffff` | Raised within a panel: the active segment, cards on a panel. |
+| `--k-bg-overlay` | semantic | `#29292a` | `#ffffff` | Floating surfaces: menus, popovers, tooltips. |
+
+### Fills
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-fill` | semantic | `#f4f5f90e` | `#1a1a1d0e` | Resting fill for controls. Derived: `color-mix(in oklch,var(--k-fg) calc(5.5% * var(--k-contrast)),transparent)`. |
+| `--k-fill-hover` | semantic | `#f4f5f914` | `#1a1a1d14` | Hovered fill. Derived: `color-mix(in oklch,var(--k-fg) calc(8% * var(--k-contrast)),transparent)`. |
+| `--k-fill-selected` | semantic | `#f4f5f91c` | `#1a1a1d1c` | Pressed or selected fill. Derived: `color-mix(in oklch,var(--k-fg) calc(11% * var(--k-contrast)),transparent)`. |
+
+### Foreground
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-fg` | semantic | `#f4f5f9` | `#1a1a1d` | Primary text and icons (≥ Lc 90 on bg). |
+| `--k-fg-2` | semantic | `#d0d0d5` | `#59595d` | Secondary text: labels (≥ Lc 75). |
+| `--k-fg-3` | semantic | `#9e9ea3` | `#96969b` | Tertiary text: metadata, units, captions (≥ Lc 45). |
+| `--k-fg-4` | semantic | `#7d7e81` | `#b4b5b9` | Placeholder and disabled text (≥ Lc 30). |
+
+### Borders
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-border-subtle` | semantic | `#f4f5f90f` | `#1a1a1d0f` | Hairline edges and dividers (below Lc 15 by design). Derived: `color-mix(in oklch,var(--k-fg) calc(6% * var(--k-contrast)),transparent)`. |
+| `--k-border` | semantic | `#f4f5f91a` | `#1a1a1d1a` | Default borders. Derived: `color-mix(in oklch,var(--k-fg) calc(10% * var(--k-contrast)),transparent)`. |
+| `--k-border-strong` | semantic | `#58585c` | `#d3d3d7` | Interactive edges (≥ Lc 15; solid). |
+
+### Status
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-ok` | semantic | `#59d38c` | `#0a7e3a` | Success. |
+| `--k-warn` | semantic | `#f7bc50` | `#b66c00` | Warning. |
+| `--k-danger` | semantic | `#fa6863` | `#cc2827` | Error, destructive. Put text on danger-soft rather than bare bg. |
+| `--k-info` | semantic | `#55b8f8` | `#0071b3` | Informational. |
+| `--k-ok-soft` | semantic | `#59d38c26` | `#0a7e3a26` | Success tint. Derived: `color-mix(in oklch,var(--k-ok) 15%,transparent)`. |
+| `--k-warn-soft` | semantic | `#f7bc5026` | `#b66c0026` | Warning tint. Derived: `color-mix(in oklch,var(--k-warn) 15%,transparent)`. |
+| `--k-danger-soft` | semantic | `#fa686326` | `#cc282726` | Danger tint. Derived: `color-mix(in oklch,var(--k-danger) 15%,transparent)`. |
+| `--k-info-soft` | semantic | `#55b8f826` | `#0071b326` | Info tint. Derived: `color-mix(in oklch,var(--k-info) 15%,transparent)`. |
+
+### Interaction
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-focus` | semantic | `#ffffff` | `#1c1c1e` | Focus ring colour (drawn as a 2px bg gap, then 2px of focus). Derived: `var(--k-accent)`. |
+| `--k-selection` | semantic | `#ffffff3d` | `#1c1c1e3d` | Selected rows and ranges. Derived: `color-mix(in oklch,var(--k-accent) 24%,transparent)`. |
+| `--k-scrim` | semantic | `#00000099` | `#00000040` | Dimming behind modal layers. |
+
+### Data
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-diff-add` | semantic | `#59d38c` | `#0a7e3a` | Added lines; line and word tints derive privately (12% / 38%). Derived: `var(--k-ok)`. |
+| `--k-diff-del` | semantic | `#fa6863` | `#cc2827` | Deleted lines. Derived: `var(--k-danger)`. |
+| `--k-diff-mod` | semantic | `#f7bc50` | `#b66c00` | Modified lines. Derived: `var(--k-warn)`. |
+| `--k-series-1` | semantic | `#6db0f4` | `#2378c2` | Chart series 1. |
+| `--k-series-2` | semantic | `#66c189` | `#008b4f` | Chart series 2. |
+| `--k-series-3` | semantic | `#d79f4c` | `#9c6900` | Chart series 3. |
+| `--k-series-4` | semantic | `#ed8c84` | `#b84d49` | Chart series 4. |
+| `--k-series-5` | semantic | `#bc97e8` | `#885cb5` | Chart series 5. |
+| `--k-series-6` | semantic | `#25c2c2` | `#008686` | Chart series 6. |
+
+### Material
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-shadow-raised` | semantic | `0 1px 2px light-dark(#0000001f,#00000029)` | `0 1px 2px light-dark(#0000001f,#00000029)` | Small lift for raised controls. |
+| `--k-shadow-overlay` | semantic | `0 12px 36px light-dark(#00000024,#00000085),0 1px 2px light-dark(#00000014,#0000004d)` | `0 12px 36px light-dark(#00000024,#00000085),0 1px 2px light-dark(#00000014,#0000004d)` | Floating panels, menus, popovers. |
+| `--k-glass` | semantic | `0.6` | `0.6` | Backdrop glass amount (0 = opaque). |
+| `--k-glow` | semantic | `0.5` | `0.5` | Specular glow amount. |
+| `--k-rim` | semantic | `#ffffff1a` | `#ffffff99` | Top-edge highlight hairline. |
+
+### Motion
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-spring` | semantic | `0.3 0` | `0.3 0` | Default spring as `duration bounce` (the motion module's `default`). |
+| `--k-hover-in` | semantic | `0` | `0` | Hover wash fade-in, unitless milliseconds. |
+| `--k-hover-out` | semantic | `120` | `120` | Hover wash fade-out, unitless milliseconds. |
+| `--k-z` | semantic | `2147480000` | `2147480000` | Base of knobs' stacking ladder; layers add small offsets. |
+
+### Hooks
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-slider-track` | hook | `#f4f5f90e` | `#1a1a1d0e` | Slider track. Derived: `var(--k-fill)`. |
+| `--k-slider-fill` | hook | `#fcfcfd49` | `#1b1b1e49` | Slider value fill. Derived: `color-mix(in oklch,var(--k-accent) 20%,var(--k-fill-selected))`. |
+| `--k-slider-handle` | hook | `#ffffff` | `#1c1c1e` | Slider handle and range thumbs. Derived: `var(--k-accent)`. |
+| `--k-toggle-thumb-off` | hook | `#ffffff` | `#ffffff` | A switch's thumb while off, and the ring around colour and gradient thumbs. Derived: `#ffffff`. |
+| `--k-toggle-track` | hook | `#f4f5f91c` | `#1a1a1d1c` | Toggle track, off. Derived: `var(--k-fill-selected)`. |
+| `--k-toggle-track-on` | hook | `#ffffff` | `#1c1c1e` | Toggle track, on. Derived: `var(--k-accent)`. |
+| `--k-toggle-thumb` | hook | `#111111` | `#ffffff` | Toggle thumb. Derived: `var(--k-on-accent)`. |
+| `--k-segmented-track` | hook | `#151516` | `#ededef` | Segmented control background. Derived: `var(--k-bg-inset)`. |
+| `--k-segmented-active` | hook | `#232324` | `#ffffff` | Active segment. Derived: `var(--k-bg-raised)`. |
+| `--k-timeline-playhead` | hook | `#ffffff` | `#1c1c1e` | Timeline playhead. Derived: `var(--k-accent)`. |
+| `--k-split-gutter` | hook | `#f4f5f90f` | `#1a1a1d0f` | Split pane divider. Derived: `var(--k-border-subtle)`. |
+| `--k-compare-divider` | hook | `#f4f5f9` | `#1a1a1d` | Before/after divider line. Derived: `var(--k-fg)`. |
+| `--k-compare-stage` | hook | `#f4f5f90e` | `#1a1a1d0e` | Compare stage background. Derived: `var(--k-fill)`. |
+| `--k-activity-rail` | hook | `#58585c` | `#d3d3d7` | Activity rail line. Derived: `var(--k-border-strong)`. |
+| `--k-picker-card` | hook | `#f4f5f90e` | `#1a1a1d0e` | Picker card. Derived: `var(--k-fill)`. |
+| `--k-pane-bg` | hook | `#1c1c1d` | `#f5f5f7` | knobs/ui pane card. Derived: `var(--k-bg)`. |
+| `--k-button-bg` | hook | `#f4f5f90e` | `#1a1a1d0e` | Button fill. Derived: `var(--k-fill)`. |
+| `--k-button-border` | hook | `#00000000` | `#00000000` | Button border. Derived: `transparent`. |
+| `--k-button-fg` | hook | `#f4f5f9` | `#1a1a1d` | Button text. Derived: `var(--k-fg)`. |
+| `--k-row-hover` | hook | `#f4f5f907` | `#1a1a1d07` | Row hover wash. Derived: `color-mix(in oklch,var(--k-fill) 50%,transparent)`. |
+| `--k-group-label` | hook | `#9e9ea3` | `#96969b` | Folder and group headings. Derived: `var(--k-fg-3)`. |
+| `--k-modified` | hook | `#9e9ea3` | `#96969b` | Marker for values changed from their default. Derived: `var(--k-fg-3)`. |
+
+### Renamed
+
+| Old | New |
+|---|---|
+| `--ku-accent` | `--k-accent` |
+| `--ku-radius` | `--k-radius` |
+| `--ku-font` | `--k-font` |
+| `--ku-mono` | `--k-mono` |
+| `--k-page` | `--k-bg-page` |
+| `--ku-page` | `--k-bg-page` |
+| `--ku-bg` | `--k-bg` |
+| `--k-surface` | `--k-fill` |
+| `--ku-surface` | `--k-fill` |
+| `--k-surface-hi` | `--k-fill-selected` |
+| `--ku-surface-hi` | `--k-fill-selected` |
+| `--k-text` | `--k-fg` |
+| `--ku-text` | `--k-fg` |
+| `--k-label` | `--k-fg-2` |
+| `--ku-label` | `--k-fg-2` |
+| `--k-dim` | `--k-fg-3` |
+| `--ku-dim` | `--k-fg-3` |
+| `--k-edge` | `--k-border-subtle` |
+| `--k-line` | `--k-border` |
+| `--ku-line` | `--k-border` |
+| `--k-line-hi` | `--k-border-strong` |
+| `--ku-line-hi` | `--k-border-strong` |
+| `--ku-warn` | `--k-warn` |
+| `--k-critical` | `--k-danger` |
+| `--ku-critical` | `--k-danger` |
+| `--k-ui-select` | `--k-selection` |
+| `--ku-select` | `--k-selection` |
+| `--k-panel-radius` | `--k-radius-panel` |
+| `--ku-panel-radius` | `--k-radius-panel` |
+| `--ku-row` | `--k-row` |
+| `--ku-font-size` | `--k-font-size` |
+| `--ku-value-font` | `--k-value-font` |
+| `--k-lift-shadow` | `--k-shadow-raised` |
+| `--k-shadow` | `--k-shadow-overlay` |
+| `--ku-shadow` | `--k-shadow-overlay` |
+| `--ku-rim` | `--k-rim` |
+| `--ku-hover-in` | `--k-hover-in` |
+| `--ku-hover-out` | `--k-hover-out` |
+| `--k-fill-rest` | `--k-slider-fill` |
+| `--k-handle` | `--k-slider-handle` |
+| `--k-thumb` | `--k-toggle-thumb-off` |
+| `--k-seg-bg` | `--k-segmented-track` |
+| `--ku-seg-bg` | `--k-segmented-track` |
+| `--k-seg-active` | `--k-segmented-active` |
+| `--k-ui-divider` | `--k-split-gutter` |
+| `--ku-divider` | `--k-split-gutter` |
+| `--k-compare-line` | `--k-compare-divider` |
+| `--k-activity-line` | `--k-activity-rail` |
+| `--k-ui-pane` | `--k-pane-bg` |
+| `--ku-pane-bg` | `--k-pane-bg` |
+| `--k-button-line` | `--k-button-border` |
+| `--k-button-color` | `--k-button-fg` |
+| `--k-group-ink` | `--k-group-label` |
+| `--k-group-color` | `--k-group-label` |
+| `--k-tray-pad` | `--_k-tray-pad` |
+| `--k-pad` | `--_k-pad` |
+| `--k-inset` | `--_k-inset` |
+| `--ku-inset` | `--_k-inset` |
+| `--k-gap` | `--_k-gap` |
+| `--k-radius-md` | `--_k-radius-md` |
+| `--k-radius-sm` | `--_k-radius-sm` |
+| `--k-control-h` | `--_k-control-h` |
+| `--ku-control-h` | `--_k-control-h` |
+| `--k-value-size` | `--_k-value-size` |
+| `--ku-value-size` | `--_k-value-size` |
+| `--k-text-title` | `--_k-text-title` |
+| `--k-text-body` | `--_k-text-body` |
+| `--k-text-control` | `--_k-text-control` |
+| `--k-text-meta` | `--_k-text-meta` |
+| `--ku-text-meta` | `--_k-text-meta` |
+| `--k-text-cap` | `--_k-text-cap` |
+| `--k-font-weight` | `--_k-weight` |
+| `--ku-font-weight` | `--_k-weight` |
+| `--k-label-weight` | `--_k-weight-label` |
+| `--ku-label-weight` | `--_k-weight-label` |
+| `--k-title-weight` | `--_k-weight-title` |
+| `--ku-title-weight` | `--_k-weight-title` |
+
+<!-- tokens:end -->
 
 ## Show, hide and unlock
 

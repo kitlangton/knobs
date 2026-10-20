@@ -126,19 +126,12 @@ const cell = (s: string) => s.replaceAll("|", "\\|")
 /** The README token reference: every public token with its values in `theme`, then the renames. */
 export function tokensTable(theme: Theme): string {
   const lines: string[] = []
-  let group = ""
+  const groups = new Map<string, TokenDef[]>()
   for (const def of TOKENS as readonly TokenDef[]) {
     if (def.tier === "private") continue
-    if (def.group !== group) {
-      group = def.group
-      lines.push(
-        "",
-        `### ${group}`,
-        "",
-        "| Token | Tier | Dark | Light | |",
-        "|---|---|---|---|---|",
-      )
-    }
+    groups.set(def.group, [...(groups.get(def.group) ?? []), def])
+  }
+  const row = (def: TokenDef) => {
     const source = def.source
     const derived = "css" in source && theme.declared.dark[def.name as TokenName] === undefined
     const show = (v: string) =>
@@ -149,6 +142,10 @@ export function tokensTable(theme: Theme): string {
     lines.push(
       `| \`${cssName(def)}\` | ${def.tier} | ${show(dark)} | ${show(light)} | ${cell(def.doc)}${via} |`,
     )
+  }
+  for (const [group, defs] of groups) {
+    lines.push("", `### ${group}`, "", "| Token | Tier | Dark | Light | |", "|---|---|---|---|---|")
+    for (const def of defs) row(def)
   }
   lines.push("", "### Renamed", "", "| Old | New |", "|---|---|")
   for (const [old, next] of DEPRECATED) lines.push(`| \`${old}\` | \`${next}\` |`)

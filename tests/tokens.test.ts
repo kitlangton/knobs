@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 import { knobs } from "../src/themes/knobs.js"
 import {
@@ -160,5 +162,11 @@ describe("generated CSS", () => {
       else expect(reference).toContain(`| \`${cssName(t)}\` |`)
     }
     expect(table).toContain("| `--k-text` | `--k-fg` |")
+  })
+
+  it("keeps the README's table generated (bun run scripts/tokens-table.ts)", () => {
+    const readme = readFileSync(resolve(import.meta.dirname, "../README.md"), "utf8")
+    const block = readme.match(/<!-- tokens:start -->\n([\s\S]*?)<!-- tokens:end -->/)?.[1]
+    expect(block?.trim()).toBe(tokensTable(knobs).trim())
   })
 })
