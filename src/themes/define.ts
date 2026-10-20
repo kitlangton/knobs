@@ -70,9 +70,9 @@ export interface Theme {
   /** Every colour token as linear-light sRGB floats `[r, g, b, a]` (straight alpha), for WebGPU. */
   readonly gpu: { readonly dark: GpuColors; readonly light: GpuColors }
   /**
-   * The theme's CSS in `@layer knobs.tokens`. With no selector, the full default sheet (inputs on
-   * `:root`, derivations on `.knobs-root`, deprecated aliases, appearance rules). With a selector,
-   * one block of what this theme declares, to scope it to part of a page.
+   * The theme's CSS in `@layer knobs.tokens`. With no selector, the full default sheet (its values
+   * on `:root`, every token resolved on `.knobs-root`, appearance rules). With a selector, one
+   * block of what this theme declares, to scope it to part of a page.
    */
   css(options?: { readonly selector?: string }): string
 }
@@ -303,6 +303,8 @@ function gpuOf(resolved: ResolvedTokens): GpuColors {
 
 function validate(name: string, inputs: ThemeInputs) {
   if (!/^[\w-]+$/.test(name)) throw new Error(`Invalid theme name: ${name}`)
+  // An ancestor's [data-knobs-theme="dark" | "light"] sets the appearance.
+  if (name === "dark" || name === "light") throw new Error(`Reserved theme name: ${name}`)
   for (const appearance of ["dark", "light"] as const)
     for (const key of Object.keys(inputs.tokens[appearance]))
       if (!TOKEN_BY_NAME.has(key as TokenName))

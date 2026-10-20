@@ -22,7 +22,9 @@ describe("knobs/ui stylesheet", () => {
   // A registered --kc-value-size (initial 11.5px) would beat every fallback on it.
   it("sizes readouts from --k-value-size or the piece's font size", () => {
     expect(css).not.toContain("--kc-value-size")
-    expect(css).toContain("--_k-value-size:var(--k-value-size,var(--ku-value-size,calc(var(--_k-font-size) - .5px)))")
+    expect(css).toContain(
+      "--_k-value-size:var(--k-value-size,var(--ku-value-size,calc(var(--_k-font-size) - .5px)))",
+    )
   })
 
   it("resolves on the knobs root, standing alone, from the same sheet as panels", () => {
@@ -39,7 +41,9 @@ describe("knobs/ui stylesheet", () => {
   })
 
   it("takes the light appearance from a host's [data-knobs-theme] or [data-theme] ancestor", () => {
-    expect(css).toContain('[data-theme="light"],[data-appearance="light"],[data-knobs-theme="light"]) :where(.knobs-root){color-scheme:light')
+    expect(css).toContain(
+      '[data-theme="light"],[data-appearance="light"],[data-knobs-theme="light"]) :where(.knobs-root){color-scheme:light',
+    )
   })
 
   // A dark shadow on a light theme reads as a smudge: fixed shadows follow --k-shadow-strength.

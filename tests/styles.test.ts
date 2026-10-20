@@ -130,7 +130,9 @@ describe("panel stylesheet", () => {
 
   it("resolves on the knobs root, and the slider handle follows the accent there", () => {
     expect(css).toContain("--_k-fill:var(--k-surface,var(--ku-surface,var(--k-fill,")
-    expect(css).toContain("--_k-slider-handle:var(--k-handle,var(--k-slider-handle,var(--_k-accent)))")
+    expect(css).toContain(
+      "--_k-slider-handle:var(--k-handle,var(--k-slider-handle,var(--_k-accent)))",
+    )
   })
 
   // Components read what the root resolved (or its gliding alias), never a token's public name,

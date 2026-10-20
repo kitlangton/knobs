@@ -118,6 +118,7 @@ export {
   type SoundOptions,
   type SoundTheme,
   type ThemeMode,
+  type Appearance,
 } from "./core/store.js"
 export {
   createRemoteControls,
