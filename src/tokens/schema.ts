@@ -577,7 +577,7 @@ export const TOKENS = [
     type: "length",
     group: "Type",
     source: value("20px"),
-    doc: "Section headings (a PR's title, under its kicker), weight 500.",
+    doc: "A page's title, weight 500.",
   },
   {
     name: "leading-heading",
@@ -593,7 +593,7 @@ export const TOKENS = [
     type: "length",
     group: "Type",
     source: value("16px"),
-    doc: "A page's title, weight 500.",
+    doc: "Section titles (under their kicker), weight 500.",
   },
   {
     name: "leading-title",
@@ -625,7 +625,7 @@ export const TOKENS = [
     type: "length",
     group: "Type",
     source: value("12px"),
-    doc: "Labels over media, weight 500; mono inside body text.",
+    doc: "Mono inside body text: code and paths.",
   },
   {
     name: "leading-label",

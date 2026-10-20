@@ -1311,12 +1311,13 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       sec.id = `wt-${section.id}`
       const sh = el(doc, "header", "knobs-wt-shead")
       // The meta line leads with the kicker in text colour, then the link and the status.
-      if (section.kicker || section.link || section.status) {
+      const status = review ? section.status : undefined
+      if (section.kicker || section.link || status) {
         const meta = metaLine("knobs-wt-kicker")
         if (section.kicker) metaText(meta, section.kicker, "knobs-wt-kicker-lead")
         if (section.link) metaLink(meta, section.link.label, section.link.href)
-        if (section.status) {
-          const s = statusLook(section.status)
+        if (status) {
+          const s = statusLook(status)
           metaText(meta, s.label, "knobs-wt-status").dataset.tone = s.tone
         }
         sh.append(meta)

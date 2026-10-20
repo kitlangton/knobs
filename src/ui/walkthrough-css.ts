@@ -63,17 +63,18 @@ export const walkthroughCss = `
 
 /* ——— the page's head ——— */
 .knobs-wt-head{display:flex;flex-direction:column;gap:var(--_k-space-title)}
-.knobs-wt-title{font-size:var(--_k-type-title)!important;line-height:var(--_k-leading-title);font-weight:var(--kw-strong)!important;text-wrap:balance}
+.knobs-wt-title{font-size:var(--_k-type-heading)!important;line-height:var(--_k-leading-heading);font-weight:var(--kw-strong)!important;text-wrap:balance}
 .knobs-wt-summary{max-width:var(--kw-measure);color:var(--_k-fg-2);text-wrap:pretty}
 .knobs-wt-meta{display:flex;flex-wrap:wrap;gap:var(--_k-space-inside) var(--_k-space-title);color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small)}
 .knobs-wt-meta>span{display:inline-flex;gap:var(--_k-space-inside);white-space:nowrap}
 .knobs-wt-meta b{font-weight:var(--_k-weight);color:var(--_k-fg-2);font-family:var(--_k-mono)}
 
-/* ——— a section: a PR or topic. Its kicker leads the meta line; its title outranks the page's ——— */
+/* ——— a section: a PR or topic. Its kicker leads the meta line, its title under it (16/24, under
+   the page's 20/28), both on the column's edge ——— */
 .knobs-wt-section{display:flex;flex-direction:column;gap:var(--_k-space-group);min-width:0}
 .knobs-wt-sintro{display:flex;flex-direction:column;gap:var(--_k-space-title);min-width:0}
 .knobs-wt-shead{display:flex;flex-direction:column;gap:var(--_k-space-inside);min-width:0;scroll-margin-top:16px}
-.knobs-wt-heading{font-size:var(--_k-type-heading)!important;line-height:var(--_k-leading-heading);font-weight:var(--kw-strong)!important;letter-spacing:-.01em!important;text-wrap:balance}
+.knobs-wt-heading{font-size:var(--_k-type-title)!important;line-height:var(--_k-leading-title);font-weight:var(--kw-strong)!important;text-wrap:balance}
 .knobs-wt-ssum{max-width:var(--kw-measure);color:var(--_k-fg-2);text-wrap:pretty}
 .knobs-wt-chip{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:var(--_k-round);font-size:var(--_k-type-small);font-weight:var(--kw-strong);white-space:nowrap;
   --kw-tone:var(--_k-fg-2);color:var(--kw-tone);background:color-mix(in srgb,var(--kw-tone) 14%,transparent)}
@@ -333,8 +334,8 @@ export const walkthroughCss = `
 .knobs-wt-metric{display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
 .knobs-wt-mlabel{color:var(--_k-fg-2)}
 .knobs-wt-mvalue{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--_k-space-sibling);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-wt-mfrom{color:var(--_k-fg-3);font-size:var(--_k-type-title);line-height:var(--_k-leading-title)}
-.knobs-wt-mto{font-size:var(--_k-type-heading);line-height:var(--_k-leading-heading);font-weight:var(--_k-weight-label)}
+.knobs-wt-mfrom{color:var(--_k-fg-3)}
+.knobs-wt-mto{font-size:var(--_k-type-title);line-height:var(--_k-leading-title);font-weight:var(--_k-weight-label)}
 .knobs-wt-mof{color:var(--_k-fg-3)}
 .knobs-wt-mdelta{--kw-tone:var(--_k-fg-2);font-size:var(--_k-type-small);font-weight:var(--_k-weight-label);color:var(--kw-tone)}
 .knobs-wt-mdelta[data-tone="good"]{--kw-tone:var(--kw-good)}
