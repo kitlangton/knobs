@@ -53,6 +53,18 @@ export {
 } from "./menu.js"
 export { popover, type Popover, type PopoverCloseReason, type PopoverOptions } from "./popover.js"
 export { readout, type Readout } from "./readouts.js"
+export {
+  planPill,
+  pillBoxOf,
+  pillProgress,
+  pillRadius,
+  pillSpring,
+  selectionPill,
+  type PillBox,
+  type PillPlan,
+  type SelectionPill,
+  type SelectionPillOptions,
+} from "./selection-pill.js"
 export { toast, type Toast, type ToastOptions } from "./toast.js"
 export { tooltip, tooltips, type TooltipContent, type TooltipOptions } from "./tooltip.js"
 export {

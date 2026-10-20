@@ -15,6 +15,7 @@ import { compareCss } from "./compare-css.js"
 import { overlayCss } from "./overlay-css.js"
 import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
+import { selectionPillCss } from "./selection-pill-css.js"
 import { injectTokens } from "../core/root.js"
 import { aliased } from "../core/glide.js"
 
@@ -300,7 +301,9 @@ const css = `
 
 /** The pieces' stylesheet, as `injectUiStyles` writes it (after the token sheet). */
 export const uiCss = () =>
-  aliased(css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss) +
+  aliased(
+    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + selectionPillCss,
+  ) +
   rollingCss
 
 /** Adds the pieces' stylesheet once per document. */

@@ -38,7 +38,7 @@ export const compareCss = `
 /* Glass: what's behind shows through, blurred, on the knobs tokens. */
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
-.knobs-cmp-label{position:absolute;left:0;top:0;padding:1px 7px;border-radius:999px;font-size:var(--_k-text-meta);line-height:16px;color:var(--_k-fg-2);white-space:nowrap;pointer-events:none;will-change:transform;transition:color .15s}
+.knobs-cmp-label{position:absolute;left:0;top:0;padding:1px 7px;border-radius:999px;font-size:var(--_k-text-meta);line-height:16px;color:var(--_k-fg-2);white-space:nowrap;pointer-events:none;will-change:transform;transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-cmp-label[data-lit]{color:var(--_k-fg)}
 .knobs-cmp-label[data-dim]{color:var(--_k-fg-3)}
 /* The wipe: a hairline down the line with a grip at its middle; a wider strip takes the hand and
