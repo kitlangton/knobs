@@ -30,6 +30,7 @@ import {
 } from "./look.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
+import { annotationsOn, setAnnotations } from "./walkthrough-annotations.js"
 import { disclosure, type Disclosure, linkPRs, prChip } from "./walkthrough-blocks.js"
 import {
   CHECK,
@@ -1577,6 +1578,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const d = (key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 2 : 0.5)
       if (seekBy(d)) claim()
       return
+    }
+    if (key === "a" && !e.shiftKey && root.querySelector(".knobs-wt-anno")) {
+      claim()
+      return setAnnotations(root, !annotationsOn(root))
     }
     if (key === "n" && noteMode !== "hidden") {
       claim()

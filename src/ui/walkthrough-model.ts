@@ -111,6 +111,23 @@ export type WalkthroughTableRow =
   | Readonly<Record<string, WalkthroughTableCell>>
   | { readonly cells: Readonly<Record<string, WalkthroughTableCell>> }
 
+/**
+ * A mark on a picture drawing the eye to what matters: a ring round a box, a dot or an arrow at a
+ * point, with a small label. In 0–1 of the picture (`x`, `y` the box's top-left or the point).
+ */
+export interface WalkthroughAnnotation {
+  readonly x: number
+  readonly y: number
+  /** A box's size; left out, it's a point. */
+  readonly w?: number
+  readonly h?: number
+  readonly label?: string
+  /** Seconds it shows between, on a video or compare; always, left out. */
+  readonly at?: readonly [number, number]
+  /** `"box"` where it has a size, else `"dot"`. */
+  readonly shape?: "box" | "dot" | "arrow"
+}
+
 /** A stretch of a video: a pill under it, and a marker on its timeline. */
 export interface WalkthroughChapter {
   readonly id?: string
@@ -140,6 +157,8 @@ export type WalkthroughMedia =
       readonly strip?: boolean
       /** Pills under it that seek, and markers on its timeline. */
       readonly chapters?: readonly WalkthroughChapter[]
+      /** Marks on the pictures, on both sides (and under a zoom). */
+      readonly annotations?: readonly WalkthroughAnnotation[]
     }
   | {
       readonly kind: "video"
@@ -153,6 +172,8 @@ export type WalkthroughMedia =
       readonly captions?: string
       /** Another name for `captions`. */
       readonly captionsSrc?: string
+      /** Marks on the picture. */
+      readonly annotations?: readonly WalkthroughAnnotation[]
     }
   | {
       readonly kind: "history"
@@ -191,7 +212,14 @@ export type WalkthroughMedia =
       /** The column that titles a stacked row (its key); the first by default. */
       readonly primary?: string
     }
-  | { readonly kind: "image"; readonly src: string; readonly label?: string; readonly alt?: string }
+  | {
+      readonly kind: "image"
+      readonly src: string
+      readonly label?: string
+      readonly alt?: string
+      /** Marks on the picture. */
+      readonly annotations?: readonly WalkthroughAnnotation[]
+    }
   | {
       readonly kind: "diff"
       /** `git diff` / `git show` output. */

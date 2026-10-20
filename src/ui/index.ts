@@ -334,4 +334,5 @@ export {
   type WalkthroughTableRow,
   type WalkthroughTone,
   type WalkthroughPR,
+  type WalkthroughAnnotation,
 } from "./walkthrough-model.js"

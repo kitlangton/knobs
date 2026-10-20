@@ -1414,6 +1414,8 @@ The demo is `examples/walkthrough.html`.
             { "channel": "brew install …/opencode-v2", "days": 31, "state": { "text": "Pending", "badge": "info", "step": "4.6" } } ] }
 ```
 
+**`annotations`** on an `image`, a `video` or a `compare` draw the eye to what matters: `[{ x, y, w?, h?, label?, at?: [start, end], shape?: "box" | "dot" | "arrow" }]`, in 0–1 of the picture (a box's top-left, or the point). A box takes a calm ring, a point a dot (or an arrow pointing at it), each with a small label; on a video or compare one shows only between its `at` seconds, fading in and out with a small blur. On a compare they're drawn on both sides and stay on their spot through a zoom. They're on by default; the eye button on the picture, or `a`, hides or shows every one on the page.
+
 **`chapters`** on a `video` (or a `compare`): a readout list under it, a row each (number · label · start). A click selects the chapter at once while the media seeks there and plays, and goes in the note's log; the selection pill slides to the chapter playing (the last that started at or before the playhead) and fades out in place outside them, and a note's `media` names it (`chapter`). A chapter ends at `end`, else `start + duration`, else the next one's start. On a compare they're also its timeline's markers. A video's `captions` (or `captionsSrc`) is a WebVTT URL, shown by default.
 
 ```json
