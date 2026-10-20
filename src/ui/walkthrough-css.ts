@@ -21,6 +21,7 @@ const quick = springCss(FADE)
 const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent)"
 export const walkthroughCss = `
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
+.knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0}
 .knobs-ui.knobs-walkthrough{--kw-snappy:${snappy.easing};--kw-snappy-ms:${snappy.duration}ms;--kw-calm:${calm.easing};--kw-calm-ms:${calm.duration}ms;--kw-state:${state.easing};--kw-state-ms:${state.duration}ms;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms;
   --kw-measure:var(--k-walkthrough-measure,68ch);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
   --kw-card:var(--_ku-pane-bg);--kw-card-ring:var(--_ku-pane-ring);--kw-under:var(--_k-bg-page);--kw-ink:var(--k-walkthrough-ink,#ff375f);--kw-strong:var(--_k-weight-label);
@@ -335,9 +336,12 @@ export const walkthroughCss = `
 .knobs-wt-frame>:is(video,img){position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;margin:0;border:0}
 .knobs-wt-frame[data-natural]{aspect-ratio:auto;background:transparent}
 .knobs-wt-frame[data-natural]>img{position:static;height:auto}
-.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--kw-frame-r);background:var(--_k-fill);color:var(--_k-fg);
+/* Diff, code and terminal: one plain container (no glass): a flat inset fill, a hairline ring, the
+   control radius and room inside, so a diff's buttons and the code under them can breathe. */
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-space-sibling) var(--_k-pad-card) var(--_k-pad-card);border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
+.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
-.knobs-surface .knobs-wt-code{padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
+.knobs-surface :is(.knobs-wt-code,.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body){padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-code[data-terminal]{white-space:pre-wrap;overflow-wrap:anywhere}
 .knobs-wt-prompt{color:var(--_k-fg-3);user-select:none;-webkit-user-select:none}
 .knobs-wt-cmd{color:var(--_k-fg);font-weight:var(--_k-weight-label)}
