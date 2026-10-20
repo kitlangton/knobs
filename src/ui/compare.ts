@@ -333,7 +333,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const labels = [el("div", "knobs-cmp-label"), el("div", "knobs-cmp-label")] as const
   labels[0].dataset.side = "before"
   labels[1].dataset.side = "after"
-  /** ✗ Before · ✓ After: a mark and the side's name, in its side's colour (`--k-before`, `--k-after`). */
+  /** ✗ Before · ✓ After: a mark and the side's name. */
   const setLabel = (index: 0 | 1, text: string) => {
     const l = labels[index]
     if (!l.firstElementChild) {
