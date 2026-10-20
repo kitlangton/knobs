@@ -25,7 +25,7 @@ export const walkthroughCss = `
 .knobs-walkthrough a{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color .15s}
 .knobs-walkthrough a:hover{text-decoration-color:currentColor}
 .knobs-walkthrough code,.knobs-wt-slot code{font:calc(1em - 1px) var(--_k-mono);padding:1px 5px;border-radius:5px;background:var(--_k-fill)}
-:where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-step){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;
+:where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-step,button.knobs-wt-stitle,.knobs-wt-chapter){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;
   background:transparent;border:0;border-radius:0;margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
 
 /* ——— layout: the rail beside the column; one column where it's narrow ——— */
@@ -84,9 +84,9 @@ export const walkthroughCss = `
 .knobs-wt-fi-body{max-width:var(--kw-measure);color:var(--_k-fg)}
 .knobs-wt-fi-q{color:var(--_k-fg-2)}
 .knobs-wt-fi-q::before{content:"You asked: ";color:var(--_k-fg-3)}
-:where(.knobs-ui) .knobs-wt-fi-step{all:revert;box-sizing:border-box;font:var(--_k-weight) calc(var(--kw-text) - 2.5px)/1 var(--_k-mono);color:var(--_k-fg-2);background:transparent;border:0;
+:where(.knobs-ui) :is(.knobs-wt-fi-step,.knobs-wt-steplink){all:revert;box-sizing:border-box;font:var(--_k-weight) calc(var(--k-walkthrough-text,14px) - 2.5px)/1 var(--_k-mono);color:var(--_k-fg-2);background:transparent;border:0;
   padding:3px 6px;margin:0;border-radius:6px;cursor:pointer;outline:none;transition:background .15s,color .15s}
-.knobs-ui .knobs-wt-fi-step:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui :is(.knobs-wt-fi-step,.knobs-wt-steplink):is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 
 /* ——— a step's sent notes ——— */
 .knobs-wt-notes{display:flex;flex-direction:column}
@@ -222,7 +222,8 @@ export const walkthroughCss = `
 }
 
 /* ——— media slots ——— */
-.knobs-ui.knobs-wt-slot{position:relative;min-width:0;container:knobs-wt-slot / inline-size;color:var(--_k-fg);font:var(--_k-weight) var(--k-walkthrough-text,14px)/1.5 var(--_k-font)}
+.knobs-ui.knobs-wt-slot{position:relative;min-width:0;container:knobs-wt-slot / inline-size;color:var(--_k-fg);font:var(--_k-weight) var(--k-walkthrough-text,14px)/1.5 var(--_k-font);
+  --kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info))}
 .knobs-wt-slot-label{display:block;margin:0 0 6px 2px;font:var(--_k-weight-label) calc(var(--k-walkthrough-text,14px) - 3px)/1.3 var(--_k-font);color:var(--_k-fg-2);letter-spacing:.04em;text-transform:uppercase}
 /* A compare is exactly as tall as its pictures at this width, so there's no letterbox: the two
    sides edge to edge (side) or one (overlaid), plus its mode bar, the timeline and their two gaps
@@ -262,5 +263,133 @@ export const walkthroughCss = `
 .knobs-wt-text{max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
 .knobs-wt-hold{border-radius:calc(var(--_k-radius-panel) - 4px);background:var(--_k-fill)}
 .knobs-wt-failed{display:flex;align-items:center;justify-content:center;min-height:80px;color:var(--_k-fg-3);font-size:calc(var(--k-walkthrough-text,14px) - 2px)}
+
+/* ——— data blocks: history, stack, table, chapters. On the step's card, so no card of their own:
+   hairlines and fills only. Tones read the status tokens; hover fades are the panel's own. ——— */
+:where(.knobs-wt-history,.knobs-wt-stack,.knobs-wt-table,.knobs-wt-chapters){--kw-t:var(--k-walkthrough-text,14px);--kw-line:calc(var(--kw-t) + 6px);--kw-rail:var(--_k-border-strong)}
+:where(.knobs-wt-slot) [data-tone="good"]{--kw-tone:var(--kw-good)}
+:where(.knobs-wt-slot) [data-tone="warn"]{--kw-tone:var(--_k-warn)}
+:where(.knobs-wt-slot) [data-tone="bad"]{--kw-tone:var(--_k-danger)}
+:where(.knobs-wt-slot) [data-tone="info"]{--kw-tone:var(--kw-info)}
+:where(.knobs-wt-slot) [data-tone="dim"]{--kw-tone:var(--_k-fg-3)}
+.knobs-wt-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.knobs-ui .knobs-wt-tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:var(--_k-fill);color:var(--_k-fg-2);font:var(--_k-weight) calc(var(--kw-t) - 3px)/1 var(--_k-mono);
+  text-decoration:none;white-space:nowrap;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui a.knobs-wt-tag:is(:hover,:focus-visible){background:var(--_k-fill-selected);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+
+/* A history: dates down the left, a spine of tone dots joined by a hairline (broken around each
+   dot), the event beside it. Inferred events take a ring for a dot and a dashed tag. */
+.knobs-wt-history{--kw-hy:calc(5px + var(--kw-line) / 2);display:flex;flex-direction:column;gap:18px;font-size:calc(var(--kw-t) - 1px);line-height:var(--kw-line);color:var(--_k-fg)}
+.knobs-wt-hgroup{display:flex;flex-direction:column;gap:6px;min-width:0}
+.knobs-wt-hhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+.knobs-ui .knobs-wt-hheading{margin:0;font:var(--_k-weight-label) calc(var(--kw-t) - 3px)/1.3 var(--_k-font);letter-spacing:.04em;text-transform:uppercase;color:var(--_k-fg-2)}
+.knobs-wt-hsum{color:var(--_k-fg-3);font-size:calc(var(--kw-t) - 2px);font-variant-numeric:tabular-nums}
+.knobs-wt-hlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.knobs-wt-hev{display:grid;grid-template-columns:var(--kw-hw,11ch) 14px minmax(0,1fr);grid-template-areas:"when spine main";column-gap:10px;align-items:baseline;padding:5px 0}
+.knobs-wt-hwhen{grid-area:when;display:flex;flex-direction:column;min-width:0;font:var(--_k-weight) calc(var(--kw-t) - 2px)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-2)}
+.knobs-wt-hage{color:var(--_k-fg-3);font-size:calc(var(--kw-t) - 3px);line-height:1.35}
+.knobs-wt-hspine{grid-area:spine;position:relative;align-self:stretch;margin-block:-5px}
+.knobs-wt-hspine::before,.knobs-wt-hspine::after{content:"";position:absolute;left:6.5px;width:1px;background:var(--kw-rail)}
+.knobs-wt-hspine::before{top:0;height:calc(var(--kw-hy) - 6px)}
+.knobs-wt-hspine::after{top:calc(var(--kw-hy) + 6px);bottom:0}
+.knobs-wt-hev:first-child .knobs-wt-hspine::before,.knobs-wt-hev:last-child .knobs-wt-hspine::after{content:none}
+.knobs-wt-hdot{position:absolute;left:3.5px;top:calc(var(--kw-hy) - 3.5px);width:7px;height:7px;border-radius:50%;background:var(--kw-tone,var(--_k-fg-3))}
+.knobs-wt-hev[data-type="release"] .knobs-wt-hdot{border-radius:1.5px;rotate:45deg;scale:.9}
+.knobs-wt-hev[data-type="audit"] .knobs-wt-hdot{border-radius:1.5px}
+.knobs-wt-hev[data-provenance="inferred"] .knobs-wt-hdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--kw-tone,var(--_k-fg-3))}
+.knobs-wt-hmain{grid-area:main;display:flex;flex-direction:column;gap:2px;min-width:0}
+.knobs-wt-htitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-weight:var(--_k-weight-label);color:var(--_k-fg)}
+.knobs-wt-prov{padding:0 6px;border-radius:5px;background:var(--_k-fill);color:var(--_k-fg-3);font:var(--_k-weight) calc(var(--kw-t) - 3.5px)/18px var(--_k-mono);white-space:nowrap}
+.knobs-wt-hev[data-provenance="inferred"] .knobs-wt-prov{background:transparent;color:var(--_k-warn);outline:1px dashed color-mix(in oklch,var(--_k-warn) 50%,transparent);outline-offset:-1px}
+.knobs-ui .knobs-wt-hdetail{margin:0;max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
+@container knobs-wt-slot (max-width:520px){
+  .knobs-wt-hev{grid-template-columns:14px minmax(0,1fr);grid-template-areas:"spine when" "spine main"}
+  .knobs-wt-hwhen{flex-direction:row;flex-wrap:wrap;align-items:baseline;column-gap:8px}
+}
+
+/* A stack: the trunk at the top, each PR hanging off the branch it merges into, rails drawn as a
+   git graph (solid, so where two meet they don't darken). A PR with a step goes there on a click. */
+.knobs-wt-stack{--kw-spt:7px;--kw-spb:7px;--kw-sy:calc(var(--kw-spt) + var(--kw-line) / 2);display:flex;flex-direction:column;font-size:calc(var(--kw-t) - 1px);line-height:var(--kw-line);color:var(--_k-fg)}
+.knobs-wt-srow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;align-items:start;margin:0 -8px;padding:var(--kw-spt) 8px var(--kw-spb);
+  border-radius:max(0px,calc(var(--_k-radius-panel) - 8px));transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-wt-srow[data-trunk]{--kw-spb:0px;grid-template-columns:auto minmax(0,1fr)}
+.knobs-wt-srow[data-go]{cursor:pointer}
+.knobs-wt-srow[data-go]:hover{background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-lanes{display:flex;align-self:stretch;margin-block:calc(var(--kw-spt) * -1) calc(var(--kw-spb) * -1)}
+.knobs-wt-lane{position:relative;flex:none;width:16px}
+.knobs-wt-lane:is([data-rail="pass"],[data-rail="tee"],[data-down])::before{content:"";position:absolute;left:7.5px;top:0;bottom:0;width:1px;background:var(--kw-rail)}
+.knobs-wt-lane[data-down]::before{top:calc(var(--kw-sy) + 3.5px)}
+.knobs-wt-lane:is([data-rail="tee"],[data-rail="end"])::after{content:"";position:absolute;left:7.5px;top:0;width:13px;height:calc(var(--kw-sy) + .5px);border:solid var(--kw-rail);border-width:0 0 1px 1px;border-bottom-left-radius:6px}
+.knobs-wt-lane[data-rail="node"]::after{content:"";position:absolute;left:4.5px;top:calc(var(--kw-sy) - 3.5px);width:7px;height:7px;border-radius:50%;background:var(--_k-fg-3)}
+.knobs-wt-srow[data-trunk] .knobs-wt-lane[data-rail="node"]::after{background:var(--_k-fg-2)}
+.knobs-wt-trunk{font:var(--_k-weight-label) calc(var(--kw-t) - 2px)/var(--kw-line) var(--_k-mono);color:var(--_k-fg-2)}
+.knobs-wt-smain{display:flex;flex-direction:column;gap:1px;min-width:0}
+.knobs-wt-sline{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
+.knobs-wt-sord{font:var(--_k-weight) calc(var(--kw-t) - 2px)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3);white-space:nowrap}
+.knobs-ui .knobs-wt-spr{font:var(--_k-weight-label) calc(var(--kw-t) - 1.5px)/var(--kw-line) var(--_k-mono);color:var(--_k-fg-2);text-decoration:none;white-space:nowrap}
+.knobs-ui a.knobs-wt-spr:is(:hover,:focus-visible){color:var(--_k-fg);text-decoration:underline}
+.knobs-ui .knobs-wt-stitle{font-weight:var(--_k-weight-label);line-height:var(--kw-line);color:var(--_k-fg);text-align:left}
+.knobs-ui button.knobs-wt-stitle{cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui :is(.knobs-wt-srow[data-go]:hover button.knobs-wt-stitle,button.knobs-wt-stitle:focus-visible){text-decoration-color:color-mix(in oklch,currentColor 45%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-ssummary{margin:0;max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
+.knobs-wt-smeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;font:var(--_k-weight) calc(var(--kw-t) - 2px)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3)}
+.knobs-wt-delta{display:inline-flex;gap:6px}
+.knobs-wt-add{color:var(--_k-diff-add)}
+.knobs-wt-del{color:var(--_k-diff-del)}
+.knobs-wt-sstatus{margin-top:calc((var(--kw-line) - 20px) / 2)}
+.knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr) auto}
+.knobs-wt-stack[data-flat] .knobs-wt-srow+.knobs-wt-srow{box-shadow:inset 0 1px 0 var(--_k-border)}
+@container knobs-wt-slot (max-width:520px){
+  .knobs-wt-srow:not([data-trunk]){grid-template-columns:auto minmax(0,1fr)}
+  .knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr)}
+  .knobs-wt-sstatus{grid-column:-2;justify-self:start;margin-top:4px}
+}
+
+/* A table: a real one, its head stuck while it scrolls, both ways; edges fade where there's more
+   (the top one under the head), and thin bars show on hover. */
+@property --kw-fade-l{syntax:"<number>";inherits:false;initial-value:1}
+@property --kw-fade-r{syntax:"<number>";inherits:false;initial-value:1}
+@keyframes kw-fade-l{from{--kw-fade-l:1}to{--kw-fade-l:0}}
+@keyframes kw-fade-r{from{--kw-fade-r:0}to{--kw-fade-r:1}}
+.knobs-wt-table{max-height:520px;overflow:auto;overscroll-behavior-x:contain;outline:none;scrollbar-width:thin;scrollbar-color:transparent transparent;
+  transition:scrollbar-color calc(var(--_k-hover-out) * 1ms)}
+.knobs-wt-table:is(:hover,:focus-visible){scrollbar-color:color-mix(in oklch,var(--_k-fg) 28%,transparent) transparent;transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-table:focus-visible{box-shadow:inset 0 0 0 2px var(--_k-focus);border-radius:calc(var(--_k-radius-panel) - 4px)}
+@supports (animation-timeline:scroll()){
+  .knobs-wt-table{animation:knobs-fade-a linear both,knobs-fade-b linear both,kw-fade-l linear both,kw-fade-r linear both;animation-duration:auto;
+    animation-timeline:scroll(self block),scroll(self block),scroll(self inline),scroll(self inline);animation-range:0 24px,calc(100% - 24px) 100%,0 8px,calc(100% - 8px) 100%;
+    --kw-table-mask-y:linear-gradient(to bottom,#000 var(--kw-thead,0px),rgb(0 0 0/var(--knobs-fade-a)) var(--kw-thead,0px),#000 calc(var(--kw-thead,0px) + 20px),#000 calc(100% - 20px),rgb(0 0 0/var(--knobs-fade-b)));
+    --kw-table-mask-x:linear-gradient(to right,rgb(0 0 0/var(--kw-fade-l)),#000 24px,#000 calc(100% - 24px),rgb(0 0 0/var(--kw-fade-r)));
+    -webkit-mask-image:var(--kw-table-mask-y),var(--kw-table-mask-x);mask-image:var(--kw-table-mask-y),var(--kw-table-mask-x);-webkit-mask-composite:source-in;mask-composite:intersect}
+}
+.knobs-wt-table table{width:100%;margin:0;border-collapse:separate;border-spacing:0;font-size:calc(var(--kw-t) - 1.5px);line-height:1.45;font-variant-numeric:tabular-nums;color:var(--_k-fg-2)}
+.knobs-wt-table caption{caption-side:bottom;padding-top:8px;text-align:left;color:var(--_k-fg-3);font-size:calc(var(--kw-t) - 2px)}
+.knobs-wt-table th{position:sticky;top:0;padding:0 12px 7px;text-align:left;vertical-align:bottom;font-weight:var(--_k-weight-label);font-size:calc(var(--kw-t) - 2.5px);color:var(--_k-fg-3);white-space:nowrap;
+  background:var(--_k-pane-bg);box-shadow:inset 0 -1px 0 var(--_k-border)}
+.knobs-wt-table td{padding:8px 12px;vertical-align:baseline;box-shadow:inset 0 -1px 0 var(--_k-border)}
+.knobs-wt-table tr:last-child td{box-shadow:none}
+.knobs-wt-table :is(th,td):first-child{padding-left:0}
+.knobs-wt-table :is(th,td):last-child{padding-right:0}
+.knobs-wt-table td:first-child{color:var(--_k-fg)}
+.knobs-wt-table [data-align="right"]{text-align:right}
+.knobs-wt-table [data-align="center"]{text-align:center}
+.knobs-wt-table td[data-mono]{font-family:var(--_k-mono);font-size:calc(var(--kw-t) - 2.5px);color:var(--_k-fg);white-space:nowrap}
+.knobs-wt-table td[data-long]{min-width:24ch}
+.knobs-wt-table td>.knobs-wt-steplink{margin-left:4px}
+.knobs-ui .knobs-wt-table a.knobs-wt-chip{text-decoration:none}
+.knobs-wt-ctone{color:var(--kw-tone)}
+
+/* Chapters: timestamp pills under a video; one highlight springs to the one playing. */
+.knobs-wt-chapters{position:relative;display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.knobs-wt-chapter-mark{position:absolute;left:0;top:0;width:0;border-radius:calc(var(--_k-radius) + 2px);background:var(--_k-fill-selected);opacity:0;pointer-events:none;will-change:transform;
+  transition:opacity calc(var(--_k-motion-snappy-ms) * 1ms)}
+.knobs-wt-chapter-mark[data-on]{opacity:1}
+.knobs-ui .knobs-wt-chapter{position:relative;display:inline-flex;align-items:baseline;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:calc(var(--_k-radius) + 2px);color:var(--_k-fg-2);
+  font-size:calc(var(--kw-t) - 2px);line-height:26px;white-space:nowrap;cursor:pointer;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-chapter:hover{background:var(--_ku-wash);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-chapter[aria-current]{background:transparent;color:var(--_k-fg)}
+.knobs-ui .knobs-wt-chapter:focus-visible{box-shadow:inset 0 0 0 2px var(--_k-focus)}
+.knobs-wt-chapter-time{font:var(--_k-weight) calc(var(--kw-t) - 3px)/1 var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3)}
+.knobs-wt-chapter[aria-current] .knobs-wt-chapter-time{color:var(--_k-fg-2)}
 @media(prefers-reduced-motion:reduce){:is(.knobs-walkthrough,.knobs-wt-slot) :where(*,::before,::after){transition-duration:.15s!important;transition-property:opacity,background,color!important}}
 `

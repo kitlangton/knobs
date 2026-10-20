@@ -1,6 +1,6 @@
 // mediaSlot(container, { media }): one thing a walkthrough step shows: a before/after compare, a
-// video or picture, a code diff, a code or terminal block, a metric, a callout, a line of text, or
-// anything of your own (`mount`). Heavy kinds wait until they're near the view to mount (compare
+// video or picture (with chapters), a code diff, a code or terminal block, a metric, a callout, a
+// line of text, a history, a merge stack, a table, or anything of your own (`mount`). Heavy kinds wait until they're near the view to mount (compare
 // and the diff load their code then, so a page without them never loads WebGPU or the
 // highlighter); videos pause once they're out of view, and a compare or video far from it lets go
 // of its decoders and GPU context, holding its height, until it comes near again.
@@ -8,6 +8,14 @@ import { mediaKind } from "./compare-model.js"
 import { aliased } from "../core/glide.js"
 import { applyLook, svg, type UiLook } from "./look.js"
 import { walkthroughCss } from "./walkthrough-css.js"
+import {
+  chapterPills,
+  type ChapterPills,
+  mountHistory,
+  mountStack,
+  mountTable,
+  type StepLinks,
+} from "./walkthrough-blocks.js"
 import {
   type ContextEvent,
   fillMedia,
@@ -27,7 +35,11 @@ export interface MediaSlotOptions extends UiLook {
   readonly lazy?: boolean
   /** Kit played, paused or sought a video, or showed another diff file (for a note's log). */
   readonly onEvent?: (event: Omit<ContextEvent, "at" | "step">) => void
+  /** The page's steps, for `step` on a history event, a stack item or a table cell. */
+  readonly steps?: StepLinks
 }
+
+export type { StepLinks }
 
 export interface MediaSlot {
   readonly element: HTMLElement
@@ -220,8 +232,26 @@ async function mountCompare(
       if (loopKey !== lastLoop) onEvent?.({ what: "loop", detail: (lastLoop = loopKey) })
     },
   })
+  const chapters = m.chapters?.length ? m.chapters : null
+  if (chapters)
+    c.timeline?.update({
+      markers: chapters.map((ch) => ({ id: ch.id, time: ch.start, label: ch.label })),
+    })
+  const pills: ChapterPills | null = chapters
+    ? chapterPills(host, chapters, {
+        now: () => c.time,
+        seek: (t) => {
+          c.seek(t)
+          c.play()
+        },
+        onEvent,
+      })
+    : null
   const unlisten = c.timeline?.listen({
-    onSeek: (time, source) => source !== "play" && onEvent?.({ what: "seek", time: round(time) }),
+    onSeek: (time, source) => {
+      pills?.sync()
+      if (source !== "play") onEvent?.({ what: "seek", time: round(time) })
+    },
     onPlay: (on) => onEvent?.({ what: on ? "play" : "pause", time: round(c.time) }),
   })
   // Its height follows a change of mode on a spring, from here on, not into place on load.
@@ -243,6 +273,7 @@ async function mountCompare(
         duration: round(c.duration),
         playing: c.playing,
         mode: c.mode,
+        ...(pills?.current ? { chapter: pills.current.label } : {}),
         ...(loop ? { loop: { start: round(loop.start), end: round(loop.end) } } : {}),
         ...(zoom
           ? { zoom: { u: round(zoom.u), v: round(zoom.v), w: round(zoom.w), h: round(zoom.h) } }
@@ -251,6 +282,7 @@ async function mountCompare(
     },
     dispose: () => {
       unlisten?.()
+      pills?.dispose()
       c.dispose()
       fit.remove()
     },
@@ -284,6 +316,15 @@ function mountVideo(
         frame.style.setProperty("--kw-aspect", String(v.videoWidth / v.videoHeight)),
       { once: true },
     )
+  if (m.captions) {
+    const track = doc.createElement("track")
+    track.kind = "captions"
+    track.label = "Captions"
+    track.srclang = doc.documentElement.lang || "en"
+    track.default = true
+    track.src = m.captions
+    v.append(track)
+  }
   v.src = m.src
   v.addEventListener("play", () => onEvent?.({ what: "play", time: round(v.currentTime) }))
   v.addEventListener("pause", () => onEvent?.({ what: "pause", time: round(v.currentTime) }))
@@ -292,6 +333,18 @@ function mountVideo(
   })
   frame.append(v)
   host.append(frame)
+  const pills: ChapterPills | null = m.chapters?.length
+    ? chapterPills(host, m.chapters, {
+        now: () => v.currentTime,
+        seek: (t) => {
+          v.currentTime = t
+          void v.play().catch(() => {})
+        },
+        onEvent,
+      })
+    : null
+  const sync = () => pills?.sync()
+  if (pills) for (const type of ["timeupdate", "seeking", "seeked"]) v.addEventListener(type, sync)
   return {
     pause: () => v.pause(),
     seekBy: (d) => {
@@ -302,8 +355,10 @@ function mountVideo(
       time: round(v.currentTime),
       ...(Number.isFinite(v.duration) ? { duration: round(v.duration) } : {}),
       playing: !v.paused,
+      ...(pills?.current ? { chapter: pills.current.label } : {}),
     }),
     dispose: () => {
+      pills?.dispose()
       v.pause()
       v.removeAttribute("src")
       v.load()
@@ -551,6 +606,12 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
       case "callout":
       case "text":
         return done(mountProse(host, m))
+      case "history":
+        return done(mountHistory(host, m, options.steps))
+      case "stack":
+        return done(mountStack(host, m, options.steps))
+      case "table":
+        return done(mountTable(host, m, options.steps))
       case "mount": {
         const cleanup = m.mount(host)
         return done({ dispose: () => (cleanup ? cleanup() : (host.textContent = "")) })

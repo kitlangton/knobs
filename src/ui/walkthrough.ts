@@ -28,7 +28,13 @@ import {
   type UiLook,
 } from "./look.js"
 import { toast } from "./toast.js"
-import { CHECK, injectWalkthroughStyles, mediaSlot, type MediaSlot } from "./walkthrough-media.js"
+import {
+  CHECK,
+  injectWalkthroughStyles,
+  mediaSlot,
+  type MediaSlot,
+  type StepLinks,
+} from "./walkthrough-media.js"
 import {
   addNote,
   adjacentStep,
@@ -40,6 +46,7 @@ import {
   EMPTY_STATE,
   feedbackMarkdown,
   fillMedia,
+  findStep,
   formatTime,
   inkPath,
   inlineMarkdown,
@@ -118,6 +125,8 @@ export interface TasteTestOptions extends UiLook {
   readonly onPick?: (id: string | null) => void
   /** Mount each option's media when near the view (on by default). */
   readonly lazy?: boolean
+  /** The page's steps, for media that name one. */
+  readonly steps?: StepLinks
 }
 
 export interface TasteTest {
@@ -194,6 +203,7 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
           ...look,
           media: o.media,
           ...(options.lazy === false ? { lazy: false } : {}),
+          ...(options.steps ? { steps: options.steps } : {}),
         }),
       )
     if (o.caption) tile.append(prose(doc, "p", "knobs-wt-ocap", o.caption))
@@ -507,6 +517,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     setCurrent(key)
     scrollToCard(v)
     v.card.focus({ preventScroll: true })
+  }
+  // A stack's item, a history's event or a table's cell that names a step goes there as j / k do.
+  const stepLinks: StepLinks = {
+    find: (ref) => findStep(page.steps, ref) ?? null,
+    go: (key) => go(key),
   }
 
   // ——— the step on show: its media, for keys and a note's context ———
@@ -1211,7 +1226,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     if (step.media.length) {
       media = el(doc, "div", "knobs-wt-media")
       media.style.setProperty("--kw-n", String(Math.min(step.media.length, 3)))
-      for (const m of step.media) slots.push(mediaSlot(media, { ...look, media: m, onEvent }))
+      for (const m of step.media)
+        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks }))
       card.append(media)
     }
     let taste: TasteTest | null = null
@@ -1222,6 +1238,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         options: step.options,
         picked: state.steps[step.key]?.pick ?? null,
         onPick: (id) => pick(step.key, id),
+        steps: stepLinks,
       })
       media ??= taste.element
     }
