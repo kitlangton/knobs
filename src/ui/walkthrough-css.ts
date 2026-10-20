@@ -420,14 +420,14 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-mark[data-shape="box"]{border-radius:6px;box-shadow:0 0 0 1.5px var(--kw-mark),0 0 0 4px color-mix(in srgb,var(--_k-bg) 45%,transparent)}
 .knobs-wt-mark[data-shape="dot"]::before{content:"";position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:var(--kw-mark);box-shadow:0 0 0 3px color-mix(in srgb,var(--kw-mark) 30%,transparent)}
 .knobs-wt-anno-arrow{position:absolute;right:0;bottom:0;filter:drop-shadow(0 0 2px var(--_k-bg))}
-.knobs-wt-mark-label{position:absolute;left:0;bottom:calc(100% + 6px);max-width:240px;padding:2px 6px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-bg-overlay);color:var(--_k-fg);
-  font:var(--_k-weight-label) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);white-space:nowrap;overflow:hidden;box-shadow:var(--_k-shadow-overlay);${fade}}
+.knobs-wt-mark-label{position:absolute;left:0;bottom:calc(100% + 6px);max-width:240px;padding:2px 6px;border-radius:calc(var(--_k-radius) / 2);background:var(--_ku-media-scrim);color:var(--_ku-on-media);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  font:var(--_k-weight-label) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);white-space:nowrap;overflow:hidden;${fade}}
 .knobs-wt-mark:is([data-shape="dot"],[data-shape="arrow"]) .knobs-wt-mark-label{left:12px;bottom:auto;top:10px}
 .knobs-wt-mark[data-shape="arrow"] .knobs-wt-mark-label{left:auto;right:30px;top:auto;bottom:30px}
 .knobs-ui .knobs-wt-anno-toggle{all:revert;box-sizing:border-box;position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;margin:0;
-  border-radius:var(--_k-radius);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);color:var(--_k-fg-2);cursor:default;opacity:.6;outline:none;
+  border-radius:var(--_k-radius);background:var(--_ku-media-scrim);color:var(--_ku-on-media-2);cursor:default;opacity:.6;outline:none;
   transition:opacity calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-anno-toggle:is(:hover,:focus-visible){opacity:1;color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-anno-toggle:is(:hover,:focus-visible){opacity:1;color:var(--_ku-on-media);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-anno-toggle:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-cmp-stage>.knobs-wt-anno-toggle{top:auto;bottom:8px}
 

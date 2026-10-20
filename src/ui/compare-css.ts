@@ -1,8 +1,8 @@
 // The compare viewer: a soft rounded stage holding the two sides (side by side, a split screen
 // down the middle with no margins; fused, one side's size in the middle, never cropped), with
 // light chrome: the modes as a segmented control above it (the selection pill on the one picked),
-// Before and After as small glass labels in their sides' corners (wiping, either side of the
-// seam), the wipe as a hairline with a raised grip in its middle, and, zoomed, a glass pill with
+// Before and After as small labels on a dark scrim in their sides' corners (wiping, either side of the
+// seam), the wipe as a hairline with a scrim grip in its middle, and, zoomed, a scrim pill with
 // the zoom and a reset. Its timeline, a player's thin progress line, sits under it.
 export const compareCss = `
 :where(.knobs-compare,.knobs-compare *,.knobs-cmp-strip,.knobs-cmp-strip *){box-sizing:border-box}
@@ -50,14 +50,13 @@ export const compareCss = `
 /* The media comes in with its first frames: a fade and a 4px blur on the default spring. */
 .knobs-cmp-canvas,.knobs-compare[data-renderer="dom"] .knobs-cmp-media{transition:opacity calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default),filter calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default)}
 .knobs-compare:not([data-ready]) :is(.knobs-cmp-canvas,.knobs-cmp-media){opacity:0;filter:blur(4px)}
-/* Glass: what's behind shows through, blurred, on the knobs tokens. */
-.knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
-  box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
-/* ✗ Before · ✓ After: Before quieter (fg-3), After in full text. Neutral: no colour of its own. */
+/* Over the pictures: a quiet scrim, dark in either appearance, blurred, with no ring. */
+.knobs-cmp-label,.knobs-cmp-zoom,.knobs-cmp-grip{background:var(--_ku-media-scrim);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+/* ✗ Before · ✓ After: Before quieter, After in full. Neutral: no colour of its own. */
 .knobs-cmp-label{position:absolute;left:0;top:0;display:flex;align-items:center;gap:4px;padding:1px 7px 1px 5px;border-radius:999px;font-weight:var(--_k-weight-label);
   white-space:nowrap;pointer-events:none;will-change:transform}
-.knobs-cmp-label[data-side="before"]{color:var(--_k-fg-3)}
-.knobs-cmp-label[data-side="after"]{color:var(--_k-fg)}
+.knobs-cmp-label[data-side="before"]{color:var(--_ku-on-media-2)}
+.knobs-cmp-label[data-side="after"]{color:var(--_ku-on-media)}
 /* Fusing, the mark folds away and the label is its name. */
 .knobs-cmp-mark{flex:none;display:flex;justify-content:flex-end;overflow:hidden}
 .knobs-cmp-mark svg{display:block;flex:none;width:12px;height:12px}
@@ -69,26 +68,24 @@ export const compareCss = `
    fuse; wiping, line and grip brighten. */
 .knobs-cmp-handle{cursor:ew-resize;position:absolute;left:-12px;top:0;width:24px;height:0;opacity:0;pointer-events:none;outline:none;will-change:transform,opacity}
 .knobs-cmp-handle[data-on]{pointer-events:auto}
-.knobs-cmp-handle::before{content:"";position:absolute;top:0;bottom:0;left:11.5px;width:1px;background:color-mix(in srgb,var(--_ku-cmp-line) 72%,transparent);box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 0 6px rgba(0,0,0,.25)}
+.knobs-cmp-handle::before{content:"";position:absolute;top:0;bottom:0;left:11.5px;width:1px;background:color-mix(in srgb,var(--_ku-cmp-line) 72%,transparent);box-shadow:0 0 6px var(--_ku-media-scrim)}
 .knobs-compare[data-dragging] .knobs-cmp-handle::before{background:var(--_ku-cmp-line)}
-.knobs-cmp-grip{position:absolute;top:0;left:4px;width:16px;height:28px;border-radius:min(8px,calc(var(--_k-radius) * 999));background:var(--_k-bg-overlay);
-  box-shadow:var(--_k-shadow-overlay),inset 0 0 0 1px var(--_k-border),inset 0 1px 0 var(--_k-rim);will-change:transform;transition:box-shadow calc(var(--_k-hover-out) * 1ms)}
-.knobs-cmp-grip::before,.knobs-cmp-grip::after{content:"";position:absolute;top:10px;width:1px;height:8px;background:var(--_k-fg-3);transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-cmp-grip{position:absolute;top:0;left:4px;width:16px;height:28px;border-radius:min(8px,calc(var(--_k-radius) * 999));will-change:transform}
+.knobs-cmp-grip::before,.knobs-cmp-grip::after{content:"";position:absolute;top:10px;width:1px;height:8px;background:var(--_ku-on-media-2);transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-cmp-grip::before{left:6px}
 .knobs-cmp-grip::after{left:9px}
-.knobs-compare[data-dragging] .knobs-cmp-grip{box-shadow:var(--_k-shadow-overlay),inset 0 0 0 1px var(--_k-border-strong),inset 0 1px 0 var(--_k-rim)}
-.knobs-compare[data-dragging] .knobs-cmp-grip::before,.knobs-compare[data-dragging] .knobs-cmp-grip::after{background:var(--_k-fg)}
-.knobs-cmp-handle:focus-visible .knobs-cmp-grip,.knobs-compare[data-keyboard] .knobs-cmp-handle:focus .knobs-cmp-grip{box-shadow:var(--_k-shadow-overlay),0 0 0 2px var(--_k-accent)}
+.knobs-compare[data-dragging] .knobs-cmp-grip::before,.knobs-compare[data-dragging] .knobs-cmp-grip::after{background:var(--_ku-on-media)}
+.knobs-cmp-handle:focus-visible .knobs-cmp-grip,.knobs-compare[data-keyboard] .knobs-cmp-handle:focus .knobs-cmp-grip{box-shadow:0 0 0 2px var(--_k-accent)}
 /* The split's hairline, down the middle side by side. */
 .knobs-cmp-split{position:absolute;left:0;top:0;width:1px;height:0;margin-left:-.5px;background:color-mix(in srgb,var(--_k-bg) 72%,transparent);pointer-events:none;will-change:transform,opacity}
 /* Zoomed: how far, and a way back, in the stage's corner; it fades in and out, nothing shifts. */
 .knobs-cmp-zoom{position:absolute;right:8px;bottom:8px;display:flex;align-items:center;gap:4px;height:26px;padding:0 3px 0 10px;border-radius:999px;
-  color:var(--_k-fg);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;
+  color:var(--_ku-on-media);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;
   opacity:0;scale:.96;pointer-events:none;transition:opacity .16s cubic-bezier(.4,0,1,1),scale .16s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
-  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
-:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_ku-on-media-2);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
+:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){background:color-mix(in srgb,var(--_ku-on-media) 16%,transparent);color:var(--_ku-on-media);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
 .knobs-cmp-strip-host{flex:none;height:60px;min-height:0}

@@ -44,6 +44,9 @@ const css = `
   --_ku-wash:var(--k-ui-wash,color-mix(in srgb,var(--_k-fill) 70%,transparent));
   --_ku-wash-hi:var(--k-ui-wash-hi,var(--_k-fill-selected));
   --_ku-ease:var(--_k-motion-snappy);--_ku-ease-ms:calc(var(--_k-motion-snappy-ms) * 1ms);
+  /* Over a picture: a quiet dark scrim in either appearance (a picture is no lighter in light
+     mode), light type on it, no ring. */
+  --_ku-media-scrim:rgb(0 0 0/.5);--_ku-on-media:#fff;--_ku-on-media-2:color-mix(in srgb,var(--_ku-on-media) 64%,transparent);
   /* The card frame (knobs' own look): every leaf pane a rounded card on the page, half a gap
      inside its slot, so panes sit a gap apart with the dividers' grips between them; tree rows
      inset as soft rounded washes. --k-frame: flat (labPreset) puts panes edge to edge on
@@ -327,9 +330,10 @@ const css = `
 .knobs-timeline[data-variant="line"] .knobs-tl-track:hover .knobs-tl-segs,.knobs-timeline[data-variant="line"][data-scrubbing] .knobs-tl-segs{scale:1 2}
 .knobs-timeline[data-variant="line"] .knobs-tl-range{top:3px;bottom:3px;border-radius:3px}
 .knobs-timeline[data-variant="line"]:focus-visible .knobs-tl-track,.knobs-timeline[data-variant="line"][data-keyboard]:focus .knobs-tl-track{background:transparent;box-shadow:0 0 0 2px color-mix(in srgb,var(--_k-accent) 60%,transparent)}
-.knobs-timeline[data-variant="line"] .knobs-tl-tag{top:auto;bottom:calc(100% + 2px);display:flex;gap:6px;padding:0 6px;border-radius:calc(var(--_k-radius) * 999);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);
-  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 0 0 .5px var(--_k-border)}
+.knobs-timeline[data-variant="line"] .knobs-tl-tag{top:auto;bottom:calc(100% + 2px);display:flex;gap:6px;padding:0 6px;border-radius:calc(var(--_k-radius) * 999);background:var(--_ku-media-scrim);color:var(--_ku-on-media);
+  font-size:var(--_k-type-small);line-height:var(--_k-leading-small);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .knobs-tl-tag-label{color:var(--_k-fg-2)}
+.knobs-timeline[data-variant="line"] .knobs-tl-tag-label{color:var(--_ku-on-media-2)}
 .knobs-tl-tag-label:empty{display:none}
 @media(prefers-reduced-motion:reduce){.knobs-timeline :where(*,::before,::after){transition:none!important}}
 @media(prefers-reduced-motion:reduce){:is(.knobs-tree,.knobs-split>.knobs-divider,.knobs-pane-head,.knobs-pane-rail) :where(*,::before,::after){transition:none!important}}

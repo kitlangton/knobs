@@ -115,8 +115,8 @@ const counts = () => ({
 
 /** Today's counts. Lower one when a change brings it down; never raise it. */
 const BASELINE = {
-  colors: 29,
-  durations: 355,
+  colors: 28,
+  durations: 333,
   pills: 11,
   zIndexes: 52,
   undefinedPublic: 48,
