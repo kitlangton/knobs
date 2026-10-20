@@ -18,7 +18,10 @@ export interface CompareDraw {
   readonly width: number
   readonly height: number
   readonly dpr: number
-  /** The wipe's line (device px) and its soft edge (device px). */
+  /**
+   * Where Before is cut (device px: the split side by side, the wipe's line fused) and its soft
+   * edge either side (device px). Side and Wipe composite the same way; only the cut moves.
+   */
   readonly wipeX: number
   readonly soft: number
   readonly from: number
@@ -111,11 +114,6 @@ fn pm(c: vec4f) -> vec4f { return vec4f(c.rgb * c.a, c.a); }
 
 fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f) -> vec4f {
   switch mode {
-    case 1u: {
-      let s = max(u.wipe.y, 0.5);
-      let m = smoothstep(u.wipe.x - s, u.wipe.x + s, p.x);
-      return pm(vec4f(mix(a.rgb, b.rgb, m), mix(a.a, b.a, m)));
-    }
     case 2u: {
       let d = abs(a.rgb - b.rgb);
       let h = smoothstep(u.diff.x, u.diff.x + 0.06, max(d.r, max(d.g, d.b)) * u.diff.y) * min(a.a, b.a);
@@ -124,8 +122,10 @@ fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f) -> vec4f {
     }
     default: {}
   }
-  // Side by side: each side in its own place, Before over After where they meet.
-  return vec4f(a.rgb * a.a + b.rgb * b.a * (1.0 - a.a), a.a + b.a * (1.0 - a.a));
+  // Side by side, fusing and wiping: Before over After, cut at the seam with its feather.
+  let s = max(u.wipe.y, 0.5);
+  let ka = a.a * (1.0 - smoothstep(u.wipe.x - s, u.wipe.x + s, p.x));
+  return vec4f(a.rgb * ka + b.rgb * b.a * (1.0 - ka), ka + b.a * (1.0 - ka));
 }
 
 @fragment fn fs(@builtin(position) q: vec4f) -> @location(0) vec4f {

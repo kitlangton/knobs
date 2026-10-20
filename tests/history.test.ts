@@ -17,6 +17,8 @@ import {
   nearestEvent,
   normalizeHistory,
   parseDay,
+  quietEvents,
+  quietLabel,
   stepEvent,
 } from "../src/ui/history-model"
 
@@ -197,6 +199,12 @@ describe("keys", () => {
     expect(stepEvent(m.events, "late", 1)!.id).toBe("late")
     expect(stepEvent(m.events, "first", -1)!.id).toBe("first")
   })
+  test("from a held-back mark, the keys carry on from its date", () => {
+    const shown = m.events.filter((e) => e.id !== "a-mid")
+    expect(stepEvent(shown, "a-mid", 1, D("2026-06-01"))!.id).toBe("b-mid")
+    expect(stepEvent(shown, "a-mid", -1, D("2026-06-01"))!.id).toBe("b-mid")
+    expect(stepEvent(shown, "a-mid", -1, D("2026-05-31"))!.id).toBe("first")
+  })
   test("the pointer finds the nearest event within reach", () => {
     const lane = m.lanes[1]!.events
     const at = dayOf(2026, 5, 3)
@@ -209,4 +217,35 @@ test("a tooltip's one line is the detail's first sentence", () => {
   expect(firstSentence("Added `retry.ts`. Then more.")).toBe("Added retry.ts.")
   expect(firstSentence("No stop")).toBe("No stop")
   expect(firstSentence(undefined)).toBe("")
+})
+
+describe("fewer marks", () => {
+  const m = normalizeHistory(
+    {
+      events: [
+        { id: "c1", date: "2026-04-09", type: "commit", title: "c1", provenance: "verified" },
+        { id: "d1", date: "2026-06-26", type: "deletion", title: "d1" },
+        { id: "a1", date: "2026-10-14", type: "audit", title: "a1" },
+        { id: "r1", date: "2026-09-11", type: "release", title: "r1" },
+        { id: "u1", date: "2026-09-12", title: "untyped" },
+      ],
+      lanes: [{ id: "x", label: "x", spans: [{ from: "2026-05-01", state: "v1", label: "" }] }],
+    },
+    TODAY,
+  )
+  test("releases and deletions by default; commits and the rest held back; untyped shown", () => {
+    const quiet = quietEvents(m.events, ["release", "deletion"])
+    expect([...quiet].sort()).toEqual(["a1", "c1"])
+    expect(quietLabel(m.events, quiet)).toBe("commits and findings")
+    expect(quietEvents(m.events, "all").size).toBe(0)
+  })
+  test("nothing held back where that would leave no marks", () => {
+    const commits = m.events.filter((e) => e.type === "commit")
+    expect(quietEvents(commits, ["release"]).size).toBe(0)
+  })
+  test("an empty tag draws none; the legend needs inferred and verified both", () => {
+    expect(m.lanes.find((l) => l.id === "x")!.spans[0]!.tags).toEqual([])
+    expect(m.verified).toBe(true)
+    expect(m.inferred).toBe(false)
+  })
 })

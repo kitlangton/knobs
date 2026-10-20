@@ -224,7 +224,8 @@ export function moveHead(
   catching: boolean,
   minGap = 0,
 ): HeadPosition & { readonly catching: boolean } {
-  if (motion === "jump" && Math.abs(t - head.x) > minGap) return { x: head.x, target: t, catching: true }
+  if (motion === "jump" && Math.abs(t - head.x) > minGap)
+    return { x: head.x, target: t, catching: true }
   if (catching) return { x: head.x + (t - head.target), target: t, catching: true }
   return { x: t, target: t, catching: false }
 }
@@ -238,4 +239,19 @@ export function currentMarker<M extends { readonly time: number }>(
   let best: M | null = null
   for (const m of markers) if (m.time <= t + 0.5 / fps && (!best || m.time >= best.time)) best = m
   return best
+}
+
+/** A time as a player shows it: `m:ss` (`1:05`), `h:mm:ss` past an hour. */
+export function minutes(t: number): string {
+  const s = Math.max(0, Math.floor(t + 1e-6))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, "0")
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`
+}
+
+/** A line's segment bounds: 0, each chapter start inside the length (once each), the end. */
+export function chapterBounds(times: readonly number[], duration: number): number[] {
+  const inside = times.filter((t) => t > 1e-6 && t < duration - 1e-6)
+  return [0, ...[...new Set(inside)].sort((a, b) => a - b), duration]
 }

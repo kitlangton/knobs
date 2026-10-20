@@ -1,9 +1,9 @@
 // The compare viewer: a soft rounded stage holding the two sides (side by side, a split screen
-// down the middle with no margins; overlaid, letterboxed, never cropped), with light chrome: the
-// modes as a segmented control above it (the selection pill on the one picked), Before and After
-// as small glass labels in their sides' corners (wiping, either side of the seam), the wipe as a
-// hairline with a raised grip at the pointer's height, and, zoomed, a glass pill with the zoom and
-// a reset. Its timeline, a slim lane, sits under it.
+// down the middle with no margins; fused, one side's size in the middle, never cropped), with
+// light chrome: the modes as a segmented control above it (the selection pill on the one picked),
+// Before and After as small glass labels in their sides' corners (wiping, either side of the
+// seam), the wipe as a hairline with a raised grip in its middle, and, zoomed, a glass pill with
+// the zoom and a reset. Its timeline, a player's thin progress line, sits under it.
 export const compareCss = `
 :where(.knobs-compare,.knobs-compare *,.knobs-cmp-strip,.knobs-cmp-strip *){box-sizing:border-box}
 .knobs-ui.knobs-compare{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));--_ku-cmp-line:var(--_k-compare-divider);
@@ -36,6 +36,8 @@ export const compareCss = `
 .knobs-cmp-stage{position:relative;flex:1;min-height:96px;overflow:hidden;border-radius:var(--_k-radius-panel);background:var(--_ku-cmp-stage);touch-action:pan-y;outline:none}
 .knobs-compare[data-frame="flat"] .knobs-cmp-stage{border-radius:0}
 .knobs-compare[data-mode="wipe"] .knobs-cmp-stage{cursor:ew-resize}
+/* Videos: a click on the stage plays and pauses. */
+.knobs-compare[data-video]:not([data-mode="wipe"],[data-zoomed]) .knobs-cmp-stage{cursor:pointer}
 /* Unzoomed, a finger still scrolls the page up and down; zoomed, the stage takes every gesture. */
 .knobs-compare[data-zoomed] .knobs-cmp-stage{cursor:grab;touch-action:none}
 .knobs-compare[data-panning],.knobs-compare[data-panning] *{cursor:grabbing!important}
@@ -45,6 +47,9 @@ export const compareCss = `
 .knobs-cmp-canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .knobs-cmp-media{position:absolute;left:0;top:0;display:block;max-width:none;margin:0;padding:0;border:0;object-fit:fill;transform-origin:0 0;pointer-events:none;will-change:transform}
 .knobs-compare[data-renderer="gpu"] .knobs-cmp-media{opacity:0}
+/* The media comes in with its first frames: a fade and a 4px blur on the default spring. */
+.knobs-cmp-canvas,.knobs-compare[data-renderer="dom"] .knobs-cmp-media{transition:opacity calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default),filter calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default)}
+.knobs-compare:not([data-ready]) :is(.knobs-cmp-canvas,.knobs-cmp-media){opacity:0;filter:blur(4px)}
 /* Glass: what's behind shows through, blurred, on the knobs tokens. */
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
@@ -53,11 +58,17 @@ export const compareCss = `
   white-space:nowrap;pointer-events:none;will-change:transform}
 .knobs-cmp-label[data-side="before"]{color:var(--_k-fg-3)}
 .knobs-cmp-label[data-side="after"]{color:var(--_k-fg)}
-.knobs-cmp-mark svg{display:block;width:12px;height:12px}
-/* The wipe: a hairline down the line with a raised grip at the pointer's height; a wider strip
-   takes the hand and the keys (a slider). It fades with the mode; wiping, line and grip brighten. */
-.knobs-cmp-handle{cursor:ew-resize;position:absolute;left:-12px;top:0;width:24px;height:0;opacity:0;pointer-events:none;outline:none;will-change:transform;transition:opacity .18s cubic-bezier(.4,0,1,1)}
-.knobs-cmp-handle[data-on]{opacity:1;pointer-events:auto;transition:opacity .22s cubic-bezier(.2,.8,.2,1)}
+/* Fusing, the mark folds away and the label is its name. */
+.knobs-cmp-mark{flex:none;display:flex;justify-content:flex-end;overflow:hidden}
+.knobs-cmp-mark svg{display:block;flex:none;width:12px;height:12px}
+/* The fuse's seam: a blurred strip over where the sides meet, soft at both sides. */
+.knobs-cmp-seam{position:absolute;left:0;top:0;width:8px;height:0;opacity:0;pointer-events:none;will-change:transform,opacity;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 35%,#000 65%,transparent);mask-image:linear-gradient(to right,transparent,#000 35%,#000 65%,transparent)}
+/* The wipe: a hairline down the line with a raised grip in its middle (at the pointer's height
+   while dragged); a wider strip takes the hand and the keys (a slider). It fades in with the
+   fuse; wiping, line and grip brighten. */
+.knobs-cmp-handle{cursor:ew-resize;position:absolute;left:-12px;top:0;width:24px;height:0;opacity:0;pointer-events:none;outline:none;will-change:transform,opacity}
+.knobs-cmp-handle[data-on]{pointer-events:auto}
 .knobs-cmp-handle::before{content:"";position:absolute;top:0;bottom:0;left:11.5px;width:1px;background:color-mix(in srgb,var(--_ku-cmp-line) 72%,transparent);box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 0 6px rgba(0,0,0,.25)}
 .knobs-compare[data-dragging] .knobs-cmp-handle::before{background:var(--_ku-cmp-line)}
 .knobs-cmp-grip{position:absolute;top:0;left:4px;width:16px;height:28px;border-radius:min(8px,calc(var(--_k-radius) * 999));background:var(--_k-bg-overlay);

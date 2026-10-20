@@ -589,3 +589,88 @@ export function disclosure(
   toggle.addEventListener("click", () => api.toggle())
   return api
 }
+
+// ——— pull requests ———
+
+// Phosphor regular (git-pull-request, git-merge), the set icons.ts copies from.
+const PR_PATHS = {
+  pull: "M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z",
+  merge:
+    "M208,112a32.05,32.05,0,0,0-30.69,23l-42.21-6a8,8,0,0,1-4.95-2.71L94.43,84.55A32,32,0,1,0,72,87v82a32,32,0,1,0,16,0V101.63l30,35a24,24,0,0,0,14.83,8.14l44,6.28A32,32,0,1,0,208,112ZM64,56A16,16,0,1,1,80,72,16,16,0,0,1,64,56ZM96,200a16,16,0,1,1-16-16A16,16,0,0,1,96,200Zm112-40a16,16,0,1,1,16-16A16,16,0,0,1,208,160Z",
+}
+const prGlyph = (merged: boolean) =>
+  `<svg class="knobs-icon" viewBox="0 0 256 256" width="12" height="12" fill="currentColor" aria-hidden="true" focusable="false"><path d="${merged ? PR_PATHS.merge : PR_PATHS.pull}"/></svg>`
+
+const PR_STATE = { merged: "Merged", open: "Open", draft: "Draft", closed: "Closed" } as const
+
+export interface PRInfo {
+  readonly state?: keyof typeof PR_STATE
+  readonly title?: string
+  readonly href?: string
+}
+
+/** A pull request as a small chip: its state's icon and number, the title and state on hover. */
+export function prChip(doc: Document, n: string, pr: PRInfo): HTMLElement {
+  const chip = el(doc, pr.href ? "a" : "span", "knobs-wt-pr")
+  if (pr.href) {
+    chip.setAttribute("href", pr.href)
+    chip.setAttribute("target", "_blank")
+    chip.setAttribute("rel", "noreferrer")
+  }
+  if (pr.state) chip.dataset.state = pr.state
+  chip.innerHTML = prGlyph(pr.state === "merged")
+  chip.append(text(doc, "span", "", `#${n}`))
+  const tip = [`#${n}`, pr.title, pr.state ? PR_STATE[pr.state] : ""].filter(Boolean).join(" · ")
+  chip.title = tip
+  chip.setAttribute("aria-label", `Pull request ${tip}`)
+  return chip
+}
+
+const PR_URL = /^https?:\/\/[^/]+\/.+\/(?:pull|merge_requests)\/(\d+)\/?(?:[?#].*)?$/
+const PR_REF = /(^|[^\w&/#])#(\d{3,7})\b/g
+
+/**
+ * Turns the pull requests in some rendered prose into chips: links to one whose words are its
+ * number or URL, and bare `#57148`s the page can resolve. Code, buttons and media stay as they are.
+ */
+export function linkPRs(
+  root: HTMLElement,
+  find: (n: string) => PRInfo | null,
+): void {
+  const doc = root.ownerDocument
+  for (const a of Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+    if (a.classList.contains("knobs-wt-pr") || a.closest(".knobs-wt-slot,button")) continue
+    const n = PR_URL.exec(a.getAttribute("href") ?? "")?.[1]
+    const words = a.textContent?.trim() ?? ""
+    if (!n || !(words === `#${n}` || words === n || words === a.getAttribute("href"))) continue
+    a.replaceWith(prChip(doc, n, { href: a.href, ...find(n) }))
+  }
+  // Elements and text (1 | 4), so every engine walks down through the elements to their text.
+  const walker = doc.createTreeWalker(root, 5)
+  const hits: Text[] = []
+  for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+    if (t.nodeType !== 3) continue
+    const p = t.parentElement
+    if (!p || p.closest("a,code,pre,button,.knobs-wt-slot,.knobs-wt-pr")) continue
+    PR_REF.lastIndex = 0
+    if (PR_REF.test(t.nodeValue ?? "")) hits.push(t as Text)
+  }
+  for (const t of hits) {
+    const value = t.nodeValue ?? ""
+    const frag = doc.createDocumentFragment()
+    let last = 0
+    let changed = false
+    PR_REF.lastIndex = 0
+    for (let m = PR_REF.exec(value); m; m = PR_REF.exec(value)) {
+      const pr = find(m[2]!)
+      if (!pr) continue
+      const at = m.index + m[1]!.length
+      frag.append(value.slice(last, at), prChip(doc, m[2]!, pr))
+      last = at + m[2]!.length + 1
+      changed = true
+    }
+    if (!changed) continue
+    frag.append(value.slice(last))
+    t.replaceWith(frag)
+  }
+}

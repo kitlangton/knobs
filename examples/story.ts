@@ -23,14 +23,14 @@ const commit = (sha: string) => ({ label: sha })
 const HISTORY: HistoryData = {
   axis: { today: "2026-10-20" },
   states: {
-    v1: { label: "v1, flow works", tone: "dim", tag: "v1" },
-    next: { label: "v2 on @next only", tone: "warn", tag: "{d}d on @next" },
-    broken: { label: "v2, flow broken", tone: "bad", tag: "{d}d broken" },
-    redirect: { label: "Redirected to v1", tone: "warn", tag: "still v1" },
+    v1: { label: "v1, flow works", tone: "dim", tag: "" },
+    next: { label: "v2 on @next only", tone: "warn" },
+    broken: { label: "v2, flow broken", tone: "bad" },
+    redirect: { label: "Redirected to v1", tone: "warn", tag: "v1" },
   },
   bands: [
-    { from: "2026-04-01", to: "2026-06-25", label: "Built in v1" },
-    { from: "2026-06-26", to: "2026-08-10", label: "Deleted in v2" },
+    { from: "2026-04-01", to: "2026-06-26", label: "Built in v1" },
+    { from: "2026-06-26", to: "2026-08-11", label: "Deleted in v2" },
     { from: "2026-08-11", label: "Shipped to users" },
   ],
   lanes: [
@@ -308,9 +308,8 @@ const historyMedia: WalkthroughMedia = {
   },
 }
 
-// `more` on a section (and as long text on a step) is coming in the walkthrough; until it lands
-// these sections carry it as extra data, and steps keep one media each so it can't be read as
-// the label for folded media.
+// `more` (folded Markdown under a summary or caption) is landing on sections in the walkthrough;
+// the intersection keeps this compiling against a walkthrough without it.
 type Section = WalkthroughSection & { readonly more?: string }
 
 async function buildDoc(): Promise<WalkthroughDoc> {
@@ -431,7 +430,7 @@ async function buildDoc(): Promise<WalkthroughDoc> {
         {
           id: "timeline-chart",
           title: "Built in April, deleted in June, shipped from August",
-          caption: "Click a mark or a bar for its commit and evidence.",
+          caption: "Each bar is an install path; click one, or a mark, for its evidence.",
           ask: "none",
           media: historyMedia,
           more: "Every date comes from git history and GitHub releases except the Cloudflare `/install` redirect, which lives outside git and is drawn as inferred. Days are counted to Oct 20, 2026.",

@@ -243,7 +243,10 @@ export interface WalkthroughStep {
   readonly media?: WalkthroughMedia | readonly WalkthroughMedia[]
   /** Media side by side, this many to a row where there's room; one under another by default. */
   readonly columns?: 1 | 2 | 3
-  /** The media after the first fold away under a quiet toggle with these words ("More clips"). */
+  /**
+   * The rest, folded away under the caption behind "More" (Markdown; blank lines start new
+   * paragraphs). Keep the title the claim and the caption one sentence; everything else goes here.
+   */
   readonly more?: string
   /** A taste test: Kit picks one. */
   readonly options?: readonly WalkthroughOption[]
@@ -268,6 +271,8 @@ export interface WalkthroughSection {
   readonly kicker?: string | false
   readonly status?: WalkthroughStatus
   readonly summary?: string
+  /** The rest, folded away under the summary behind "More" (Markdown). */
+  readonly more?: string
   readonly steps: readonly WalkthroughStep[]
 }
 
@@ -309,6 +314,8 @@ export interface WalkthroughDoc {
   readonly id: string
   readonly title: string
   readonly summary?: string
+  /** The rest, folded away under the summary behind "More" (Markdown). */
+  readonly more?: string
   /** Facts beside the title: branch, commit, date… */
   readonly meta?: Readonly<Record<string, string>> | readonly WalkthroughMeta[]
   /** Relative media URLs resolve against this. */
@@ -326,7 +333,22 @@ export interface WalkthroughDoc {
    * renumbering the rest.
    */
   readonly kickers?: "pr" | { readonly noun: string } | false
+  /**
+   * The pull requests the page mentions, by number: their state and title. A `#57148` in a title,
+   * caption or summary, a link to a pull request, and a section's PR `link` read as a small chip
+   * (its state's icon and number; the title on hover).
+   */
+  readonly prs?: Readonly<Record<string, WalkthroughPR>>
+  /** `owner/name` on GitHub, so a bare `#57148` links to its pull request. */
+  readonly repo?: string
   readonly sections: readonly WalkthroughSection[]
+}
+
+export interface WalkthroughPR {
+  readonly state?: "merged" | "open" | "draft" | "closed"
+  readonly title?: string
+  /** Its URL, when neither `repo` nor a link on the page gives it. */
+  readonly href?: string
 }
 
 // ——— filled in ———
@@ -443,6 +465,7 @@ export interface WalkSection {
   readonly kicker?: string
   readonly status?: WalkthroughStatus
   readonly summary?: string
+  readonly more?: string
   readonly steps: readonly WalkStep[]
 }
 
@@ -469,6 +492,7 @@ export interface WalkPage {
   readonly id: string
   readonly title: string
   readonly summary?: string
+  readonly more?: string
   readonly meta: readonly WalkthroughMeta[]
   readonly verdicts: readonly WalkVerdict[]
   readonly sections: readonly WalkSection[]
@@ -476,6 +500,10 @@ export interface WalkPage {
   readonly steps: readonly WalkStep[]
   /** Updates and answers, newest first. */
   readonly feed: readonly FeedItem[]
+  /** The pull requests the page knows, by number, each with its URL when one is known. */
+  readonly prs: Readonly<Record<string, WalkthroughPR>>
+  /** `owner/name`, when the doc gave one. */
+  readonly repo?: string
 }
 
 export const DEFAULT_VERDICTS = ["ship", "change", "unsure"] as const
@@ -850,7 +878,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         ...(step.question ? { question: step.question } : {}),
         media: (list as readonly WalkthroughMedia[]).map((m) => fillMedia(m, doc.base)),
         columns: Math.max(1, Math.min(3, Math.round(step.columns ?? 1))),
-        ...(step.more?.trim() && list.length > 1 ? { more: step.more.trim() } : {}),
+        ...(step.more?.trim() ? { more: step.more.trim() } : {}),
         options,
         ask,
       }
@@ -870,6 +898,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
       ...(typeof s.kicker === "string" && s.kicker.trim() ? { kicker: s.kicker.trim() } : {}),
       ...(s.status ? { status: s.status } : {}),
       ...(s.summary ? { summary: s.summary } : {}),
+      ...(s.more?.trim() ? { more: s.more.trim() } : {}),
       steps: own,
     }
   })
@@ -909,6 +938,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
     id: doc.id,
     title: doc.title,
     ...(doc.summary ? { summary: doc.summary } : {}),
+    ...(doc.more?.trim() ? { more: doc.more.trim() } : {}),
     meta,
     feed,
     verdicts: (doc.verdicts?.length ? doc.verdicts : DEFAULT_VERDICTS).map((v) => ({
@@ -917,7 +947,49 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
     })),
     sections: withKickers(sections, doc.sections, doc.kickers),
     steps,
+    prs: knownPRs(doc, sections),
+    ...(repoOf(doc) ? { repo: repoOf(doc) } : {}),
   }
+}
+
+/** The number in a pull request's URL (`…/pull/57148`), or null. */
+export const prNumber = (href: string): string | null =>
+  /\/(?:pull|merge_requests)\/(\d+)(?:[/?#]|$)/.exec(href)?.[1] ?? null
+
+const repoOf = (doc: WalkthroughDoc) =>
+  doc.repo?.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "") || undefined
+
+/** Every pull request the page knows, with the URL each one's chip links to where there is one. */
+function knownPRs(
+  doc: WalkthroughDoc,
+  sections: readonly WalkSection[],
+): Record<string, WalkthroughPR> {
+  const out: Record<string, WalkthroughPR> = {}
+  const repo = repoOf(doc)
+  for (const s of sections) {
+    const n = s.link && prNumber(s.link.href)
+    if (n) out[n] = { href: s.link!.href.replace(/(\/pull\/\d+).*$/, "$1") }
+  }
+  for (const [k, pr] of Object.entries(doc.prs ?? {})) {
+    const n = k.replace(/^#/, "")
+    if (!/^\d+$/.test(n)) continue
+    out[n] = { ...out[n], ...pr }
+  }
+  if (repo)
+    for (const n of Object.keys(out))
+      if (!out[n]!.href) out[n] = { ...out[n], href: `https://github.com/${repo}/pull/${n}` }
+  return out
+}
+
+/** A pull request by number: what the page knows, or (with a repo) its URL. */
+export function findPR(
+  prs: Readonly<Record<string, WalkthroughPR>>,
+  n: string,
+  repo?: string,
+): WalkthroughPR | null {
+  const known = prs[n]
+  if (known) return known
+  return repo ? { href: `https://github.com/${repo}/pull/${n}` } : null
 }
 
 /** Whether a link is a pull (or merge) request: GitHub's `/pull/123`, GitLab's merge requests. */

@@ -3,36 +3,37 @@ import { SPRINGS } from "../core/motion.js"
 
 const snappy = springCss(SPRINGS.snappy)
 
-// The code diff's card: a header (the path, its counts, ‹ n of m ›, wrap and Split | Unified)
-// over the diff, drawn by @pierre/diffs in its own shadow root. Its colours come through the
-// renderer's --diffs-* variables, set here from the pieces' tokens, so dark, light, presets and
-// restyle() carry into it. On another surface (look.ts's one-surface rule) the card has no fill
-// or ring; --kd-fill, set from what shows behind it, keeps the code's own fill opaque.
+// The code diff, on the void: a quiet header (the path, its counts, ‹ n of m ›, wrap and
+// Split | Unified) over the diff, drawn by @pierre/diffs in its own shadow root, with no card, no
+// fill and no ring: a hairline under the header and one under the code, as a walkthrough's code
+// block has. Its colours come through the renderer's --diffs-* variables, set here from the
+// pieces' tokens, so dark, light, presets and restyle() carry into it; only changed lines are
+// tinted. --kd-fill, set from what shows behind it, keeps the code's own fill opaque under its
+// sticky line numbers (--k-diff-bg gives it a fill of its own).
 //
-// One inset, --kd-i (8px, the renderer's own gap), all round: the header's controls sit it in
-// from the top and the right, the path and the code's separators it in from the left, and the
-// code ends it above the bottom. --kd-x is the inset across: none on another surface, so the
-// header and the code line up with the surface's own content (a walkthrough's caption). Inner
-// corners are --kd-inner, the outer corner less the distance in (diff.ts measures it), so
-// they're concentric with the card, or with the surface it's on.
+// One inset, --kd-i (8px, the renderer's own gap): the code's separators and blocks sit it in
+// from the top and the bottom. --kd-x is the inset across: none on its own or on a surface, so
+// the header and the code line up with the column's content (a walkthrough's caption); in a
+// split's pane or a diffReview, --kd-i. Inner corners are --kd-inner, the outer corner less the
+// distance in (diff.ts measures it), so they're concentric with the surface it's on.
 export const diffCss = `
 @property --kd-ft{syntax:"<length>";inherits:false;initial-value:0px}
 @property --kd-fb{syntax:"<length>";inherits:false;initial-value:0px}
 :where(.knobs-ui){--kd-add:var(--_k-diff-add);--kd-del:var(--_k-diff-del);--kd-mod:var(--_k-diff-mod);--kd-move:var(--k-diff-move,var(--_k-info))}
 :where(.knobs-diff,.knobs-diff *,.knobs-diff-files,.knobs-diff-files *){box-sizing:border-box}
-.knobs-ui.knobs-diff{--kd-bg:var(--k-diff-bg,var(--_kd-bg,var(--_k-bg)));--kd-solid:var(--kd-fill,var(--kd-bg));--kd-line:calc(var(--_k-font-size) * 1.5);
+.knobs-ui.knobs-diff{--kd-bg:var(--k-diff-bg,var(--_kd-bg,transparent));--kd-solid:var(--kd-fill,var(--kd-bg));--kd-line:calc(var(--_k-font-size) * 1.5);
   --kd-i:var(--k-diff-inset,8px);--kd-x:var(--kd-i);--kd-inner:max(3px,calc(var(--_ku-pane-radius) - var(--kd-i)));--kd-ctl:var(--kd-inner);
   --kd-head:calc(var(--_k-control-h) + 2 * var(--kd-i));--kd-fade:var(--k-diff-fade,20px);--kd-stick:0px;position:relative;display:flex;flex-direction:column;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;
   background:var(--kd-bg);border-radius:var(--_ku-pane-radius);font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;
   letter-spacing:normal;word-spacing:normal;text-transform:none;-webkit-font-smoothing:antialiased}
 .knobs-ui.knobs-diff[data-height="auto"]{height:auto}
-.knobs-diff::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;box-shadow:var(--_ku-pane-ring);pointer-events:none}
+.knobs-ui.knobs-diff:not([data-on="pane"])::after{content:"";position:absolute;inset:0;z-index:3;box-shadow:inset 0 -1px 0 var(--_k-border-subtle);pointer-events:none}
 .knobs-diff [hidden],.knobs-diff-files [hidden]{display:none!important}
 .knobs-diff svg{display:block;flex:none}
-.knobs-ui.knobs-diff[data-on="surface"]{--kd-x:0px;--kd-head:var(--_k-control-h);--kd-ctl:var(--_k-radius)}
-/* The header's hairline shows only once the code has scrolled under it. */
+.knobs-ui.knobs-diff:not([data-on="pane"]){--kd-x:0px;--kd-head:calc(var(--_k-control-h) + var(--kd-i));--kd-ctl:var(--_k-radius)}
+/* A hairline under the header, firmer once the code has scrolled under it. */
 .knobs-diff-head{position:relative;z-index:1;flex:none;display:flex;align-items:center;gap:8px;height:var(--kd-head);padding:0 var(--kd-x);
-  box-shadow:inset 0 -1px transparent;transition:box-shadow .15s;user-select:none;-webkit-user-select:none}
+  box-shadow:inset 0 -1px var(--_k-border-subtle);transition:box-shadow .15s;user-select:none;-webkit-user-select:none}
 .knobs-diff[data-scrolled]>.knobs-diff-head{box-shadow:inset 0 -1px var(--_k-border)}
 .knobs-diff-path{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 .knobs-diff-dir,.knobs-diff-from{color:var(--_k-fg-3)}
@@ -70,6 +71,15 @@ export const diffCss = `
 .knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
 .knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
+/* Narrow, the header gives up words before anything is cut off at its end: Viewed keeps its
+   check, then the counts' bar goes, then the counts; the path fades at its end throughout. */
+.knobs-diff-head,.knobs-diff-part-head{container-type:inline-size}
+@container (max-width:520px){
+  .knobs-diff-viewed-label{display:none}
+  .knobs-ui .knobs-diff-viewed{width:var(--_k-control-h);padding:0;justify-content:center}
+  .knobs-diff-counts .knobs-diff-bar{display:none}
+}
+@container (max-width:400px){.knobs-diff-counts{display:none}.knobs-diff-nav>span{min-width:2.6em}}
 .knobs-diff-path{transition:opacity .2s}
 .knobs-diff[data-viewed]>.knobs-diff-head .knobs-diff-path,.knobs-diff-part[data-viewed] .knobs-diff-path{opacity:.6}
 /* Split | Unified: the selection pill on the one picked, its bright copy the picked one's text; a
@@ -134,24 +144,26 @@ export const diffCss = `
   --diffs-bg-deletion-number-override:color-mix(in srgb,var(--kd-del) 55%,var(--kd-solid));
   --diffs-bg-addition-emphasis-override:color-mix(in srgb,var(--kd-add) 22%,transparent);
   --diffs-bg-deletion-emphasis-override:color-mix(in srgb,var(--kd-del) 22%,transparent);
-  --diffs-bg-separator-override:color-mix(in srgb,var(--_k-fg) 4.5%,var(--kd-solid));
-  --diffs-bg-context-override:color-mix(in srgb,var(--_k-fg) 3%,var(--kd-solid));
-  --diffs-bg-buffer-override:color-mix(in srgb,var(--_k-fg) 3.5%,var(--kd-solid));
+  /* Unchanged lines and the folds between hunks sit on the void; only a split's missing lines
+     are faintly filled. */
+  --diffs-bg-separator-override:var(--kd-solid);
+  --diffs-bg-context-override:var(--kd-solid);
+  --diffs-bg-buffer-override:color-mix(in srgb,var(--_k-fg) 2.5%,var(--kd-solid));
   --diffs-bg-selection-override:var(--_k-accent);
   --diffs-fg-number-override:var(--_k-fg-3);
 }
-/* diffReview: one card, the file list a drawer at its left (its width springs; the list inside
-   is pinned to its right edge, so it slides out from under the diff), parted from the diff by a
-   hairline. The diff in it draws no card of its own. */
-.knobs-ui.knobs-diff-review{position:relative;display:flex;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;border-radius:var(--_ku-pane-radius);background:var(--_ku-pane-bg);
+/* diffReview, on the void as the diff is: the file list a drawer at its left (its width springs;
+   the list inside is pinned to its right edge, so it slides out from under the diff), parted
+   from the diff by a hairline; one hairline runs under both headers and one under it all. */
+.knobs-ui.knobs-diff-review{position:relative;display:flex;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;
   font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased}
-.knobs-diff-review::after{content:"";position:absolute;inset:0;z-index:5;border-radius:inherit;box-shadow:var(--_ku-pane-ring);pointer-events:none}
+.knobs-diff-review::after{content:"";position:absolute;inset:0;z-index:5;box-shadow:inset 0 -1px 0 var(--_k-border-subtle);pointer-events:none}
 :where(.knobs-diff-review,.knobs-diff-review *){box-sizing:border-box}
-.knobs-diff-drawer{position:relative;flex:none;width:0;height:100%;overflow:hidden;box-shadow:inset -1px 0 var(--_k-border)}
+.knobs-diff-drawer{position:relative;flex:none;width:0;height:100%;overflow:hidden;box-shadow:inset -1px 0 var(--_k-border-subtle)}
 .knobs-diff-drawer[data-shut]{visibility:hidden}
 .knobs-diff-drawer-in{position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column}
 .knobs-diff-drawer-head{flex:none;display:flex;align-items:center;gap:6px;height:calc(var(--_k-control-h) + 2 * var(--k-diff-inset,8px));padding:0 var(--k-diff-inset,8px) 0 calc(var(--_ku-row-x) + 8px);
-  user-select:none;-webkit-user-select:none}
+  box-shadow:inset 0 -1px var(--_k-border-subtle);user-select:none;-webkit-user-select:none}
 .knobs-diff-drawer-title{font-weight:var(--_k-weight-title)}
 .knobs-diff-drawer-count{color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-variant-numeric:tabular-nums}
 .knobs-diff-drawer-in>.knobs-diff-files{flex:1;min-height:0;height:auto}
@@ -163,10 +175,11 @@ export const diffCss = `
 .knobs-ui .knobs-diff-toggle[aria-pressed]:not(:hover,:focus-visible){background:transparent}
 /* diffReview's file list: a filter over a compact tree, a status letter, the counts and their
    bar on each file; one highlight glides to the file on show. Viewed files dim, with a tick. */
-.knobs-diff-files{--k-row:var(--k-diff-row,28px);display:flex;flex-direction:column;height:100%;min-height:0;padding-top:2px}
+.knobs-diff-files{--k-row:var(--k-diff-row,28px);display:flex;flex-direction:column;height:100%;min-height:0;padding-top:4px}
 .knobs-diff-filter{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:26px;margin:0 var(--_ku-row-x) 4px;padding:0 4px 0 8px;
-  border-radius:max(6px,var(--_ku-row-radius));background:var(--_ku-wash);color:var(--_k-fg-3);box-shadow:inset 0 0 0 1px transparent;transition:background .15s,box-shadow .15s}
-.knobs-diff-filter:focus-within{background:var(--_ku-wash-hi);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--_k-accent) 45%,transparent)}
+  border-radius:max(6px,var(--_ku-row-radius));color:var(--_k-fg-3);box-shadow:inset 0 0 0 1px transparent;transition:box-shadow .15s}
+/* The filter is a line of text, no box; focused, a hairline ring. */
+.knobs-diff-filter:focus-within{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--_k-accent) 45%,transparent)}
 .knobs-diff-filter svg{width:12px;height:12px;flex:none}
 .knobs-ui .knobs-diff-filter>input{flex:1;min-width:0;height:100%;font:var(--_k-weight) var(--_k-font-size)/1 var(--_k-font);color:var(--_k-fg);caret-color:var(--_k-accent);background:transparent}
 .knobs-ui .knobs-diff-filter>input::placeholder{color:var(--_k-fg-3)}

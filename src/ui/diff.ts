@@ -264,12 +264,11 @@ function scrollParent(el: HTMLElement, view: Window): HTMLElement | null {
 }
 
 /**
- * A code diff in a knobs card: a header with the file's path, its counts and Split | Unified
- * over the diff, drawn by `@pierre/diffs` (Shiki highlighting, word-level changes, hunks that
+ * A code diff on the void (no card, fill or ring: a hairline under its header and one under the
+ * code): a quiet header with the file's path, its counts and Split | Unified over the diff, drawn by `@pierre/diffs` (Shiki highlighting, word-level changes, hunks that
  * expand when the whole files are known). Takes a unified patch or before and after pairs.
  * Changing the file or the layout fades the new view in over the old, in place; each file
- * keeps its scroll. On another surface (a card, a split's pane, a walkthrough's step) it draws
- * no card of its own. Needs `@pierre/diffs` installed; it loads on first use.
+ * keeps its scroll. Needs `@pierre/diffs` installed; it loads on first use.
  */
 export function codeDiff(container: HTMLElement, options: CodeDiffOptions): CodeDiff {
   const doc = container.ownerDocument
@@ -328,7 +327,10 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   const viewedToggle = () => {
     const b = make("button", "knobs-diff-viewed")
     b.type = "button"
-    b.append(make("span", ""), "Viewed")
+    const label = make("span", "knobs-diff-viewed-label")
+    label.textContent = "Viewed"
+    b.append(make("span", ""), label)
+    b.setAttribute("aria-label", "Viewed")
     return b
   }
   const paintViewed = (b: HTMLElement, on: boolean) => {
@@ -1090,8 +1092,8 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
 
   /**
    * Where it sits: on another surface (a host's card, a walkthrough's step) its content lines
-   * up with the surface's (no inset of its own); in a split's pane, or on its own as a card, it
-   * keeps its inset. Its inner corners (separators, the header's controls) are the outer
+   * up with the surface's (no inset of its own), as it does on its own; in a split's pane or a
+   * review it keeps its inset. Its inner corners (separators, the header's controls) are the outer
    * corner less the distance in, so they're concentric. And with no fill of its own, the
    * renderer still needs an opaque one under its sticky line numbers: the colour behind it.
    */
@@ -1349,7 +1351,7 @@ export interface DiffReview {
 }
 
 /**
- * A diff beside its file list, as a review, in one card: the list is a drawer at its left that
+ * A diff beside its file list, as a review, on the void as the diff is: the list is a drawer at its left that
  * springs open and shut (0 to 256px, .4 s, no bounce; the diff reflows as it moves) from a
  * button at the start of the diff's header, or ⌘B / Ctrl+B. In it, a field that narrows the list
  * by path, then the changed files as a compact tree (folders folded into paths), each with its

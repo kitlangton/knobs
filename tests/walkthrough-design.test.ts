@@ -13,6 +13,8 @@ import {
   normalizeWalkthrough,
   noteBarReserve,
   plainMarkdown,
+  findPR,
+  prNumber,
   tableStacks,
   type WalkthroughDoc,
   type WalkthroughSection,
@@ -114,8 +116,8 @@ describe("steps without numbers on screen", () => {
   })
 })
 
-describe("step media", () => {
-  test("sit one under another unless the step asks for columns; more folds the rest", () => {
+describe("step media and more", () => {
+  test("media sit one under another unless the step asks for columns", () => {
     const p = normalizeWalkthrough({
       id: "m",
       title: "M",
@@ -125,14 +127,65 @@ describe("step media", () => {
           steps: [
             { title: "Default", media: ["a.mp4", "b.mp4"] },
             { title: "Two up", media: ["a.mp4", "b.mp4"], columns: 2 },
-            { title: "Folded", media: ["a.mp4", "b.mp4", "c.png"], more: " More clips " },
-            { title: "Nothing to fold", media: "a.mp4", more: "More" },
           ],
         },
       ],
     })
-    expect(p.steps.map((s) => s.columns)).toEqual([1, 2, 1, 1])
-    expect(p.steps.map((s) => s.more)).toEqual([undefined, undefined, "More clips", undefined])
+    expect(p.steps.map((s) => s.columns)).toEqual([1, 2])
+  })
+
+  test("more is the rest of the words, on a step, a section and the page", () => {
+    const p = normalizeWalkthrough({
+      id: "m",
+      title: "M",
+      summary: "Short.",
+      more: " The page's rest. ",
+      sections: [
+        {
+          title: "S",
+          summary: "One line.",
+          more: "The section's rest.",
+          steps: [
+            { title: "Claim", caption: "One sentence.", more: "First.\n\nSecond." },
+            { title: "Bare", more: "  " },
+          ],
+        },
+      ],
+    })
+    expect(p.more).toBe("The page's rest.")
+    expect(p.sections[0]!.more).toBe("The section's rest.")
+    expect(p.steps.map((s) => s.more)).toEqual(["First.\n\nSecond.", undefined])
+  })
+})
+
+describe("pull requests", () => {
+  test("are known from section links, the doc's prs and its repo", () => {
+    const p = normalizeWalkthrough({
+      id: "p",
+      title: "P",
+      repo: "https://github.com/anomalyco/opencode/",
+      prs: { "#57148": { state: "merged", title: "Catalog refresh" }, "57151": { state: "draft" } },
+      sections: [section("Models", { link: `${pr(57148)}/files` })],
+    })
+    expect(p.repo).toBe("anomalyco/opencode")
+    expect(p.prs["57148"]).toEqual({ href: pr(57148), state: "merged", title: "Catalog refresh" })
+    expect(p.prs["57151"]).toEqual({ state: "draft", href: pr(57151) })
+    expect(findPR(p.prs, "40000", p.repo)).toEqual({ href: pr(40000) })
+    expect(findPR(p.prs, "40000")).toBeNull()
+    expect(prNumber(`${pr(9)}#x`)).toBe("9")
+    expect(prNumber("https://github.com/a/b/issues/9")).toBeNull()
+  })
+})
+
+describe("layout", () => {
+  test("goes to one column where it's narrow, whatever side the rail is on", () => {
+    const css = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough-css.ts"), "utf8")
+    // As specific as the rail-side rules ([data-rail="right"]) and after them, so it wins.
+    expect(css).toMatch(
+      /@container knobs-wt \(max-width:960px\)\{\.knobs-walkthrough\[data-rail\] \.knobs-wt-layout\{grid-template-columns:minmax\(0,1fr\)/,
+    )
+    const src = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough.ts"), "utf8")
+    expect(src).toMatch(/root\.dataset\.rail = options\.rail === false \? "none" : options\.rail === "right" \? "right" : "left"/)
   })
 })
 

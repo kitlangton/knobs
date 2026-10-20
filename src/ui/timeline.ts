@@ -14,10 +14,12 @@ import {
   adjacentMarker,
   advance,
   CATCH_UP,
+  chapterBounds,
   clampView,
   currentMarker,
   followView,
   frameTime,
+  minutes,
   moveHead,
   rulerTicks,
   scrubTime,
@@ -73,10 +75,15 @@ export interface TimelineOptions extends UiLook {
   /**
    * `"editor"` (the default): a ruler with labels over a lane of markers to add, drag and name,
    * zoomed and panned by the wheel. `"lane"`: one slim lane under a compare or a video, with ticks
-   * and no labels, markers as faint chapter ticks (the current one in text colour), nothing to
-   * edit, and the wheel left to the page.
+   * and no labels, markers as faint chapter ticks (the current one in text colour) and nothing to
+   * edit. A pinch, ⌘/ctrl-wheel or = and - zoom it around the pointer, a sideways scroll pans it,
+   * both following the hand 1:1; a double-click or 0 fits it again. An up-and-down wheel is left
+   * to the page. `"line"`: a player's progress, a single thin line under a video or a compare (no
+   * play button: the media and Space play), one segment per chapter with a small gap between,
+   * each filling as the time passes it, thicker under the pointer; click or drag anywhere on it
+   * to seek, 1:1, and the chapter and time under the pointer show over it. Zooms as a lane does.
    */
-  readonly variant?: "editor" | "lane"
+  readonly variant?: "editor" | "lane" | "line"
   readonly label?: string
   /** The time moved: scrubbed, stepped, jumped, played (every frame) or set from code. */
   onSeek?(time: number, source: SeekSource): void
@@ -147,6 +154,8 @@ export interface Timeline {
 }
 
 const RULER = 22
+/** The gap between a line's chapter segments (px). */
+const SEG_GAP = 3
 // kit-motion: the view follows wheel and pinch on the instant spring (.1 s, no bounce); pans the
 // timeline makes itself (following the playhead, fitting) glide on calm (.4 s, no bounce).
 const INSTANT = springMotion(SPRINGS.instant)
@@ -166,7 +175,9 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let speed = options.speed ?? 1
   let repeat = options.repeat ?? true
   const arrows = options.arrows ?? "frames"
-  const lane = options.variant === "lane"
+  const line = options.variant === "line"
+  // A lane or a line: slim, nothing to edit, and the wheel the page's unless it's a zoom or a pan.
+  const lane = line || options.variant === "lane"
   let time = Math.min(duration, Math.max(0, options.time ?? 0))
   let playing = false
   let markers: TimelineMarker[] = [...(options.markers ?? [])]
@@ -199,7 +210,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   root.setAttribute("aria-label", options.label ?? "Timeline")
   root.setAttribute("aria-keyshortcuts", "Space ArrowLeft ArrowRight , . Home End [ ] I O M")
   applyLook(root, options)
-  if (lane) root.dataset.variant = "lane"
+  if (lane) root.dataset.variant = line ? "line" : "lane"
   // No clock beside play: the time shows under the pointer on the track (`tag`), in seconds.
   const transport = el("div", "knobs-tl-transport")
   const playBtn = el("button", "knobs-tl-play")
@@ -213,6 +224,12 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const hover = el("div", "knobs-tl-hover")
   const tag = el("span", "knobs-tl-tag")
   tag.setAttribute("aria-hidden", "true")
+  // A line's tag names the chapter under the pointer before its time.
+  const tagLabel = el("span", "knobs-tl-tag-label")
+  const tagTime = el("span", "knobs-tl-tag-time")
+  tag.append(tagLabel, tagTime)
+  // A line's chapters: one segment each, a small gap between, each filling as the time passes it.
+  const segs = el("div", "knobs-tl-segs")
   const head = el("div", "knobs-tl-head")
   // The playhead is the slider screen readers and keys work with.
   head.id = `${id}-head`
@@ -221,13 +238,16 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   head.setAttribute("aria-valuemin", "0")
   head.setAttribute("aria-valuemax", String(duration))
   track.append(canvas, markerLane, hover, head, tag)
+  if (line) track.insertBefore(segs, markerLane)
   root.append(transport, track)
   container.append(root)
 
   // ——— the view: shown on two springs, retargeted by the wheel, a pinch, a fit or a follow ———
   let width = 1
   let height = 1
-  const fitView = (): TimeView => clampView({ start: 0, span: duration }, duration, { pad: 0.02 })
+  // A line runs edge to edge under its media, so fitted it shows exactly the whole length.
+  const fitView = (): TimeView =>
+    clampView({ start: 0, span: duration }, duration, { pad: line ? 0 : 0.02 })
   let target = fitView()
   const vStart = new Spring(target.start, INSTANT.omega, 1, 1e-5)
   const vSpan = new Spring(target.span, INSTANT.omega, 1, 1e-5)
@@ -236,13 +256,14 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const xOf = (t: number) => (t - vStart.x) * pxPerSec()
   const tOf = (x: number) => vStart.x + x / pxPerSec()
   const minSpan = () => Math.max(4 / fps, 0.05)
-  const retarget = (next: TimeView, motion = INSTANT) => {
-    target = clampView(next, duration, { pad: 0.04, minSpan: minSpan() })
+  /** `hand`: a lane's pinch or scroll, there at once. */
+  const retarget = (next: TimeView, motion = INSTANT, hand = false) => {
+    target = clampView(next, duration, { pad: line ? 0 : 0.04, minSpan: minSpan() })
     for (const s of [vStart, vSpan]) {
       s.omega = motion.omega
       s.zeta = motion.zeta
     }
-    if (reducedMotion(win) && motion === CALM) {
+    if (hand || (reducedMotion(win) && motion === CALM)) {
       vStart.snap(target.start)
       vSpan.snap(target.span)
     } else {
@@ -268,6 +289,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   }
   let drawn = ""
   const drawRuler = () => {
+    // A line draws no ruler: its chapters are its segments.
+    if (line) return
     const v = view()
     const key = `${v.start.toFixed(6)}:${v.span.toFixed(6)}:${width}:${height}:${units}:${fps}`
     if (key === drawn) return
@@ -288,9 +311,11 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     if (lane) {
       // Ticks up from the bottom at subpixel places (no rounding moiré), no labels.
       ctx.fillStyle = colors.tick
-      for (const t of ticks.minor) if (t >= -1e-9 && t <= duration + 1e-9) ctx.fillRect(xOf(t) - 0.5, rh - 4, 1, 4)
+      for (const t of ticks.minor)
+        if (t >= -1e-9 && t <= duration + 1e-9) ctx.fillRect(xOf(t) - 0.5, rh - 4, 1, 4)
       ctx.fillStyle = colors.major
-      for (const m of ticks.major) if (m.t >= -1e-9 && m.t <= duration + 1e-9) ctx.fillRect(xOf(m.t) - 0.5, rh - 7, 1, 7)
+      for (const m of ticks.major)
+        if (m.t >= -1e-9 && m.t <= duration + 1e-9) ctx.fillRect(xOf(m.t) - 0.5, rh - 7, 1, 7)
       return
     }
     const px = (t: number) => Math.round(xOf(t)) + 0.5
@@ -344,12 +369,45 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       n.title = `${m.label ? `${m.label} · ` : ""}${clock(m.time)}`
     }
     placeMarkers()
+    if (line) syncSegments()
   }
   const placeMarkers = () => {
     for (const m of markers) {
       const n = markerEls.get(m.id)
       if (n) n.style.transform = `translateX(${xOf(m.time).toFixed(2)}px)`
     }
+  }
+  /** Where a line's segments start and end: 0, each chapter inside the length, the end. */
+  let bounds: number[] = []
+  const segEls: { el: HTMLElement; fill: HTMLElement }[] = []
+  const syncSegments = () => {
+    bounds = chapterBounds(
+      markers.map((m) => m.time),
+      duration,
+    )
+    while (segEls.length > bounds.length - 1) segEls.pop()!.el.remove()
+    while (segEls.length < bounds.length - 1) {
+      const n = el("i", "knobs-tl-seg")
+      const fill = el("b", "knobs-tl-seg-fill")
+      n.append(fill)
+      segs.append(n)
+      segEls.push({ el: n, fill })
+    }
+    placeSegments()
+  }
+  const placeSegments = () => {
+    if (!line) return
+    const last = segEls.length - 1
+    segEls.forEach((s, i) => {
+      const a = bounds[i]!
+      const b = bounds[i + 1]!
+      const x0 = xOf(a) + (i > 0 ? SEG_GAP / 2 : 0)
+      const x1 = xOf(b) - (i < last ? SEG_GAP / 2 : 0)
+      s.el.style.transform = `translateX(${x0.toFixed(2)}px)`
+      s.el.style.width = `${Math.max(0, x1 - x0).toFixed(2)}px`
+      const k = Math.min(1, Math.max(0, (shownHead - a) / Math.max(1e-9, b - a)))
+      s.fill.style.transform = `scaleX(${k.toFixed(4)})`
+    })
   }
   const syncRanges = () => {
     const keep = new Set(ranges.map((r) => r.id))
@@ -365,7 +423,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         b.dataset.edge = "end"
         const label = el("span", "knobs-tl-rlabel")
         n.append(label, a, b)
-        track.insertBefore(n, markerLane)
+        track.insertBefore(n, line ? segs : markerLane)
         rangeEls.set(r.id, n)
         if (built) enter(n)
       }
@@ -421,6 +479,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let currentId: string | null = null
   const renderHead = () => {
     head.style.transform = `translateX(${xOf(shownHead).toFixed(2)}px)`
+    placeSegments()
     head.setAttribute("aria-valuenow", time.toFixed(3))
     head.setAttribute("aria-valuetext", `${time.toFixed(2)} seconds, frame ${toFrame(time, fps)}`)
     // The current chapter: the last marker at or before the time, its tick in text colour.
@@ -458,7 +517,9 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let gliding = false
   /** Moves the drawn playhead: a jump catches up from where it is, a follow lands (see moveHead). */
   const headTo = (shown: number, motion: "jump" | "follow") => {
-    const from = gliding ? { x: caret.x, target: caret.target } : { x: shownHead, target: shownHead }
+    const from = gliding
+      ? { x: caret.x, target: caret.target }
+      : { x: shownHead, target: shownHead }
     const jump = motion === "jump" && !reducedMotion(win)
     // Less than 2 px away there's nothing to catch up.
     const next = moveHead(from, shown, jump ? "jump" : "follow", gliding, 2 / pxPerSec())
@@ -704,14 +765,27 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     setTime(s.t, "scrub", s.shown, press)
     root.toggleAttribute("data-stuck", s.stop !== null)
   }
+  /** The pointer over the track (px), which a key's zoom centres on; else the playhead. */
+  let pointerX: number | null = null
+  const zoomAtHand = (factor: number) =>
+    zoom(factor, pointerX === null ? time : target.start + (pointerX / width) * target.span)
   // The time under the pointer, in seconds, while it's over the track or scrubbing.
   const showTag = (x: number) => {
     const at = Math.min(duration, Math.max(0, tOf(x)))
-    const text = `${at.toFixed(2)} s`
-    if (tag.textContent !== text) tag.textContent = text
+    const text = line ? minutes(at) : `${at.toFixed(2)} s`
+    if (tagTime.textContent !== text) tagTime.textContent = text
+    const label = line ? (currentMarker(markers, at, fps)?.label ?? "") : ""
+    if (tagLabel.textContent !== label) tagLabel.textContent = label
     const cx = Math.min(width, Math.max(0, x))
-    const flip = cx > width - tag.offsetWidth - 12
-    tag.style.transform = `translateX(${cx.toFixed(1)}px) translateX(${flip ? "calc(-100% - 4px)" : "4px"})`
+    if (line) {
+      // Over the line, centred on the pointer and kept inside its ends.
+      const w = tag.offsetWidth
+      const left = Math.min(Math.max(0, width - w), Math.max(0, cx - w / 2))
+      tag.style.transform = `translateX(${left.toFixed(1)}px)`
+    } else {
+      const flip = cx > width - tag.offsetWidth - 12
+      tag.style.transform = `translateX(${cx.toFixed(1)}px) translateX(${flip ? "calc(-100% - 4px)" : "4px"})`
+    }
     tag.dataset.on = ""
   }
   const hideTag = () => delete tag.dataset.on
@@ -768,6 +842,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   })
   track.addEventListener("pointermove", (e) => {
     const x = localX(e)
+    pointerX = x
     hover.style.transform = `translateX(${x.toFixed(1)}px)`
     if (!drag || drag.kind === "scrub") showTag(x)
     if (!drag) return
@@ -833,36 +908,61 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   track.addEventListener("pointercancel", endDrag)
   track.addEventListener("lostpointercapture", endDrag)
   track.addEventListener("pointerleave", () => {
+    pointerX = null
     if (drag) return
     hover.style.transform = "translateX(-100px)"
     hideTag()
   })
   track.addEventListener("dblclick", (e) => {
-    if (lane) return
+    if (lane) return fit()
     const markerEl = (e.target as HTMLElement).closest<HTMLElement>(".knobs-tl-marker")
     if (markerEl) return rename(markerEl.dataset.id!)
     if ((e.target as HTMLElement).closest(".knobs-tl-edge,.knobs-tl-rlabel")) return
     const m = addMarker(tOf(localX(e)))
     if (m) rename(m.id)
   })
-  // ⌘wheel or a pinch zooms around the pointer; the wheel and two fingers pan. A lane leaves the
-  // wheel to the page.
+  // ⌘wheel or a pinch zooms around the pointer; the wheel and two fingers pan. A lane follows the
+  // hand 1:1 and pans only on a sideways scroll, leaving an up-and-down wheel to the page.
   track.addEventListener(
     "wheel",
     (e) => {
-      if (lane) return
+      const zooming = e.ctrlKey || e.metaKey
+      if (zooming && pinching) return e.preventDefault()
+      const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY)
+      if (lane && !zooming && !sideways) return
       e.preventDefault()
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? height : 1
-      if (e.ctrlKey || e.metaKey) {
+      if (zooming) {
         const at = target.start + (localX(e) / width) * target.span
-        retarget(zoomView(target, Math.exp(-e.deltaY * scale * (e.ctrlKey ? 0.01 : 0.002)), at))
+        const k = Math.exp(-e.deltaY * scale * (e.ctrlKey ? 0.01 : 0.002))
+        retarget(zoomView(target, k, at), INSTANT, lane)
       } else {
-        const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * scale
-        retarget({ ...target, start: target.start + (d / width) * target.span })
+        const d = (sideways ? e.deltaX : e.deltaY) * scale
+        retarget({ ...target, start: target.start + (d / width) * target.span }, INSTANT, lane)
       }
     },
     { passive: false },
   )
+  // Safari's trackpad pinch: around the pointer, 1:1.
+  let pinchScale = 1
+  let pinching = false
+  const onGesture = (e: Event) => {
+    const g = e as Event & { scale?: number; clientX?: number }
+    e.preventDefault()
+    if (e.type === "gesturestart") pinchScale = 1
+    pinching = e.type !== "gestureend"
+    if (e.type !== "gesturechange") return
+    const s = g.scale ?? 1
+    const x = g.clientX !== undefined ? localX({ clientX: g.clientX }) : width / 2
+    retarget(
+      zoomView(target, s / pinchScale, target.start + (x / width) * target.span),
+      INSTANT,
+      true,
+    )
+    pinchScale = s
+  }
+  for (const type of ["gesturestart", "gesturechange", "gestureend"])
+    track.addEventListener(type, onGesture)
 
   // ——— keys ———
   root.addEventListener("keydown", (e) => {
@@ -874,7 +974,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       ) {
         e.preventDefault()
         if (e.key === "0") fit()
-        else zoom(e.key === "=" ? 1.5 : 1 / 1.5)
+        else zoomAtHand(e.key === "=" ? 1.5 : 1 / 1.5)
       }
       return
     }
@@ -955,15 +1055,12 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         return
       case "=":
       case "+":
-        if (lane) return
         claim()
-        return zoom(1.5)
+        return zoomAtHand(1.5)
       case "-":
-        if (lane) return
         claim()
-        return zoom(1 / 1.5)
+        return zoomAtHand(1 / 1.5)
       case "0":
-        if (lane) return
         claim()
         return fit()
     }
@@ -1003,82 +1100,84 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         )
 
   // A context menu on markers, ranges and the ruler (not on a lane: nothing there to edit).
-  const menu = lane ? null : contextMenu(track, (e) => {
-    const t = (e?.target as HTMLElement | null) ?? null
-    const markerEl = t?.closest<HTMLElement>(".knobs-tl-marker")
-    const rangeEl = t?.closest<HTMLElement>(".knobs-tl-range")
-    const at = e && "clientX" in e ? tOf(localX(e)) : time
-    if (markerEl) {
-      const mid = markerEl.dataset.id!
-      select({ kind: "marker", id: mid })
-      return [
-        {
-          label: "Go to marker",
-          shortcut: "]",
-          run: () => {
-            const m = markers.find((x) => x.id === mid)
-            if (m) setTime(m.time, "marker", m.time, true)
-          },
-        },
-        { label: "Rename…", shortcut: "Enter", run: () => rename(mid) },
-        "-",
-        {
-          label: "Delete marker",
-          shortcut: "Backspace",
-          destructive: true,
-          run: () => (select({ kind: "marker", id: mid }), removeSelected()),
-        },
-      ] satisfies MenuEntry[]
-    }
-    if (rangeEl) {
-      const rid = rangeEl.dataset.id!
-      select({ kind: "range", id: rid })
-      return [
-        {
-          label: "Loop",
-          checked: Boolean(ranges.find((r) => r.id === rid)?.loop),
-          run: () => {
-            ranges = ranges.map((r) =>
-              r.id === rid ? { ...r, loop: !r.loop } : { ...r, loop: false },
-            )
-            syncRanges()
-            emitRanges()
-          },
-        },
-        "-",
-        {
-          label: "Clear range",
-          shortcut: "Backspace",
-          destructive: true,
-          run: () => (select({ kind: "range", id: rid }), removeSelected()),
-        },
-      ] satisfies MenuEntry[]
-    }
-    return [
-      { label: "Add marker here", shortcut: "M", run: () => addMarker(at) },
-      { label: "Set in point", shortcut: "I", run: () => setEdge("start", at) },
-      { label: "Set out point", shortcut: "O", run: () => setEdge("end", at) },
-      "-",
-      {
-        label: "Ruler",
-        items: [
+  const menu = lane
+    ? null
+    : contextMenu(track, (e) => {
+        const t = (e?.target as HTMLElement | null) ?? null
+        const markerEl = t?.closest<HTMLElement>(".knobs-tl-marker")
+        const rangeEl = t?.closest<HTMLElement>(".knobs-tl-range")
+        const at = e && "clientX" in e ? tOf(localX(e)) : time
+        if (markerEl) {
+          const mid = markerEl.dataset.id!
+          select({ kind: "marker", id: mid })
+          return [
+            {
+              label: "Go to marker",
+              shortcut: "]",
+              run: () => {
+                const m = markers.find((x) => x.id === mid)
+                if (m) setTime(m.time, "marker", m.time, true)
+              },
+            },
+            { label: "Rename…", shortcut: "Enter", run: () => rename(mid) },
+            "-",
+            {
+              label: "Delete marker",
+              shortcut: "Backspace",
+              destructive: true,
+              run: () => (select({ kind: "marker", id: mid }), removeSelected()),
+            },
+          ] satisfies MenuEntry[]
+        }
+        if (rangeEl) {
+          const rid = rangeEl.dataset.id!
+          select({ kind: "range", id: rid })
+          return [
+            {
+              label: "Loop",
+              checked: Boolean(ranges.find((r) => r.id === rid)?.loop),
+              run: () => {
+                ranges = ranges.map((r) =>
+                  r.id === rid ? { ...r, loop: !r.loop } : { ...r, loop: false },
+                )
+                syncRanges()
+                emitRanges()
+              },
+            },
+            "-",
+            {
+              label: "Clear range",
+              shortcut: "Backspace",
+              destructive: true,
+              run: () => (select({ kind: "range", id: rid }), removeSelected()),
+            },
+          ] satisfies MenuEntry[]
+        }
+        return [
+          { label: "Add marker here", shortcut: "M", run: () => addMarker(at) },
+          { label: "Set in point", shortcut: "I", run: () => setEdge("start", at) },
+          { label: "Set out point", shortcut: "O", run: () => setEdge("end", at) },
+          "-",
           {
-            label: "Seconds",
-            radio: true,
-            checked: units === "seconds",
-            run: () => api.update({ units: "seconds" }),
+            label: "Ruler",
+            items: [
+              {
+                label: "Seconds",
+                radio: true,
+                checked: units === "seconds",
+                run: () => api.update({ units: "seconds" }),
+              },
+              {
+                label: "Frames",
+                radio: true,
+                checked: units === "frames",
+                run: () => api.update({ units: "frames" }),
+              },
+            ],
           },
-          {
-            label: "Frames",
-            radio: true,
-            checked: units === "frames",
-            run: () => api.update({ units: "frames" }),
-          },
-        ],
-      },
-      { label: "Fit", shortcut: "0", run: () => fit() },
-    ] satisfies MenuEntry[]
-  })
+          { label: "Fit", shortcut: "0", run: () => fit() },
+        ] satisfies MenuEntry[]
+      })
 
   const fit = () => retarget(fitView(), CALM)
   const zoom = (factor: number, at = time) => retarget(zoomView(target, factor, at), CALM)
@@ -1184,7 +1283,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   return api
 }
 
-const PLAY =
+export const PLAY =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.6v8.8c0 .5.5.8.9.5l6.6-4.4c.4-.3.4-.8 0-1L5.9 3.1c-.4-.3-.9 0-.9.5Z" fill="currentColor"/></svg>'
-const PAUSE =
+export const PAUSE =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/><rect x="9.2" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/></svg>'

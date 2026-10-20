@@ -30,7 +30,7 @@ import {
 } from "./look.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
-import { disclosure, type Disclosure } from "./walkthrough-blocks.js"
+import { disclosure, type Disclosure, linkPRs, prChip } from "./walkthrough-blocks.js"
 import {
   CHECK,
   injectWalkthroughStyles,
@@ -76,6 +76,8 @@ import {
   type WalkthroughOption,
   type WalkthroughState,
   type WalkVoice,
+  findPR,
+  prNumber,
 } from "./walkthrough-model.js"
 
 const el = <K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, cls?: string) => {
@@ -136,6 +138,8 @@ export interface TasteTestOptions extends UiLook {
   readonly lazy?: boolean
   /** The page's steps, for media that name one. */
   readonly steps?: StepLinks
+  /** Options can be picked (on by default); off, they sit side by side under their labels. */
+  readonly pickable?: boolean
 }
 
 export interface TasteTest {
@@ -169,15 +173,23 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
           suggested: o.suggested === true,
         },
   )
-  let picked = options.picked ?? null
+  const pickable = options.pickable !== false
+  let picked = pickable ? (options.picked ?? null) : null
   const root = el(doc, "div", "knobs-wt-options")
-  root.setAttribute("role", "radiogroup")
-  root.setAttribute("aria-label", "Options")
+  if (pickable) {
+    root.setAttribute("role", "radiogroup")
+    root.setAttribute("aria-label", "Options")
+  } else root.dataset.static = ""
   root.style.setProperty("--kw-n", String(Math.min(list.length, 3)))
   if (!container.closest(".knobs-ui")) applyLook(root, options)
   const slots: MediaSlot[] = []
   const tiles = list.map((o, i) => {
     const tile = el(doc, "div", "knobs-wt-option")
+    if (!pickable) {
+      const name = el(doc, "span", "knobs-wt-slot-label")
+      name.textContent = o.label
+      tile.append(name)
+    }
     const pick = el(doc, "button", "knobs-wt-pick")
     pick.type = "button"
     pick.setAttribute("role", "radio")
@@ -205,7 +217,7 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
       api.pick(next)
       options.onPick?.(next)
     })
-    tile.append(pick)
+    if (pickable) tile.append(pick)
     if (o.media)
       slots.push(
         mediaSlot(tile, {
@@ -258,8 +270,18 @@ export interface WalkthroughOptions extends UiLook {
   readonly onFeedback?: (feedback: WalkthroughFeedback) => void
   /** The page's keys (on by default). */
   readonly keys?: boolean
-  /** The contents and progress rail (on by default), beside the column on the right or left. */
-  readonly rail?: boolean | "right" | "left"
+  /**
+   * Kit's review tools (off by default): progress, notes (typed, voice, ink) and their bar,
+   * Copy feedback, the key hints, and picking between options. Off, the page only shows: options
+   * sit side by side, and j / k, f and the arrows still work.
+   */
+  readonly review?: boolean
+  /**
+   * The contents and progress rail (on by default): sticky at the page's left edge, the column
+   * centred in the room beside it; `"right"` mirrors it. Under 960 px it hides (with review
+   * on, a bar on top keeps the progress and the export).
+   */
+  readonly rail?: boolean | "left" | "right"
   /** Each step on a card of its own (off by default: steps sit on the page, hairlines between). */
   readonly cards?: boolean
   /**
@@ -356,7 +378,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   let tocRows: HTMLElement[] = []
   let discs: Disclosure[] = []
   let full: Full | null = null
-  const noteMode = options.noteBar ?? "collapsed"
+  const review = options.review === true
+  const noteMode = review ? (options.noteBar ?? "collapsed") : "hidden"
   /** The note bar's height and the gaps around it, kept clear at the page's bottom. */
   let reserve = noteBarReserve(52, DOCK_INSET, DOCK_GAP)
 
@@ -1106,7 +1129,15 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     line.append(s)
     return s
   }
+  const findPRIn = (n: string) => findPR(page.prs, n, page.repo)
   const metaLink = (line: HTMLElement, text: string, href: string) => {
+    // A pull request reads as its chip: state, number, the title on hover.
+    const n = prNumber(href)
+    if (n) {
+      const chip = prChip(doc, n, { href, ...findPRIn(n) })
+      line.append(chip)
+      return chip
+    }
     const a = el(doc, "a")
     a.href = href
     a.target = "_blank"
@@ -1190,8 +1221,9 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     views = []
     root.textContent = ""
     root.removeAttribute("data-settled")
-    root.dataset.rail = options.rail === false ? "none" : options.rail === "left" ? "left" : "right"
+    root.dataset.rail = options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
     root.toggleAttribute("data-cards", options.cards === true)
+    root.toggleAttribute("data-review", review)
     const layout = el(doc, "div", "knobs-wt-layout")
     const main = el(doc, "div", "knobs-wt-main")
     // The page's blocks, a section's room apart with a hairline in the middle: the intro, the
@@ -1204,6 +1236,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     h1.textContent = page.title
     head.append(h1)
     if (page.summary) head.append(prose(doc, "p", "knobs-wt-summary", page.summary))
+    if (page.more) head.append(more(page.more))
     if (page.meta.length) {
       const meta = el(doc, "div", "knobs-wt-meta")
       for (const m of page.meta) {
@@ -1249,32 +1282,31 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     count = fill = tocEl = null
     if (options.rail !== false) {
       rail = el(doc, "aside", "knobs-wt-rail")
-      rail.setAttribute("aria-label", "Progress")
-      const progress = el(doc, "div", "knobs-wt-progress")
-      count = el(doc, "div", "knobs-wt-count")
-      const meter = el(doc, "div", "knobs-wt-bar")
-      fill = el(doc, "div", "knobs-wt-fill")
-      meter.append(fill)
-      progress.append(count, meter)
+      rail.setAttribute("aria-label", "Contents")
       tocEl = el(doc, "nav", "knobs-wt-toc")
       tocEl.setAttribute("aria-label", "Contents")
-      // A leading column for a section's PR, as wide as the longest (none when no section has one).
-      const ns = page.sections.map((s) => (s.kicker && s.link ? s.link.label : ""))
-      const nw = Math.max(0, ...ns.map((n) => n.length))
-      tocEl.style.setProperty("--kw-toc-n", nw ? `${nw + 0.5}ch` : "0px")
-      if (!nw) tocEl.dataset.bare = ""
       if (feedEl) {
         const group = el(doc, "div", "knobs-wt-toc-group")
         const target = feedEl
         group.append(
-          tocRow("Latest", "", String(page.feed.length), false, () =>
+          tocRow("Latest", false, () =>
             target.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" }),
           ),
         )
         tocEl.append(group)
       }
-      rail.append(progress, tocEl, actions(true))
-      if (options.keys !== false) {
+      if (review) {
+        const progress = el(doc, "div", "knobs-wt-progress")
+        count = el(doc, "div", "knobs-wt-count")
+        const meter = el(doc, "div", "knobs-wt-bar")
+        fill = el(doc, "div", "knobs-wt-fill")
+        meter.append(fill)
+        progress.append(count, meter)
+        rail.append(progress)
+      }
+      rail.append(tocEl)
+      if (review) rail.append(actions(true))
+      if (review && options.keys !== false) {
         const keys = el(doc, "div", "knobs-wt-keys")
         keys.innerHTML =
           "<kbd>j</kbd> <kbd>k</kbd> steps · <kbd>←</kbd> <kbd>→</kbd> seek · <kbd>f</kbd> full · <kbd>n</kbd> note" +
@@ -1289,12 +1321,13 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       sec.id = `wt-${section.id}`
       const sh = el(doc, "header", "knobs-wt-shead")
       // The meta line leads with the kicker in text colour, then the link and the status.
-      if (section.kicker || section.link || section.status) {
+      const status = review ? section.status : undefined
+      if (section.kicker || section.link || status) {
         const meta = metaLine("knobs-wt-kicker")
         if (section.kicker) metaText(meta, section.kicker, "knobs-wt-kicker-lead")
         if (section.link) metaLink(meta, section.link.label, section.link.href)
-        if (section.status) {
-          const s = statusLook(section.status)
+        if (status) {
+          const s = statusLook(status)
           metaText(meta, s.label, "knobs-wt-status").dataset.tone = s.tone
         }
         sh.append(meta)
@@ -1306,14 +1339,14 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const intro = el(doc, "div", "knobs-wt-sintro")
       intro.append(sh)
       if (section.summary) intro.append(prose(doc, "p", "knobs-wt-ssum", section.summary))
+      if (section.more) intro.append(more(section.more))
       sec.append(intro)
       let group: HTMLElement | null = null
       if (tocEl) {
         group = el(doc, "div", "knobs-wt-toc-group")
         const first = section.steps[0]?.key
-        const n = section.kicker && section.link ? section.link.label : ""
         group.append(
-          tocRow(plainMarkdown(section.title), n, "", false, () => (first ? go(first) : undefined), section.id),
+          tocRow(plainMarkdown(section.title), false, () => (first ? go(first) : undefined), section.id),
         )
         tocEl.append(group)
       }
@@ -1324,6 +1357,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       }
       flow.append(sec)
     }
+    linkPRs(flow, findPRIn)
     main.append(flow)
     if (noteMode !== "hidden") main.append(bar.dock)
 
@@ -1354,26 +1388,28 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     )
   }
 
-  /** A contents row: a title row (32 high) or a step under it (20 high), on one spine. */
-  const tocRow = (
-    label: string,
-    n: string,
-    end: string,
-    sub: boolean,
-    run: () => void,
-    section?: string,
-  ) => {
+  /** The rest of a step, section or page, folded under its words behind "More". */
+  const more = (text: string) => {
+    const box = el(doc, "div", "knobs-wt-more")
+    const body = el(doc, "div", "knobs-wt-more-text")
+    for (const para of text.split(/\n\s*\n/)) if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
+    discs.push(disclosure(box, { label: "More", content: body }))
+    return box
+  }
+
+  /**
+   * A contents row: a title row (32 high) or a step under it (20 high), every one on the same
+   * text edge and in the same colour; only the pill marks where Kit is.
+   */
+  const tocRow = (label: string, sub: boolean, run: () => void, section?: string) => {
     const b = el(doc, "button", sub ? "knobs-wt-toc-row knobs-wt-toc-sub" : "knobs-wt-toc-row")
     b.type = "button"
     if (section) b.dataset.section = section
-    const ncol = el(doc, "span", "knobs-wt-toc-n")
-    ncol.textContent = n
     const t = el(doc, "span", "knobs-wt-toc-label")
     t.textContent = label
     const e = el(doc, "span", "knobs-wt-toc-end")
-    e.textContent = end
     b.title = label
-    b.append(ncol, t, e)
+    b.append(t, e)
     b.addEventListener("mousedown", (ev) => ev.preventDefault())
     b.addEventListener("click", run)
     tocRows.push(b)
@@ -1432,36 +1468,25 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     h3.innerHTML = inlineMarkdown(step.title)
     head.append(h3)
     if (step.caption) head.append(prose(doc, "p", "knobs-wt-caption", step.caption))
+    if (step.more) head.append(more(step.more))
     card.append(head)
     const slots: MediaSlot[] = []
     const onEvent = (e: Omit<ContextEvent, "at" | "step">) => record({ ...e, step: step.key })
     let media: HTMLElement | null = null
     if (step.media.length) {
-      // One under another unless the step asks for columns; with `more`, the media after the first
-      // fold away under a quiet toggle.
-      const grid = (list: readonly WalkStep["media"][number][]) => {
-        const g = el(doc, "div", "knobs-wt-media")
-        g.style.setProperty("--kw-n", String(Math.min(list.length, step.columns)))
-        for (const m of list)
-          slots.push(mediaSlot(g, { ...look, media: m, onEvent, steps: stepLinks }))
-        return g
-      }
-      const [first, ...rest] = step.media
-      media = grid(step.more ? [first!] : step.media)
+      // One under another unless the step asks for columns.
+      media = el(doc, "div", "knobs-wt-media")
+      media.style.setProperty("--kw-n", String(Math.min(step.media.length, step.columns)))
+      for (const m of step.media)
+        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks }))
       card.append(media)
-      if (step.more && rest.length) {
-        const holder = el(doc, "div", "knobs-wt-more")
-        discs.push(
-          disclosure(holder, { label: step.more, count: rest.length, content: grid(rest) }),
-        )
-        card.append(holder)
-      }
     }
     let taste: TasteTest | null = null
-    if (step.question) card.append(prose(doc, "p", "knobs-wt-question", step.question))
+    if (step.question && review) card.append(prose(doc, "p", "knobs-wt-question", step.question))
     if (step.ask === "pick") {
       taste = tasteTest(card, {
         ...look,
+        pickable: review,
         options: step.options,
         picked: state.steps[step.key]?.pick ?? null,
         onPick: (id) => pick(step.key, id),
@@ -1470,7 +1495,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       media ??= taste.element
     }
     const notes = el(doc, "div", "knobs-wt-notes")
-    card.append(notes)
+    if (review) card.append(notes)
     card.addEventListener("focusin", () => {
       if (scroll.to) return
       pinUntil = performance.now() + 250
@@ -1479,9 +1504,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     let toc: HTMLElement | null = null
     let glyph: HTMLElement | null = null
     if (group) {
-      toc = tocRow(plainMarkdown(step.title), "", "", true, () => go(step.key))
-      glyph = el(doc, "span", "knobs-wt-toc-glyph")
-      toc.querySelector(".knobs-wt-toc-end")!.append(glyph)
+      toc = tocRow(plainMarkdown(step.title), true, () => go(step.key))
+      if (review) {
+        glyph = el(doc, "span", "knobs-wt-toc-glyph")
+        toc.querySelector(".knobs-wt-toc-end")!.append(glyph)
+      }
       group.append(toc)
     }
     return { step, card, media, notes, toc, glyph, taste, slots }
@@ -1557,7 +1584,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       return
     }
     const v = viewOf(current)
-    if (!v || e.shiftKey) return
+    if (!v || e.shiftKey || !review) return
     const choice = digitChoice(v.step, state.steps[v.step.key], key)
     if (choice === undefined) return
     claim()
