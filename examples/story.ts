@@ -1,10 +1,9 @@
-// The onboarding story (~/code/home/artifacts/2026-10-20-onboarding/story) rebuilt from knobs/ui
+// The onboarding story (~/code/home/artifacts/2026-10-20-onboarding/story) rebuilt from knobs/review
 // on a text budget: a one-sentence summary and three numbers up top, a claim and at most one
 // sentence per section and step, then media; everything longer sits in `more`, folded away. The
 // history is `kind: "history"`, which the walkthrough draws with history().
 // The recordings are OpenCode's, so examples/assets/story is gitignored: copy them from the
 // artifact's assets/ folder, or the page draws a placeholder where each one goes.
-import { themes } from "knobs/themes"
 import {
   walkthrough,
   type Walkthrough,
@@ -12,7 +11,7 @@ import {
   type WalkthroughMedia,
   type HistoryData,
   type WalkthroughSection,
-} from "knobs/ui"
+} from "knobs/review"
 
 const asset = (name: string) => new URL(`./assets/story/${name}`, import.meta.url).href
 const gh = (n: number) => ({ label: `#${n}`, href: `https://github.com/anomalyco/opencode/pull/${n}` })
@@ -557,6 +556,6 @@ async function buildDoc(): Promise<WalkthroughDoc> {
 }
 
 void buildDoc().then((doc) => {
-  page = walkthrough(document.getElementById("page")!, { doc, theme: themes.void, appearance: "dark" })
+  page = walkthrough(document.getElementById("page")!, { doc, appearance: "dark" })
   Object.assign(window, { __story: page })
 })
