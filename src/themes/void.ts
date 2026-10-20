@@ -5,12 +5,14 @@ import { knobs } from "./knobs.js"
  * For OLED and video review: true black page and panel with Apple's `#1c1c1e` / `#2c2c2e` raised
  * surfaces, text capped at `#ededed` to limit halation, a white accent, flat with solid
  * hairlines, and a black stage behind compared media. Neutral (no tint) so the chrome doesn't
- * bias colour judgement. The light pair is generated from the same dials.
+ * bias colour judgement. The light pair is generated from the same dials, with a neutral
+ * near-black accent.
  */
 export const voidTheme = defineTheme({
   name: "void",
   extends: knobs,
   gray: { hue: 0, chroma: 0 },
+  accent: { dark: "#ffffff", light: "#1c1c1c" },
   material: "flat",
   tokens: {
     dark: {

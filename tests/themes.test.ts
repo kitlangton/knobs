@@ -61,6 +61,9 @@ describe("the shipped looks", () => {
     expect(voidTheme.dark.border).toMatch(/^#[0-9a-f]{6}$/)
     expect(voidTheme.dark.rim).toBe("#00000000")
     expect(voidTheme.dark["shadow-raised"]).toBe("none")
+    expect(voidTheme.dark["compare-stage"]).toBe("#000000")
+    // Neutral in light too: no tint in the accent.
+    expect(voidTheme.light.accent).toBe("#1c1c1c")
   })
 })
 
@@ -133,5 +136,12 @@ describe("defineTheme", () => {
     expect(css).toContain("--k-bg:light-dark(#f5f5f5,#000000)")
     expect(css).toContain("--k-border:light-dark(")
     expect(voidTheme.css()).toContain(":where(.knobs-root){")
+  })
+
+  it("writes a colour declared for one appearance with the other side's resolved value", () => {
+    const css = voidTheme.css({ selector: ".x" })
+    expect(css).toContain(
+      `--k-compare-stage:light-dark(${voidTheme.light["compare-stage"]},#000000)`,
+    )
   })
 })

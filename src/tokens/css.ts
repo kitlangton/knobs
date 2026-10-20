@@ -20,8 +20,18 @@ function pair(
   return `light-dark(${light},${dark})`
 }
 
-const declaredValue = (theme: Theme, def: TokenDef) =>
-  pair(def, theme.declared.dark[def.name as TokenName], theme.declared.light[def.name as TokenName])
+/**
+ * What `theme` declares for a token. A colour declared for one appearance only takes the theme's
+ * resolved value on the other side, so the sheet shows what `theme.dark` and `theme.light` say.
+ */
+function declaredValue(theme: Theme, def: TokenDef) {
+  const name = def.name as TokenName
+  const dark = theme.declared.dark[name]
+  const light = theme.declared.light[name]
+  if (def.type === "color" && (dark === undefined) !== (light === undefined))
+    return pair(def, dark ?? theme.dark[name], light ?? theme.light[name])
+  return pair(def, dark, light)
+}
 
 /**
  * Appearance is `color-scheme`: colour tokens are `light-dark()` pairs. A knobs root follows the
