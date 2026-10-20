@@ -15,6 +15,7 @@ import {
   clock,
   type ContextEvent,
   inlineMarkdown,
+  plainMarkdown,
   stackLayout,
   tableStacks,
   type WalkChapter,
@@ -25,7 +26,6 @@ import {
 
 /** The glyphs the blocks draw. */
 export const GLYPH = {
-  go: icon("caretRight", { small: true }),
   caret: icon("caretRight", { small: true }),
 }
 
@@ -75,20 +75,27 @@ const link = (doc: Document, cls: string, label: string, href: string | undefine
   return a
 }
 
-/** A small arrow that goes to the step a ref names; null when it names none. */
-export function stepButton(doc: Document, ref: string | undefined, steps: StepLinks | undefined) {
+/**
+ * Makes a whole row go to the step a ref names (a click away from its links, Enter or Space when
+ * it has focus); nothing trails it, so rows with and without a step line up.
+ */
+export function rowLink(row: HTMLElement, ref: string | undefined, steps: StepLinks | undefined) {
   const s = ref && steps?.find(ref)
-  if (!s || !steps) return null
-  const b = el(doc, "button", "knobs-wt-steplink")
-  b.innerHTML = GLYPH.go
-  b.type = "button"
-  b.title = `Go to “${s.title}”`
-  b.setAttribute("aria-label", b.title)
-  b.addEventListener("click", (e) => {
-    e.stopPropagation()
+  if (!s || !steps) return
+  const doc = row.ownerDocument
+  row.dataset.go = ""
+  row.tabIndex = 0
+  row.title = `Go to “${plainMarkdown(s.title)}”`
+  row.addEventListener("click", (e) => {
+    if ((e.target as Element | null)?.closest("a,button")) return
+    if (doc.getSelection()?.toString()) return
     steps.go(s.key)
   })
-  return b
+  row.addEventListener("keydown", (e) => {
+    if (e.target !== row || (e.key !== "Enter" && e.key !== " ")) return
+    e.preventDefault()
+    steps.go(s.key)
+  })
 }
 
 
@@ -170,14 +177,12 @@ export function mountStack(
     if (target && steps) {
       const title = text(doc, "button", "knobs-wt-stitle", it.title)
       title.type = "button"
-      title.title = `Go to “${target.title}”`
+      title.title = `Go to “${plainMarkdown(target.title)}”`
       title.addEventListener("click", (e) => {
         e.stopPropagation()
         steps.go(target.key)
       })
       line.append(title)
-      const go = stepButton(doc, it.step, steps)
-      if (go) line.append(go)
       row.dataset.go = ""
       row.addEventListener("click", (e) => {
         const t = e.target as Element | null
@@ -222,8 +227,8 @@ function delta(doc: Document, d: string | { add: number; del: number }) {
 
 // ——— table ———
 
-/** A cell's content: a chip for a badge, a link, code, toned text, and its step's arrow. */
-function cellContent(doc: Document, into: HTMLElement, cell: WalkTableCell, steps: StepLinks | undefined) {
+/** A cell's content: a chip for a badge, a link, code or toned text. */
+function cellContent(doc: Document, into: HTMLElement, cell: WalkTableCell) {
   let content: HTMLElement
   if (cell.badge) {
     content = link(doc, "knobs-wt-chip", cell.text, cell.href)
@@ -240,9 +245,11 @@ function cellContent(doc: Document, into: HTMLElement, cell: WalkTableCell, step
     }
   }
   into.append(content)
-  const go = stepButton(doc, cell.step, steps)
-  if (go) into.append(go)
 }
+
+/** The step a row goes to: its first cell's that names one. */
+const rowStep = (r: Readonly<Record<string, WalkTableCell>>, columns: readonly WalkTableColumn[]) =>
+  columns.map((c) => r[c.key]?.step).find((step) => step !== undefined)
 
 const cellAttrs = (td: HTMLElement, c: WalkTableColumn) => {
   td.dataset.align = c.align
@@ -278,10 +285,11 @@ export function mountTable(
       const cell = r[c.key]
       if (cell) {
         if (cell.text.length > 40 && !c.mono && !cell.code) td.dataset.long = ""
-        cellContent(doc, td, cell, steps)
+        cellContent(doc, td, cell)
       }
       tr.append(td)
     }
+    rowLink(tr, rowStep(r, m.columns), steps)
     body.append(tr)
   }
   table.append(head, body)
@@ -299,7 +307,7 @@ export function mountTable(
     if (primary) {
       cellAttrs(title, primary)
       const cell = r[primary.key]
-      if (cell) cellContent(doc, title, cell, steps)
+      if (cell) cellContent(doc, title, cell)
     }
     // Badges ride on the title's line, at its end; the rest go under it as term and value.
     const line = el(doc, "div", "knobs-wt-tline")
@@ -307,7 +315,7 @@ export function mountTable(
     const badges = el(doc, "div", "knobs-wt-tbadges")
     for (const c of m.columns) {
       const cell = r[c.key]
-      if (c !== primary && cell?.badge) cellContent(doc, badges, cell, steps)
+      if (c !== primary && cell?.badge) cellContent(doc, badges, cell)
     }
     if (badges.childNodes.length) line.append(badges)
     item.append(line)
@@ -319,10 +327,11 @@ export function mountTable(
       const dd = el(doc, "dd")
       cellAttrs(dd, c)
       dd.removeAttribute("data-align")
-      cellContent(doc, dd, cell, steps)
+      cellContent(doc, dd, cell)
       terms.append(text(doc, "dt", "", c.label), dd)
     }
     if (terms.childNodes.length) item.append(terms)
+    rowLink(item, rowStep(r, m.columns), steps)
     stack.append(item)
   }
   if (m.caption) stack.append(text(doc, "p", "knobs-wt-tcaption", m.caption))
@@ -466,7 +475,7 @@ export interface Disclosure {
 // nothing clipped). The first paint is the resting state; reduced motion keeps a short fade.
 export function disclosure(
   host: HTMLElement,
-  options: { label: string; count?: number; open?: boolean; content: HTMLElement },
+  options: { label: string; open?: boolean; content: HTMLElement },
 ): Disclosure {
   const doc = host.ownerDocument
   const win = doc.defaultView!
@@ -476,8 +485,6 @@ export function disclosure(
   toggle.type = "button"
   toggle.innerHTML = GLYPH.caret
   toggle.append(text(doc, "span", "", options.label))
-  if (options.count !== undefined)
-    toggle.append(text(doc, "span", "knobs-wt-disc-count", String(options.count)))
   const viewport = el(doc, "div", "knobs-wt-disc-body")
   const content = el(doc, "div", "knobs-wt-disc-content")
   content.append(options.content)

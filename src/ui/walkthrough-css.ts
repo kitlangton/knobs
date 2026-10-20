@@ -23,7 +23,7 @@ export const walkthroughCss = `
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
 .knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}
 .knobs-ui.knobs-walkthrough{--kw-snappy:${snappy.easing};--kw-snappy-ms:${snappy.duration}ms;--kw-calm:${calm.easing};--kw-calm-ms:${calm.duration}ms;--kw-state:${state.easing};--kw-state-ms:${state.duration}ms;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms;
-  --kw-measure:var(--k-walkthrough-measure,68ch);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
+  --kw-measure:var(--k-walkthrough-measure,68ch);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-rail-gap:calc(var(--_k-space-group) + var(--_k-space-column) / 1.5);--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
   --kw-card:var(--_ku-pane-bg);--kw-card-ring:var(--_ku-pane-ring);--kw-under:var(--_k-bg-page);--kw-ink:var(--k-walkthrough-ink,#ff375f);--kw-strong:var(--_k-weight-label);
   container:knobs-wt / inline-size;display:block;width:100%;color:var(--_k-fg);font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;text-align:left;
   letter-spacing:normal;-webkit-font-smoothing:antialiased}
@@ -39,7 +39,7 @@ export const walkthroughCss = `
 /* ——— layout: the contents rail sticky at the left edge (right if asked), and the column centred
    in the room beside it, up to --kw-width: media take the column, prose stops at the measure.
    One column where it's narrow ——— */
-.knobs-wt-layout{display:grid;grid-template-columns:var(--kw-rail-w) minmax(0,1fr);gap:var(--_k-space-column);align-items:start}
+.knobs-wt-layout{display:grid;grid-template-columns:var(--kw-rail-w) minmax(0,1fr);gap:var(--kw-rail-gap);align-items:start}
 .knobs-walkthrough[data-rail="right"] .knobs-wt-layout{grid-template-columns:minmax(0,1fr) var(--kw-rail-w)}
 .knobs-walkthrough[data-rail="right"] .knobs-wt-main{grid-column:1;grid-row:1}
 .knobs-walkthrough[data-rail="right"] .knobs-wt-rail{grid-column:2;grid-row:1}
@@ -117,7 +117,6 @@ export const walkthroughCss = `
 .knobs-wt-feed{display:flex;flex-direction:column;gap:var(--_k-space-title);min-width:0;scroll-margin-top:16px}
 .knobs-wt-feed-head{display:flex;align-items:baseline;gap:var(--_k-space-sibling)}
 .knobs-wt-feed-title{font-weight:var(--kw-strong)!important}
-.knobs-wt-feed-count{font-size:var(--_k-type-small);line-height:var(--_k-leading-small);color:var(--_k-fg-3)}
 .knobs-wt-feed-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--_k-space-group);min-width:0}
 .knobs-wt-fi{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-sibling);min-width:0}
 .knobs-wt-fi+.knobs-wt-fi::before{content:"";position:absolute;left:0;right:0;top:calc(var(--_k-space-group) / -2);height:1px;background:var(--_k-border-subtle)}
@@ -128,10 +127,6 @@ export const walkthroughCss = `
 :where(.knobs-ui) .knobs-wt-fi-step{all:revert;box-sizing:border-box;font:inherit;color:inherit;background:transparent;border:0;margin:0;padding:0;cursor:pointer;outline:none;
   transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-fi-step:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-:where(.knobs-ui) .knobs-wt-steplink{all:revert;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin:0 0 0 2px;padding:0;vertical-align:-5px;border:0;
-  border-radius:calc(var(--_k-radius) / 2);background:transparent;color:var(--_k-fg-3);cursor:pointer;outline:none;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-steplink:is(:hover,:focus-visible){background:var(--_k-fill);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-wt-steplink svg{width:12px;height:12px}
 
 /* ——— a disclosure: a small faint toggle with a caret, no fill. The body's height springs (in
    script) and its content fades in place, top-anchored, under a soft bottom mask ——— */
@@ -142,7 +137,6 @@ export const walkthroughCss = `
 .knobs-ui .knobs-wt-disc-toggle:focus-visible{box-shadow:0 0 0 2px var(--_k-focus)}
 .knobs-wt-disc-toggle svg{flex:none;width:12px;height:12px;transition:rotate var(--kw-state-ms) var(--kw-state)}
 .knobs-wt-disc[data-open]>.knobs-wt-disc-toggle svg{rotate:90deg}
-.knobs-wt-disc-count{color:var(--_k-fg-3)}
 .knobs-wt-disc-body{overflow:hidden}
 .knobs-wt-disc[data-open]>.knobs-wt-disc-body:not([data-moving]){overflow:visible}
 .knobs-wt-disc-body[data-moving]{-webkit-mask-image:linear-gradient(#000 calc(100% - 16px),transparent);mask-image:linear-gradient(#000 calc(100% - 16px),transparent)}
@@ -447,6 +441,12 @@ export const walkthroughCss = `
 /* Too narrow for its columns, each row becomes a block: its primary cell titling the rest as term
    and value, the blocks parted by hairlines. Scrolling sideways is the last resort (stack: never). */
 .knobs-wt-tablebox{min-width:0}
+/* A row with a step goes there: the whole row, a wash under the pointer, no arrow, so rows with and
+   without one line up. */
+.knobs-wt-tablebox [data-go]{cursor:pointer;outline:none}
+.knobs-wt-tablebox tr[data-go]>td,.knobs-wt-trow[data-go]{transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-wt-tablebox tr[data-go]:is(:hover,:focus-visible)>td,.knobs-wt-trow[data-go]:is(:hover,:focus-visible){background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-tablebox [data-go]:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-wt-tablebox[data-measure] table{width:min-content}
 .knobs-wt-tstack{display:none;flex-direction:column;min-width:0}
 .knobs-wt-tablebox[data-stacked]>.knobs-wt-table{display:none}

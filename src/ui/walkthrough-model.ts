@@ -307,6 +307,7 @@ export interface WalkthroughSection {
    * `link` is a pull request, or the doc's `kickers` noun), your own words, or `false` for none.
    */
   readonly kicker?: string | false
+  /** A chip on its meta line ("needs-taste" → Needs taste), with `review: true` only. */
   readonly status?: WalkthroughStatus
   readonly summary?: string
   /** The rest, folded away under the summary behind "More" (Markdown). */
