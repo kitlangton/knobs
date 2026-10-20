@@ -76,8 +76,10 @@ describe("token schema", () => {
 
   it("keeps the public contract near the plan's size", () => {
     const count = (tier: string) => defs.filter((t) => t.tier === tier).length
-    expect(count("input") + count("semantic")).toBeGreaterThanOrEqual(56)
-    expect(count("input") + count("semantic")).toBeLessThanOrEqual(64)
+    // 61 for the panel and pieces, 2 for a comparison's Before and After, and 18 for a page's
+    // rhythm: eight space roles, five type sizes and their line heights.
+    expect(count("input") + count("semantic")).toBeGreaterThanOrEqual(76)
+    expect(count("input") + count("semantic")).toBeLessThanOrEqual(84)
     expect(count("hook")).toBeGreaterThanOrEqual(18)
     expect(count("hook")).toBeLessThanOrEqual(24)
   })

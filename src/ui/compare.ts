@@ -333,6 +333,17 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const labels = [el("div", "knobs-cmp-label"), el("div", "knobs-cmp-label")] as const
   labels[0].dataset.side = "before"
   labels[1].dataset.side = "after"
+  /** ✗ Before · ✓ After: a mark and the side's name. */
+  const setLabel = (index: 0 | 1, text: string) => {
+    const l = labels[index]
+    if (!l.firstElementChild) {
+      const mark = el("span", "knobs-cmp-mark")
+      mark.innerHTML = icon(index === 0 ? "x" : "check", { small: true })
+      l.append(mark, el("span", "knobs-cmp-name"))
+    }
+    const name = l.lastElementChild as HTMLElement
+    if (name.textContent !== text) name.textContent = text
+  }
   const handle = el("div", "knobs-cmp-handle")
   handle.setAttribute("role", "slider")
   handle.setAttribute("aria-label", "Wipe")
@@ -1394,7 +1405,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     old.preview.replaceWith(s.preview)
     sides[index] = s
     note.textContent = ""
-    labels[index].textContent = labelOf(index)
+    setLabel(index, labelOf(index))
     if (near) loadSide(s)
     readColors()
   }
@@ -1407,8 +1418,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   stage.insertBefore(sides[1].preview, labels[0])
   stage.insertBefore(sides[0].el, labels[0])
   stage.insertBefore(sides[0].preview, labels[0])
-  labels[0].textContent = labelOf(0)
-  labels[1].textContent = labelOf(1)
+  setLabel(0, labelOf(0))
+  setLabel(1, labelOf(1))
   loupeBtn.setAttribute("aria-pressed", String(loupeOn))
   loopBtn.setAttribute("aria-pressed", String(loopNow() !== null))
   const modePill =
@@ -1569,9 +1580,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       const before = next.before && next.before.src !== sides[0].source.src ? next.before : null
       const after = next.after && next.after.src !== sides[1].source.src ? next.after : null
       if (before) replace(0, before)
-      else if (next.before) labels[0].textContent = next.before.label ?? "Before"
+      else if (next.before) setLabel(0, next.before.label ?? "Before")
       if (after) replace(1, after)
-      else if (next.after) labels[1].textContent = next.after.label ?? "After"
+      else if (next.after) setLabel(1, next.after.label ?? "After")
       if (before || after)
         strip?.update({ ...(before ? { before } : {}), ...(after ? { after } : {}) })
       if (next.before || next.after) readColors()

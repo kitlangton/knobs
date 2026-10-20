@@ -31,9 +31,20 @@ const doc: WalkthroughDoc = {
   title: "Card and badge: before / after",
   summary: "Before = `main`, after = the branch. Three sections, seven steps.",
   meta: { before: "main", branch: "card-motion" },
+  qa: [
+    {
+      at: "2026-10-18T16:20:00-07:00",
+      q: "Does the badge still flash with reduced motion on?",
+      a: "It fades instead: no travel, 160 ms. The frame-time numbers are with motion on.",
+      step: "1.1",
+      status: "answered",
+      trail: ["0:02 · Played the compare", "0:05 · Looped 1.5–3.0 s", "0:09 · Opened Frame time"],
+    },
+  ],
   sections: [
     {
       title: "The card moves and the button recolours",
+      link: "https://github.com/kitlangton/knobs/pull/415",
       status: "ready",
       steps: [
         {
@@ -68,6 +79,7 @@ const doc: WalkthroughDoc = {
     },
     {
       title: "The spring behind it",
+      link: "https://github.com/kitlangton/knobs/pull/412",
       status: "needs-taste",
       steps: [
         {
@@ -91,6 +103,7 @@ const doc: WalkthroughDoc = {
     },
     {
       title: "Where it stands",
+      kicker: "Status",
       status: "ready",
       steps: [
         {
@@ -171,27 +184,36 @@ const doc: WalkthroughDoc = {
           ask: "none",
           media: {
             kind: "table",
+            // Too narrow for its columns, its rows stack: the device over the rest.
             columns: [
               { key: "device", label: "Device" },
+              { key: "browser", label: "Browser", mono: true },
               { key: "before", label: "Before (ms)" },
               { key: "after", label: "After (ms)" },
+              { key: "note", label: "Note" },
               { key: "state", label: "Budget", align: "right" },
             ],
             rows: [
               {
                 device: "MacBook Pro",
+                browser: "Safari 26.1",
+                note: "Comfortably inside a 120 Hz frame either way.",
                 before: 6.2,
                 after: 4.1,
                 state: { text: "Under", badge: "good" },
               },
               {
                 device: "iPhone 15",
+                browser: "Safari 26.1 (iOS)",
+                note: "The slide no longer drops a frame at the start.",
                 before: 9.4,
                 after: 6.1,
                 state: { text: "Under", badge: "good" },
               },
               {
                 device: "Pixel 6a",
+                browser: "Chrome 141 (Android)",
+                note: "Still over a 60 Hz budget while the badge flashes.",
                 before: 18.9,
                 after: 15.2,
                 state: { text: "Near", badge: "warn" },

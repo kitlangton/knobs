@@ -8,4 +8,5 @@ examples/site
 .wrangler
 # Screen recordings from the OpenCode onboarding review: local demo media, not published
 examples/assets/walkthrough/
+examples/assets/story/
 examples/assets/compare/sparse-*.mp4

@@ -6,7 +6,8 @@
 // of its decoders and GPU context, holding its height, until it comes near again.
 import { mediaKind } from "./compare-model.js"
 import { aliased } from "../core/glide.js"
-import { applyLook, svg, type UiLook } from "./look.js"
+import { icon } from "./icons.js"
+import { applyLook, type UiLook } from "./look.js"
 import { walkthroughCss } from "./walkthrough-css.js"
 import {
   chapterPills,
@@ -664,4 +665,4 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
   }
 }
 
-export const CHECK = svg('<path d="m3.5 8.4 3 3 6-6.6"/>')
+export const CHECK = icon("check", { small: true })
