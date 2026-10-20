@@ -1,5 +1,6 @@
 import { springCss } from "../core/spring.js"
 import { FADE, SPRINGS } from "../core/motion.js"
+import { foundationCss } from "../review/foundations.js"
 
 // kit-motion: nothing moves on load; state changes ease on springs given as a duration with no
 // bounce: picks and note rows on the snappy .25 s, the progress bar on the calm .4 s, a
@@ -19,21 +20,25 @@ const quick = springCss(FADE)
 // and type come from the page tokens (--k-space-*, --k-pad-*, --k-type-*, --k-leading-*);
 // spacing lives on parents.
 const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)"
-export const walkthroughCss = `
+export const walkthroughCss = `${foundationCss}
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
 .knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}
 .knobs-ui.knobs-walkthrough{--kw-snappy:${snappy.easing};--kw-snappy-ms:${snappy.duration}ms;--kw-calm:${calm.easing};--kw-calm-ms:${calm.duration}ms;--kw-state:${state.easing};--kw-state-ms:${state.duration}ms;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms;
-  --kw-measure:var(--k-walkthrough-measure,68ch);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-rail-gap:calc(var(--_k-space-group) + var(--_k-space-column) / 1.5);--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
+  --kw-measure:var(--_kr-measure);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-rail-gap:calc(var(--_k-space-group) + var(--_k-space-column) / 1.5);--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
   --kw-card:var(--_ku-pane-bg);--kw-card-ring:var(--_ku-pane-ring);--kw-under:var(--_k-bg-page);--kw-ink:var(--k-walkthrough-ink,#ff375f);--kw-strong:var(--_k-weight-label);
   container:knobs-wt / inline-size;display:block;width:100%;color:var(--_k-fg);font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;text-align:left;
-  letter-spacing:normal;-webkit-font-smoothing:antialiased}
+  letter-spacing:var(--_kr-track);-webkit-font-smoothing:antialiased}
 .knobs-walkthrough [hidden]{display:none!important}
+/* Prose: wrapped to look set by hand, quotes hung in the margin (Safari). Data: figures that line
+   up and can't be misread. */
+:where(.knobs-wt-summary,.knobs-wt-ssum,.knobs-wt-caption,.knobs-wt-more-text,.knobs-wt-fi-text,.knobs-wt-fi-answer,.knobs-wt-ocap,.knobs-wt-text,.knobs-wt-callout,.knobs-wt-ssummary,.knobs-wt-osum){text-wrap:pretty;hanging-punctuation:first allow-end last}
+:where(.knobs-wt-table table,.knobs-wt-tterms,.knobs-wt-facts,.knobs-wt-smeta,.knobs-wt-metaline,.knobs-wt-meta,.knobs-wt-pr,.knobs-wt-prstate,.knobs-wt-sord){font-feature-settings:var(--_kr-data)}
 /* (0,0,1): a host's element rules stop here, and every class rule below wins over it. */
-:where(.knobs-walkthrough) :is(h1,h2,h3,p,ol,ul,dl,dd){margin:0;font:inherit;letter-spacing:inherit}
+:where(.knobs-walkthrough) :is(h1,h2,h3,p,ol,ul,dl,dd){margin:0;font:inherit;letter-spacing:var(--_kr-track)}
 .knobs-walkthrough a{cursor:default;color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
 .knobs-walkthrough a:hover{text-decoration-color:currentColor}
 .knobs-walkthrough code,.knobs-wt-slot code{font:var(--_k-type-label) var(--_k-mono);padding:1px 5px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-fill)}
-:where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-row,button.knobs-wt-stitle,.knobs-wt-chapter,.knobs-wt-disc-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;
+:where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-row,button.knobs-wt-stitle,.knobs-wt-chapter,.knobs-wt-disc-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:var(--_kr-track);
   background:transparent;border:0;border-radius:0;margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
 
 /* ——— layout: the contents rail sticky at the left edge (right if asked), and the column centred
@@ -191,7 +196,7 @@ export const walkthroughCss = `
   box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay)}
 .knobs-wt-on{padding-top:3px;color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);white-space:nowrap;overflow:hidden;${fade}}
 .knobs-wt-row{display:flex;align-items:flex-end;gap:4px}
-:where(.knobs-ui) :is(.knobs-wt-input,.knobs-wt-tool,.knobs-wt-x,.knobs-wt-back){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;
+:where(.knobs-ui) :is(.knobs-wt-input,.knobs-wt-tool,.knobs-wt-x,.knobs-wt-back){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:var(--_kr-track);background:transparent;border:0;
   border-radius:0;margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
 .knobs-ui .knobs-wt-input{flex:1;min-width:0;height:32px;max-height:140px;padding:6px 0;resize:none;color:var(--_k-fg);caret-color:var(--_k-accent);line-height:var(--_k-leading-body);font-size:var(--_k-type-body)}
 .knobs-ui .knobs-wt-input::placeholder{color:var(--_k-fg-3)}
@@ -317,11 +322,11 @@ export const walkthroughCss = `
    set apart by space, hairlines and their own colours. On a card (.knobs-surface) code drops its
    well for hairlines, so nothing draws a fill and a ring of its own there ——— */
 .knobs-ui.knobs-wt-slot{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-sibling);min-width:0;container:knobs-wt-slot / inline-size;color:var(--_k-fg);
-  font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;--kw-measure:var(--k-walkthrough-measure,68ch);
+  font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;--kw-measure:var(--_kr-measure);
   --kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));--kw-frame-r:var(--_k-radius-panel)}
 .knobs-surface .knobs-wt-slot{--kw-frame-r:calc(var(--_k-radius-panel) - 4px)}
 /* A slot's label: sentence case as written, small and faint, never a heading. */
-.knobs-wt-slot-label{display:block;min-width:0;overflow:hidden;white-space:nowrap;font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);letter-spacing:normal;text-transform:none;color:var(--_k-fg-3);${fade}}
+.knobs-wt-slot-label{display:block;min-width:0;overflow:hidden;white-space:nowrap;font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);text-transform:none;color:var(--_k-fg-3);${fade}}
 .knobs-wt-body{min-width:0}
 /* Media mounting after the first paint, and a picture still decoding, come into focus: a fade with
    a small blur on the quick spring, from the top; at rest, nothing. */
@@ -356,7 +361,7 @@ export const walkthroughCss = `
 .knobs-wt-out{color:var(--_k-fg-2)}
 .knobs-wt-metric{display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
 .knobs-wt-mlabel{color:var(--_k-fg-2)}
-.knobs-wt-mvalue{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--_k-space-sibling);font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.knobs-wt-mvalue{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--_k-space-sibling);font-feature-settings:var(--_kr-data)}
 .knobs-wt-mfrom{color:var(--_k-fg-3)}
 .knobs-wt-mto{font-size:var(--_k-type-title);line-height:var(--_k-leading-title);font-weight:var(--_k-weight-label)}
 .knobs-wt-mof{color:var(--_k-fg-3)}
@@ -432,7 +437,7 @@ export const walkthroughCss = `
 .knobs-ui .knobs-wt-stitle{font-weight:var(--_k-weight-label);line-height:var(--kw-line);color:var(--_k-fg);text-align:left}
 .knobs-ui button.knobs-wt-stitle{cursor:default;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui :is(.knobs-wt-srow[data-go]:hover button.knobs-wt-stitle,button.knobs-wt-stitle:focus-visible){text-decoration-color:color-mix(in oklch,currentColor 45%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-wt-ssummary{margin:0;max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
+.knobs-ui .knobs-wt-ssummary{margin:0;max-width:var(--kw-measure);color:var(--_k-fg-2)}
 .knobs-wt-smeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;font:var(--_k-weight) var(--_k-type-small)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3)}
 .knobs-wt-delta{display:inline-flex;gap:6px}
 .knobs-wt-add{color:var(--_k-diff-add)}

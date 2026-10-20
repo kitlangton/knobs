@@ -1,3 +1,4 @@
+import { FONT } from "../review/foundations.js"
 import { defineTheme } from "./define.js"
 import { voidTheme } from "./void.js"
 
@@ -6,11 +7,12 @@ import { voidTheme } from "./void.js"
  * black, flat and neutral, with hairlines you can see. Borders are alpha of the text colour, set
  * by APCA on the page: subtle ≈ Lc 9, default ≈ Lc 12, strong ≈ Lc 17, in both appearances
  * (Void's composited 6% and 10% read Lc 0 on black). Fills step 6 / 10 / 14% so a hover's
- * background is plain to see. Light is white, page and surface alike.
+ * background is plain to see. Light is white, page and surface alike. The platform's own face.
  */
 export const reviewTheme = defineTheme({
   name: "review",
   extends: voidTheme,
+  font: FONT,
   tokens: {
     dark: {
       fill: "#ededed0f",
