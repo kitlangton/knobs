@@ -87,8 +87,8 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
 
 - **The arrow cursor everywhere**, links included. *Why: the hover fill says what's live; the hand
   is noise.*
-- **Hover is one background (`fill-hover`), on at once, off in 120 ms**; nothing else changes
-  with it. Pressed is `fill-selected`. *Why: immediate feedback, no flicker when the pointer
+- **Hover is one background (`fill-hover`), on at once, off in 120 ms**, and text may
+  step up to `fg` with it. Pressed is `fill-selected`. *Why: immediate feedback, no flicker when the pointer
   crosses rows.* A test fails on a hand cursor or a hover that fades in.
 - **Clicking a video or a compare plays and pauses it**, as Space does. No glyph flashes over the
   picture. The play button stays.
