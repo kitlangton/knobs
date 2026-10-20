@@ -846,7 +846,13 @@ class GpuOverlayManager {
     })
     mo.observe(panel.root, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-density", "data-preset", "style"],
+      attributeFilter: [
+        "data-knobs-theme",
+        "data-appearance",
+        "data-density",
+        "data-preset",
+        "style",
+      ],
     })
     // Token changes glide as CSS transitions on the panel; while any runs, every frame reads the
     // in-between tokens and fresh rects, then the loop can sleep again.

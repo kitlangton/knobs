@@ -333,6 +333,8 @@ export function syncFrame(root: HTMLElement) {
   else delete root.dataset.frame
 }
 
+const RESTYLED = ".knobs-ui,.knobs-panel,.knobs-chip,.knobs-notice"
+
 /** A look for `restyle`: what the pieces take, and a panel's density. */
 export interface RestyleLook extends UiLook {
   readonly density?: "compact" | "default" | "comfortable"
@@ -354,10 +356,8 @@ export function restyle(target: Document | Element, look: RestyleLook) {
   if (theme) injectTheme(doc, theme)
   if (look.preset) injectPreset(doc, look.preset)
   const roots = [
-    ...(target instanceof Element && target.matches(".knobs-ui,.knobs-panel,.knobs-chip")
-      ? [target]
-      : []),
-    ...target.querySelectorAll<HTMLElement>(".knobs-ui,.knobs-panel,.knobs-chip"),
+    ...(target instanceof Element && target.matches(RESTYLED) ? [target] : []),
+    ...target.querySelectorAll<HTMLElement>(RESTYLED),
   ] as HTMLElement[]
   for (const el of roots) {
     const current = el.getAttribute("data-appearance") as Appearance | null

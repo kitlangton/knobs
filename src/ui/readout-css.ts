@@ -1,4 +1,4 @@
-// Readouts' styles. They read the --ku-* tokens, which a readout's own root defines from the
+// Readouts' styles. They read the resolved tokens (--_k-*), which a readout's own root defines from the
 // public --k-* tokens (a panel's, a preset's or the defaults), so a readout in a panel row and one
 // standing alone look the same.
 export const readoutCss = `

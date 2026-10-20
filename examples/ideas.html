@@ -6,21 +6,21 @@
     <title>Ideas · knobs/ui bento</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; }
-      .app { display: flex; flex-direction: column; height: 100%; background: var(--ku-page); color: var(--ku-text);
-        font: var(--ku-font-weight) var(--ku-font-size)/1.35 var(--ku-font); -webkit-font-smoothing: antialiased; }
+      .app { display: flex; flex-direction: column; height: 100%; background: var(--_k-bg-page); color: var(--_k-fg);
+        font: var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font); -webkit-font-smoothing: antialiased; }
       .top { flex: none; display: flex; align-items: baseline; gap: 10px; height: 30px; padding: 9px 12px 0; user-select: none; }
-      .top b { font-weight: var(--ku-title-weight); }
-      .top .dim { color: var(--ku-dim); font-variant-numeric: tabular-nums; }
+      .top b { font-weight: var(--_k-weight-title); }
+      .top .dim { color: var(--_k-fg-3); font-variant-numeric: tabular-nums; }
       .top .fill { flex: 1; }
-      .top button { all: unset; cursor: pointer; color: var(--ku-dim); }
-      .top button:hover { color: var(--ku-text); }
+      .top button { all: unset; cursor: pointer; color: var(--_k-fg-3); }
+      .top button:hover { color: var(--_k-fg); }
       #grid { flex: 1; min-height: 0; }
-      .hud { position: fixed; right: 10px; bottom: 8px; z-index: 9; padding: 6px 9px; border-radius: 6px; background: color-mix(in srgb, var(--ku-page) 82%, transparent);
-        color: var(--ku-label); font: 11px/1.45 var(--ku-mono); white-space: pre; pointer-events: none; }
+      .hud { position: fixed; right: 10px; bottom: 8px; z-index: 9; padding: 6px 9px; border-radius: 6px; background: color-mix(in srgb, var(--_k-bg-page) 82%, transparent);
+        color: var(--_k-fg-2); font: 11px/1.45 var(--_k-mono); white-space: pre; pointer-events: none; }
       .proto { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-        background: var(--ku-bg); color: var(--ku-text); font: 13px var(--ku-font); container-type: size; }
-      .proto .chip { all: unset; padding: 6px 12px; border-radius: 999px; background: var(--ku-surface-hi); cursor: pointer; font-size: max(11px, 3cqw); }
-      .proto .panel { width: 60%; height: 34%; border-radius: 10px; background: var(--ku-surface); display: grid; place-items: center; color: var(--ku-dim); font-size: max(10px, 2.4cqw);
+        background: var(--_k-bg); color: var(--_k-fg); font: 13px var(--_k-font); container-type: size; }
+      .proto .chip { all: unset; padding: 6px 12px; border-radius: 999px; background: var(--_k-fill-selected); cursor: pointer; font-size: max(11px, 3cqw); }
+      .proto .panel { width: 60%; height: 34%; border-radius: 10px; background: var(--_k-fill); display: grid; place-items: center; color: var(--_k-fg-3); font-size: max(10px, 2.4cqw);
         transition: scale .3s cubic-bezier(.2,.8,.2,1), opacity .2s; }
       .proto[data-closed] .panel { scale: .9; opacity: 0; }
     </style>
