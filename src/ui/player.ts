@@ -1,10 +1,11 @@
-// player(container, options): a plain video in the same look as a compare: the picture, then one
-// thin progress line under it (a timeline's "line" variant) with a segment per chapter. Click the
-// picture or press Space to play and pause; click or drag the line to seek, 1:1. The chapter and
-// time under the pointer float over the line; nothing else shows. The timeline follows the
-// video's own time while it plays, so the two never drift.
+// player(container, options): a plain video in the same look as a compare: the picture, then a
+// row under it: a minimal play/pause button and one thin progress line (a timeline's "line"
+// variant) with a segment per chapter. The button or Space (focused) plays and pauses; a click on
+// the picture only focuses it. Click or drag the line to seek, 1:1. The chapter and time under
+// the pointer float over the line. The timeline follows the video's own time while it plays, so
+// the two never drift.
 import { applyLook, type UiLook } from "./look.js"
-import { PAUSE, PLAY, timeline as makeTimeline, type Timeline } from "./timeline.js"
+import { timeline as makeTimeline, type Timeline } from "./timeline.js"
 
 /** A chapter: where it starts (seconds) and its name. */
 export interface PlayerChapter {
@@ -89,8 +90,7 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     track.src = options.captions
     v.append(track)
   }
-  const glyph = playGlyph(doc)
-  frame.append(v, glyph.element)
+  frame.append(v)
   const host = el("div", "knobs-player-line")
   root.append(frame, host)
   container.append(root)
@@ -174,12 +174,8 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     return v.ended ? Number.POSITIVE_INFINITY : v.currentTime
   })
 
-  const onClick = (e: MouseEvent) => {
-    if (e.button !== 0) return
-    tl.toggle()
-    glyph.flash(tl.playing)
-    tl.focus()
-  }
+  // A click on the picture plays nothing (no surprise); it focuses the line, so Space plays.
+  const onClick = () => tl.focus()
   frame.addEventListener("click", onClick)
   v.src = options.src
 
@@ -204,10 +200,10 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     focus: () => tl.focus(),
     dispose() {
       unlisten()
-      glyph.dispose()
       tl.drive(null)
       tl.dispose()
       v.pause()
+      frame.removeEventListener("click", onClick)
       v.removeEventListener("loadedmetadata", onMeta)
       v.removeEventListener("loadeddata", onFrame)
       v.removeEventListener("seeked", onSeeked)
@@ -218,27 +214,3 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
   }
   return api
 }
-
-/**
- * The glyph a play or a pause flashes in the middle of the media (a player's, a compare's stage):
- * the state it went to, blurring in and out.
- */
-export function playGlyph(doc: Document) {
-  const element = doc.createElement("span")
-  element.className = "knobs-player-glyph"
-  element.setAttribute("aria-hidden", "true")
-  let timer = 0
-  const win = doc.defaultView!
-  return {
-    element,
-    flash(playing: boolean) {
-      element.innerHTML = playing ? PLAY : PAUSE
-      element.setAttribute("data-flash", "")
-      win.clearTimeout(timer)
-      timer = win.setTimeout(() => element.removeAttribute("data-flash"), FLASH_MS)
-    },
-    dispose: () => win.clearTimeout(timer),
-  }
-}
-/** How long a play glyph stays before it fades (ms). */
-const FLASH_MS = 450

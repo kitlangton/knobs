@@ -16,13 +16,14 @@ export const compareCss = `
    picked: the pill's bright copy is. */
 .knobs-cmp-modes{position:relative;display:inline-flex;height:var(--_k-control-h);border-radius:var(--_k-radius);background:var(--_k-fill)}
 .knobs-cmp-modes[hidden]{display:none}
-.knobs-ui .knobs-cmp-mode{display:inline-flex;align-items:center;height:100%;padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:pointer;white-space:nowrap;
-  transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-cmp-mode:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+/* Hover is a quiet fill under the arrow cursor (no hand, no brightening), there at once. */
+.knobs-ui .knobs-cmp-mode{display:inline-flex;align-items:center;height:100%;padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:default;white-space:nowrap;
+  transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-cmp-mode:not([aria-checked="true"]):is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* Toggles: icon buttons, the accent's wash when on. */
-.knobs-ui .knobs-cmp-toggle{display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:var(--_k-radius);color:var(--_k-fg-3);cursor:pointer;
-  transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-cmp-toggle{display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:default;
+  transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-cmp-toggle[aria-pressed="true"]{color:var(--_k-accent-fg);background:var(--_k-accent-soft)}
 .knobs-cmp-toggle svg{display:block}
 .knobs-cmp-fill{flex:1}
@@ -36,11 +37,10 @@ export const compareCss = `
 .knobs-cmp-stage{position:relative;flex:1;min-height:96px;overflow:hidden;border-radius:var(--_k-radius-panel);background:var(--_ku-cmp-stage);touch-action:pan-y;outline:none}
 .knobs-compare[data-frame="flat"] .knobs-cmp-stage{border-radius:0}
 .knobs-compare[data-mode="wipe"] .knobs-cmp-stage{cursor:ew-resize}
-/* Videos: a click on the stage plays and pauses. */
-.knobs-compare[data-video]:not([data-mode="wipe"],[data-zoomed]) .knobs-cmp-stage{cursor:pointer}
 /* Unzoomed, a finger still scrolls the page up and down; zoomed, the stage takes every gesture. */
-.knobs-compare[data-zoomed] .knobs-cmp-stage{cursor:grab;touch-action:none}
-.knobs-compare[data-panning],.knobs-compare[data-panning] *{cursor:grabbing!important}
+/* Zoomed, it pans: a move cursor, never a hand. */
+.knobs-compare[data-zoomed] .knobs-cmp-stage{cursor:move;touch-action:none}
+.knobs-compare[data-panning],.knobs-compare[data-panning] *{cursor:move!important}
 /* Wiping, the grip stands in for the cursor. */
 .knobs-compare[data-dragging],.knobs-compare[data-dragging] *{cursor:none!important}
 .knobs-cmp-sizer{position:absolute;left:0;right:0;top:0;height:0;visibility:hidden;pointer-events:none}
@@ -87,8 +87,8 @@ export const compareCss = `
   opacity:0;scale:.96;pointer-events:none;transition:opacity .16s cubic-bezier(.4,0,1,1),scale .16s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
-  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:pointer;transition:color .15s,background .15s}
-:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){color:var(--_k-fg);background:color-mix(in srgb,var(--_k-fg) 12%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
+:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);font-size:var(--_k-text-meta);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
 .knobs-cmp-strip-host{flex:none;height:60px;min-height:0}
