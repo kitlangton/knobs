@@ -67,6 +67,7 @@ const LIGHT: Record<string, string> = {
   page: "#e6e6eb",
   "seg-bg": "rgba(0,0,0,.065)",
   shadow: "0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08)",
+  "shadow-strength": ".16",
 }
 const lightBlock = `${Object.entries(LIGHT)
   .map(([k, v]) => `--k-${k}:${v}`)
@@ -116,6 +117,7 @@ const css = `
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-ui:not(.knobs-surface),.knobs-ui[data-nested]{--ku-gap:var(--k-ui-gap,0px);--ku-pane-bg:transparent;--ku-pane-ring:none;
   --ku-divider:var(--k-ui-divider,var(--ku-line));--k-diff-bg:transparent}
 :where(.knobs-ui)[data-theme="light"],
+:where([data-knobs-theme="light"]) :where(.knobs-ui):not([data-theme="dark"]),
 :where(:root[data-theme="light"]) :where(.knobs-ui)[data-theme="auto"]{${lightBlock}}
 @media(prefers-color-scheme:light){:where(:root:not([data-theme="dark"])) :where(.knobs-ui)[data-theme="auto"]{${lightBlock}}}
 /* Only the pieces' own elements take their type and resets: what you put in a pane is yours. */
@@ -285,7 +287,7 @@ const css = `
 .knobs-tree-line::before{content:"";position:absolute;left:-3px;top:-2px;width:6px;height:6px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--ku-accent)}
 .knobs-tree[data-dragging] .knobs-tree-line[data-shown]{opacity:1}
 .knobs-tree-ghost{position:fixed;left:0;top:0;z-index:2147480004;padding:2px 8px;background:var(--ku-bg);color:var(--ku-text);border-radius:var(--ku-radius);
-  box-shadow:0 0 0 1px var(--ku-line-hi),0 6px 18px rgba(0,0,0,.35);pointer-events:none;white-space:nowrap;font:var(--ku-font-weight) var(--ku-font-size)/1.6 var(--ku-font)}
+  box-shadow:0 0 0 1px var(--ku-line-hi),0 6px 18px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));pointer-events:none;white-space:nowrap;font:var(--ku-font-weight) var(--ku-font-size)/1.6 var(--ku-font)}
 .knobs-tree-empty{padding:10px var(--ku-inset);color:var(--ku-dim)}
 
 /* Timeline: a transport (play, the time) beside a track: the ruler's canvas over a lane of

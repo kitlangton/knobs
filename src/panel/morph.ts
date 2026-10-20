@@ -294,6 +294,7 @@ export function morphFromChip(
     for (const t of ["bg", "line", "rim", "edge", "glass", "glass-tone"])
       shape.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))
     shape.style.setProperty("--k-shadow", cs.getPropertyValue("--k-shadow"))
+    shape.style.setProperty("--k-shadow-strength", cs.getPropertyValue("--k-shadow-strength"))
     root.before(shape)
     // The morph is the entrance: the CSS one mustn't start once the chrome comes back.
     root.style.animation = "none"

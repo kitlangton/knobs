@@ -13,7 +13,7 @@ export const overlayCss = `
 /* A floating surface: frosted, a hairline rim, a soft shadow. */
 .knobs-layers>:is(.knobs-popover-layer,.knobs-palette,.knobs-confirm,.knobs-menu-layer){background:color-mix(in srgb,var(--ku-bg) 88%,transparent);
   -webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7);border-radius:var(--ku-panel-radius);
-  box-shadow:0 0 0 .5px var(--ku-line-hi),inset 0 1px 0 var(--ku-rim),0 12px 40px rgba(0,0,0,.36),0 2px 8px rgba(0,0,0,.18)}
+  box-shadow:0 0 0 .5px var(--ku-line-hi),inset 0 1px 0 var(--ku-rim),0 12px 40px rgba(0,0,0,calc(.36 * var(--_k-shadow-k,1))),0 2px 8px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
 .knobs-layers>.knobs-popover-layer{min-width:120px;max-width:min(420px,calc(100vw - 16px));padding:6px}
 .knobs-popover-layer .knobs-popover-text{padding:4px 6px;color:var(--ku-label)}
 
@@ -40,7 +40,7 @@ export const overlayCss = `
 
 .knobs-layers>.knobs-tooltip{display:inline-flex;align-items:center;gap:7px;max-width:300px;padding:4px 8px;pointer-events:none;white-space:nowrap;
   font-size:calc(var(--ku-font-size) - .5px);background:var(--ku-bg);color:var(--ku-text);border-radius:min(var(--ku-radius),6px);
-  box-shadow:0 0 0 .5px var(--ku-line-hi),0 4px 14px rgba(0,0,0,.3)}
+  box-shadow:0 0 0 .5px var(--ku-line-hi),0 4px 14px rgba(0,0,0,calc(.3 * var(--_k-shadow-k,1)))}
 .knobs-tooltip .knobs-tooltip-text{overflow:hidden;text-overflow:ellipsis}
 .knobs-layer :is(.knobs-tooltip-keys,.knobs-palette-keys){display:inline-flex;gap:2px;flex:none}
 .knobs-layer .knobs-tooltip-keys[hidden]{display:none}
@@ -85,7 +85,7 @@ export const overlayCss = `
 
 .knobs-ui.knobs-toast{left:50%;top:auto;bottom:24px;z-index:2147480005;translate:-50% 0;display:inline-flex;align-items:center;gap:10px;
   max-width:min(480px,80vw);padding:8px 16px;background:var(--ku-bg);color:var(--ku-text);border-radius:calc(var(--ku-radius) * 999);
-  box-shadow:0 0 0 .5px var(--ku-line-hi),0 8px 28px rgba(0,0,0,.32)}
+  box-shadow:0 0 0 .5px var(--ku-line-hi),0 8px 28px rgba(0,0,0,calc(.32 * var(--_k-shadow-k,1)))}
 .knobs-toast .knobs-toast-text{overflow-wrap:anywhere}
 .knobs-toast[data-tone="warn"]::before,.knobs-toast[data-tone="error"]::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--ku-warn)}
 .knobs-toast[data-tone="error"]::before{background:var(--ku-critical)}

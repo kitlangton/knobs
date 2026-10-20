@@ -37,7 +37,7 @@ export const compareCss = `
 .knobs-compare[data-renderer="gpu"] .knobs-cmp-media{opacity:0}
 /* Glass: what's behind shows through, blurred, on the knobs tokens. */
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--ku-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
-  box-shadow:inset 0 0 0 .5px var(--ku-line),inset 0 1px 0 var(--ku-rim),0 2px 10px rgba(0,0,0,.18)}
+  box-shadow:inset 0 0 0 .5px var(--ku-line),inset 0 1px 0 var(--ku-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
 .knobs-cmp-label{position:absolute;left:0;top:0;padding:1px 7px;border-radius:999px;font-size:var(--ku-text-meta);line-height:16px;color:var(--ku-label);white-space:nowrap;pointer-events:none;will-change:transform;transition:color .15s}
 .knobs-cmp-label[data-lit]{color:var(--ku-text)}
 .knobs-cmp-label[data-dim]{color:var(--ku-dim)}

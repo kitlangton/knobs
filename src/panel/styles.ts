@@ -105,7 +105,7 @@ const aliased = (css: string) =>
 const lightVars = `
   --k-bg:#f5f5f7;--k-surface:rgba(0,0,0,calc(.05 * var(--k-contrast)));--k-surface-hi:rgba(0,0,0,calc(.095 * var(--k-contrast)));--k-line:rgba(0,0,0,calc(.1 * var(--k-contrast)));--k-line-hi:rgba(0,0,0,calc(.2 * var(--k-contrast)));
   --k-text:rgba(0,0,0,.88);--k-label:rgba(60,60,67,.68);--k-dim:rgba(60,60,67,.5);--k-accent:#1c1c1e;--k-modified:rgba(0,0,0,.42);
-  --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
+  --k-seg-bg:rgba(0,0,0,.065);--k-seg-active:#fff;--k-toggle-track:rgba(0,0,0,.14);--k-toggle-thumb:#fff;--k-shadow:0 10px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);--k-shadow-strength:.16;
   --k-rim:rgba(255,255,255,.6);--k-edge:rgba(0,0,0,calc(.07 * var(--k-contrast)));--k-glass-tone:1.08;--k-page:#e6e6eb;--k-group-ink:var(--k-dim);
   color-scheme:light;`
 
@@ -217,7 +217,7 @@ const css = `
 
 /* The chip: a round cog button, or a capsule with a label beside the cog. */
 .knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--k-bg);border:1px solid transparent;
-  color:var(--k-label);font-size:var(--k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--k-edge);box-shadow:0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,.35),inset 0 var(--k-rim-width) 0 var(--k-rim);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
+  color:var(--k-label);font-size:var(--k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--k-edge);box-shadow:0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1))),inset 0 var(--k-rim-width) 0 var(--k-rim);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
 .knobs-chip[data-label]{width:auto;padding:0 10px 0 7px}
 .knobs-chip .knobs-icon{display:block;flex:none;width:15px;height:15px}
 .knobs-chip:hover{color:var(--k-text);--k-chip-edge:var(--k-line-hi)}
@@ -229,7 +229,7 @@ const css = `
 @media(prefers-reduced-motion:reduce){.knobs-chip.knobs-chip{scale:none;transform:none}}
 /* "knobs on" / "knobs off" after the reveal shortcut. */
 .knobs-notice{position:fixed;left:50%;bottom:24px;z-index:2147480004;translate:-50% 0;padding:6px 12px;border-radius:999px;pointer-events:none;
-  background:var(--k-bg);border:1px solid var(--k-line);box-shadow:0 4px 16px rgba(0,0,0,.35);color:var(--k-text);font:500 12px/1.2 var(--k-font);letter-spacing:.01em;
+  background:var(--k-bg);border:1px solid var(--k-line);box-shadow:0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));color:var(--k-text);font:500 12px/1.2 var(--k-font);letter-spacing:.01em;
   transition:opacity .18s var(--k-ease),scale .18s var(--k-ease)}
 .knobs-notice[data-shown="false"]{opacity:0;scale:.96;transition:opacity .16s ease-in,scale .16s ease-in}
 
@@ -263,7 +263,7 @@ const css = `
   --k-backdrop:blur(calc(var(--k-glass) * 24px)) saturate(calc(1 + var(--k-glass) * .8)) brightness(calc(1 + (var(--k-glass-tone) - 1) * var(--k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
 .knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}
-.knobs-morph::before{box-shadow:0 4px 16px rgba(0,0,0,.35);opacity:calc(1 - var(--p))}
+.knobs-morph::before{box-shadow:0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));opacity:calc(1 - var(--p))}
 .knobs-morph::after{box-shadow:var(--k-shadow);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}

@@ -94,6 +94,29 @@ export const labPreset: TokenPreset = {
     "curve-guide": "dashed",
     "curve-dot": 0,
   },
+  // The default light palette with the Lab's blue (deepened to read on white); the shape stays.
+  light: {
+    bg: "#f5f5f7",
+    page: "#e6e6eb",
+    surface: "rgba(0,0,0,calc(.05 * var(--k-contrast,1)))",
+    "surface-hi": "rgba(0,0,0,calc(.095 * var(--k-contrast,1)))",
+    line: "rgba(0,0,0,calc(.1 * var(--k-contrast,1)))",
+    "line-hi": "rgba(0,0,0,calc(.2 * var(--k-contrast,1)))",
+    text: "rgba(0,0,0,.88)",
+    label: "rgba(60,60,67,.68)",
+    dim: "rgba(60,60,67,.5)",
+    accent: "#2f6fe4",
+    modified: "#2f6fe4",
+    "seg-bg": "rgba(0,0,0,.065)",
+    "seg-active": "#fff",
+    "toggle-track": "rgba(0,0,0,.14)",
+    "toggle-thumb": "#fff",
+    thumb: "#fff",
+    rim: "transparent",
+    "group-color": "rgba(60,60,67,.68)",
+    "group-divider": "rgba(0,0,0,.1)",
+    "color-scheme": "light",
+  },
 }
 
 /**

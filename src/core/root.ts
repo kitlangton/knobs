@@ -40,6 +40,8 @@ const derived: Record<string, string> = {
 /** Tokens derived on each knobs root: read them as `--_k-<name>`. */
 export const DERIVED_TOKENS: readonly string[] = Object.keys(derived)
 
+// Fixed shadows (a chip's, a tooltip's, a toast's) scale with --k-shadow-strength, the panel
+// shadow's (.48 on dark panels, .16 on light): as dark as they were on dark, lighter on light.
 export const rootCss = `:where(.${ROOT_CLASS}){${Object.entries(derived)
   .map(([k, v]) => `--_k-${k}:var(--k-${k},${v})`)
-  .join(";")}}`
+  .join(";")};--_k-shadow-k:calc(var(--k-shadow-strength,.48) / .48)}`
