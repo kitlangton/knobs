@@ -491,7 +491,11 @@ export function disclosure(
     const k = full > 0 ? Math.max(0, Math.min(1, h.x / full)) : open ? 1 : 0
     viewport.style.height = !moving && open ? "" : `${Math.max(0, h.x).toFixed(2)}px`
     viewport.toggleAttribute("data-moving", moving)
-    content.style.opacity = (open ? Math.min(1, k * 1.25) : Math.max(0, k * 1.5 - 0.5)).toFixed(3)
+    // Blur-in: the words come into focus as they fade in, top-anchored (3 px at nothing, none
+    // once there), and soften the same way, a little sooner, as they go.
+    const o = open ? Math.min(1, k * 1.25) : Math.max(0, k * 1.5 - 0.5)
+    content.style.opacity = o.toFixed(3)
+    content.style.filter = o >= 1 ? "" : `blur(${((1 - o) * 3).toFixed(2)}px)`
   }
   const loop = frameLoop(win, (dt) => {
     h.step(dt)
@@ -526,6 +530,7 @@ export function disclosure(
         h.snap(open ? full : 0)
         viewport.style.height = open ? "" : "0px"
         content.style.opacity = open ? "1" : "0"
+        content.style.filter = ""
         return
       }
       // From the height on screen, so a reversal mid-flight carries on.

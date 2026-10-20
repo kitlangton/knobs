@@ -6,6 +6,7 @@
 // of its decoders and GPU context, holding its height, until it comes near again.
 import { compareLayout, mediaKind } from "./compare-model.js"
 import { aliased } from "../core/glide.js"
+import { reducedMotion } from "../core/motion.js"
 import { icon } from "./icons.js"
 import { annotationLayer, type AnnotationLayer, type Rect } from "./walkthrough-annotations.js"
 import { applyLook, type UiLook } from "./look.js"
@@ -432,6 +433,12 @@ function mountImage(host: HTMLElement, m: Extract<WalkMedia, { kind: "image" }>)
   img.decoding = "async"
   img.alt = m.alt ?? m.label ?? ""
   img.src = m.src
+  // A picture that arrives after the first paint fades into focus.
+  if (!img.complete) {
+    frame.dataset.loading = ""
+    img.addEventListener("load", () => delete frame.dataset.loading, { once: true })
+    img.addEventListener("error", () => delete frame.dataset.loading, { once: true })
+  }
   frame.append(img)
   host.append(frame)
   const marks = m.annotations?.length
@@ -652,6 +659,15 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
   let disposed = false
   let generation = 0
 
+  // Media mounting after the first paint (near the view, or back after being let go) comes into
+  // focus: a fade with a small blur on the quick spring, top-anchored; nothing moves on load.
+  const born = performance.now()
+  const enter = () => {
+    const win = doc.defaultView
+    if (!win || performance.now() - born < 120 || reducedMotion(win)) return
+    host.dataset.entering = ""
+    win.requestAnimationFrame(() => win.requestAnimationFrame(() => delete host.dataset.entering))
+  }
   const hold = (px: number | null) => {
     host.style.minHeight = px === null ? "" : `${px}px`
     host.classList.toggle("knobs-wt-hold", px !== null)
@@ -668,6 +684,7 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
       pending = false
       if (!alive()) return r.dispose()
       mounted = r
+      enter()
       if (filled) r.fill?.(true)
       if (r.ready)
         r.ready.then(

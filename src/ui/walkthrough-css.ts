@@ -21,7 +21,7 @@ const quick = springCss(FADE)
 const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent)"
 export const walkthroughCss = `
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
-.knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0}
+.knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}
 .knobs-ui.knobs-walkthrough{--kw-snappy:${snappy.easing};--kw-snappy-ms:${snappy.duration}ms;--kw-calm:${calm.easing};--kw-calm-ms:${calm.duration}ms;--kw-state:${state.easing};--kw-state-ms:${state.duration}ms;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms;
   --kw-measure:var(--k-walkthrough-measure,68ch);--kw-width:var(--k-walkthrough-width,960px);--kw-rail-w:220px;--kw-good:var(--k-walkthrough-good,var(--_k-ok));--kw-info:var(--k-walkthrough-info,var(--_k-info));
   --kw-card:var(--_ku-pane-bg);--kw-card-ring:var(--_ku-pane-ring);--kw-under:var(--_k-bg-page);--kw-ink:var(--k-walkthrough-ink,#ff375f);--kw-strong:var(--_k-weight-label);
@@ -322,6 +322,10 @@ export const walkthroughCss = `
 /* A slot's label: sentence case as written, small and faint, never a heading. */
 .knobs-wt-slot-label{display:block;min-width:0;overflow:hidden;white-space:nowrap;font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);letter-spacing:normal;text-transform:none;color:var(--_k-fg-3);${fade}}
 .knobs-wt-body{min-width:0}
+/* Media mounting after the first paint, and a picture still decoding, come into focus: a fade with
+   a small blur on the quick spring, from the top; at rest, nothing. */
+.knobs-wt-body,.knobs-wt-frame>img{transition:opacity var(--kw-quick-ms) var(--kw-quick),filter var(--kw-quick-ms) var(--kw-quick)}
+.knobs-wt-body[data-entering],.knobs-wt-frame[data-loading]>img{opacity:0;filter:blur(3px);transition:none}
 /* One frame for every slot that has one (a picture, a video, a code block, a compare's stage, a
    slot still loading): the panel radius and a quiet fill, no ring; concentric on a card. */
 .knobs-wt-slot .knobs-cmp-stage{border-radius:var(--kw-frame-r)}
