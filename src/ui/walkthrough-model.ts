@@ -4,6 +4,7 @@
 // as data or Markdown; and the inline Markdown its prose takes.
 import type { CompareMode } from "./compare-model.js"
 import type { DiffSource } from "./diff-model.js"
+import type { HistoryData, HistoryEvent, HistoryGroup } from "./history-model.js"
 
 /** Where a PR or topic stands, as the agent sees it: a chip beside its title. */
 export type WalkthroughStatus =
@@ -155,10 +156,19 @@ export type WalkthroughMedia =
     }
   | {
       readonly kind: "history"
-      /** Dated events under quiet headings… */
+      /** Lanes of dated spans over one axis (`history()`'s shape)… */
+      readonly lanes?: HistoryData["lanes"]
+      readonly bands?: HistoryData["bands"]
+      readonly states?: HistoryData["states"]
+      readonly axis?: HistoryData["axis"]
+      /** …dated events (on the lanes, or one run of them in the older shape)… */
+      readonly events?: readonly (WalkthroughHistoryEvent | HistoryEvent)[]
+      /** …or the older groups of events under quiet headings. */
       readonly groups?: readonly WalkthroughHistoryGroup[]
-      /** …or one run of them. */
-      readonly events?: readonly WalkthroughHistoryEvent[]
+      /** Its accessible name. */
+      readonly label?: string
+      /** The event types marked from the start (releases and deletions), or `"all"`. */
+      readonly marks?: readonly string[] | "all"
     }
   | {
       readonly kind: "stack"
@@ -364,12 +374,6 @@ export interface WalkChapter {
   readonly end?: number
 }
 
-export interface WalkHistoryGroup {
-  readonly heading?: string
-  readonly summary?: string
-  readonly events: readonly WalkthroughHistoryEvent[]
-}
-
 /** A stack's item filled in: its PR as `#123`, its branch split, `step` for `stepId`. */
 export interface WalkStackItem {
   readonly pr: string
@@ -417,7 +421,12 @@ export type WalkMedia =
       readonly chapters?: readonly WalkChapter[]
     })
   | (Omit<VideoMedia, "chapters" | "captionsSrc"> & { readonly chapters?: readonly WalkChapter[] })
-  | { readonly kind: "history"; readonly groups: readonly WalkHistoryGroup[] }
+  | {
+      readonly kind: "history"
+      readonly data: HistoryData
+      readonly label?: string
+      readonly marks?: readonly string[] | "all"
+    }
   | { readonly kind: "stack"; readonly base?: string; readonly items: readonly WalkStackItem[] }
   | {
       readonly kind: "table"
@@ -589,7 +598,13 @@ export function fillMedia(m: WalkthroughMedia, base?: string): WalkMedia {
     case "image":
       return { ...m, src: resolveSrc(m.src, base) }
     case "history":
-      return { kind: "history", groups: fillHistory(m) }
+      if ("data" in m) return m as WalkMedia
+      return {
+        kind: "history",
+        data: historyData(m),
+        ...(m.label ? { label: m.label } : {}),
+        ...(m.marks ? { marks: m.marks } : {}),
+      }
     case "stack":
       return {
         kind: "stack",
@@ -605,17 +620,29 @@ export function fillMedia(m: WalkthroughMedia, base?: string): WalkMedia {
 
 // ——— history, stacks, tables and chapters ———
 
-/** A history's events in groups: `rows` read as `events`, bare `events` as one group first. */
-function fillHistory(m: Extract<WalkthroughMedia, { kind: "history" }>): WalkHistoryGroup[] {
-  const groups: WalkHistoryGroup[] = []
-  if (m.events?.length) groups.push({ events: m.events })
+/**
+ * What `history()` draws: the lanes shape as written, or the older groups (`rows` read as
+ * `events`, bare `events` as one group first) for it to lay on the code lane.
+ */
+export function historyData(m: Extract<WalkthroughMedia, { kind: "history" }>): HistoryData {
+  const events = (m.events ?? []) as readonly HistoryEvent[]
+  if (m.lanes || m.bands || m.states || m.axis)
+    return {
+      ...(m.axis ? { axis: m.axis } : {}),
+      ...(m.lanes ? { lanes: m.lanes } : {}),
+      ...(events.length ? { events } : {}),
+      ...(m.bands ? { bands: m.bands } : {}),
+      ...(m.states ? { states: m.states } : {}),
+    }
+  const groups: HistoryGroup[] = []
+  if (events.length) groups.push({ events })
   for (const g of m.groups ?? [])
     groups.push({
       ...(g.heading ? { heading: g.heading } : {}),
       ...(g.summary ? { summary: g.summary } : {}),
-      events: g.events ?? g.rows ?? [],
+      events: (g.events ?? g.rows ?? []) as readonly HistoryEvent[],
     })
-  return groups
+  return { groups }
 }
 
 /** `"head → base"` (or `->`, `=>`, `⇒`) as its two branches; one name is the head alone. */

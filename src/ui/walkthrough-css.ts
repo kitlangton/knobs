@@ -370,46 +370,12 @@ export const walkthroughCss = `
 
 /* ——— data blocks: history, stack, table, chapters. On the step's card, so no card of their own:
    hairlines and fills only. Tones read the status tokens; hover fades are the panel's own. ——— */
-:where(.knobs-wt-history,.knobs-wt-stack,.knobs-wt-tablebox,.knobs-wt-chapters){--kw-line:var(--_k-leading-body);--kw-rail:var(--_k-border-strong)}
+:where(.knobs-wt-stack,.knobs-wt-tablebox,.knobs-wt-chapters){--kw-line:var(--_k-leading-body);--kw-rail:var(--_k-border-strong)}
 :where(.knobs-wt-slot) [data-tone="good"]{--kw-tone:var(--kw-good)}
 :where(.knobs-wt-slot) [data-tone="warn"]{--kw-tone:var(--_k-warn)}
 :where(.knobs-wt-slot) [data-tone="bad"]{--kw-tone:var(--_k-danger)}
 :where(.knobs-wt-slot) [data-tone="info"]{--kw-tone:var(--kw-info)}
 :where(.knobs-wt-slot) [data-tone="dim"]{--kw-tone:var(--_k-fg-3)}
-.knobs-wt-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-.knobs-ui .knobs-wt-tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:var(--_k-fill);color:var(--_k-fg-2);font:var(--_k-weight) var(--_k-type-small)/1 var(--_k-mono);
-  text-decoration:none;white-space:nowrap;transition:background calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui a.knobs-wt-tag:is(:hover,:focus-visible){background:var(--_k-fill-selected);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-
-/* A history: dates down the left, a spine of tone dots joined by a hairline (broken around each
-   dot), the event beside it. Inferred events take a ring for a dot and a dashed tag. */
-.knobs-wt-history{--kw-hy:calc(5px + var(--kw-line) / 2);display:flex;flex-direction:column;gap:18px;font-size:var(--_k-type-body);line-height:var(--kw-line);color:var(--_k-fg)}
-.knobs-wt-hgroup{display:flex;flex-direction:column;gap:6px;min-width:0}
-.knobs-wt-hhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
-.knobs-ui .knobs-wt-hheading{margin:0;font:var(--_k-weight-label) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);letter-spacing:.04em;text-transform:uppercase;color:var(--_k-fg-2)}
-.knobs-wt-hsum{color:var(--_k-fg-3);font-size:var(--_k-type-small);font-variant-numeric:tabular-nums}
-.knobs-wt-hlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
-.knobs-wt-hev{display:grid;grid-template-columns:var(--kw-hw,11ch) 14px minmax(0,1fr);grid-template-areas:"when spine main";column-gap:10px;align-items:baseline;padding:5px 0}
-.knobs-wt-hwhen{grid-area:when;display:flex;flex-direction:column;min-width:0;font:var(--_k-weight) var(--_k-type-label)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-2)}
-.knobs-wt-hage{color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small)}
-.knobs-wt-hspine{grid-area:spine;position:relative;align-self:stretch;margin-block:-5px}
-.knobs-wt-hspine::before,.knobs-wt-hspine::after{content:"";position:absolute;left:6.5px;width:1px;background:var(--kw-rail)}
-.knobs-wt-hspine::before{top:0;height:calc(var(--kw-hy) - 6px)}
-.knobs-wt-hspine::after{top:calc(var(--kw-hy) + 6px);bottom:0}
-.knobs-wt-hev:first-child .knobs-wt-hspine::before,.knobs-wt-hev:last-child .knobs-wt-hspine::after{content:none}
-.knobs-wt-hdot{position:absolute;left:3.5px;top:calc(var(--kw-hy) - 3.5px);width:7px;height:7px;border-radius:50%;background:var(--kw-tone,var(--_k-fg-3))}
-.knobs-wt-hev[data-type="release"] .knobs-wt-hdot{border-radius:1.5px;rotate:45deg;scale:.9}
-.knobs-wt-hev[data-type="audit"] .knobs-wt-hdot{border-radius:1.5px}
-.knobs-wt-hev[data-provenance="inferred"] .knobs-wt-hdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--kw-tone,var(--_k-fg-3))}
-.knobs-wt-hmain{grid-area:main;display:flex;flex-direction:column;gap:2px;min-width:0}
-.knobs-wt-htitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-weight:var(--_k-weight-label);color:var(--_k-fg)}
-.knobs-wt-prov{padding:0 6px;border-radius:5px;background:var(--_k-fill);color:var(--_k-fg-3);font:var(--_k-weight) var(--_k-type-small)/18px var(--_k-mono);white-space:nowrap}
-.knobs-wt-hev[data-provenance="inferred"] .knobs-wt-prov{background:transparent;color:var(--_k-warn);outline:1px dashed color-mix(in oklch,var(--_k-warn) 50%,transparent);outline-offset:-1px}
-.knobs-ui .knobs-wt-hdetail{margin:0;max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
-@container knobs-wt-slot (max-width:520px){
-  .knobs-wt-hev{grid-template-columns:14px minmax(0,1fr);grid-template-areas:"spine when" "spine main"}
-  .knobs-wt-hwhen{flex-direction:row;flex-wrap:wrap;align-items:baseline;column-gap:8px}
-}
 
 /* A stack: the trunk at the top, each PR hanging off the branch it merges into, rails drawn as a
    git graph (solid, so where two meet they don't darken). A PR with a step goes there on a click. */

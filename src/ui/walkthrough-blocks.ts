@@ -6,6 +6,7 @@
 // card of its own: hairlines only.
 import { reducedMotion, SPRINGS } from "../core/motion.js"
 import { Spring, springMotion } from "../core/spring.js"
+import { history } from "./history.js"
 import { icon } from "./icons.js"
 import { frameLoop } from "./look.js"
 import { selectionPill } from "./selection-pill.js"
@@ -20,8 +21,6 @@ import {
   type WalkMedia,
   type WalkTableCell,
   type WalkTableColumn,
-  type WalkthroughEvidence,
-  type WalkthroughHistoryEvent,
 } from "./walkthrough-model.js"
 
 /** The glyphs the blocks draw. */
@@ -92,78 +91,32 @@ export function stepButton(doc: Document, ref: string | undefined, steps: StepLi
   return b
 }
 
-const tags = (doc: Document, list: readonly WalkthroughEvidence[] | undefined) => {
-  if (!list?.length) return null
-  const row = el(doc, "div", "knobs-wt-tags")
-  for (const e of list) row.append(link(doc, "knobs-wt-tag", e.label, e.href))
-  return row
-}
 
 // ——— history ———
 
+/** A history through `history()`: lanes of spans over a date axis, or the older groups of events. */
 export function mountHistory(
   host: HTMLElement,
   m: Extract<WalkMedia, { kind: "history" }>,
   steps: StepLinks | undefined,
 ): Block {
-  const doc = host.ownerDocument
-  const root = el(doc, "div", "knobs-wt-history")
-  // One date column for every group, as wide as the longest date or age (within reason).
-  const longest = Math.max(
-    6,
-    ...m.groups.flatMap((g) => g.events.flatMap((e) => [e.date.length, e.age?.length ?? 0])),
-  )
-  root.style.setProperty("--kw-hw", `${Math.min(16, longest + 1)}ch`)
-  for (const g of m.groups) {
-    const group = el(doc, "section", "knobs-wt-hgroup")
-    if (g.heading || g.summary) {
-      const head = el(doc, "header", "knobs-wt-hhead")
-      if (g.heading) head.append(text(doc, "h4", "knobs-wt-hheading", g.heading))
-      if (g.summary) head.append(text(doc, "span", "knobs-wt-hsum", g.summary))
-      group.append(head)
-    }
-    const list = el(doc, "ol", "knobs-wt-hlist")
-    for (const e of g.events) list.append(historyEvent(doc, e, steps))
-    group.append(list)
-    root.append(group)
+  const h = history(host, {
+    data: m.data,
+    ...(m.label ? { label: m.label } : {}),
+    ...(m.marks ? { marks: m.marks } : {}),
+    ...(steps
+      ? {
+          onJump: (ref: string) => {
+            const s = steps.find(ref)
+            if (s) steps.go(s.key)
+          },
+        }
+      : {}),
+  })
+  return {
+    dispose: () => h.dispose(),
+    context: () => ({ kind: "history" }),
   }
-  host.append(root)
-  return { dispose: () => root.remove(), context: () => ({ kind: "history" }) }
-}
-
-function historyEvent(doc: Document, e: WalkthroughHistoryEvent, steps: StepLinks | undefined) {
-  const li = el(doc, "li", "knobs-wt-hev")
-  if (e.tone) li.dataset.tone = e.tone
-  if (e.type) li.dataset.type = e.type
-  if (e.provenance) li.dataset.provenance = e.provenance
-  const when = el(doc, "div", "knobs-wt-hwhen")
-  when.append(text(doc, "time", "knobs-wt-hdate", e.date))
-  if (e.age) when.append(text(doc, "span", "knobs-wt-hage", e.age))
-  const spine = el(doc, "span", "knobs-wt-hspine")
-  spine.setAttribute("aria-hidden", "true")
-  spine.append(el(doc, "span", "knobs-wt-hdot"))
-  const main = el(doc, "div", "knobs-wt-hmain")
-  const title = el(doc, "div", "knobs-wt-htitle")
-  title.append(text(doc, "span", "knobs-wt-htext", e.title))
-  if (e.provenance || e.source) {
-    const p = text(
-      doc,
-      "span",
-      "knobs-wt-prov",
-      [e.provenance, e.source].filter(Boolean).join(" · "),
-    )
-    if (e.provenance === "inferred") p.title = "Inferred from behaviour, not seen in the record"
-    else if (e.provenance === "verified") p.title = "Seen in the record"
-    title.append(p)
-  }
-  const go = stepButton(doc, e.step, steps)
-  if (go) title.append(go)
-  main.append(title)
-  if (e.detail) main.append(prose(doc, "p", "knobs-wt-hdetail", e.detail))
-  const t = tags(doc, e.evidence)
-  if (t) main.append(t)
-  li.append(when, spine, main)
-  return li
 }
 
 // ——— stack ———

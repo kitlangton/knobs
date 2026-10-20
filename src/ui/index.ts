@@ -133,6 +133,21 @@ export {
 export { compareStrip, type CompareStrip, type CompareStripOptions } from "./compare-strip.js"
 export { player, type Player, type PlayerChapter, type PlayerOptions } from "./player.js"
 export {
+  history,
+  type History,
+  type HistoryBand,
+  type HistoryData,
+  type HistoryEvent,
+  type HistoryEvidence,
+  type HistoryGroup,
+  type HistoryLane,
+  type HistoryOptions,
+  type HistoryProvenance,
+  type HistorySpan,
+  type HistoryState,
+  type HistoryTone,
+} from "./history.js"
+export {
   compareLayout,
   compareModes,
   frameMidpoint,
@@ -279,6 +294,7 @@ export {
   collectFeedback,
   feedbackMarkdown,
   inlineMarkdown,
+  plainMarkdown,
   normalizeWalkthrough,
   readState as readWalkthroughState,
   stackLayout,
@@ -317,4 +333,5 @@ export {
   type WalkthroughTableColumn,
   type WalkthroughTableRow,
   type WalkthroughTone,
+  type WalkthroughPR,
 } from "./walkthrough-model.js"

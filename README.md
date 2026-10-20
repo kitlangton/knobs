@@ -1382,7 +1382,7 @@ Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`
 
 The demo is `examples/walkthrough.html`.
 
-**`history`**: dated events down a spine, a tone dot each (`good`, `warn`, `bad`, `info`, `dim`), under quiet group headings. `provenance` says whether an event was seen in the record (`"verified"`) or worked out from behaviour (`"inferred"`, a ring for a dot and a dashed tag), and `source` where (`"verified · git"`). `evidence` is small tags, linked or not; `type: "release"` draws a diamond, `"audit"` a square. Groups take `events` or `rows`; a bare `events` list is one group. In a narrow card the date goes over the event.
+**`history`**: drawn by **`history(container, { data })`** (also exported on its own): a shared date axis (month ticks, today's line) over lanes, one per channel or track, each carrying spans whose tone says their state, marks for releases and deletions, faint bands for phases; hovering shows a date line and a tooltip, and a click or `←` / `→` opens one detail area under the chart. Write the lanes shape (`lanes: [{ id, label, spans: [{ from, to?, state, label?, detail?, provenance?, evidence?, step? }] }]`, `events: [{ date, lane?, title, type?, tone?, provenance?, step? }]`, `bands`, `states`, `axis`), or the older groups of dated events below, which it lays on one code lane under a band per heading. `provenance: "inferred"` hatches a span and hollows a mark; a `step` gets "Go to step" in the detail; `label` names it, and `marks` picks which event types are marked from the start (releases and deletions, or `"all"`).
 
 ```json
 { "kind": "history", "groups": [{ "heading": "v2 dropped it", "summary": "Jun 26 – Jul 30", "events": [

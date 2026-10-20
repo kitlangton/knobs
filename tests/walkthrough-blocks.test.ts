@@ -53,12 +53,30 @@ describe("history", () => {
       },
       "history",
     )
-    expect(h.groups.map((g) => [g.heading, g.events.length])).toEqual([
+    const groups = h.data.groups!
+    expect(groups.map((g) => [g.heading, g.events?.length])).toEqual([
       [undefined, 1],
       ["Phase 1", 1],
       ["Empty", 0],
     ])
-    expect(h.groups[1]!.events[0]).toMatchObject({ provenance: "verified", source: "git" })
+    expect(groups[1]!.events![0]).toMatchObject({ provenance: "verified", source: "git" })
+  })
+
+  test("the lanes shape passes through to history() as written", () => {
+    const h = filled(
+      {
+        kind: "history",
+        label: "Install paths",
+        lanes: [{ id: "web", label: "Website", spans: [{ from: "2026-09-19", state: "broken" }] }],
+        events: [{ date: "2026-07-20", title: "retry.ts deleted", lane: "web", type: "deletion" }],
+        states: { broken: { tone: "bad" } },
+      },
+      "history",
+    )
+    expect(h.label).toBe("Install paths")
+    expect(h.data.groups).toBeUndefined()
+    expect(h.data.lanes?.[0]?.id).toBe("web")
+    expect(h.data.events?.[0]?.lane).toBe("web")
   })
 })
 
