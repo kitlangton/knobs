@@ -1,7 +1,8 @@
 // A history that reads at a glance: a shared date axis (month ticks, today's line) over lanes, one
 // per channel or track, each carrying spans whose tone says their state ("v1 works", "v2 broken")
-// and marks for commits, releases and deletions. Inferred spans are hatched and inferred marks
-// hollow. Everything else waits for the pointer or the keys: hovering shows a date line and a
+// and marks for releases and deletions (commits and the rest appear while the pointer is on their
+// lane, or behind "Show commits"). Inferred spans are hatched and inferred marks hollow, with a
+// legend only when there's both. Everything else waits for the pointer or the keys: hovering shows a date line and a
 // small tooltip, a click (or ←/→ through the events) opens the one detail area under the chart,
 // whose height springs as its content fades in place. It draws no card of its own.
 // kit-motion: nothing moves on load; the selection and the pointer's line go where the hand
@@ -15,6 +16,7 @@ import {
   bandRoom,
   clipSpan,
   dayScale,
+  DEFAULT_MARKS,
   firstSentence,
   fitLabels,
   fitTag,
@@ -24,6 +26,8 @@ import {
   monthTicks,
   nearestEvent,
   normalizeHistory,
+  quietEvents,
+  quietLabel,
   stepEvent,
   type HistoryData,
   type HistoryModel,
@@ -58,6 +62,11 @@ export interface HistoryOptions extends UiLook {
   readonly label?: string
   /** Under this width (px) lane labels sit above their lanes instead of beside them (560). */
   readonly narrow?: number
+  /**
+   * The event types marked from the start (releases and deletions, or `"all"`); the rest show
+   * while the pointer is on their lane, and all of them behind a "Show commits" toggle.
+   */
+  readonly marks?: readonly string[] | "all"
 }
 
 export interface History {
@@ -130,7 +139,7 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
   root.setAttribute("aria-roledescription", "timeline")
 
   const chart = el(doc, "div", "knobs-hy-chart")
-  const legend = el(doc, "div", "knobs-hy-legend")
+  const foot = el(doc, "div", "knobs-hy-foot")
   const detail = el(doc, "div", "knobs-hy-detail")
   detail.setAttribute("aria-live", "polite")
   const tip = el(doc, "div", "knobs-hy-tip")
@@ -139,13 +148,17 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
   const tipDate = el(doc, "div", "knobs-hy-td")
   const tipLine = el(doc, "div", "knobs-hy-tl")
   tip.append(tipTitle, tipDate, tipLine)
-  root.append(chart, legend, detail, tip)
+  root.append(chart, foot, detail, tip)
   container.append(root)
 
   let model = normalizeHistory(options.data)
   let selected: string | null =
     options.selected && model.items.has(options.selected) ? options.selected : null
   let disposed = false
+  let quiet = quietEvents(model.events, options.marks ?? DEFAULT_MARKS)
+  let showAll = false
+  /** The events ←/→ walk: the ones drawn. */
+  const walked = () => (showAll ? model.events : model.events.filter((e) => !quiet.has(e.id)))
 
   // What the last draw made.
   let nodes = new Map<string, HTMLElement>()
@@ -158,6 +171,12 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
   let hovered: HTMLElement | null = null
   let tipKey = ""
 
+  // The font as canvas reads it: the computed `font` shorthand is empty when a feature it can't
+  // say (tabular figures) is set.
+  const fontOf = (n: Element) => {
+    const c = win.getComputedStyle(n)
+    return `${c.fontStyle} ${c.fontWeight} ${c.fontSize} ${c.fontFamily}`
+  }
   let measureCtx: CanvasRenderingContext2D | null | undefined
   const measure = (s: string, font: string) => {
     if (measureCtx === undefined) measureCtx = doc.createElement("canvas").getContext("2d")
@@ -166,25 +185,38 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
     return measureCtx.measureText(s).width
   }
 
-  function drawLegend() {
-    legend.textContent = ""
-    const key = (swatch: HTMLElement, label: string) => {
-      const k = el(doc, "span", "knobs-hy-key")
-      k.append(swatch, text(doc, "span", "", label))
-      legend.append(k)
+  /** Under the chart: the toggle for held-back marks, and a legend only where hatching needs one. */
+  function drawFoot() {
+    foot.textContent = ""
+    root.toggleAttribute("data-all", showAll)
+    if (quiet.size) {
+      const t = el(doc, "button", "knobs-hy-more")
+      t.type = "button"
+      t.setAttribute("aria-pressed", String(showAll))
+      t.textContent = `${showAll ? "Hide" : "Show"} ${quietLabel(model.events, quiet)}`
+      t.addEventListener("click", () => {
+        showAll = !showAll
+        if (!showAll && selected && quiet.has(selected)) select(null, true, true)
+        drawFoot()
+      })
+      foot.append(t)
     }
-    for (const s of model.states) {
-      const sw = el(doc, "span", "knobs-hy-swatch")
-      sw.dataset.tone = s.tone
-      key(sw, s.label)
+    if (model.inferred && model.verified) {
+      const legend = el(doc, "span", "knobs-hy-legend")
+      for (const [label, inferred] of [
+        ["Verified", false],
+        ["Inferred", true],
+      ] as const) {
+        const k = el(doc, "span", "knobs-hy-key")
+        const sw = el(doc, "span", "knobs-hy-swatch")
+        sw.dataset.tone = "dim"
+        if (inferred) sw.dataset.inferred = ""
+        k.append(sw, text(doc, "span", "", label))
+        legend.append(k)
+      }
+      foot.append(legend)
     }
-    if (model.inferred) {
-      const sw = el(doc, "span", "knobs-hy-swatch")
-      sw.dataset.inferred = ""
-      sw.dataset.tone = "dim"
-      key(sw, "Inferred")
-    }
-    legend.hidden = !legend.childElementCount
+    foot.hidden = !foot.childElementCount
   }
 
   function draw() {
@@ -202,7 +234,7 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
     if (!narrow) {
       const probe = el(doc, "div", "knobs-hy-label")
       chart.append(probe)
-      const font = win.getComputedStyle(probe).font
+      const font = fontOf(probe)
       const gap = parseFloat(win.getComputedStyle(probe).marginRight) || 0
       probe.remove()
       const longest = Math.max(0, ...model.lanes.map((l) => measure(l.label, font)))
@@ -283,7 +315,7 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
         b.style.left = pct(c.from)
         b.style.width = pct(model.from + (c.to - c.from))
         b.setAttribute("aria-label", `${s.title}, ${when(s)}`)
-        b.append(text(doc, "span", "knobs-hy-tag", s.tags[0] ?? ""))
+        if (s.tags.length) b.append(text(doc, "span", "knobs-hy-tag", s.tags[0]!))
         track.append(b)
         nodes.set(s.id, b)
       }
@@ -296,6 +328,7 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
         b.dataset.tone = e.tone
         if (e.type) b.dataset.type = e.type
         if (e.inferred) b.dataset.inferred = ""
+        if (quiet.has(e.id)) b.dataset.quiet = ""
         b.style.left = pct(Math.max(e.from, model.from))
         if (e.to > e.from) {
           b.dataset.range = ""
@@ -345,9 +378,9 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
         .sort((a, b) => a.c!.from - b.c!.from)
       spans.forEach(({ s, c }, i) => {
         const b = nodes.get(s.id)
-        const tag = b?.firstElementChild as HTMLElement | null
+        const tag = b?.querySelector<HTMLElement>(".knobs-hy-tag")
         if (!b || !tag) return
-        const font = win.getComputedStyle(tag).font
+        const font = fontOf(tag)
         const widths = s.tags.map((t) => measure(t, font))
         const next = spans[i + 1]?.c
         const spanW = scale.x(c!.to) - scale.x(c!.from)
@@ -559,10 +592,12 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
     const onChart = e.target instanceof Node && chart.contains(e.target)
     if ((e.target !== root && !onChart) || e.metaKey || e.ctrlKey || e.altKey) return
     let next: HyItem | null | undefined
-    if (e.key === "ArrowRight") next = stepEvent(model.events, selected, 1)
-    else if (e.key === "ArrowLeft") next = stepEvent(model.events, selected, -1)
-    else if (e.key === "Home") next = model.events[0] ?? null
-    else if (e.key === "End") next = model.events[model.events.length - 1] ?? null
+    const order = walked()
+    const at = selected ? model.items.get(selected)?.from : undefined
+    if (e.key === "ArrowRight") next = stepEvent(order, selected, 1, at)
+    else if (e.key === "ArrowLeft") next = stepEvent(order, selected, -1, at)
+    else if (e.key === "Home") next = order[0] ?? null
+    else if (e.key === "End") next = order[order.length - 1] ?? null
     else if (e.key === "Escape" && selected) next = null
     else if (e.key === "Enter" && selected) {
       const step = model.items.get(selected)?.step
@@ -592,7 +627,7 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
   const restyle = () => draw()
   root.addEventListener("knobs-restyle", restyle)
 
-  drawLegend()
+  drawFoot()
   draw()
   detail.style.height = "0px"
   if (selected) showDetail(model.items.get(selected)!, false)
@@ -622,7 +657,8 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
       model = normalizeHistory(data)
       const keep = selected && model.items.has(selected) ? selected : null
       selected = keep
-      drawLegend()
+      quiet = quietEvents(model.events, options.marks ?? DEFAULT_MARKS)
+      drawFoot()
       draw()
       showDetail(keep ? model.items.get(keep)! : null, false)
     },

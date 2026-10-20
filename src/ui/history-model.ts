@@ -71,7 +71,7 @@ export interface HistoryBand {
 export interface HistoryState {
   readonly label?: string
   readonly tone?: HistoryTone
-  /** `"{d}d broken"` (the default `"{d}d"`), or words of its own (`"v1"`). */
+  /** `"{d}d"` (the default), words of its own (`"v1"`), or `""` for none. */
   readonly tag?: string
 }
 
@@ -153,7 +153,9 @@ export interface HistoryModel {
   readonly states: readonly HyState[]
   /** The event types used, in the order they first appear. */
   readonly types: readonly string[]
+  /** Whether anything is marked inferred, and anything verified: the legend needs both. */
   readonly inferred: boolean
+  readonly verified: boolean
   readonly items: ReadonlyMap<string, HyItem>
 }
 
@@ -333,7 +335,8 @@ export function normalizeHistory(data: HistoryData, now: Day = todayDay()): Hist
       const st = stateOf(s.state)
       const days = Math.max(0, to - a.from)
       const own = s.label ?? data.states?.[s.state]?.tag ?? "{d}d"
-      const tags = [...new Set([own, "{d}d"])].map((t) => t.replace(/\{d\}/g, String(days)))
+      const tags =
+        own === "" ? [] : [...new Set([own, "{d}d"])].map((t) => t.replace(/\{d\}/g, String(days)))
       const id = s.id ?? `${l.id}/${i}`
       const item: HyItem = {
         id,
@@ -428,8 +431,38 @@ export function normalizeHistory(data: HistoryData, now: Day = todayDay()): Hist
     states: [...states.values()],
     types,
     inferred,
+    verified: [...items.values()].some((i) => i.provenance === "verified"),
     items,
   }
+}
+
+/** The marks drawn from the start: the rest wait for the pointer or "Show …". */
+export const DEFAULT_MARKS: readonly string[] = ["release", "deletion"]
+
+/**
+ * The events held back until asked for: those with a type that isn't in `marks`. Untyped events
+ * always show, and where holding back would leave no mark at all, none are.
+ */
+export function quietEvents(events: readonly HyItem[], marks: readonly string[] | "all"): Set<string> {
+  if (marks === "all") return new Set()
+  const quiet = events.filter((e) => e.type && !marks.includes(e.type))
+  return quiet.length === events.length ? new Set() : new Set(quiet.map((e) => e.id))
+}
+
+const PLURALS: Record<string, string> = {
+  commit: "commits",
+  release: "releases",
+  deletion: "deletions",
+  channel: "channel switches",
+  audit: "findings",
+}
+
+/** What the toggle shows: `"commits"`, `"commits and findings"`. */
+export function quietLabel(events: readonly HyItem[], quiet: ReadonlySet<string>): string {
+  const types: string[] = []
+  for (const e of events) if (quiet.has(e.id) && e.type && !types.includes(e.type)) types.push(e.type)
+  const names = types.map((t) => PLURALS[t] ?? `${t}s`)
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "")
 }
 
 /** The order ←/→ walk: by date, then lane (top first), then as written. */
@@ -449,9 +482,15 @@ export function stepEvent(
   order: readonly HyItem[],
   current: string | null,
   dir: 1 | -1,
+  /** Where the selection is when it isn't in `order` (a held-back mark): carry on from there. */
+  at?: Day,
 ): HyItem | null {
   if (!order.length) return null
   const i = current === null ? -1 : order.findIndex((e) => e.id === current)
+  if (i < 0 && at !== undefined) {
+    const next = dir > 0 ? order.find((e) => e.from >= at) : [...order].reverse().find((e) => e.from <= at)
+    return next ?? (dir > 0 ? order[order.length - 1]! : order[0]!)
+  }
   if (i < 0) return dir > 0 ? order[0]! : order[order.length - 1]!
   return order[Math.max(0, Math.min(order.length - 1, i + dir))]!
 }
