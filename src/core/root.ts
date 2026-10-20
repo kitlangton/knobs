@@ -16,6 +16,9 @@ export const ROOT_CLASS = "knobs-root"
 // were on dark, lighter on light.
 const extras = `:where(.${ROOT_CLASS}){--_k-shadow-k:calc(var(--k-shadow-strength,calc(.48 - .32 * var(--_k-light,0))) / .48);--_k-glass-tone:var(--k-glass-tone,calc(.5 + .58 * var(--_k-light,0)));--_k-fill-base:var(--k-fill-base,var(--_k-fill-selected));--_k-fill-hover-mix:var(--k-fill-hover-mix,var(--k-fill-rest-mix,20%));--_k-reveal-ease:var(--k-ease,cubic-bezier(.2,.8,.2,1))}`
 
+// A page's edge comes in under 640px wide (a host's --k-pad-page still wins at any width).
+const narrow = `@media(max-width:639.98px){:where(.${ROOT_CLASS}){--_k-pad-page:var(--k-pad-page,calc(var(--_k-unit) * 4))}}`
+
 // The default spring as CSS (what tokens glide on, and slider fills).
 const spring = `:where(:root,:host){--k-fill-ease:${DEFAULT_LINEAR.easing};--k-fill-ms:${DEFAULT_LINEAR.ms}}`
 
@@ -23,7 +26,7 @@ const spring = `:where(:root,:host){--k-fill-ease:${DEFAULT_LINEAR.easing};--k-f
  * The token sheet: the Knobs theme's defaults, every root's resolution and appearance, the
  * drivers that make tokens glide, and the motion tokens.
  */
-export const rootCss = `${tokensCss(knobs)}\n${extras}\n${spring}\n${DRIVERS}\n${motionCss}`
+export const rootCss = `${tokensCss(knobs)}\n${extras}\n${narrow}\n${spring}\n${DRIVERS}\n${motionCss}`
 
 /** Adds the token sheet once per document. */
 export function injectTokens(doc: Document) {

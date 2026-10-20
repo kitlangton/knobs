@@ -1468,6 +1468,8 @@ A reset that went back to the active preset rather than the defaults carries `ba
 
 Generated from the token schema (`bun run scripts/tokens-table.ts`), with the Knobs theme's values. Inputs are the dials a theme turns, semantic tokens are what pieces read, hooks style one component.
 
+The page roles (**Space**: `--k-space-inside` 4 · `sibling` 8 · `title` 12 · `group` 48 · `section` 96 · `column` 24, `--k-pad-page` 24 (16 under 640px) and `--k-pad-card` 12; **Type**: `--k-type-heading` 20/28 · `title` 16/24 · `body` 13/20 · `label` 12/16 · `small` 11/16, with `--k-leading-*`) are what a page built from knobs/ui (a walkthrough) is laid out on. They don't scale with density: density sizes a panel's controls, and the panel doesn't read them. Two weights (400, 500), mono one size down from what's around it, tabular figures.
+
 <!-- tokens:start -->
 
 ### Accent
@@ -1509,6 +1511,16 @@ Generated from the token schema (`bun run scripts/tokens-table.ts`), with the Kn
 |---|---|---|---|---|
 | `--k-font` | input | `system-ui,-apple-system,"SF Pro Text",sans-serif` | `system-ui,-apple-system,"SF Pro Text",sans-serif` | UI font stack. |
 | `--k-mono` | input | `"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace` | `"SF Mono",SFMono-Regular,ui-monospace,Menlo,monospace` | Monospace font stack. |
+| `--k-type-heading` | semantic | `20px` | `20px` | Section headings (a PR's title, under its kicker), weight 500. |
+| `--k-leading-heading` | semantic | `28px` | `28px` | Line height for type-heading. |
+| `--k-type-title` | semantic | `16px` | `16px` | A page's title, weight 500. |
+| `--k-leading-title` | semantic | `24px` | `24px` | Line height for type-title. |
+| `--k-type-body` | semantic | `13px` | `13px` | Prose, questions, list rows, step titles; 400, or 500 for emphasis. |
+| `--k-leading-body` | semantic | `20px` | `20px` | Line height for type-body. |
+| `--k-type-label` | semantic | `12px` | `12px` | Labels over media, weight 500; mono inside body text. |
+| `--k-leading-label` | semantic | `16px` | `16px` | Line height for type-label. |
+| `--k-type-small` | semantic | `11px` | `11px` | Meta, controls, keys, timestamps; mono inside labels. |
+| `--k-leading-small` | semantic | `16px` | `16px` | Line height for type-small. |
 | `--k-font-size` | semantic | `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)` | `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)` | Body size; a 5-step scale derives privately. Derived: `round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)`. |
 | `--k-value-font` | semantic | `var(--k-font)` | `var(--k-font)` | Font for readouts and values (labPreset: mono). Derived: `var(--k-font)`. |
 
@@ -1581,6 +1593,19 @@ Generated from the token schema (`bun run scripts/tokens-table.ts`), with the Kn
 | `--k-series-4` | semantic | `#ed8c84` | `#b84d49` | Chart series 4. |
 | `--k-series-5` | semantic | `#bc97e8` | `#885cb5` | Chart series 5. |
 | `--k-series-6` | semantic | `#25c2c2` | `#008686` | Chart series 6. |
+
+### Space
+
+| Token | Tier | Dark | Light | |
+|---|---|---|---|---|
+| `--k-space-inside` | semantic | `var(--k-unit)` | `var(--k-unit)` | Parts of one thing: an icon and its label, a meta line and its title. Derived: `var(--k-unit)`. |
+| `--k-space-sibling` | semantic | `calc(var(--k-unit) * 2)` | `calc(var(--k-unit) * 2)` | Siblings in a group: buttons in a row, a list item's lines. Derived: `calc(var(--k-unit) * 2)`. |
+| `--k-space-title` | semantic | `calc(var(--k-unit) * 3)` | `calc(var(--k-unit) * 3)` | A heading and what it heads. Derived: `calc(var(--k-unit) * 3)`. |
+| `--k-space-group` | semantic | `calc(var(--k-unit) * 12)` | `calc(var(--k-unit) * 12)` | Groups inside a section (prose, video, diff), stacked media, feed items (a hairline in the middle). Derived: `calc(var(--k-unit) * 12)`. |
+| `--k-space-section` | semantic | `calc(var(--k-unit) * 24)` | `calc(var(--k-unit) * 24)` | Sections of a page (the intro, the updates, each PR), a hairline in the middle. Derived: `calc(var(--k-unit) * 24)`. |
+| `--k-space-column` | semantic | `calc(var(--k-unit) * 6)` | `calc(var(--k-unit) * 6)` | Columns: a contents rail and the page, media side by side. Derived: `calc(var(--k-unit) * 6)`. |
+| `--k-pad-page` | semantic | `calc(var(--k-unit) * 6)` | `calc(var(--k-unit) * 6)` | A page's edge; 16px under 640px wide. Derived: `calc(var(--k-unit) * 6)`. |
+| `--k-pad-card` | semantic | `calc(var(--k-unit) * 3)` | `calc(var(--k-unit) * 3)` | Inside a card or popover. Derived: `calc(var(--k-unit) * 3)`. |
 
 ### Material
 
