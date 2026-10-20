@@ -258,8 +258,11 @@ export interface WalkthroughOptions extends UiLook {
   readonly onFeedback?: (feedback: WalkthroughFeedback) => void
   /** The page's keys (on by default). */
   readonly keys?: boolean
-  /** The contents and progress rail (on by default), beside the column on the right or left. */
-  readonly rail?: boolean | "right" | "left"
+  /**
+   * The contents and progress rail (on by default): sticky at the page's left edge, the column
+   * centred in the room beside it; `"right"` mirrors it. Under 960 px it folds to a bar on top.
+   */
+  readonly rail?: boolean | "left" | "right"
   /** Each step on a card of its own (off by default: steps sit on the page, hairlines between). */
   readonly cards?: boolean
   /**
@@ -1190,7 +1193,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     views = []
     root.textContent = ""
     root.removeAttribute("data-settled")
-    root.dataset.rail = options.rail === false ? "none" : options.rail === "left" ? "left" : "right"
+    root.dataset.rail = options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
     root.toggleAttribute("data-cards", options.cards === true)
     const layout = el(doc, "div", "knobs-wt-layout")
     const main = el(doc, "div", "knobs-wt-main")
@@ -1204,6 +1207,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     h1.textContent = page.title
     head.append(h1)
     if (page.summary) head.append(prose(doc, "p", "knobs-wt-summary", page.summary))
+    if (page.more) head.append(more(page.more))
     if (page.meta.length) {
       const meta = el(doc, "div", "knobs-wt-meta")
       for (const m of page.meta) {
@@ -1306,6 +1310,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const intro = el(doc, "div", "knobs-wt-sintro")
       intro.append(sh)
       if (section.summary) intro.append(prose(doc, "p", "knobs-wt-ssum", section.summary))
+      if (section.more) intro.append(more(section.more))
       sec.append(intro)
       let group: HTMLElement | null = null
       if (tocEl) {
@@ -1352,6 +1357,15 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         if (!disposed && !reduced()) root.dataset.settled = ""
       }),
     )
+  }
+
+  /** The rest of a step, section or page, folded under its words behind "More". */
+  const more = (text: string) => {
+    const box = el(doc, "div", "knobs-wt-more")
+    const body = el(doc, "div", "knobs-wt-more-text")
+    for (const para of text.split(/\n\s*\n/)) if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
+    discs.push(disclosure(box, { label: "More", content: body }))
+    return box
   }
 
   /** A contents row: a title row (32 high) or a step under it (20 high), on one spine. */
@@ -1432,30 +1446,18 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     h3.innerHTML = inlineMarkdown(step.title)
     head.append(h3)
     if (step.caption) head.append(prose(doc, "p", "knobs-wt-caption", step.caption))
+    if (step.more) head.append(more(step.more))
     card.append(head)
     const slots: MediaSlot[] = []
     const onEvent = (e: Omit<ContextEvent, "at" | "step">) => record({ ...e, step: step.key })
     let media: HTMLElement | null = null
     if (step.media.length) {
-      // One under another unless the step asks for columns; with `more`, the media after the first
-      // fold away under a quiet toggle.
-      const grid = (list: readonly WalkStep["media"][number][]) => {
-        const g = el(doc, "div", "knobs-wt-media")
-        g.style.setProperty("--kw-n", String(Math.min(list.length, step.columns)))
-        for (const m of list)
-          slots.push(mediaSlot(g, { ...look, media: m, onEvent, steps: stepLinks }))
-        return g
-      }
-      const [first, ...rest] = step.media
-      media = grid(step.more ? [first!] : step.media)
+      // One under another unless the step asks for columns.
+      media = el(doc, "div", "knobs-wt-media")
+      media.style.setProperty("--kw-n", String(Math.min(step.media.length, step.columns)))
+      for (const m of step.media)
+        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks }))
       card.append(media)
-      if (step.more && rest.length) {
-        const holder = el(doc, "div", "knobs-wt-more")
-        discs.push(
-          disclosure(holder, { label: step.more, count: rest.length, content: grid(rest) }),
-        )
-        card.append(holder)
-      }
     }
     let taste: TasteTest | null = null
     if (step.question) card.append(prose(doc, "p", "knobs-wt-question", step.question))

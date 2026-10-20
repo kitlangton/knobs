@@ -114,8 +114,8 @@ describe("steps without numbers on screen", () => {
   })
 })
 
-describe("step media", () => {
-  test("sit one under another unless the step asks for columns; more folds the rest", () => {
+describe("step media and more", () => {
+  test("media sit one under another unless the step asks for columns", () => {
     const p = normalizeWalkthrough({
       id: "m",
       title: "M",
@@ -125,14 +125,34 @@ describe("step media", () => {
           steps: [
             { title: "Default", media: ["a.mp4", "b.mp4"] },
             { title: "Two up", media: ["a.mp4", "b.mp4"], columns: 2 },
-            { title: "Folded", media: ["a.mp4", "b.mp4", "c.png"], more: " More clips " },
-            { title: "Nothing to fold", media: "a.mp4", more: "More" },
           ],
         },
       ],
     })
-    expect(p.steps.map((s) => s.columns)).toEqual([1, 2, 1, 1])
-    expect(p.steps.map((s) => s.more)).toEqual([undefined, undefined, "More clips", undefined])
+    expect(p.steps.map((s) => s.columns)).toEqual([1, 2])
+  })
+
+  test("more is the rest of the words, on a step, a section and the page", () => {
+    const p = normalizeWalkthrough({
+      id: "m",
+      title: "M",
+      summary: "Short.",
+      more: " The page's rest. ",
+      sections: [
+        {
+          title: "S",
+          summary: "One line.",
+          more: "The section's rest.",
+          steps: [
+            { title: "Claim", caption: "One sentence.", more: "First.\n\nSecond." },
+            { title: "Bare", more: "  " },
+          ],
+        },
+      ],
+    })
+    expect(p.more).toBe("The page's rest.")
+    expect(p.sections[0]!.more).toBe("The section's rest.")
+    expect(p.steps.map((s) => s.more)).toEqual(["First.\n\nSecond.", undefined])
   })
 })
 

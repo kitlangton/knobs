@@ -243,7 +243,10 @@ export interface WalkthroughStep {
   readonly media?: WalkthroughMedia | readonly WalkthroughMedia[]
   /** Media side by side, this many to a row where there's room; one under another by default. */
   readonly columns?: 1 | 2 | 3
-  /** The media after the first fold away under a quiet toggle with these words ("More clips"). */
+  /**
+   * The rest, folded away under the caption behind "More" (Markdown; blank lines start new
+   * paragraphs). Keep the title the claim and the caption one sentence; everything else goes here.
+   */
   readonly more?: string
   /** A taste test: Kit picks one. */
   readonly options?: readonly WalkthroughOption[]
@@ -268,6 +271,8 @@ export interface WalkthroughSection {
   readonly kicker?: string | false
   readonly status?: WalkthroughStatus
   readonly summary?: string
+  /** The rest, folded away under the summary behind "More" (Markdown). */
+  readonly more?: string
   readonly steps: readonly WalkthroughStep[]
 }
 
@@ -309,6 +314,8 @@ export interface WalkthroughDoc {
   readonly id: string
   readonly title: string
   readonly summary?: string
+  /** The rest, folded away under the summary behind "More" (Markdown). */
+  readonly more?: string
   /** Facts beside the title: branch, commit, date… */
   readonly meta?: Readonly<Record<string, string>> | readonly WalkthroughMeta[]
   /** Relative media URLs resolve against this. */
@@ -443,6 +450,7 @@ export interface WalkSection {
   readonly kicker?: string
   readonly status?: WalkthroughStatus
   readonly summary?: string
+  readonly more?: string
   readonly steps: readonly WalkStep[]
 }
 
@@ -469,6 +477,7 @@ export interface WalkPage {
   readonly id: string
   readonly title: string
   readonly summary?: string
+  readonly more?: string
   readonly meta: readonly WalkthroughMeta[]
   readonly verdicts: readonly WalkVerdict[]
   readonly sections: readonly WalkSection[]
@@ -850,7 +859,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         ...(step.question ? { question: step.question } : {}),
         media: (list as readonly WalkthroughMedia[]).map((m) => fillMedia(m, doc.base)),
         columns: Math.max(1, Math.min(3, Math.round(step.columns ?? 1))),
-        ...(step.more?.trim() && list.length > 1 ? { more: step.more.trim() } : {}),
+        ...(step.more?.trim() ? { more: step.more.trim() } : {}),
         options,
         ask,
       }
@@ -870,6 +879,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
       ...(typeof s.kicker === "string" && s.kicker.trim() ? { kicker: s.kicker.trim() } : {}),
       ...(s.status ? { status: s.status } : {}),
       ...(s.summary ? { summary: s.summary } : {}),
+      ...(s.more?.trim() ? { more: s.more.trim() } : {}),
       steps: own,
     }
   })
@@ -909,6 +919,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
     id: doc.id,
     title: doc.title,
     ...(doc.summary ? { summary: doc.summary } : {}),
+    ...(doc.more?.trim() ? { more: doc.more.trim() } : {}),
     meta,
     feed,
     verdicts: (doc.verdicts?.length ? doc.verdicts : DEFAULT_VERDICTS).map((v) => ({

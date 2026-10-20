@@ -56,8 +56,9 @@ const cardAfter = `export function ErrorCard(props: { error: SessionError }) {
 export const doc: WalkthroughDoc = {
   id: "2026-10-19-onboarding-prs",
   title: "Onboarding audit #2: before / after",
-  summary:
-    "Before = `dev`, after = the PR branch. #57158 (installer redirect) has no video: curl output is in its PR body.",
+  // Short words on show, the rest under More: the title the claim, the caption one sentence.
+  summary: "Before is `dev`, after is the PR branch.",
+  more: "#57158 (the installer redirect) has no video: its curl output is in the PR body and in the last step here.",
   meta: { before: "dev", date: "2026-10-19", PRs: "4" },
   // From the clips' timestamps on 2026-10-19; the answer restates the page's own summary.
   updates: [
@@ -109,14 +110,14 @@ export const doc: WalkthroughDoc = {
       steps: [
         {
           title: "Desktop model picker",
-          caption:
-            "Real dev server + desktop app. The bundled snapshot is made stale (3 models not yet marked deprecated), then models.dev refreshes ~9s in. Reopen the picker after the refresh.",
+          caption: "A stale snapshot, then models.dev refreshes about 9 s in.",
+          more: "Real dev server and desktop app. The bundled snapshot is made stale (3 models not yet marked deprecated). Reopen the picker after the refresh.",
           media: { ...pair("57148-picker", "#57148", DESKTOP_PICKER), chapters: PICKER_CHAPTERS },
         },
         {
           title: "Retired model (HTTP 410), desktop",
-          caption:
-            "Real dev server + desktop app, with a mock provider that answers 410 Gone. After: a card with **Pick another model** (opens the model picker) and the prompt back in the composer.",
+          caption: "After: **Pick another model**, and the prompt back in the composer.",
+          more: "Real dev server and desktop app, with a mock provider that answers 410 Gone. **Pick another model** opens the model picker.",
           media: pair("57148-retired-desktop", "#57148", DESKTOP),
         },
         {
@@ -155,8 +156,8 @@ export const doc: WalkthroughDoc = {
       title: "The rest of the kit (demo data)",
       kicker: "Demo",
       status: "needs-taste",
-      summary:
-        "Not from the audit: made-up steps that show the other pieces. A taste test, a code diff, metrics, a merge stack, a history, a table, a chaptered video and a terminal block.",
+      summary: "Made-up steps that show the other pieces.",
+      more: "Not from the audit. A taste test, a code diff, metrics, a merge stack, a history, a table, a chaptered video and a terminal block.",
       steps: [
         {
           title: "Retired-model card copy",
@@ -488,7 +489,7 @@ export const doc: WalkthroughDoc = {
         {
           id: "installer-redirect",
           title: "Installer redirect",
-          caption: "A terminal block for evidence that isn't a video; the edge rule behind it folds away.",
+          caption: "A terminal block for evidence that isn't a video.",
           media: [
             {
               kind: "terminal",
@@ -500,7 +501,7 @@ export const doc: WalkthroughDoc = {
               code: 'if (url.pathname === "/install") return Response.redirect(V1_INSTALLER, 302)',
             },
           ],
-          more: "The edge rule",
+          more: "The redirect lives in a Cloudflare rule, outside git, so its date is inferred from when `/install` first answered 302.\n\nIt goes when #57158 merges: the v2 installer then serves `/install` itself.",
           ask: "none",
         },
       ],

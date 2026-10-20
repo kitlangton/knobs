@@ -44,8 +44,9 @@
       html[data-look="knobs"] .top .seg button:hover { background: transparent; }
       html[data-look="knobs"] .top .seg button.on { background: var(--pill); box-shadow: var(--lift); font-weight: 500; }
       html[data-look="lab"] .top { border-bottom: 1px solid var(--line); }
-      /* The page's edge: --k-pad-page, 24px, and 16px under 640px wide. */
-      main { max-width: 1440px; margin: 0 auto; padding: 28px 24px 0; }
+      /* The page's edge: --k-pad-page, 24px, and 16px under 640px wide. Full width, so the
+         contents rail sits at the window's left edge and the column centres in the rest. */
+      main { padding: 24px 24px 0; }
       @media (max-width: 639.98px) { main { padding-inline: 16px; } }
     </style>
   </head>
