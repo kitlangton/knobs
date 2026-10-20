@@ -90,7 +90,7 @@ const DRIVERS = `${register(COLOR_TOKENS, "<color>", "transparent")}
 ${register(LENGTH_TOKENS, "<length>", "0px")}
 ${register(NUMBER_TOKENS, "<number>", "0")}
 ${register(["width"], "<length-percentage>", "288px")}
-.knobs-panel,.knobs-chip,.knobs-toast{${ANIMATED.map((t) => `--kt-${t}:var(${source(t)});--kv-${t}:var(--kt-${t})`).join(";")}}`
+.knobs-panel,.knobs-chip,.knobs-notice{${ANIMATED.map((t) => `--kt-${t}:var(${source(t)});--kv-${t}:var(--kt-${t})`).join(";")}}`
 /**
  * The panel's rules read the gliding aliases, and tokens derived on the knobs root (see
  * core/root.ts) by their private names; the :root defaults keep the public names.
@@ -148,11 +148,11 @@ ${rootCss}
 @media(min-resolution:1.5dppx){:where(:root,:host){--k-rim-width:.67px}}
 @media(min-resolution:2dppx){:where(:root,:host){--k-rim-width:.5px}}
 @media(min-resolution:3dppx){:where(:root,:host){--k-rim-width:.34px}}
-:where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="light"],
-:where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast):not([data-theme="dark"]),
-:where(:root[data-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
+:where(.knobs-panel,.knobs-chip,.knobs-notice)[data-theme="light"],
+:where([data-knobs-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-notice):not([data-theme="dark"]),
+:where(:root[data-theme="light"]) :where(.knobs-panel,.knobs-chip,.knobs-notice)[data-theme="auto"]{${lightVars}}
 @media(prefers-color-scheme:light){
-  :where(:root:not([data-theme="dark"])) :where(.knobs-panel,.knobs-chip,.knobs-toast)[data-theme="auto"]{${lightVars}}
+  :where(:root:not([data-theme="dark"])) :where(.knobs-panel,.knobs-chip,.knobs-notice)[data-theme="auto"]{${lightVars}}
 }
 :where(.knobs-panel)[data-density="compact"]{--k-density:.875}
 :where(.knobs-panel)[data-density="comfortable"]{--k-density:1.1875}
@@ -226,10 +226,10 @@ const css = `
 .knobs-chip:focus-visible{outline:none;color:var(--k-text);--k-chip-edge:var(--k-line-hi)}
 @media(prefers-reduced-motion:reduce){.knobs-chip.knobs-chip{scale:none;transform:none}}
 /* "knobs on" / "knobs off" after the reveal shortcut. */
-.knobs-toast{position:fixed;left:50%;bottom:24px;z-index:2147480004;translate:-50% 0;padding:6px 12px;border-radius:999px;pointer-events:none;
+.knobs-notice{position:fixed;left:50%;bottom:24px;z-index:2147480004;translate:-50% 0;padding:6px 12px;border-radius:999px;pointer-events:none;
   background:var(--k-bg);border:1px solid var(--k-line);box-shadow:0 4px 16px rgba(0,0,0,.35);color:var(--k-text);font:500 12px/1.2 var(--k-font);letter-spacing:.01em;
   transition:opacity .18s var(--k-ease),scale .18s var(--k-ease)}
-.knobs-toast[data-shown="false"]{opacity:0;scale:.96;transition:opacity .16s ease-in,scale .16s ease-in}
+.knobs-notice[data-shown="false"]{opacity:0;scale:.96;transition:opacity .16s ease-in,scale .16s ease-in}
 
 /* Tokens glide on the panel spring. While a control is dragged (data-knobs-scrub) they follow it
    step for step instead: the pointer already moves them continuously, and a declared transition

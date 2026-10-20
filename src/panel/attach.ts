@@ -284,10 +284,10 @@ const statusTimers = new WeakMap<Document, ReturnType<typeof setTimeout>>()
 
 /** A small transient status at the bottom of the page. */
 function showStatus(doc: Document, text: string, theme: string) {
-  let toast = doc.querySelector<HTMLElement>(".knobs-toast")
+  let toast = doc.querySelector<HTMLElement>(".knobs-notice")
   if (!toast) {
     toast = doc.createElement("div")
-    toast.className = "knobs-root knobs-toast"
+    toast.className = "knobs-root knobs-notice"
     toast.setAttribute("role", "status")
     toast.dataset.shown = "false"
     doc.body.append(toast)

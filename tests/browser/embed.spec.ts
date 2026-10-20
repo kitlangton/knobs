@@ -94,7 +94,7 @@ test.describe("production consumers", () => {
     const hero = page.locator("#hero")
     // A hidden chip is out of the accessibility tree, so it's found by its label.
     const chip = page.locator('.knobs-chip[aria-label="Tune hero"]')
-    const status = page.locator(".knobs-toast")
+    const status = page.locator(".knobs-notice")
     await expect(chip).toBeAttached()
     await hero.hover()
     await page.waitForTimeout(250)

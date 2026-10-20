@@ -163,7 +163,7 @@
 /* ── Everything that follows the knob ── */
 /* Panels take the root's tokens over their own light and dark blocks; a preset's panel keeps its own. */
 :root[data-site-look]
-:is(.knobs-panel, .knobs-chip, .knobs-toast, .knobs-menu, .knobs-ui):not([data-preset]) {
+:is(.knobs-panel, .knobs-chip, .knobs-notice, .knobs-menu, .knobs-ui):not([data-preset]) {
   --k-bg: inherit;
   --k-page: inherit;
   --k-surface: inherit;

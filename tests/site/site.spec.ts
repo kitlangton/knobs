@@ -91,7 +91,7 @@ test("the example pages keep their chips hidden until ⌥⇧D, and say so", asyn
   await page.waitForTimeout(250)
   await expect(chip).toBeHidden()
   await page.keyboard.press("Alt+Shift+KeyD")
-  await expect(page.locator(".knobs-toast")).toHaveText("knobs on")
+  await expect(page.locator(".knobs-notice")).toHaveText("knobs on")
   await page.mouse.move(0, 0)
   await study.hover({ position: { x: box.width - 20, y: 60 } })
   await expect(chip).toBeVisible()
