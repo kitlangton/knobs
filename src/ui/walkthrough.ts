@@ -1478,7 +1478,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       media = el(doc, "div", "knobs-wt-media")
       media.style.setProperty("--kw-n", String(Math.min(step.media.length, step.columns)))
       for (const m of step.media)
-        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks }))
+        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks, findPR: findPRIn }))
       card.append(media)
     }
     let taste: TasteTest | null = null

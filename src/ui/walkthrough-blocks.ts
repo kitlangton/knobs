@@ -132,6 +132,7 @@ export function mountStack(
   host: HTMLElement,
   m: Extract<WalkMedia, { kind: "stack" }>,
   steps: StepLinks | undefined,
+  findPR?: (n: string) => PRInfo | null,
 ): Block {
   const doc = host.ownerDocument
   const layout = stackLayout(m)
@@ -172,7 +173,11 @@ export function mountStack(
     const main = el(doc, "div", "knobs-wt-smain")
     const line = el(doc, "div", "knobs-wt-sline")
     if (it.order) line.append(text(doc, "span", "knobs-wt-sord", it.order))
-    line.append(link(doc, "knobs-wt-spr", it.pr, it.href))
+    // The number links out to the PR; the row goes to its step.
+    const known = findPR?.(it.pr.replace(/^#/, "")) ?? null
+    const pr = link(doc, "knobs-wt-spr", it.pr, it.href ?? known?.href)
+    pr.addEventListener("click", (e) => e.stopPropagation())
+    line.append(pr)
     const target = it.step ? steps?.find(it.step) : null
     if (target && steps) {
       const title = text(doc, "button", "knobs-wt-stitle", it.title)
@@ -201,7 +206,12 @@ export function mountStack(
     if (it.delta !== undefined) meta.append(delta(doc, it.delta))
     if (meta.childNodes.length) main.append(meta)
     row.append(main)
-    if (it.status) {
+    // Its state the GitHub way, from the page's PRs or the status words (never the tone), with a
+    // check where they say the checks pass; any other status is a chip in its tone.
+    const said = prStatus(it.status)
+    const state = known?.state ?? said.state
+    if (state) row.append(prStateLabel(doc, state, said.checks, it.status))
+    else if (it.status) {
       const chip = text(doc, "span", "knobs-wt-chip knobs-wt-sstatus", it.status)
       chip.dataset.tone = it.tone ?? "dim"
       row.append(chip)
@@ -563,13 +573,59 @@ const PR_PATHS = {
   merge:
     "M208,112a32.05,32.05,0,0,0-30.69,23l-42.21-6a8,8,0,0,1-4.95-2.71L94.43,84.55A32,32,0,1,0,72,87v82a32,32,0,1,0,16,0V101.63l30,35a24,24,0,0,0,14.83,8.14l44,6.28A32,32,0,1,0,208,112ZM64,56A16,16,0,1,1,80,72,16,16,0,0,1,64,56ZM96,200a16,16,0,1,1-16-16A16,16,0,0,1,96,200Zm112-40a16,16,0,1,1,16-16A16,16,0,0,1,208,160Z",
 }
-const prGlyph = (merged: boolean) =>
-  `<svg class="knobs-icon" viewBox="0 0 256 256" width="12" height="12" fill="currentColor" aria-hidden="true" focusable="false"><path d="${merged ? PR_PATHS.merge : PR_PATHS.pull}"/></svg>`
+// A draft is the pull request's left half over a ring with two dots above it (GitHub's draft).
+const DRAFT =
+  "M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192ZM232,192a32,32,0,1,1-32-32A32,32,0,0,1,232,192ZM216,192a16,16,0,1,0-16,16A16,16,0,0,0,216,192ZM212,120a12,12,0,1,1-12-12A12,12,0,0,1,212,120ZM212,60a12,12,0,1,1-12-12A12,12,0,0,1,212,60Z"
+const X =
+  "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
+const CHECK =
+  "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"
+const svg12 = (d: string, evenodd = false) =>
+  `<svg class="knobs-icon" viewBox="0 0 256 256" width="12" height="12" fill="currentColor"${evenodd ? ' fill-rule="evenodd"' : ""} aria-hidden="true" focusable="false"><path d="${d}"/></svg>`
+/** A pull request's glyph the GitHub way: merged, draft, closed, else open. */
+const prGlyph = (state: PRState | undefined) =>
+  state === "merged"
+    ? svg12(PR_PATHS.merge)
+    : state === "draft"
+      ? svg12(DRAFT, true)
+      : state === "closed"
+        ? svg12(X)
+        : svg12(PR_PATHS.pull)
 
 const PR_STATE = { merged: "Merged", open: "Open", draft: "Draft", closed: "Closed" } as const
+export type PRState = keyof typeof PR_STATE
+
+/**
+ * A stack row's pull-request state from its `status` words: the first word when it's merged,
+ * draft, open or closed (any case), and whether they say its checks pass ("green", "passing",
+ * "CI"). The state comes from the words, never the tone.
+ */
+export function prStatus(status: string | undefined): { state: PRState | null; checks: boolean } {
+  const words = (status ?? "").trim().toLowerCase()
+  const first = /^[a-z]+/.exec(words)?.[0] ?? ""
+  const state = first in PR_STATE ? (first as PRState) : null
+  return { state, checks: /\b(green|passing|passed|ci|checks? pass)/.test(words) }
+}
+
+/** A pull request's state as GitHub shows it: its glyph and word, quietly tinted; a check after. */
+export function prStateLabel(doc: Document, state: PRState, checks: boolean, title?: string) {
+  const s = el(doc, "span", "knobs-wt-prstate")
+  s.dataset.state = state
+  s.innerHTML = prGlyph(state)
+  s.append(text(doc, "span", "", PR_STATE[state]))
+  if (checks) {
+    const c = el(doc, "span", "knobs-wt-prchecks")
+    c.innerHTML = svg12(CHECK)
+    c.title = "Checks pass"
+    c.setAttribute("aria-label", "checks pass")
+    s.append(c)
+  }
+  if (title) s.title = title
+  return s
+}
 
 export interface PRInfo {
-  readonly state?: keyof typeof PR_STATE
+  readonly state?: PRState
   readonly title?: string
   readonly href?: string
 }
@@ -583,7 +639,7 @@ export function prChip(doc: Document, n: string, pr: PRInfo): HTMLElement {
     chip.setAttribute("rel", "noreferrer")
   }
   if (pr.state) chip.dataset.state = pr.state
-  chip.innerHTML = prGlyph(pr.state === "merged")
+  chip.innerHTML = prGlyph(pr.state)
   chip.append(text(doc, "span", "", `#${n}`))
   const tip = [`#${n}`, pr.title, pr.state ? PR_STATE[pr.state] : ""].filter(Boolean).join(" · ")
   chip.title = tip

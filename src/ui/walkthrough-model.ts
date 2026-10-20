@@ -1044,8 +1044,9 @@ export function findPR(
   repo?: string,
 ): WalkthroughPR | null {
   const known = prs[n]
-  if (known) return known
-  return repo ? { href: `https://github.com/${repo}/pull/${n}` } : null
+  const href = repo ? `https://github.com/${repo}/pull/${n}` : undefined
+  if (known) return known.href || !href ? known : { ...known, href }
+  return href ? { href } : null
 }
 
 /** Whether a link is a pull (or merge) request: GitHub's `/pull/123`, GitLab's merge requests. */

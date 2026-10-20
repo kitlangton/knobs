@@ -53,7 +53,6 @@ import { compareStrip, type CompareStrip } from "./compare-strip.js"
 import { icon } from "./icons.js"
 import { applyLook, frameLoop, isTypingTarget, reducedMotion, tune, type UiLook } from "./look.js"
 import { tokenColor } from "./rgba.js"
-import { playGlyph } from "./player.js"
 import { selectionPill } from "./selection-pill.js"
 import { timeline as makeTimeline, type Timeline } from "./timeline.js"
 import { CATCH_UP, moveHead } from "./timeline-model.js"
@@ -110,7 +109,7 @@ export interface CompareOptions extends UiLook {
    * The clock: an existing `timeline()` (its time drives both sides; while playing it follows
    * After), or `true` for one of its own under the viewer: a player's thin progress line (the
    * `"line"` variant, as `player()` has), its markers chapter segments. Without one, `seek`,
-   * `play` and keys still work. Either way a click on the stage plays and pauses (not wiping).
+   * `play` and keys still work.
    */
   readonly timeline?: Timeline | boolean
   /** The frame strip over the timeline (off; one timeline is made if there's none). */
@@ -364,9 +363,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   grip.setAttribute("aria-hidden", "true")
   handle.append(grip)
   const note = el("div", "knobs-cmp-note")
-  // A click on the media plays and pauses (not wiping: there a press moves the line).
-  const glyph = playGlyph(doc)
-  stage.append(canvas, split, seam, labels[0], labels[1], handle, zoomPill, note, glyph.element)
+  stage.append(canvas, split, seam, labels[0], labels[1], handle, zoomPill, note)
   root.append(bar, stage)
 
   // ——— the clock: a bound timeline, one of its own, or none (its own time) ———
@@ -418,8 +415,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   /** Pointers down on the stage (a pinch is two). */
   const touches = new Map<number, { x: number; y: number }>()
   let pinch: { d: number; x: number; y: number } | null = null
-  /** A press that may be a click (it plays and pauses): where it went down. */
-  let press: { x: number; y: number } | null = null
   // The zoomed part: springs for a glide (a reset, a key), snapped for the hand.
   const zu = new Spring(0, ZOOM.omega, ZOOM.zeta, 1e-5)
   const zv = new Spring(0, ZOOM.omega, ZOOM.zeta, 1e-5)
@@ -1253,10 +1248,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     else root.focus({ preventScroll: true })
     touches.set(e.pointerId, p)
     stage.setPointerCapture(e.pointerId)
-    press = touches.size === 1 && mode !== "wipe" && master() ? p : null
     if (touches.size >= 2) {
       e.preventDefault()
-      press = null
       return startPinch()
     }
     if (mode === "wipe") {
@@ -1285,7 +1278,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const onMove = (e: PointerEvent) => {
     const p = local(e)
     pointer = p
-    if (press && Math.hypot(p.x - press.x, p.y - press.y) > 4) press = null
     if (touches.has(e.pointerId)) touches.set(e.pointerId, p)
     if (pinch && touches.size >= 2) {
       const [a, b] = [...touches.values()] as [{ x: number; y: number }, { x: number; y: number }]
@@ -1313,11 +1305,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     } else if (loupeShown()) drawNow()
   }
   const endDrag = (e: PointerEvent) => {
-    if (press && e.type === "pointerup") {
-      api.toggle()
-      glyph.flash(isPlaying())
-    }
-    press = null
     touches.delete(e.pointerId)
     if (touches.size < 2) pinch = null
     if (!drag) return
@@ -1475,10 +1462,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     old.el.replaceWith(s.el)
     old.preview.replaceWith(s.preview)
     sides[index] = s
-    root.toggleAttribute(
-      "data-video",
-      sides.some((x) => x.kind === "video"),
-    )
     note.textContent = ""
     setLabel(index, labelOf(index))
     if (near) loadSide(s)
@@ -1495,10 +1478,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   stage.insertBefore(sides[0].preview, labels[0])
   setLabel(0, labelOf(0))
   setLabel(1, labelOf(1))
-  root.toggleAttribute(
-    "data-video",
-    sides.some((s) => s.kind === "video"),
-  )
   loupeBtn.setAttribute("aria-pressed", String(loupeOn))
   loopBtn.setAttribute("aria-pressed", String(loopNow() !== null))
   const modePill =
@@ -1710,7 +1689,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       disposed = true
       loop.stop()
       modePill?.dispose()
-      glyph.dispose()
       win.clearTimeout(releaseTimer)
       ro.disconnect()
       nearIo?.disconnect()

@@ -78,8 +78,8 @@ export interface TimelineOptions extends UiLook {
    * and no labels, markers as faint chapter ticks (the current one in text colour) and nothing to
    * edit. A pinch, ⌘/ctrl-wheel or = and - zoom it around the pointer, a sideways scroll pans it,
    * both following the hand 1:1; a double-click or 0 fits it again. An up-and-down wheel is left
-   * to the page. `"line"`: a player's progress, a single thin line under a video or a compare (no
-   * play button: the media and Space play), one segment per chapter with a small gap between,
+   * to the page. `"line"`: a player's row under a video or a compare: a minimal play/pause button,
+   * then a single thin progress line, one segment per chapter with a small gap between,
    * each filling as the time passes it, thicker under the pointer; click or drag anywhere on it
    * to seek, 1:1, and the chapter and time under the pointer show over it. Zooms as a lane does.
    */
@@ -1283,7 +1283,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   return api
 }
 
-export const PLAY =
+const PLAY =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.6v8.8c0 .5.5.8.9.5l6.6-4.4c.4-.3.4-.8 0-1L5.9 3.1c-.4-.3-.9 0-.9.5Z" fill="currentColor"/></svg>'
-export const PAUSE =
+const PAUSE =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/><rect x="9.2" y="3.2" width="2.8" height="9.6" rx="1" fill="currentColor"/></svg>'

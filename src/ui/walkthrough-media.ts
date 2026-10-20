@@ -16,6 +16,7 @@ import {
   type ChapterPills,
   mountHistory,
   mountStack,
+  type PRInfo,
   mountTable,
   type StepLinks,
 } from "./walkthrough-blocks.js"
@@ -40,6 +41,8 @@ export interface MediaSlotOptions extends UiLook {
   readonly onEvent?: (event: Omit<ContextEvent, "at" | "step">) => void
   /** The page's steps, for `step` on a history event, a stack item or a table cell. */
   readonly steps?: StepLinks
+  /** What the page knows of a pull request by its number (a stack row's state and link). */
+  readonly findPR?: (n: string) => PRInfo | null
 }
 
 export type { StepLinks }
@@ -723,7 +726,7 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
       case "history":
         return done(mountHistory(host, m, options.steps))
       case "stack":
-        return done(mountStack(host, m, options.steps))
+        return done(mountStack(host, m, options.steps, options.findPR))
       case "table":
         return done(mountTable(host, m, options.steps))
       case "mount": {

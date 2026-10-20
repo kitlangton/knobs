@@ -428,12 +428,21 @@ export const walkthroughCss = `
 .knobs-wt-add{color:var(--_k-diff-add)}
 .knobs-wt-del{color:var(--_k-diff-del)}
 .knobs-wt-sstatus{margin-top:calc((var(--kw-line) - 20px) / 2)}
+/* A PR's state the GitHub way: its glyph and word, open and merged quietly tinted (as PR chips),
+   draft and closed faint; no fill, no dot. A check after it where the checks pass, faint too. One
+   width for every row, so the glyphs and words line up. */
+.knobs-ui .knobs-wt-prstate{--kw-pr:var(--_k-fg-3);display:inline-flex;align-items:center;gap:4px;min-width:calc(7ch + 32px);height:var(--kw-line);color:var(--kw-pr);
+  font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);white-space:nowrap}
+.knobs-ui .knobs-wt-prstate[data-state="open"]{--kw-pr:color-mix(in oklch,var(--_k-ok) 60%,var(--_k-fg-2))}
+.knobs-ui .knobs-wt-prstate[data-state="merged"]{--kw-pr:color-mix(in oklch,var(--_k-series-5) 60%,var(--_k-fg-2))}
+.knobs-wt-prstate svg{flex:none}
+.knobs-ui .knobs-wt-prchecks{display:inline-flex;margin-left:2px;color:var(--_k-fg-3)}
 .knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr) auto}
 .knobs-wt-stack[data-flat] .knobs-wt-srow+.knobs-wt-srow{box-shadow:inset 0 1px 0 var(--_k-border)}
 @container knobs-wt-slot (max-width:520px){
   .knobs-wt-srow:not([data-trunk]){grid-template-columns:auto minmax(0,1fr)}
   .knobs-wt-stack[data-flat] .knobs-wt-srow{grid-template-columns:minmax(0,1fr)}
-  .knobs-wt-sstatus{grid-column:-2;justify-self:start;margin-top:4px}
+  :is(.knobs-wt-sstatus,.knobs-wt-prstate){grid-column:-2;justify-self:start;margin-top:4px}
 }
 
 /* A table: a real one, its head stuck while it scrolls, both ways; edges fade where there's more
