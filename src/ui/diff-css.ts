@@ -38,7 +38,7 @@ export const diffCss = `
 .knobs-diff-path{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 .knobs-diff-dir,.knobs-diff-from{color:var(--_k-fg-3)}
 .knobs-diff-base{color:var(--_k-fg);font-weight:var(--_k-weight-label)}
-.knobs-diff-stat,.knobs-diff-counts{flex:none;display:inline-flex;gap:6px;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.knobs-diff-stat,.knobs-diff-counts{flex:none;display:inline-flex;gap:6px;font-variant-numeric:tabular-nums;font-feature-settings:var(--_kr-data,"tnum")}
 .knobs-diff-stat{font-size:var(--_k-type-small);align-items:center}
 /* +/− as five squares, GitHub's way. */
 .knobs-diff-bar{display:inline-flex;gap:1px;margin-left:1px}

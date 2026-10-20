@@ -10,7 +10,7 @@ export const historyCss = `
 .knobs-ui.knobs-history{--hy-gutter:128px;--hy-lane:24px;--hy-bar:16px;--hy-axis:20px;--hy-bandrow:0px;--hy-c:var(--_k-fg-3);
   --hy-fade:linear-gradient(to right,#000 calc(100% - 1.5em),transparent);
   position:relative;display:flex;flex-direction:column;width:100%;min-width:0;outline:none;color:var(--_k-fg);
-  font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";
+  font:var(--_k-weight) var(--_k-type-body)/var(--_k-leading-body) var(--_k-font);font-variant-numeric:tabular-nums;font-feature-settings:var(--_kr-data,"tnum");
   text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
 .knobs-history[data-bands]{--hy-bandrow:var(--_k-leading-small)}
 .knobs-history[data-narrow]{--hy-gutter:0px}

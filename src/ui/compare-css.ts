@@ -80,7 +80,7 @@ export const compareCss = `
 .knobs-cmp-split{position:absolute;left:0;top:0;width:1px;height:0;margin-left:-.5px;background:color-mix(in srgb,var(--_k-bg) 72%,transparent);pointer-events:none;will-change:transform,opacity}
 /* Zoomed: how far, and a way back, in the stage's corner; it fades in and out, nothing shifts. */
 .knobs-cmp-zoom{position:absolute;right:8px;bottom:8px;display:flex;align-items:center;gap:4px;height:26px;padding:0 3px 0 10px;border-radius:999px;
-  color:var(--_ku-on-media);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;
+  color:var(--_ku-on-media);font-variant-numeric:tabular-nums;font-feature-settings:var(--_kr-data,"tnum");white-space:nowrap;
   opacity:0;scale:.96;pointer-events:none;transition:opacity .16s cubic-bezier(.4,0,1,1),scale .16s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
