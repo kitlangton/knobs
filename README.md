@@ -1417,7 +1417,7 @@ Panels take a `theme`, an `appearance`, `density: "compact" | "default" | "comfo
 
 ### Themes and appearance
 
-Two themes ship in `knobs/themes`: **Knobs** (the default: a near-black glass panel, a white accent, alpha hairlines) and **Void** (true black and flat, solid hairlines, text capped at `#ededed`, a black stage behind compared media; for OLED screens and video review). Each has a dark and a light appearance.
+Three themes ship in `knobs/themes`: **Knobs** (the default: a near-black glass panel, a white accent, alpha hairlines), **Void** (true black and flat, solid hairlines, text capped at `#ededed`, a black stage behind compared media; for OLED screens and video review) and **Gallery** (the PROBLEMS review pages: a `#0b0b0c` page, `#0f0f11` cards, one neutral ink at fixed opacities for fills, hairlines and text at 1 / .56 / .34, coral Before and near-white After; its dark text tiers are a reading page's, quieter than the APCA budget the others meet). Each has a dark and a light appearance. `--k-before` and `--k-after` colour a comparison's two sides; Knobs and Void keep them neutral.
 
 ```ts
 import { defineTheme, themes } from "knobs/themes"
@@ -1603,6 +1603,8 @@ The page roles (**Space**: `--k-space-inside` 4 · `sibling` 8 · `title` 12 · 
 | `--k-diff-add` | semantic | `#59d38c` | `#0a7e3a` | Added lines; line and word tints derive privately (12% / 38%). Derived: `var(--k-ok)`. |
 | `--k-diff-del` | semantic | `#fa6863` | `#cc2827` | Deleted lines. Derived: `var(--k-danger)`. |
 | `--k-diff-mod` | semantic | `#f7bc50` | `#b66c00` | Modified lines. Derived: `var(--k-warn)`. |
+| `--k-before` | semantic | `#9e9ea3` | `#96969b` | Before in a comparison, and only Before: its label and side of the seam. Neutral unless a theme gives it a colour. Derived: `var(--k-fg-3)`. |
+| `--k-after` | semantic | `#f4f5f9` | `#1a1a1d` | After in a comparison, and only After. Derived: `var(--k-fg)`. |
 | `--k-series-1` | semantic | `#6db0f4` | `#2378c2` | Chart series 1. |
 | `--k-series-2` | semantic | `#66c189` | `#008b4f` | Chart series 2. |
 | `--k-series-3` | semantic | `#d79f4c` | `#9c6900` | Chart series 3. |

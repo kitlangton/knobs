@@ -389,6 +389,22 @@ export const TOKENS = [
     doc: "Modified lines.",
   },
   {
+    name: "before",
+    tier: "semantic",
+    type: "color",
+    group: "Data",
+    source: css("var(--k-fg-3)"),
+    doc: "Before in a comparison, and only Before: its label and side of the seam. Neutral unless a theme gives it a colour.",
+  },
+  {
+    name: "after",
+    tier: "semantic",
+    type: "color",
+    group: "Data",
+    source: css("var(--k-fg)"),
+    doc: "After in a comparison, and only After.",
+  },
+  {
     name: "series-1",
     tier: "semantic",
     type: "color",

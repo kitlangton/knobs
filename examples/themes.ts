@@ -57,13 +57,18 @@ import {
 } from "knobs/ui"
 import patch from "./lab-diff.patch?raw"
 
-type ThemeKey = "knobs" | "void" | "custom"
+type ThemeKey = "knobs" | "void" | "gallery" | "custom"
 type Mode = "dark" | "light"
 
 const params = new URLSearchParams(location.search)
 const renderer =
   params.get("renderer") === "dom" ? "dom" : params.get("renderer") === "gpu" ? "gpu" : "auto"
-const NAMES: Record<ThemeKey, string> = { knobs: "Knobs", void: "Void", custom: "Custom" }
+const NAMES: Record<ThemeKey, string> = {
+  knobs: "Knobs",
+  void: "Void",
+  gallery: "Gallery",
+  custom: "Custom",
+}
 
 // ——— the builder's theme ———
 
@@ -134,8 +139,7 @@ async function copyCode() {
   }
 }
 
-const themeOf = (key: ThemeKey): Theme =>
-  key === "custom" ? custom : key === "void" ? themes.void : themes.knobs
+const themeOf = (key: ThemeKey): Theme => (key === "custom" ? custom : themes[key])
 
 // ——— columns ———
 
@@ -204,7 +208,7 @@ row("", (cell, c) => {
   c.name = name
   name.textContent = `${NAMES[c.theme]} · ${c.appearance}`
   const items = (): MenuEntry[] => [
-    ...(["knobs", "void", "custom"] as const).map((key) => ({
+    ...(["knobs", "void", "gallery", "custom"] as const).map((key) => ({
       label: NAMES[key],
       radio: true,
       checked: c.theme === key,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { APCA_BUDGET, defineTheme } from "../src/themes/define.js"
+import { gallery } from "../src/themes/gallery.js"
 import { knobs } from "../src/themes/knobs.js"
 import { voidTheme } from "../src/themes/void.js"
 import { apca, TOKENS, type TokenDef } from "../src/tokens/index.js"
@@ -21,17 +22,21 @@ const themes = [
 ]
 
 describe("APCA budget", () => {
-  for (const theme of themes)
-    for (const appearance of ["dark", "light"] as const)
-      it(`${theme.name} ${appearance}`, () => {
-        const t = theme[appearance]
-        for (const [role, floor] of Object.entries(APCA_BUDGET))
-          expect(
-            apca(t[role as keyof typeof t], t.bg),
-            `${role} ${t[role as keyof typeof t]} on ${t.bg}`,
-          ).toBeGreaterThanOrEqual(floor)
-        expect(apca(t["on-accent"], t.accent)).toBeGreaterThanOrEqual(60)
-      })
+  // Gallery's dark text tiers are its own, quieter than the budget by design ("the shipped looks").
+  const looks = [
+    ...themes.flatMap((theme) => (["dark", "light"] as const).map((a) => [theme, a] as const)),
+    [gallery, "light"] as const,
+  ]
+  for (const [theme, appearance] of looks)
+    it(`${theme.name} ${appearance}`, () => {
+      const t = theme[appearance]
+      for (const [role, floor] of Object.entries(APCA_BUDGET))
+        expect(
+          apca(t[role as keyof typeof t], t.bg),
+          `${role} ${t[role as keyof typeof t]} on ${t.bg}`,
+        ).toBeGreaterThanOrEqual(floor)
+      expect(apca(t["on-accent"], t.accent)).toBeGreaterThanOrEqual(60)
+    })
 })
 
 describe("the shipped looks", () => {
@@ -47,6 +52,33 @@ describe("the shipped looks", () => {
     })
     expect(knobs.light).toMatchObject({ bg: "#f5f5f7", accent: "#1c1c1e", "on-accent": "#ffffff" })
     expect(knobs.declared.dark.glass).toBe("0.6")
+  })
+
+  it("Gallery is one ink at fixed opacities on near-black, coral Before and white After", () => {
+    expect(gallery.dark).toMatchObject({
+      "bg-page": "#0b0b0c",
+      "bg-inset": "#0a0a0b",
+      bg: "#0f0f11",
+      "bg-raised": "#161618",
+      "bg-overlay": "#161618",
+      fg: "#ececee",
+      "fg-2": "#8b8b8d",
+      "fg-3": "#5a5a5c",
+      fill: "#ececee0f",
+      "fill-selected": "#ececee1c",
+      "border-subtle": "#ececee14",
+      "compare-stage": "#0a0a0b",
+      before: "#ed756a",
+      after: "#f0f2f5",
+      accent: "#ececee",
+    })
+    // The dark text tiers are the Gallery's: quieter than the budget, still in order.
+    const lc = (role: "fg" | "fg-2" | "fg-3") => apca(gallery.dark[role], gallery.dark.bg)
+    expect(lc("fg")).toBeGreaterThanOrEqual(APCA_BUDGET.fg)
+    expect(lc("fg-2")).toBeGreaterThan(lc("fg-3"))
+    // Knobs and Void keep Before and After neutral.
+    expect(knobs.dark.before).toBe(knobs.dark["fg-3"])
+    expect(voidTheme.dark.after).toBe(voidTheme.dark.fg)
   })
 
   it("Void is true black, capped text, flat with solid hairlines", () => {
