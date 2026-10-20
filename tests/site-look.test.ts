@@ -146,7 +146,7 @@ describe("light and dark", () => {
   it("finds the nearest theme of the other polarity for the toggle", () => {
     expect(nearestTheme(THEMES, 0, false)).toBe(3)
     expect(nearestTheme(THEMES, 2.2, false)).toBe(3)
-    expect(nearestTheme(THEMES, 4, true)).toBe(2)
+    expect(nearestTheme(THEMES, 4, true)).toBe(5) // Void, after Paper
     expect(nearestTheme(THEMES, 3.4, true)).toBe(2)
     expect(nearestTheme(THEMES, 1, true)).toBe(1)
   })

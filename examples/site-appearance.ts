@@ -16,7 +16,7 @@ import {
   type Rgba,
   TEXT_INKS,
 } from "./site-look-math"
-import { type SiteTheme, THEMES } from "./site-look-themes"
+import { LIBRARY_LIGHT, type SiteTheme, THEMES } from "./site-look-themes"
 
 export const APPEARANCES = ["system", "light", "dark"] as const
 export type Appearance = (typeof APPEARANCES)[number]
@@ -47,9 +47,9 @@ export function appearanceAfterChange(
 }
 
 // Counterparts preserve the face, spacing, corner language and hue of each theme.
-// Grounds are authored, not inverted; ink lightness changes while its hue stays put.
+// Grounds are authored, not inverted; ink lightness changes while its hue stays put. Night's and
+// Void's light palettes are their knobs themes' (LIBRARY_LIGHT).
 const grounds: Readonly<Record<string, SiteTheme["ground"]>> = {
-  night: { page: "#f5f5f7", card: "#ffffff", night: "#101012", kBg: "#ffffff", kPage: "#f5f5f7" },
   ocean: { page: "#edf5f8", card: "#f9fdff", night: "#030d15", kBg: "#f9fdff", kPage: "#edf5f8" },
   synth: { page: "#f7effc", card: "#fffbff", night: "#0c0416", kBg: "#fffbff", kPage: "#f7effc" },
   brutal: { page: "#101010", card: "#1b1b1b", night: "#0b0b0b", kBg: "#1b1b1b", kPage: "#101010" },
@@ -77,11 +77,12 @@ function counterpart(theme: SiteTheme): SiteTheme {
     ink.kRim = css([rim[0], rim[1], rim[2], Math.min(rim[3], 0.1)])
   }
   ink.kThumb = "#ffffff"
+  const library = dark ? undefined : LIBRARY_LIGHT[theme.id]
   return {
     ...theme,
     dark,
-    ground: grounds[theme.id]!,
-    ink,
+    ground: library?.ground ?? grounds[theme.id]!,
+    ink: { ...ink, ...library?.ink },
     num: { ...theme.num, shadow: dark ? 0 : 1, kGlassTone: dark ? 0.5 : 1.08 },
   }
 }

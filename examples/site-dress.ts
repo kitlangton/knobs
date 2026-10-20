@@ -130,7 +130,8 @@ export function dress(look: Look, s: Settings, light: number): Look {
   num.shadowK = on * (1 + up * 1.6)
   num.lift = on
   num.raise = up
-  num.flat = 1 - on
+  // A hairline theme (Void) keeps its cards flat whatever the surface.
+  num.flat = 1 - on * (1 - (num.hair ?? 0))
   const wash = clamp(1 + c * 0.7, 0.3, 2.2)
   for (const k of WASHES) {
     const col = colors[k]

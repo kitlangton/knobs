@@ -1,5 +1,5 @@
 // The site's settings: one panel in the header runs the whole page. Theme buttons choose
-// Night, Ocean, Synth, Brutal or Paper (site-look-themes.ts), blended by site-look-math.ts;
+// Night, Ocean, Synth, Brutal, Paper or Void (site-look-themes.ts), blended by site-look-math.ts;
 // the rest dress that look (site-dress.ts): accent, contrast, grain and speed; the title's face,
 // size and weight, the body's size and tracking; corners and surface; density and width. One rAF
 // loop springs every setting toward the store's value and writes the result to the root as custom
@@ -51,7 +51,7 @@ const FADE = 0.18
 const FACES = ["sans", "serif", "mono", "wide"] as const
 const FACE_OPTIONS = ["theme", ...FACES] as const
 
-const THEME_IDS = ["night", "ocean", "synth", "brutal", "paper"] as const
+const THEME_IDS = ["night", "ocean", "synth", "brutal", "paper", "void"] as const
 type ThemeId = (typeof THEME_IDS)[number]
 const themeAt = (x: number): ThemeId =>
   THEME_IDS[Math.min(THEME_IDS.length - 1, Math.max(0, Math.round(x)))]!
@@ -384,7 +384,9 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
     const px = (x: number) => `${x.toFixed(2)}px`
     const s = n.shadow!
     const K = n.shadowK!
-    const a = (x: number) => Math.min(1, x * K).toFixed(3)
+    // A flat theme (Void) trades the drop shadow for a hairline around the panel.
+    const hair = n.hair!
+    const a = (x: number) => Math.min(1, x * K * (1 - hair)).toFixed(3)
     const out: Record<string, string> = {
       "color-scheme": modeDark ? "dark" : "light",
       "--page": col("page"),
@@ -430,7 +432,7 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       "--k-glass-tone": n.kGlassTone!.toFixed(3),
       "--k-lift": n.lift!.toFixed(3),
       // The DOM's shadow and the GPU's strength, dark (0) to light (1), × the surface's.
-      "--k-shadow-overlay": `0 ${lerp(12, 10, s).toFixed(2)}px ${lerp(36, 32, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.52, 0.14, s))}),0 1px ${lerp(2, 3, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.3, 0.08, s))})`,
+      "--k-shadow-overlay": `0 0 0 ${hair.toFixed(3)}px ${col("kLineHi")},0 ${lerp(12, 10, s).toFixed(2)}px ${lerp(36, 32, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.52, 0.14, s))}),0 1px ${lerp(2, 3, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.3, 0.08, s))})`,
       "--k-shadow-strength": a(lerp(0.48, 0.16, s)),
       "--r-stage": px(n.rStage!),
       "--r-ctl": px(n.rCtl!),

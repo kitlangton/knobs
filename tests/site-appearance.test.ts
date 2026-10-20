@@ -10,8 +10,9 @@ import {
   nextAppearance,
 } from "../examples/site-appearance"
 import { dress, NEUTRAL } from "../examples/site-dress"
-import { blendThemes, contrast, luminance, over } from "../examples/site-look-math"
+import { blendThemes, contrast, luminance, over, parseColor } from "../examples/site-look-math"
 import { type SiteTheme, THEMES } from "../examples/site-look-themes"
+import { themes } from "../src/themes/index"
 
 describe("independent appearance preference", () => {
   it("defaults to System and follows both OS states", () => {
@@ -119,5 +120,36 @@ describe("paired theme palettes", () => {
         }
       }
     }
+  })
+
+  it("takes Night's and Void's grounds and panels from knobs' own themes in both appearances", () => {
+    const pairs = [
+      ["night", themes.knobs],
+      ["void", themes.void],
+    ] as const
+    for (const [id, theme] of pairs) {
+      const i = THEMES.findIndex((t) => t.id === id)
+      for (const [light, tokens] of [
+        [0, theme.dark],
+        [1, theme.light],
+      ] as const) {
+        const look = appearanceLook(i, light)
+        for (const [key, token] of [
+          ["page", "bg-page"],
+          ["kBg", "bg"],
+          ["kText", "fg"],
+          ["kLabel", "fg-2"],
+          ["kLineHi", "border-strong"],
+        ] as const) {
+          const want = parseColor(tokens[token])
+          look.colors[key]!.forEach((c, j) =>
+            expect(c, `${id} ${light} ${key}`).toBeCloseTo(want[j]!, 2),
+          )
+        }
+      }
+    }
+    const v = THEMES.find((t) => t.id === "void")!
+    expect(v.ground.page).toBe("#000000")
+    expect(v.num.kGlass + v.num.kGlow).toBe(0)
   })
 })

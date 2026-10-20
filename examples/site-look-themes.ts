@@ -1,5 +1,8 @@
 // Paired site palettes share the same masthead alignment and scale. A theme changes its
-// material and type, not the position of the wordmark or the controls beside it.
+// material and type, not the position of the wordmark or the controls beside it. Night and Void
+// are knobs' own themes (themes.knobs, themes.void): their grounds and panel inks, in both
+// appearances, are those themes' resolved tokens.
+import { type ResolvedTokens, themes } from "../src/themes/index.js"
 import type { Theme } from "./site-look-math"
 
 type Ground = "page" | "card" | "night" | "kBg" | "kPage"
@@ -60,8 +63,42 @@ type Num =
   | "tTrack"
   | "tAlign"
   | "tGlow"
+  /** 1 draws the page's cards and the panels' edges as flat hairlines, with no drop shadow. */
+  | "hair"
 
 export type SiteTheme = Theme<Ground, Ink, Num>
+
+/** A knobs theme's grounds: its page, and its panel as the page's cards. */
+const groundsOf = (t: ResolvedTokens): SiteTheme["ground"] => ({
+  page: t["bg-page"],
+  card: t.bg,
+  night: t["bg-page"],
+  kBg: t.bg,
+  kPage: t["bg-page"],
+})
+/** A knobs theme's panel tokens, as the site writes them back for every panel on the page. */
+const panelInksOf = (t: ResolvedTokens) => ({
+  kSurface: t.fill,
+  kSurfaceHi: t["fill-selected"],
+  kLine: t.border,
+  kLineHi: t["border-strong"],
+  kText: t.fg,
+  kLabel: t["fg-2"],
+  kDim: t["fg-3"],
+  kAccent: t.accent,
+  kModified: t.modified,
+  kSegBg: t["segmented-track"],
+  kSegActive: t["segmented-active"],
+  kToggleTrack: t["toggle-track"],
+  kToggleThumb: t["toggle-thumb"],
+  kRim: t.rim,
+  kEdge: t["border-subtle"],
+  kThumb: t["toggle-thumb-off"],
+  kGroupInk: t["group-label"],
+})
+const knobsDark = themes.knobs.dark
+const voidDark = themes.void.dark
+const voidLight = themes.void.light
 
 export const THEMES: readonly SiteTheme[] = [
   {
@@ -69,13 +106,7 @@ export const THEMES: readonly SiteTheme[] = [
     name: "Night",
     dark: true,
     font: "sans",
-    ground: {
-      page: "#101012",
-      card: "#1c1c1e",
-      night: "#101012",
-      kBg: "#1c1c1e",
-      kPage: "#101012",
-    },
+    ground: groundsOf(knobsDark),
     ink: {
       surface: "rgba(255,255,255,.045)",
       surfaceHi: "rgba(255,255,255,.09)",
@@ -91,23 +122,7 @@ export const THEMES: readonly SiteTheme[] = [
       kicker: "rgba(255,255,255,.4)",
       liftA: "rgba(0,0,0,.16)",
       liftB: "rgba(0,0,0,0)",
-      kSurface: "rgba(255,255,255,.055)",
-      kSurfaceHi: "rgba(255,255,255,.11)",
-      kLine: "rgba(255,255,255,.1)",
-      kLineHi: "rgba(255,255,255,.18)",
-      kText: "rgba(255,255,255,.92)",
-      kLabel: "rgba(255,255,255,.64)",
-      kDim: "rgba(255,255,255,.42)",
-      kAccent: "#ffffff",
-      kModified: "rgba(255,255,255,.5)",
-      kSegBg: "rgba(0,0,0,.26)",
-      kSegActive: "rgba(255,255,255,.11)",
-      kToggleTrack: "rgba(255,255,255,.14)",
-      kToggleThumb: "#1c1c1e",
-      kRim: "rgba(255,255,255,.1)",
-      kEdge: "rgba(255,255,255,.07)",
-      kThumb: "#ffffff",
-      kGroupInk: "rgba(255,255,255,.48)",
+      ...panelInksOf(knobsDark),
     },
     num: {
       kRadius: 8,
@@ -130,6 +145,7 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.05,
       tAlign: 0,
       tGlow: 0,
+      hair: 0,
     },
   },
   {
@@ -198,6 +214,7 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.02,
       tAlign: 0,
       tGlow: 0,
+      hair: 0,
     },
   },
   {
@@ -266,6 +283,7 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.035,
       tAlign: 0,
       tGlow: 0,
+      hair: 0,
     },
   },
   {
@@ -334,6 +352,7 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.07,
       tAlign: 0,
       tGlow: 0,
+      hair: 0,
     },
   },
   {
@@ -402,6 +421,90 @@ export const THEMES: readonly SiteTheme[] = [
       tTrack: -0.04,
       tAlign: 0,
       tGlow: 0,
+      hair: 0,
+    },
+  },
+  {
+    // For video review: true black page and panels, #ededed text, a white accent, flat
+    // hairlines and no glass, glow or drop shadow (themes.void). Night's type and geometry.
+    id: "void",
+    name: "Void",
+    dark: true,
+    font: "sans",
+    ground: groundsOf(voidDark),
+    ink: {
+      surface: voidDark.fill,
+      surfaceHi: voidDark["fill-selected"],
+      line: voidDark.border,
+      text: voidDark.fg,
+      label: voidDark["fg-3"],
+      dim: voidDark["fg-4"],
+      faint: "rgba(237,237,237,.16)",
+      accent: voidDark.accent,
+      pill: "rgba(237,237,237,.13)",
+      warm: "#ffb35c",
+      cool: "#7cc4ff",
+      kicker: voidDark["fg-4"],
+      liftA: "rgba(0,0,0,.16)",
+      liftB: "rgba(0,0,0,0)",
+      ...panelInksOf(voidDark),
+    },
+    num: {
+      kRadius: 8,
+      kPanelRadius: 12,
+      kRound: 1,
+      kGlass: 0,
+      kGlow: 0,
+      kGlassTone: 0.5,
+      shadow: 0,
+      rStage: 16,
+      rCtl: 8,
+      density: 1,
+      rule: 1,
+      hWeight: 600,
+      hTrack: -0.01,
+      hSize: 1,
+      catTrack: 0.05,
+      tSize: 1,
+      tWeight: 650,
+      tTrack: -0.05,
+      tAlign: 0,
+      tGlow: 0,
+      hair: 1,
     },
   },
 ]
+
+/**
+ * Night's and Void's light palettes, from their knobs themes' light tokens (the other themes'
+ * counterparts are derived in site-appearance.ts). The page's own text keeps its tiers readable
+ * on the light ground: labels one step up from the panel's dim.
+ */
+export const LIBRARY_LIGHT: Readonly<
+  Record<string, { ground: SiteTheme["ground"]; ink: Partial<SiteTheme["ink"]> }>
+> = {
+  night: {
+    ground: { ...groundsOf(themes.knobs.light), night: knobsDark["bg-page"] },
+    ink: panelInksOf(themes.knobs.light),
+  },
+  void: {
+    ground: { ...groundsOf(voidLight), night: voidDark["bg-page"] },
+    ink: {
+      surface: voidLight.fill,
+      surfaceHi: voidLight["fill-selected"],
+      line: voidLight.border,
+      text: voidLight.fg,
+      label: voidLight["fg-2"],
+      dim: voidLight["fg-3"],
+      faint: "rgba(25,25,25,.14)",
+      accent: voidLight.accent,
+      pill: "#ffffff",
+      warm: "#e08a2a",
+      cool: "#2f86d6",
+      kicker: voidLight["fg-3"],
+      liftA: "rgba(0,0,0,.12)",
+      liftB: "rgba(0,0,0,.06)",
+      ...panelInksOf(voidLight),
+    },
+  },
+}
