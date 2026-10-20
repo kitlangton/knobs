@@ -9,7 +9,8 @@
          its media, nothing of the page's own but its edge. */
       :root { color-scheme: dark; }
       html, body { margin: 0; min-height: 100%; background: #000; }
-      main { max-width: 1240px; margin: 0 auto; padding: 32px 24px 0; }
+      /* The walkthrough spans the page: its rail near the left edge, its column centred beside it. */
+      main { padding: 24px 16px 0; }
       @media (max-width: 640px) { main { padding: 16px 16px 0; } }
       /* A recording that isn't in this checkout (examples/assets/story is gitignored). */
       .story-missing { display: grid; place-content: center; gap: 4px; width: 100%; aspect-ratio: var(--aspect, 16 / 10);
