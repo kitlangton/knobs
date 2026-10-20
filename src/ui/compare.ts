@@ -192,6 +192,8 @@ const FADE_REDUCED = springMotion(FADE_SPRING)
 const ZOOM = springMotion({ duration: 0.35, bounce: 0 })
 const WIPE_CATCH = springMotion(CATCH_UP)
 const SLOP = 12
+/** How far a press may travel and still be a click (px). */
+const TAP_SLOP = 4
 /** Labels sit this far inside their side's corner, and this far from the wipe's seam. */
 const INSET = 8
 /** The wipe's grip: a raised capsule in the line's middle, at the pointer's height while dragged. */
@@ -412,6 +414,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     | { kind: "wipe"; offset: number }
     | { kind: "pan"; x: number; y: number; base: Rect; moved: boolean }
   let drag: Drag | null = null
+  let tap: { id: number; x: number; y: number } | null = null
   /** Pointers down on the stage (a pinch is two). */
   const touches = new Map<number, { x: number; y: number }>()
   let pinch: { d: number; x: number; y: number } | null = null
@@ -1249,9 +1252,11 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     touches.set(e.pointerId, p)
     stage.setPointerCapture(e.pointerId)
     if (touches.size >= 2) {
+      tap = null
       e.preventDefault()
       return startPinch()
     }
+    tap = e.target === handle ? null : { id: e.pointerId, x: p.x, y: p.y }
     if (mode === "wipe") {
       const wr = wipeRect(layoutNow().L.overlay)
       const inside =
@@ -1260,6 +1265,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       // Zoomed, only the line itself takes the wipe; elsewhere the hand pans.
       if (inside && (grab.onLine || !zoomed())) {
         drag = { kind: "wipe", offset: grab.offset }
+        tap = null
         root.dataset.dragging = ""
         gripAt.snap(wr.h > 0 ? (p.y - wr.y) / wr.h : 0.5)
         e.preventDefault()
@@ -1278,6 +1284,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const onMove = (e: PointerEvent) => {
     const p = local(e)
     pointer = p
+    if (tap && Math.hypot(p.x - tap.x, p.y - tap.y) > TAP_SLOP) tap = null
     if (touches.has(e.pointerId)) touches.set(e.pointerId, p)
     if (pinch && touches.size >= 2) {
       const [a, b] = [...touches.values()] as [{ x: number; y: number }, { x: number; y: number }]
@@ -1307,6 +1314,11 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const endDrag = (e: PointerEvent) => {
     touches.delete(e.pointerId)
     if (touches.size < 2) pinch = null
+    // A click on the pictures (not a wipe, a pan or a pinch) plays or pauses, as Space does.
+    if (tap?.id === e.pointerId) {
+      tap = null
+      if (e.type === "pointerup" && sides.some((s) => s.kind === "video")) api.toggle()
+    }
     if (!drag) return
     // Let go of the wipe, the grip settles back to the line's middle.
     if (drag.kind === "wipe") {

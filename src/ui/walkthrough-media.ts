@@ -222,7 +222,8 @@ async function mountCompare(
     before: side(before, "Before"),
     after: side(after, "After"),
     mode,
-    timeline: true,
+    // Two stills have no time to show: no play button, no line.
+    timeline: mediaKind(before.src) === "video" || mediaKind(after.src) === "video",
     lazy: false,
     ...(aspect ? { aspect } : {}),
     ...(m.strip ? { strip: true } : {}),

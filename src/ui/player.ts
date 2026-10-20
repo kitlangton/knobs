@@ -1,7 +1,7 @@
 // player(container, options): a plain video in the same look as a compare: the picture, then a
 // row under it: a minimal play/pause button and one thin progress line (a timeline's "line"
-// variant) with a segment per chapter. The button or Space (focused) plays and pauses; a click on
-// the picture only focuses it. Click or drag the line to seek, 1:1. The chapter and time under
+// variant) with a segment per chapter. The button, a click on the picture or Space (focused) plays
+// and pauses; nothing flashes over the picture. Click or drag the line to seek, 1:1. The chapter and time under
 // the pointer float over the line. The timeline follows the video's own time while it plays, so
 // the two never drift.
 import { applyLook, type UiLook } from "./look.js"
@@ -174,8 +174,11 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     return v.ended ? Number.POSITIVE_INFINITY : v.currentTime
   })
 
-  // A click on the picture plays nothing (no surprise); it focuses the line, so Space plays.
-  const onClick = () => tl.focus()
+  // A click on the picture plays or pauses it, and focuses the line, so Space does too.
+  const onClick = () => {
+    tl.focus()
+    tl.toggle()
+  }
   frame.addEventListener("click", onClick)
   v.src = options.src
 
