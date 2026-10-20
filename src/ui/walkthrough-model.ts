@@ -262,9 +262,8 @@ export interface WalkthroughSection {
   /** A PR or issue: its URL (labelled `#123` from a GitHub URL), or a label and URL. */
   readonly link?: string | { readonly href: string; readonly label?: string }
   /**
-   * The words that lead its meta line, in text colour: `"PR 2 of 5"` by default where `link` is a
-   * pull request (counted among the sections that link one), else none; your own words, or
-   * `false` for none.
+   * The words that lead its meta line, in text colour: its count by default (`"PR 2 of 5"` where
+   * `link` is a pull request, or the doc's `kickers` noun), your own words, or `false` for none.
    */
   readonly kicker?: string | false
   readonly status?: WalkthroughStatus
@@ -320,6 +319,13 @@ export interface WalkthroughDoc {
   readonly updates?: readonly WalkthroughUpdate[]
   /** Kit's questions and the agent's answers. */
   readonly qa?: readonly WalkthroughQA[]
+  /**
+   * How sections are counted on their meta line: `"pr"` (the default) gives "PR i of N" to the
+   * sections that link a pull request, `{ noun: "Part" }` "Part i of N" to every section, and
+   * `false` none. A section's own `kicker` wins over its count, and `false` hides it, without
+   * renumbering the rest.
+   */
+  readonly kickers?: "pr" | { readonly noun: string } | false
   readonly sections: readonly WalkthroughSection[]
 }
 
@@ -909,7 +915,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
       id: slug(v),
       label: label(v),
     })),
-    sections: withKickers(sections, doc.sections),
+    sections: withKickers(sections, doc.sections, doc.kickers),
     steps,
   }
 }
@@ -918,19 +924,25 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
 export const isPullRequest = (href: string) => /\/(?:pull|merge_requests)\/\d+(?:[/?#]|$)/.test(href)
 
 /**
- * Each section's kicker: its own words, none for `false`, else "PR i of N" where it links a pull
- * request, counted among the sections that do.
+ * Each section's kicker: its own words, none for `false`, else its count: "PR i of N" among the
+ * sections that link a pull request, or "<noun> i of N" among all of them.
  */
 function withKickers(
   sections: readonly WalkSection[],
   source: readonly WalkthroughSection[],
+  kickers: WalkthroughDoc["kickers"] = "pr",
 ): WalkSection[] {
-  const prs = sections.filter((s) => s.link && isPullRequest(s.link.href))
+  if (kickers === false) return [...sections]
+  const noun = typeof kickers === "object" ? kickers.noun.trim() : "PR"
+  const counted =
+    typeof kickers === "object"
+      ? sections
+      : sections.filter((s) => s.link && isPullRequest(s.link.href))
   return sections.map((s, i) => {
     const own = source[i]?.kicker
     if (own !== undefined || s.kicker) return s
-    const at = prs.indexOf(s)
-    return at < 0 ? s : { ...s, kicker: `PR ${at + 1} of ${prs.length}` }
+    const at = counted.indexOf(s)
+    return at < 0 ? s : { ...s, kicker: `${noun} ${at + 1} of ${counted.length}`.trim() }
   })
 }
 

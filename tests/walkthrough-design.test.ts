@@ -64,6 +64,22 @@ describe("section kickers", () => {
     ])
   })
 
+  test("a doc's noun numbers every section; false numbers none", () => {
+    const sections = [
+      section("Intro"),
+      section("Models", { link: pr(57148) }),
+      section("Aside", { kicker: "Interlude" }),
+      section("Hidden", { kicker: false }),
+    ]
+    const of = (kickers: WalkthroughDoc["kickers"]) =>
+      normalizeWalkthrough({ id: "t", title: "T", kickers, sections }).sections.map(
+        (s) => s.kicker,
+      )
+    expect(of({ noun: "Part" })).toEqual(["Part 1 of 4", "Part 2 of 4", "Interlude", undefined])
+    expect(of(false)).toEqual([undefined, undefined, "Interlude", undefined])
+    expect(of("pr")).toEqual([undefined, "PR 1 of 1", "Interlude", undefined])
+  })
+
   test("pull and merge requests are recognised by their path", () => {
     expect(isPullRequest(pr(57148))).toBe(true)
     expect(isPullRequest(`${pr(57148)}#discussion`)).toBe(true)
