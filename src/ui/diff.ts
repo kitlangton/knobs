@@ -327,7 +327,10 @@ export function codeDiff(container: HTMLElement, options: CodeDiffOptions): Code
   const viewedToggle = () => {
     const b = make("button", "knobs-diff-viewed")
     b.type = "button"
-    b.append(make("span", ""), "Viewed")
+    const label = make("span", "knobs-diff-viewed-label")
+    label.textContent = "Viewed"
+    b.append(make("span", ""), label)
+    b.setAttribute("aria-label", "Viewed")
     return b
   }
   const paintViewed = (b: HTMLElement, on: boolean) => {

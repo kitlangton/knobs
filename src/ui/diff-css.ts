@@ -71,6 +71,15 @@ export const diffCss = `
 .knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
 .knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
+/* Narrow, the header gives up words before anything is cut off at its end: Viewed keeps its
+   check, then the counts' bar goes, then the counts; the path fades at its end throughout. */
+.knobs-diff-head,.knobs-diff-part-head{container-type:inline-size}
+@container (max-width:520px){
+  .knobs-diff-viewed-label{display:none}
+  .knobs-ui .knobs-diff-viewed{width:var(--_k-control-h);padding:0;justify-content:center}
+  .knobs-diff-counts .knobs-diff-bar{display:none}
+}
+@container (max-width:400px){.knobs-diff-counts{display:none}.knobs-diff-nav>span{min-width:2.6em}}
 .knobs-diff-path{transition:opacity .2s}
 .knobs-diff[data-viewed]>.knobs-diff-head .knobs-diff-path,.knobs-diff-part[data-viewed] .knobs-diff-path{opacity:.6}
 /* Split | Unified: the selection pill on the one picked, its bright copy the picked one's text; a
