@@ -1,6 +1,6 @@
 // selectionPill(container, { selected }): the one move for a highlight that travels between rows
 // (segmented bars, tabs, a file tree, an outline, a chapter list). A fill slides to the selected
-// row on the state spring, taking that row's box and corner radius as it goes; a bright copy of the
+// row on the state spring (or `spring`), taking that row's box and corner radius as it goes; a bright copy of the
 // rows under it is clipped to the pill, so the text stays sharp and changes colour exactly where
 // the pill's edge passes, instead of every row crossfading. With nothing selected the pill fades
 // out where it is, and the next selection lands there without travelling from a stale place.
@@ -34,6 +34,8 @@ export interface SelectionPillOptions {
    * of their own keep them unless you restyle them under `.knobs-pick-copy`.
    */
   color?: string;
+  /** The spring it travels on (`SPRINGS.default`, the state spring); 1.4× as long past 400 px. */
+  spring?: SpringValue;
 }
 
 export interface SelectionPill {
@@ -133,6 +135,7 @@ export function planPill(
     readonly first?: boolean;
     readonly reduced?: boolean;
     readonly snap?: boolean;
+    readonly spring?: SpringValue;
   } = {},
 ): PillPlan {
   if (!next) return { kind: "hide" };
@@ -142,7 +145,7 @@ export function planPill(
   if (t && t.x === next.x && t.y === next.y && t.w === next.w && t.h === next.h)
     return { kind: "stay" };
   const d = Math.hypot(next.x - state.at.x, next.y - state.at.y);
-  return { kind: "travel", box: next, spring: pillSpring(d) };
+  return { kind: "travel", box: next, spring: pillSpring(d, flags.spring) };
 }
 
 /** Whether two boxes overlap. */
@@ -193,7 +196,7 @@ export function selectionPill(
   container.prepend(pill);
   if (copyOn) container.append(copy);
 
-  const { omega, zeta } = springMotion(SPRINGS.default);
+  const { omega, zeta } = springMotion(options.spring ?? SPRINGS.default);
   const springs = [0, 0, 0, 0].map(() => new Spring(0, omega, zeta, 0.01));
   const [sx, sy, sw, sh] = springs as [Spring, Spring, Spring, Spring];
   let shown = false;
@@ -311,6 +314,7 @@ export function selectionPill(
       first,
       reduced: reducedMotion(win),
       ...(o?.snap ? { snap: true } : {}),
+      ...(options.spring ? { spring: options.spring } : {}),
     });
     first = false;
     // The copy is taken afresh: a row's content or state may have changed.

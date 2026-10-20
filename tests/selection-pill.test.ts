@@ -83,6 +83,13 @@ describe("selection pill states", () => {
     const far = planPill(shown, box(0, 600));
     expect(far.kind === "travel" && far.spring.duration).toBeCloseTo(0.42, 9);
   });
+  test("travels on the spring it's given (snappy for chapters and the rail)", () => {
+    const snappy = { duration: 0.25, bounce: 0 };
+    const p = planPill(shown, box(80, 0), { spring: snappy });
+    expect(p.kind === "travel" && p.spring).toEqual(snappy);
+    const far = planPill(shown, box(0, 600), { spring: snappy });
+    expect(far.kind === "travel" && far.spring.duration).toBeCloseTo(0.35, 9);
+  });
   test("mid-trip, the distance is from where it is now, not where it set out", () => {
     const mid = { shown: true, at: box(390, 0), target: box(400, 0) };
     const p = planPill(mid, box(0, 0));

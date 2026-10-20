@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Review pieces · knobs</title>
+    <style>
+      /* The catalog is a walkthrough of the pieces themselves: the page is the system's own rail,
+         column and sections, and the few specimens below read only its tokens. */
+      :root { color-scheme: light dark; }
+      html, body { margin: 0; min-height: 100%; background: light-dark(#fff, #000); }
+      main { padding: 24px 16px 0; }
+      @media (max-width: 640px) { main { padding: 16px 16px 0; } }
+
+      /* Specimens: a term gutter beside each sample, as facts set it. */
+      .rc-rows { display: grid; grid-template-columns: 144px minmax(0, 1fr); gap: var(--_k-space-title) var(--_kr-block); align-items: baseline; }
+      .rc-rows + .rc-rows { margin-top: var(--_kr-block); }
+      .rc-term { color: var(--_k-fg-3); font-size: var(--_k-type-small); line-height: var(--_k-leading-small); font-feature-settings: var(--_kr-data); }
+      .rc-sample { min-width: 0; color: var(--_k-fg); text-wrap: balance; }
+      .rc-sample[data-role="heading"] { font-size: var(--_k-type-heading); line-height: var(--_k-leading-heading); font-weight: var(--_k-weight-label); }
+      .rc-sample[data-role="title"] { font-size: var(--_k-type-title); line-height: var(--_k-leading-title); font-weight: var(--_k-weight-label); }
+      .rc-sample[data-role="body"] { color: var(--_k-fg-2); text-wrap: pretty; max-width: var(--_kr-measure); }
+      .rc-sample[data-role="label"] { font: var(--_k-type-label)/var(--_k-leading-label) var(--_k-mono); letter-spacing: 0; font-variant-ligatures: none; }
+      .rc-sample[data-role="small"] { color: var(--_k-fg-3); font-size: var(--_k-type-small); line-height: var(--_k-leading-small); }
+      .rc-sample[data-role="data"] { font-feature-settings: var(--_kr-data); }
+      @container knobs-wt-slot (max-width: 480px) { .rc-rows { grid-template-columns: minmax(0, 1fr); gap: var(--_k-space-inside); } .rc-rows > .rc-sample { margin-bottom: var(--_k-space-sibling); } }
+
+      /* Space: each gap as a bar its own width, a lane of ticks rather than boxes. */
+      .rc-space { display: flex; align-items: center; gap: var(--_k-space-title); min-width: 0; }
+      .rc-bar { flex: none; height: 4px; border-radius: 2px; background: var(--_k-fg-3); }
+      .rc-px { flex: none; min-width: 3ch; color: var(--_k-fg); font-feature-settings: var(--_kr-data); }
+      .rc-use { min-width: 0; color: var(--_k-fg-2); }
+
+      /* Colour: the ladder in each appearance, set on its own page colour. */
+      .rc-schemes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--_kr-block); }
+      .rc-scheme { display: flex; flex-direction: column; gap: var(--_k-space-sibling); padding: var(--_k-pad-card); border-radius: var(--_k-radius-panel); background: var(--_k-bg-page); color: var(--_k-fg); }
+      .rc-swatches { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: var(--_k-space-sibling) var(--_k-space-title); align-items: center; }
+      .rc-swatch { width: 16px; height: 16px; border-radius: calc(var(--_k-radius) / 2); }
+      .rc-swatch[data-line] { height: 1px; border-radius: 0; }
+      .rc-token { min-width: 0; color: var(--_k-fg-2); }
+      .rc-hex { color: var(--_k-fg-3); font: var(--_k-type-small)/var(--_k-leading-small) var(--_k-mono); letter-spacing: 0; }
+      .rc-lc { min-width: 5ch; text-align: right; color: var(--_k-fg); font-size: var(--_k-type-small); line-height: var(--_k-leading-small); font-feature-settings: var(--_kr-data); }
+      .rc-narrow { max-width: 360px; }
+    </style>
+  </head>
+  <body>
+    <main id="page"></main>
+    <script type="module" src="./review.ts"></script>
+  </body>
+</html>

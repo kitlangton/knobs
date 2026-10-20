@@ -17,7 +17,10 @@
       "knobs/themes": ["./src/themes/index.ts"],
       "knobs/ui": ["./src/ui/index.ts"],
       "knobs/ui/react": ["./src/ui/react.tsx"],
-      "knobs/ui/solid": ["./src/ui/solid.ts"]
+      "knobs/ui/solid": ["./src/ui/solid.ts"],
+      "knobs/review": ["./src/review/index.ts"],
+      "knobs/review/react": ["./src/review/react.tsx"],
+      "knobs/review/solid": ["./src/review/solid.ts"]
     }
   },
   "include": ["src", "tests", "examples", "scripts", "site", "*.ts"]

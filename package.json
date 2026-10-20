@@ -52,6 +52,18 @@
     "./ui/solid": {
       "types": "./dist/types/ui/solid.d.ts",
       "default": "./dist/ui-solid.js"
+    },
+    "./review": {
+      "types": "./dist/types/review/index.d.ts",
+      "default": "./dist/review.js"
+    },
+    "./review/react": {
+      "types": "./dist/types/review/react.d.ts",
+      "default": "./dist/review-react.js"
+    },
+    "./review/solid": {
+      "types": "./dist/types/review/solid.d.ts",
+      "default": "./dist/review-solid.js"
     }
   },
   "scripts": {

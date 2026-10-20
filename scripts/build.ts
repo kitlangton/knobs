@@ -23,6 +23,9 @@ for (const [name, entry] of [
   ["ui", "src/ui/index.ts"],
   ["ui-react", "src/ui/react.tsx"],
   ["ui-solid", "src/ui/solid.ts"],
+  ["review", "src/review/index.ts"],
+  ["review-react", "src/review/react.tsx"],
+  ["review-solid", "src/review/solid.ts"],
 ]) {
   const result = await Bun.build({
     entrypoints: [entry],
@@ -39,7 +42,7 @@ for (const [name, entry] of [
       "solid-js/web",
       "@pierre/diffs",
     ],
-    banner: name === "react" || name === "ui-react" ? '"use client";' : undefined,
+    banner: name.endsWith("react") ? '"use client";' : undefined,
   })
   if (!result.success) throw new AggregateError(result.logs, `${name} build failed`)
 }
@@ -53,6 +56,12 @@ if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(ui))
 // The diff's renderer (and Shiki under it) is an optional peer, reached only when a diff is drawn.
 if (!/import\(["']@pierre\/diffs["']\)/.test(ui))
   throw new Error("@pierre/diffs must stay a lazy import in knobs/ui.")
+// knobs/review: the same pieces, no panel, the diff's renderer still lazy.
+const review = await Bun.file("dist/review.js").text()
+if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(review))
+  throw new Error("The panel leaked into knobs/review.")
+if (!/import\(["']@pierre\/diffs["']\)/.test(review))
+  throw new Error("@pierre/diffs must stay a lazy import in knobs/review.")
 const built = await import(new URL("../dist/index.js", import.meta.url).href)
 const locked = built.defineControls(
   "production-proof",

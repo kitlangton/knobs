@@ -28,6 +28,8 @@ import {
   tune,
   type UiLook,
 } from "./look.js"
+import { reviewLook } from "./review-look.js"
+import { layoutOptions, optionTile } from "./review-options.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
 import { annotationsOn, setAnnotations } from "./walkthrough-annotations.js"
@@ -49,6 +51,7 @@ import {
   digitChoice,
   EMPTY_STATE,
   feedbackMarkdown,
+  fillFacts,
   fillMedia,
   findStep,
   formatTime,
@@ -159,9 +162,10 @@ export interface TasteTest {
  * A vs B (or more): each option's letter, label and media side by side (stacking where it's
  * narrow). The picked one takes a check and a wash; the others step back.
  */
-export function tasteTest(container: HTMLElement, options: TasteTestOptions): TasteTest {
+export function tasteTest(container: HTMLElement, given: TasteTestOptions): TasteTest {
   const doc = container.ownerDocument
   injectWalkthroughStyles(doc)
+  const options = reviewLook(given, container)
   const look = lookOf(options)
   const list: WalkOption[] = options.options.map((o, i) =>
     "letter" in o
@@ -172,7 +176,8 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
           letter: String.fromCharCode(65 + i),
           ...(o.caption ? { caption: o.caption } : {}),
           ...(o.media !== undefined ? { media: fillMedia(o.media) } : {}),
-          suggested: o.suggested === true,
+          ...(o.facts ? { facts: fillFacts(o.facts) } : {}),
+          suggested: o.suggested === true || o.recommended === true,
         },
   )
   const pickable = options.pickable !== false
@@ -182,54 +187,48 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
     root.setAttribute("role", "radiogroup")
     root.setAttribute("aria-label", "Options")
   } else root.dataset.static = ""
-  root.style.setProperty("--kw-n", String(Math.min(list.length, 3)))
   if (!container.closest(".knobs-ui")) applyLook(root, options)
   const slots: MediaSlot[] = []
   const tiles = list.map((o, i) => {
-    const tile = el(doc, "div", "knobs-wt-option")
-    if (!pickable) {
-      const name = el(doc, "span", "knobs-wt-slot-label")
-      name.textContent = o.label
-      tile.append(name)
+    const button = pickable ? el(doc, "button", "knobs-wt-pick") : undefined
+    const { tile, kicker } = optionTile(
+      doc,
+      {
+        number: `Option ${i + 1}`,
+        title: o.label,
+        ...(o.caption ? { summary: o.caption } : {}),
+        recommended: o.suggested,
+        ...(o.facts ? { facts: o.facts } : {}),
+      },
+      {
+        ...(button ? { head: button } : {}),
+        media: (t) => {
+          if (o.media)
+            slots.push(
+              mediaSlot(t, {
+                ...look,
+                media: o.media,
+                ...(options.lazy === false ? { lazy: false } : {}),
+                ...(options.steps ? { steps: options.steps } : {}),
+              }),
+            )
+        },
+      },
+    )
+    const pick = button ?? el(doc, "button")
+    if (button) {
+      button.type = "button"
+      button.setAttribute("role", "radio")
+      if (i < 9) button.setAttribute("aria-keyshortcuts", String(i + 1))
+      const check = el(doc, "span", "knobs-wt-check")
+      check.innerHTML = CHECK
+      kicker.append(check)
+      button.addEventListener("click", () => {
+        const next = picked === o.id ? null : o.id
+        api.pick(next)
+        options.onPick?.(next)
+      })
     }
-    const pick = el(doc, "button", "knobs-wt-pick")
-    pick.type = "button"
-    pick.setAttribute("role", "radio")
-    if (i < 9) pick.setAttribute("aria-keyshortcuts", String(i + 1))
-    const letter = el(doc, "span", "knobs-wt-letter")
-    letter.textContent = o.letter
-    const name = el(doc, "span", "knobs-wt-olabel")
-    name.textContent = o.label
-    pick.append(letter, name)
-    if (o.suggested) {
-      const s = el(doc, "span", "knobs-wt-suggested")
-      s.textContent = "Suggested"
-      pick.append(s)
-    }
-    if (i < 9) {
-      const key = el(doc, "span", "knobs-wt-key")
-      key.textContent = String(i + 1)
-      pick.append(key)
-    }
-    const check = el(doc, "span", "knobs-wt-check")
-    check.innerHTML = CHECK
-    pick.append(check)
-    pick.addEventListener("click", () => {
-      const next = picked === o.id ? null : o.id
-      api.pick(next)
-      options.onPick?.(next)
-    })
-    if (pickable) tile.append(pick)
-    if (o.media)
-      slots.push(
-        mediaSlot(tile, {
-          ...look,
-          media: o.media,
-          ...(options.lazy === false ? { lazy: false } : {}),
-          ...(options.steps ? { steps: options.steps } : {}),
-        }),
-      )
-    if (o.caption) tile.append(prose(doc, "p", "knobs-wt-ocap", o.caption))
     root.append(tile)
     return { tile, pick }
   })
@@ -243,6 +242,10 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
   }
   sync()
   container.append(root)
+  const unlayout = layoutOptions(
+    root,
+    tiles.map((t) => t.tile),
+  )
   const api: TasteTest = {
     element: root,
     get picked() {
@@ -255,6 +258,7 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
     },
     pause: () => slots.forEach((s) => s.pause()),
     dispose() {
+      unlayout()
       slots.forEach((s) => s.dispose())
       root.remove()
     },
@@ -347,10 +351,11 @@ function scrollerOf(el: HTMLElement): HTMLElement {
   return (doc.scrollingElement as HTMLElement) ?? doc.documentElement
 }
 
-export function walkthrough(container: HTMLElement, options: WalkthroughOptions): Walkthrough {
+export function walkthrough(container: HTMLElement, given: WalkthroughOptions): Walkthrough {
   const doc = container.ownerDocument
   const win = doc.defaultView!
   injectWalkthroughStyles(doc)
+  const options = reviewLook(given, container)
   const look = lookOf(options)
   const storage = options.storage === undefined ? browserStorage() : options.storage
   const root = el(doc, "div", "knobs-walkthrough")
@@ -856,7 +861,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     box.inert = !open
     launch.inert = open
     /** Nothing written, recorded or drawn: the bar may fold away. */
-    const empty = () => !input.value.trim() && !voice.pending && !voice.recorder && !ink.on && !ink.paths.length
+    const empty = () =>
+      !input.value.trim() && !voice.pending && !voice.recorder && !ink.on && !ink.paths.length
     const onOutside = (e: PointerEvent) => {
       if (open && noteMode === "collapsed" && !dock.contains(e.target as Node) && empty())
         setOpen(false)
@@ -1226,7 +1232,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     views = []
     root.textContent = ""
     root.removeAttribute("data-settled")
-    root.dataset.rail = options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
+    root.dataset.rail =
+      options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
     root.toggleAttribute("data-cards", options.cards === true)
     root.toggleAttribute("data-review", review)
     const layout = el(doc, "div", "knobs-wt-layout")
@@ -1349,7 +1356,12 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         group = el(doc, "div", "knobs-wt-toc-group")
         const first = section.steps[0]?.key
         group.append(
-          tocRow(plainMarkdown(section.title), false, () => (first ? go(first) : undefined), section.id),
+          tocRow(
+            plainMarkdown(section.title),
+            false,
+            () => (first ? go(first) : undefined),
+            section.id,
+          ),
         )
         tocEl.append(group)
       }
@@ -1376,6 +1388,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       pill = selectionPill(tocEl, {
         selected: () => viewOf(current)?.toc ?? null,
         rows: () => tocRows,
+        spring: SPRINGS.snappy,
       })
     syncProgress()
     current = null
@@ -1395,7 +1408,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   const more = (text: string) => {
     const box = el(doc, "div", "knobs-wt-more")
     const body = el(doc, "div", "knobs-wt-more-text")
-    for (const para of text.split(/\n\s*\n/)) if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
+    for (const para of text.split(/\n\s*\n/))
+      if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
     discs.push(disclosure(box, { label: "More", content: body }))
     return box
   }
@@ -1482,7 +1496,9 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       media = el(doc, "div", "knobs-wt-media")
       media.style.setProperty("--kw-n", String(Math.min(step.media.length, step.columns)))
       for (const m of step.media)
-        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks, findPR: findPRIn }))
+        slots.push(
+          mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks, findPR: findPRIn }),
+        )
       card.append(media)
     }
     let taste: TasteTest | null = null

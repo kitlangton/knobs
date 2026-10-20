@@ -15,6 +15,7 @@ export default defineConfig(({ command, mode }) => ({
       "lab.html",
       "lab-diff.html",
       "walkthrough.html",
+      "review.html",
       "controls.html",
       "contracts.html",
       "meta.html",
@@ -43,6 +44,7 @@ export default defineConfig(({ command, mode }) => ({
         labDiff: resolve(import.meta.dirname, "lab-diff.html"),
         walkthrough: resolve(import.meta.dirname, "walkthrough.html"),
         story: resolve(import.meta.dirname, "story.html"),
+        review: resolve(import.meta.dirname, "review.html"),
         controls: resolve(import.meta.dirname, "controls.html"),
         contracts: resolve(import.meta.dirname, "contracts.html"),
         meta: resolve(import.meta.dirname, "meta.html"),
@@ -73,6 +75,15 @@ export default defineConfig(({ command, mode }) => ({
             { find: /^knobs\/ui$/, replacement: resolve(rootDir, "src/ui/index.ts") },
             { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "src/ui/react.tsx") },
             { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "src/ui/solid.ts") },
+            { find: /^knobs\/review$/, replacement: resolve(rootDir, "src/review/index.ts") },
+            {
+              find: /^knobs\/review\/react$/,
+              replacement: resolve(rootDir, "src/review/react.tsx"),
+            },
+            {
+              find: /^knobs\/review\/solid$/,
+              replacement: resolve(rootDir, "src/review/solid.ts"),
+            },
           ],
         },
         plugins: [
@@ -110,6 +121,15 @@ export default defineConfig(({ command, mode }) => ({
             { find: /^knobs\/ui$/, replacement: resolve(rootDir, "dist/ui.js") },
             { find: /^knobs\/ui\/react$/, replacement: resolve(rootDir, "dist/ui-react.js") },
             { find: /^knobs\/ui\/solid$/, replacement: resolve(rootDir, "dist/ui-solid.js") },
+            { find: /^knobs\/review$/, replacement: resolve(rootDir, "dist/review.js") },
+            {
+              find: /^knobs\/review\/react$/,
+              replacement: resolve(rootDir, "dist/review-react.js"),
+            },
+            {
+              find: /^knobs\/review\/solid$/,
+              replacement: resolve(rootDir, "dist/review-solid.js"),
+            },
           ],
         },
       }),

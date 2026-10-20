@@ -285,7 +285,11 @@ export {
   type WalkthroughOptions,
 } from "./walkthrough.js"
 export {
+  decision,
+  facts,
   mediaSlot,
+  type DecisionOptions,
+  type FactsOptions,
   type MediaSlot,
   type MediaSlotOptions,
   type StepLinks,
@@ -315,6 +319,10 @@ export {
   type WalkPage,
   type WalkStep,
   type WalkthroughChapter,
+  type WalkthroughDecisionOption,
+  type WalkthroughFact,
+  type WalkthroughFactGroup,
+  type WalkthroughFacts,
   type WalkthroughDoc,
   type WalkthroughEvidence,
   type WalkthroughFeedback,

@@ -252,6 +252,22 @@ export type WalkthroughMedia =
   | { readonly kind: "callout"; readonly text: string; readonly tone?: CalloutTone }
   | { readonly kind: "text"; readonly text: string }
   | {
+      readonly kind: "facts"
+      /** A small faint label over it. */
+      readonly title?: string
+      /** One run of term → value pairs… */
+      readonly facts?: WalkthroughFacts
+      /** …or several, each under a heading, hairlines between. */
+      readonly groups?: readonly WalkthroughFactGroup[]
+    }
+  | {
+      readonly kind: "decision"
+      /** Side by side where there's room, one under another where there isn't. */
+      readonly options: readonly WalkthroughDecisionOption[]
+      /** The word before each option's number: "Option" by default. */
+      readonly noun?: string
+    }
+  | {
       readonly kind: "mount"
       readonly mount: (element: HTMLElement) => (() => void) | void
       /** Pixels held for it before it mounts. */
@@ -260,6 +276,41 @@ export type WalkthroughMedia =
 
 export type CalloutTone = "info" | "good" | "warn" | "bad"
 
+/** A term and its value. */
+export interface WalkthroughFact {
+  readonly term: string
+  /** Markdown, where `code` reads as a small mono chip; several values sit one under another. */
+  readonly value: string | readonly string[]
+  /** Each value is code or evidence (a string splits at commas): small mono chips. */
+  readonly code?: boolean
+}
+
+/** Facts as a list, or as `{ term: value }`. */
+export type WalkthroughFacts =
+  | readonly WalkthroughFact[]
+  | Readonly<Record<string, string | readonly string[]>>
+
+export interface WalkthroughFactGroup {
+  readonly title?: string
+  readonly facts: WalkthroughFacts
+}
+
+/** One way to go in a decision. */
+export interface WalkthroughDecisionOption {
+  readonly id?: string
+  readonly title: string
+  /** A sentence: what it does. Markdown. */
+  readonly summary?: string
+  /** What it looks like: a picture, a compare, code. */
+  readonly media?: WalkthroughMedia
+  /** What changes, as facts ("What the user sees", "Size"). */
+  readonly facts?: WalkthroughFacts
+  readonly pros?: readonly string[]
+  readonly cons?: readonly string[]
+  /** The one to take: a quiet "Recommended" beside its number. */
+  readonly recommended?: boolean
+}
+
 /** One option in a taste test. */
 export interface WalkthroughOption {
   /** "a", "b"… by position when left out. */
@@ -267,8 +318,12 @@ export interface WalkthroughOption {
   readonly label: string
   readonly caption?: string
   readonly media?: WalkthroughMedia
-  /** The agent's own pick, marked "Suggested". */
+  /** What changes, as facts, under its caption. */
+  readonly facts?: WalkthroughFacts
+  /** The agent's own pick, marked "Recommended". */
   readonly suggested?: boolean
+  /** Another name for `suggested`. */
+  readonly recommended?: boolean
 }
 
 export interface WalkthroughStep {
@@ -446,7 +501,10 @@ export interface WalkTableColumn {
 export type WalkMedia =
   | Exclude<
       WalkthroughMedia,
-      string | { readonly kind: "compare" | "video" | "history" | "stack" | "table" }
+      | string
+      | {
+          readonly kind: "compare" | "video" | "history" | "stack" | "table" | "facts" | "decision"
+        }
     >
   | (Omit<CompareMedia, "before" | "after" | "chapters"> & {
       readonly before: WalkthroughSource
@@ -461,6 +519,15 @@ export type WalkMedia =
       readonly marks?: readonly string[] | "all"
     }
   | { readonly kind: "stack"; readonly base?: string; readonly items: readonly WalkStackItem[] }
+  | {
+      readonly kind: "facts"
+      readonly title?: string
+      readonly groups: readonly WalkFactGroup[]
+    }
+  | {
+      readonly kind: "decision"
+      readonly options: readonly WalkDecisionOption[]
+    }
   | {
       readonly kind: "table"
       readonly columns: readonly WalkTableColumn[]
@@ -478,7 +545,32 @@ export interface WalkOption {
   readonly letter: string
   readonly caption?: string
   readonly media?: WalkMedia
+  readonly facts?: readonly WalkFact[]
   readonly suggested: boolean
+}
+
+/** A fact filled in: its values as a list. */
+export interface WalkFact {
+  readonly term: string
+  readonly value: readonly string[]
+  readonly code: boolean
+}
+
+export interface WalkFactGroup {
+  readonly title?: string
+  readonly facts: readonly WalkFact[]
+}
+
+/** A decision's option filled in: its id, its number's words, pros and cons as facts. */
+export interface WalkDecisionOption {
+  readonly id: string
+  /** "Option 1". */
+  readonly number: string
+  readonly title: string
+  readonly summary?: string
+  readonly media?: WalkMedia
+  readonly facts: readonly WalkFact[]
+  readonly recommended: boolean
 }
 
 export interface WalkStep {
@@ -646,9 +738,75 @@ export function fillMedia(m: WalkthroughMedia, base?: string): WalkMedia {
       }
     case "table":
       return fillTable(m)
+    case "facts":
+      return {
+        kind: "facts",
+        ...(m.title ? { title: m.title } : {}),
+        groups: [
+          ...(m.facts ? [{ facts: fillFacts(m.facts) }] : []),
+          ...(m.groups ?? []).map((g) => ({
+            ...(g.title ? { title: g.title } : {}),
+            facts: fillFacts(g.facts),
+          })),
+        ],
+      }
+    case "decision":
+      return { kind: "decision", options: fillDecision(m.options, m.noun, base) }
     default:
       return m
   }
+}
+
+/** Facts as a list of terms and their values (a code value split at its commas). */
+export function fillFacts(facts: WalkthroughFacts | readonly WalkFact[]): readonly WalkFact[] {
+  const list: readonly (WalkthroughFact | WalkFact)[] = Array.isArray(facts)
+    ? facts
+    : Object.entries(facts as Readonly<Record<string, string | readonly string[]>>).map(
+        ([term, value]) => ({ term, value }),
+      )
+  return list.map((f) => {
+    const code = f.code === true
+    const raw = typeof f.value === "string" ? [f.value] : [...f.value]
+    const value = (code ? raw.flatMap((v) => v.split(/\s*,\s*/)) : raw)
+      .map((v) => v.trim())
+      .filter(Boolean)
+    return { term: f.term, value, code }
+  })
+}
+
+/**
+ * How many options sit side by side: as many as fit at `min` px each with `gap` between, up to 4,
+ * and always a count that fills whole rows (4 → 4, 2 or 1; 3 → 3 or 1; 5 → 1), so no row is short.
+ */
+export function optionColumns(count: number, width: number, min = 280, gap = 48): number {
+  for (let c = Math.min(count, 4); c > 1; c--)
+    if (count % c === 0 && (width - gap * (c - 1)) / c >= min) return c
+  return 1
+}
+
+/** A decision's options filled in: ids, "Option 1"…, pros and cons as the last facts. */
+export function fillDecision(
+  options: readonly (WalkthroughDecisionOption | WalkDecisionOption)[],
+  noun = "Option",
+  base?: string,
+): readonly WalkDecisionOption[] {
+  const unique = uniqueIds()
+  return options.map((o, i) => {
+    if ("number" in o) return o
+    const extra: WalkthroughFact[] = [
+      ...(o.pros?.length ? [{ term: "For", value: o.pros }] : []),
+      ...(o.cons?.length ? [{ term: "Against", value: o.cons }] : []),
+    ]
+    return {
+      id: unique(o.id ?? slug(o.title)),
+      number: `${noun} ${i + 1}`,
+      title: o.title,
+      ...(o.summary ? { summary: o.summary } : {}),
+      ...(o.media !== undefined ? { media: fillMedia(o.media, base) } : {}),
+      facts: [...(o.facts ? fillFacts(o.facts) : []), ...fillFacts(extra)],
+      recommended: o.recommended === true,
+    }
+  })
 }
 
 // ——— history, stacks, tables and chapters ———
@@ -920,7 +1078,8 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
           letter: String.fromCharCode(65 + (oi % 26)),
           ...(o.caption ? { caption: o.caption } : {}),
           ...(o.media !== undefined ? { media: fillMedia(o.media, doc.base) } : {}),
-          suggested: o.suggested === true,
+          ...(o.facts ? { facts: fillFacts(o.facts) } : {}),
+          suggested: o.suggested === true || o.recommended === true,
         }),
       )
       const list =
@@ -1017,7 +1176,10 @@ export const prNumber = (href: string): string | null =>
   /\/(?:pull|merge_requests)\/(\d+)(?:[/?#]|$)/.exec(href)?.[1] ?? null
 
 const repoOf = (doc: WalkthroughDoc) =>
-  doc.repo?.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "") || undefined
+  doc.repo
+    ?.trim()
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\/+$/, "") || undefined
 
 export type PRState = NonNullable<WalkthroughPR["state"]>
 const PR_STATES: readonly string[] = ["merged", "open", "draft", "closed"]
@@ -1054,7 +1216,8 @@ function knownPRs(
   const add = (n: string, pr: WalkthroughPR) => {
     const known = out[n] ?? {}
     const next: Record<string, unknown> = { ...known }
-    for (const [k, v] of Object.entries(pr)) if (v !== undefined && next[k] === undefined) next[k] = v
+    for (const [k, v] of Object.entries(pr))
+      if (v !== undefined && next[k] === undefined) next[k] = v
     out[n] = next as WalkthroughPR
   }
   for (const [k, pr] of Object.entries(doc.prs ?? {})) {
@@ -1117,7 +1280,8 @@ export const issueNumber = (href: string): string | null =>
   /^https?:\/\/[^/]+\/.+\/issues\/(\d+)\/?(?:[?#].*)?$/.exec(href)?.[1] ?? null
 
 /** Whether a link is a pull (or merge) request: GitHub's `/pull/123`, GitLab's merge requests. */
-export const isPullRequest = (href: string) => /\/(?:pull|merge_requests)\/\d+(?:[/?#]|$)/.test(href)
+export const isPullRequest = (href: string) =>
+  /\/(?:pull|merge_requests)\/\d+(?:[/?#]|$)/.test(href)
 
 /**
  * Each section's kicker: its own words, none for `false`, else its count: "PR i of N" among the
