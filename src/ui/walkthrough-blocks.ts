@@ -22,6 +22,8 @@ import {
   type WalkMedia,
   type WalkTableCell,
   type WalkTableColumn,
+  prStatus,
+  type PRState,
 } from "./walkthrough-model.js"
 
 /** The glyphs the blocks draw. */
@@ -593,19 +595,10 @@ const prGlyph = (state: PRState | undefined) =>
         : svg12(PR_PATHS.pull)
 
 const PR_STATE = { merged: "Merged", open: "Open", draft: "Draft", closed: "Closed" } as const
-export type PRState = keyof typeof PR_STATE
-
-/**
- * A stack row's pull-request state from its `status` words: the first word when it's merged,
- * draft, open or closed (any case), and whether they say its checks pass ("green", "passing",
- * "CI"). The state comes from the words, never the tone.
- */
-export function prStatus(status: string | undefined): { state: PRState | null; checks: boolean } {
-  const words = (status ?? "").trim().toLowerCase()
-  const first = /^[a-z]+/.exec(words)?.[0] ?? ""
-  const state = first in PR_STATE ? (first as PRState) : null
-  return { state, checks: /\b(green|passing|passed|ci|checks? pass)/.test(words) }
-}
+export { prStatus, type PRState }
+// Phosphor regular (circle-dot): an issue.
+const ISSUE =
+  "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-88a16,16,0,1,1-16-16A16,16,0,0,1,144,128Z"
 
 /** A pull request's state as GitHub shows it: its glyph and word, quietly tinted; a check after. */
 export function prStateLabel(doc: Document, state: PRState, checks: boolean, title?: string) {
@@ -626,11 +619,16 @@ export function prStateLabel(doc: Document, state: PRState, checks: boolean, tit
 
 export interface PRInfo {
   readonly state?: PRState
+  readonly kind?: "pr" | "issue"
+  readonly checks?: boolean
   readonly title?: string
   readonly href?: string
 }
 
-/** A pull request as a small chip: its state's icon and number, the title and state on hover. */
+/**
+ * A pull request (or an issue) as a capsule: its state's glyph and number, tinted quietly by state
+ * (neutral where none is known), a faint check where its checks pass, title and state on hover.
+ */
 export function prChip(doc: Document, n: string, pr: PRInfo): HTMLElement {
   const chip = el(doc, pr.href ? "a" : "span", "knobs-wt-pr")
   if (pr.href) {
@@ -638,33 +636,62 @@ export function prChip(doc: Document, n: string, pr: PRInfo): HTMLElement {
     chip.setAttribute("target", "_blank")
     chip.setAttribute("rel", "noreferrer")
   }
+  const issue = pr.kind === "issue"
+  if (issue) chip.dataset.kind = "issue"
   if (pr.state) chip.dataset.state = pr.state
-  chip.innerHTML = prGlyph(pr.state)
+  chip.innerHTML = issue ? svg12(ISSUE) : prGlyph(pr.state)
   chip.append(text(doc, "span", "", `#${n}`))
-  const tip = [`#${n}`, pr.title, pr.state ? PR_STATE[pr.state] : ""].filter(Boolean).join(" · ")
-  chip.title = tip
-  chip.setAttribute("aria-label", `Pull request ${tip}`)
+  if (pr.checks) {
+    const c = el(doc, "span", "knobs-wt-prchecks")
+    c.innerHTML = svg12(CHECK)
+    chip.append(c)
+  }
+  const words = [
+    `${issue ? "Issue" : "Pull request"} #${n}`,
+    pr.title,
+    pr.state ? PR_STATE[pr.state] : "",
+    pr.checks ? "checks pass" : "",
+  ].filter(Boolean)
+  chip.title = words.slice(1).length ? `#${n} · ${words.slice(1).join(" · ")}` : `#${n}`
+  chip.setAttribute("aria-label", words.join(" · "))
   return chip
 }
 
 const PR_URL = /^https?:\/\/[^/]+\/.+\/(?:pull|merge_requests)\/(\d+)\/?(?:[?#].*)?$/
-const PR_REF = /(^|[^\w&/#])#(\d{3,7})\b/g
+const ISSUE_URL = /^https?:\/\/[^/]+\/.+\/issues\/(\d+)\/?(?:[?#].*)?$/
+const REF = /(^|[^\w&/#:])(issue:)?#(\d{3,7})\b/gi
+const WHOLE_REF = /^(issue:)?#(\d{1,7})$/i
+
+/** What the page knows of a pull request or issue by number (null when nothing). */
+export type FindPR = (n: string, kind: "pr" | "issue") => PRInfo | null
+
+/** Where refs stay as written: links, buttons, code blocks, chips, and media other than tables. */
+const KEEP = "a,pre,button,.knobs-wt-pr,.knobs-wt-slot:not([data-kind=\"table\"]),.knobs-wt-stack"
 
 /**
- * Turns the pull requests in some rendered prose into chips: links to one whose words are its
- * number or URL, and bare `#57148`s the page can resolve. Code, buttons and media stay as they are.
+ * Turns every pull request and issue ref in some rendered prose into a capsule: links to one
+ * whose words are its number or URL, inline code that's just a ref, and bare `#57148`s
+ * (`issue:#123` for an issue). One the page knows nothing of is a neutral chip, linked only where
+ * the page has a repo.
  */
-export function linkPRs(
-  root: HTMLElement,
-  find: (n: string) => PRInfo | null,
-): void {
+export function linkPRs(root: HTMLElement, find: FindPR): void {
   const doc = root.ownerDocument
+  const chip = (n: string, kind: "pr" | "issue", href?: string) =>
+    prChip(doc, n, { ...(kind === "issue" ? { kind } : {}), ...find(n, kind), ...(href ? { href } : {}) })
   for (const a of Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
-    if (a.classList.contains("knobs-wt-pr") || a.closest(".knobs-wt-slot,button")) continue
-    const n = PR_URL.exec(a.getAttribute("href") ?? "")?.[1]
-    const words = a.textContent?.trim() ?? ""
-    if (!n || !(words === `#${n}` || words === n || words === a.getAttribute("href"))) continue
-    a.replaceWith(prChip(doc, n, { href: a.href, ...find(n) }))
+    if (a.classList.contains("knobs-wt-pr") || a.parentElement?.closest(KEEP)) continue
+    const url = a.getAttribute("href") ?? ""
+    const pr = PR_URL.exec(url)?.[1]
+    const n = pr ?? ISSUE_URL.exec(url)?.[1]
+    if (!n) continue
+    const words = (a.textContent ?? "").trim().replace(/^issue:/i, "")
+    if (!(words === `#${n}` || words === n || words === url)) continue
+    a.replaceWith(chip(n, pr ? "pr" : "issue", a.href))
+  }
+  for (const c of Array.from(root.querySelectorAll<HTMLElement>("code"))) {
+    if (c.closest("pre") || c.parentElement?.closest(KEEP)) continue
+    const m = WHOLE_REF.exec((c.textContent ?? "").trim())
+    if (m) c.replaceWith(chip(m[2]!, m[1] ? "issue" : "pr"))
   }
   // Elements and text (1 | 4), so every engine walks down through the elements to their text.
   const walker = doc.createTreeWalker(root, 5)
@@ -672,25 +699,20 @@ export function linkPRs(
   for (let t = walker.nextNode(); t; t = walker.nextNode()) {
     if (t.nodeType !== 3) continue
     const p = t.parentElement
-    if (!p || p.closest("a,code,pre,button,.knobs-wt-slot,.knobs-wt-pr")) continue
-    PR_REF.lastIndex = 0
-    if (PR_REF.test(t.nodeValue ?? "")) hits.push(t as Text)
+    if (!p || p.closest(`${KEEP},code`)) continue
+    REF.lastIndex = 0
+    if (REF.test(t.nodeValue ?? "")) hits.push(t as Text)
   }
   for (const t of hits) {
     const value = t.nodeValue ?? ""
     const frag = doc.createDocumentFragment()
     let last = 0
-    let changed = false
-    PR_REF.lastIndex = 0
-    for (let m = PR_REF.exec(value); m; m = PR_REF.exec(value)) {
-      const pr = find(m[2]!)
-      if (!pr) continue
+    REF.lastIndex = 0
+    for (let m = REF.exec(value); m; m = REF.exec(value)) {
       const at = m.index + m[1]!.length
-      frag.append(value.slice(last, at), prChip(doc, m[2]!, pr))
-      last = at + m[2]!.length + 1
-      changed = true
+      frag.append(value.slice(last, at), chip(m[3]!, m[2] ? "issue" : "pr"))
+      last = m.index + m[0].length
     }
-    if (!changed) continue
     frag.append(value.slice(last))
     t.replaceWith(frag)
   }

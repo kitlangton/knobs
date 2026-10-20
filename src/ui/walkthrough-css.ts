@@ -18,7 +18,7 @@ const quick = springCss(FADE)
 // each step is one .knobs-surface and nothing inside draws a fill and a ring of its own). Rhythm
 // and type come from the page tokens (--k-space-*, --k-pad-*, --k-type-*, --k-leading-*);
 // spacing lives on parents.
-const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 1.5em),transparent)"
+const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)"
 export const walkthroughCss = `
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
 .knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}
@@ -30,7 +30,7 @@ export const walkthroughCss = `
 .knobs-walkthrough [hidden]{display:none!important}
 /* (0,0,1): a host's element rules stop here, and every class rule below wins over it. */
 :where(.knobs-walkthrough) :is(h1,h2,h3,p,ol,ul,dl,dd){margin:0;font:inherit;letter-spacing:inherit}
-.knobs-walkthrough a{color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color .15s}
+.knobs-walkthrough a{cursor:default;color:inherit;text-decoration:underline;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent);text-underline-offset:2px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
 .knobs-walkthrough a:hover{text-decoration-color:currentColor}
 .knobs-walkthrough code,.knobs-wt-slot code{font:var(--_k-type-label) var(--_k-mono);padding:1px 5px;border-radius:calc(var(--_k-radius) / 2);background:var(--_k-fill)}
 :where(.knobs-ui) :is(.knobs-wt-btn,.knobs-wt-pick,.knobs-wt-toc-row,button.knobs-wt-stitle,.knobs-wt-chapter,.knobs-wt-disc-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;
@@ -58,14 +58,17 @@ export const walkthroughCss = `
 .knobs-walkthrough .knobs-wt-metaline a:not(.knobs-wt-pr){display:inline-flex;align-items:baseline;color:inherit;text-decoration:none;transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-walkthrough .knobs-wt-metaline a:not(.knobs-wt-pr):hover{color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-metaline svg{align-self:center;width:12px;height:12px;margin-left:2px}
-/* A pull request: a small chip, its state's icon and number in a quiet tint of the state (open
-   the success hue, merged the violet series, draft and closed neutral), its title on hover. */
-.knobs-ui .knobs-wt-pr{--kw-pr:var(--_k-fg-2);display:inline-flex;align-items:center;gap:3px;height:18px;padding:0 5px 0 4px;margin:0 1px;border-radius:calc(var(--_k-radius) / 2);vertical-align:1px;
+/* A pull request or issue: a capsule, its state's icon and number in a quiet tint of the state
+   (open the success hue, merged the violet series, draft and closed faint, unknown neutral; a
+   closed issue is done, so violet), a faint check where its checks pass, its title on hover. */
+.knobs-ui .knobs-wt-pr{--kw-pr:var(--_k-fg-2);display:inline-flex;align-items:center;gap:3px;height:18px;padding:0 6px 0 5px;margin:0 1px;border-radius:9px;vertical-align:1px;
   background:color-mix(in oklch,var(--kw-pr) 12%,transparent);color:var(--kw-pr);font:var(--_k-weight-label) var(--_k-type-small)/1 var(--_k-font);font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;
   transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-pr[data-state="open"]{--kw-pr:color-mix(in oklch,var(--_k-ok) 60%,var(--_k-fg-2))}
 .knobs-ui .knobs-wt-pr[data-state="merged"]{--kw-pr:color-mix(in oklch,var(--_k-series-5) 60%,var(--_k-fg-2))}
 .knobs-ui .knobs-wt-pr:is([data-state="draft"],[data-state="closed"]){--kw-pr:var(--_k-fg-3)}
+.knobs-ui .knobs-wt-pr[data-kind="issue"][data-state="closed"]{--kw-pr:color-mix(in oklch,var(--_k-series-5) 60%,var(--_k-fg-2))}
+.knobs-ui .knobs-wt-pr .knobs-wt-prchecks{margin-left:0}
 .knobs-ui a.knobs-wt-pr:is(:hover,:focus-visible){background:color-mix(in oklch,var(--kw-pr) 22%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-pr svg{flex:none}
 .knobs-wt-metaline .knobs-wt-pr{align-self:center;margin:0}
@@ -124,14 +127,14 @@ export const walkthroughCss = `
 .knobs-wt-fi-ask{max-width:var(--kw-measure);color:var(--_k-fg);font-weight:var(--kw-strong);text-wrap:pretty}
 .knobs-wt-fi-text{max-width:var(--kw-measure);color:var(--_k-fg);text-wrap:pretty}
 .knobs-wt-fi-answer{max-width:var(--kw-measure);color:var(--_k-fg-2);text-wrap:pretty}
-:where(.knobs-ui) .knobs-wt-fi-step{all:revert;box-sizing:border-box;font:inherit;color:inherit;background:transparent;border:0;margin:0;padding:0;cursor:pointer;outline:none;
+:where(.knobs-ui) .knobs-wt-fi-step{all:revert;box-sizing:border-box;font:inherit;color:inherit;background:transparent;border:0;margin:0;padding:0;cursor:default;outline:none;
   transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-fi-step:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 
 /* ——— a disclosure: a small faint toggle with a caret, no fill. The body's height springs (in
    script) and its content fades in place, top-anchored, under a soft bottom mask ——— */
 .knobs-wt-disc{display:flex;flex-direction:column;min-width:0}
-.knobs-ui .knobs-wt-disc-toggle{display:inline-flex;align-items:center;gap:var(--_k-space-inside);width:max-content;height:20px;color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);cursor:pointer;
+.knobs-ui .knobs-wt-disc-toggle{display:inline-flex;align-items:center;gap:var(--_k-space-inside);width:max-content;height:20px;color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);cursor:default;
   border-radius:calc(var(--_k-radius) / 2);transition:color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-disc-toggle:is(:hover,:focus-visible),.knobs-wt-disc[data-open]>.knobs-wt-disc-toggle{color:var(--_k-fg-2);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-disc-toggle:focus-visible{box-shadow:0 0 0 2px var(--_k-focus)}
@@ -158,7 +161,7 @@ export const walkthroughCss = `
 .knobs-wt-n[data-leaving]{opacity:0;filter:blur(3px);padding-block:0}
 .knobs-wt-n+.knobs-wt-n{box-shadow:inset 0 1px 0 var(--_k-border-subtle)}
 .knobs-wt-n-meta{flex:none;min-width:44px;color:var(--_k-fg-3);font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-body) var(--_k-mono)}
-.knobs-wt-n-meta[data-seek]{cursor:pointer}
+.knobs-wt-n-meta[data-seek]{cursor:default}
 .knobs-wt-n-meta[data-seek]:hover{color:var(--_k-fg)}
 .knobs-wt-n-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
 .knobs-wt-n-voice{height:30px;max-width:320px}
@@ -175,7 +178,7 @@ export const walkthroughCss = `
 /* Collapsed: the launcher and the bar swap in place, a quick fade with a little scale and blur
    from the launcher's corner; the exit is the shorter. */
 :where(.knobs-ui) .knobs-wt-launch{all:revert;box-sizing:border-box;justify-self:end;align-self:end;display:inline-flex;align-items:center;gap:6px;height:32px;margin:0;padding:0 10px 0 9px;border:0;border-radius:var(--_k-round);
-  background:var(--_k-bg);color:var(--_k-fg-2);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font:var(--kw-strong) var(--_k-type-small)/1 var(--_k-font);cursor:pointer;outline:none;transform-origin:100% 100%;
+  background:var(--_k-bg);color:var(--_k-fg-2);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font:var(--kw-strong) var(--_k-type-small)/1 var(--_k-font);cursor:default;outline:none;transform-origin:100% 100%;
   transition:color calc(var(--_k-hover-out) * 1ms),opacity var(--kw-quick-ms) var(--kw-quick),scale var(--kw-quick-ms) var(--kw-quick),filter var(--kw-quick-ms) var(--kw-quick)}
 .knobs-ui .knobs-wt-launch:is(:hover,:focus-visible){color:var(--_k-fg)}
 .knobs-ui .knobs-wt-launch:focus-visible{box-shadow:var(--_k-focus-ring)}
@@ -195,11 +198,11 @@ export const walkthroughCss = `
 .knobs-wt-attach{display:flex;gap:4px;align-items:center;align-self:center}
 .knobs-wt-attach:empty{display:none}
 .knobs-wt-chip-a{display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 2px 0 9px;border-radius:var(--_k-round);background:var(--_k-fill-selected);font-size:var(--_k-type-small);white-space:nowrap}
-.knobs-ui .knobs-wt-x{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;color:var(--_k-fg-3);cursor:pointer;transition:background .15s,color .15s}
+.knobs-ui .knobs-wt-x{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;color:var(--_k-fg-3);cursor:default;transition:background .15s,color .15s}
 .knobs-ui .knobs-wt-x:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 .knobs-wt-x svg{width:12px;height:12px}
 .knobs-ui .knobs-wt-tool{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:32px;height:32px;padding:0 8px;border-radius:calc(var(--_k-radius) + 2px);
-  color:var(--_k-fg-2);cursor:pointer;transition:background .15s,color .15s}
+  color:var(--_k-fg-2);cursor:default;transition:background .15s,color .15s}
 .knobs-ui .knobs-wt-tool:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 .knobs-ui .knobs-wt-tool[aria-pressed="true"]{background:var(--_k-fill-selected);color:var(--_k-fg)}
 .knobs-wt-tool svg{width:16px;height:16px}
@@ -209,7 +212,7 @@ export const walkthroughCss = `
 .knobs-ui .knobs-wt-tool[data-send][data-ready]{background:var(--_k-accent);color:var(--_k-bg)}
 /* Back: in place over the bar for a few seconds after a note moves the page on. */
 .knobs-ui .knobs-wt-back{position:absolute;left:8px;bottom:calc(100% + 8px);display:inline-flex;align-items:center;gap:var(--_k-space-inside);max-width:min(360px,calc(100% - 16px));height:28px;padding:0 12px 0 9px;
-  border-radius:var(--_k-round);background:var(--_k-bg);color:var(--_k-fg);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font-size:var(--_k-type-small);font-weight:var(--kw-strong);cursor:pointer;
+  border-radius:var(--_k-round);background:var(--_k-bg);color:var(--_k-fg);box-shadow:var(--_ku-pane-ring),var(--_k-shadow-overlay);font-size:var(--_k-type-small);font-weight:var(--kw-strong);cursor:default;
   opacity:0;scale:.96;filter:blur(3px);pointer-events:none;transition:opacity .11s cubic-bezier(.4,0,1,1),scale .11s cubic-bezier(.4,0,1,1),filter .11s cubic-bezier(.4,0,1,1)}
 .knobs-ui .knobs-wt-back[data-on]{opacity:1;scale:1;filter:none;pointer-events:auto;transition:opacity .15s cubic-bezier(.2,.8,.2,1),scale .15s cubic-bezier(.2,.8,.2,1),filter .15s cubic-bezier(.2,.8,.2,1)}
 .knobs-ui .knobs-wt-back:hover{background:var(--_k-fill-selected)}
@@ -236,6 +239,9 @@ export const walkthroughCss = `
 .knobs-wt-step[data-full] .knobs-wt-body{flex:1;min-height:0}
 .knobs-wt-step[data-full] .knobs-wt-fit{height:100%;transition:none}
 .knobs-wt-step[data-full] .knobs-wt-frame{height:100%;aspect-ratio:auto}
+.knobs-wt-step[data-full] .knobs-wt-slot[data-kind="video"]>.knobs-wt-body{display:flex;flex-direction:column}
+.knobs-wt-step[data-full] .knobs-wt-slot[data-kind="video"] .knobs-player{flex:1;min-height:0}
+.knobs-wt-step[data-full] .knobs-wt-slot[data-kind="video"] .knobs-player-frame{flex:1;min-height:0;aspect-ratio:auto}
 
 /* ——— a taste test: the options side by side, Kit's pick checked and the rest stepping back. On
    the step's card, so no fill of their own ——— */
@@ -244,7 +250,7 @@ export const walkthroughCss = `
 .knobs-wt-option{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-sibling);min-width:0}
 .knobs-wt-option>:not(.knobs-wt-pick){transition:opacity var(--kw-snappy-ms) var(--kw-snappy)}
 .knobs-wt-options[data-has-pick] .knobs-wt-option:not([data-picked])>:not(.knobs-wt-pick){opacity:.55}
-.knobs-ui .knobs-wt-pick{display:flex;align-items:center;gap:8px;width:100%;min-height:28px;margin:0 -6px;width:calc(100% + 12px);padding:0 6px;border-radius:var(--_k-radius);cursor:pointer;color:var(--_k-fg-2);text-align:left;
+.knobs-ui .knobs-wt-pick{display:flex;align-items:center;gap:8px;width:100%;min-height:28px;margin:0 -6px;width:calc(100% + 12px);padding:0 6px;border-radius:var(--_k-radius);cursor:default;color:var(--_k-fg-2);text-align:left;
   transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-pick:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_k-fill);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-letter{flex:none;font-weight:var(--kw-strong);color:var(--_k-fg)}
@@ -267,17 +273,18 @@ export const walkthroughCss = `
 .knobs-wt-bar{position:relative;height:4px;border-radius:2px;overflow:hidden;background:var(--_k-fill)}
 .knobs-wt-fill{position:absolute;inset:0;border-radius:inherit;background:var(--_k-accent);transform-origin:0 50%;transform:scaleX(var(--kw-done,0))}
 .knobs-walkthrough[data-settled] .knobs-wt-fill{transition:transform var(--kw-calm-ms) var(--kw-calm)}
-/* The contents: every row on one text edge and in one colour, title rows (32 high, the control
-   radius) and the steps under them (20 high, half of it), bled out so their text sits on the
-   rail's edge; the selection pill slides to the current step, and base rows never brighten. */
-.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:0 calc(var(--_k-space-sibling) * -1);padding:0 0 8px}
+/* The contents: every row on one text edge and in one colour, title rows (28 high, the control
+   radius) and the steps under them (20 high, half of it), bled 6 px out so their text sits on the
+   rail's edge and the first title's words on the column's top line; a narrow fade where a title
+   runs out of room; the selection pill slides to the current step, and base rows never brighten. */
+.knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:-4px -6px 0;padding:0 0 8px}
 .knobs-wt-toc::-webkit-scrollbar{display:none}
 .knobs-wt-toc-group{display:flex;flex-direction:column;min-width:0}
-.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:32px;
-  padding:0 var(--_k-space-sibling);border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:pointer;
-  transition:color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:28px;
+  padding:0 6px;border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:default;
+  transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-toc-sub{height:20px;border-radius:calc(var(--_k-radius) / 2);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight)}
-.knobs-ui .knobs-wt-toc-row:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-toc-row:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-toc-row:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-wt-toc-end{display:flex;align-items:center;font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight);color:var(--_k-fg-3)}
 .knobs-wt-toc-label{min-width:0;overflow:hidden;${fade}}
@@ -289,7 +296,7 @@ export const walkthroughCss = `
 .knobs-wt-toc-glyph[data-done]{background:var(--kw-tone)}
 .knobs-wt-toc-glyph[data-tone="none"]{box-shadow:inset 0 0 0 1px var(--_k-border)}
 .knobs-wt-actions{display:flex;flex-wrap:wrap;gap:4px}
-.knobs-ui .knobs-wt-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:pointer;white-space:nowrap;
+.knobs-ui .knobs-wt-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:default;white-space:nowrap;
   transition:background .15s,color .15s}
 .knobs-ui .knobs-wt-btn:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
 .knobs-ui .knobs-wt-btn[data-primary]{background:var(--_k-fill-selected);color:var(--_k-fg)}
@@ -323,11 +330,10 @@ export const walkthroughCss = `
 /* One frame for every slot that has one (a picture, a video, a code block, a compare's stage, a
    slot still loading): the panel radius and a quiet fill, no ring; concentric on a card. */
 .knobs-wt-slot .knobs-cmp-stage{border-radius:var(--kw-frame-r)}
-/* A compare is exactly as tall as its pictures at this width, so there's no letterbox: the two
-   sides edge to edge (side) or one (overlaid), plus its mode bar, the timeline and their two gaps
+/* A compare is as tall as its two pictures side by side at this width, in every mode (Wipe fuses
+   them at one side's size, so nothing grows or re-measures), plus its mode bar, the line and gaps
    (92 px), and the frame strip with its gap (158 px). */
 .knobs-wt-fit{width:100%;height:calc(100cqw / 2 / var(--kw-aspect,1.7778) + var(--kw-chrome,92px))}
-.knobs-wt-fit[data-overlay]{height:calc(100cqw / var(--kw-aspect,1.7778) + var(--kw-chrome,92px))}
 .knobs-wt-fit[data-strip]{--kw-chrome:158px}
 .knobs-wt-fit[data-settled]{transition:height var(--k-wt-calm-ms,${calm.duration}ms) ${calm.easing}}
 .knobs-wt-frame{position:relative;width:100%;overflow:hidden;border-radius:var(--kw-frame-r);background:var(--_k-fill);aspect-ratio:var(--kw-aspect,16/9)}
@@ -336,8 +342,12 @@ export const walkthroughCss = `
 .knobs-wt-frame[data-natural]>img{position:static;height:auto}
 /* Diff, code and terminal: one plain container (no glass): a flat inset fill, a hairline ring, the
    control radius and room inside, so a diff's buttons and the code under them can breathe. */
-.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-space-sibling) var(--_k-pad-card) var(--_k-pad-card);border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
-.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-pad-card);border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
+/* The diff inside it: its header row 28 high on the container's padding, a hairline under it, and
+   no line of its own under the code (the container's ring closes it). */
+.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"]){--kd-head:28px;--kd-x:0px}
+.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"])::after{display:none}
+.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
 .knobs-surface :is(.knobs-wt-code,.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body){padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-code[data-terminal]{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -383,7 +393,7 @@ export const walkthroughCss = `
 .knobs-wt-mark:is([data-shape="dot"],[data-shape="arrow"]) .knobs-wt-mark-label{left:12px;bottom:auto;top:10px}
 .knobs-wt-mark[data-shape="arrow"] .knobs-wt-mark-label{left:auto;right:30px;top:auto;bottom:30px}
 .knobs-ui .knobs-wt-anno-toggle{all:revert;box-sizing:border-box;position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;margin:0;
-  border-radius:var(--_k-radius);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);color:var(--_k-fg-2);cursor:pointer;opacity:.6;outline:none;
+  border-radius:var(--_k-radius);background:color-mix(in srgb,var(--_k-bg) 72%,transparent);color:var(--_k-fg-2);cursor:default;opacity:.6;outline:none;
   transition:opacity calc(var(--_k-hover-out) * 1ms),color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui .knobs-wt-anno-toggle:is(:hover,:focus-visible){opacity:1;color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-anno-toggle:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
@@ -404,7 +414,7 @@ export const walkthroughCss = `
 .knobs-wt-srow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;align-items:start;margin:0 -8px;padding:var(--kw-spt) 8px var(--kw-spb);
   border-radius:max(0px,calc(var(--_k-radius-panel) - 8px));transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-wt-srow[data-trunk]{--kw-spb:0px;grid-template-columns:auto minmax(0,1fr)}
-.knobs-wt-srow[data-go]{cursor:pointer}
+.knobs-wt-srow[data-go]{cursor:default}
 .knobs-wt-srow[data-go]:hover{background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-lanes{display:flex;align-self:stretch;margin-block:calc(var(--kw-spt) * -1) calc(var(--kw-spb) * -1)}
 .knobs-wt-lane{position:relative;flex:none;width:16px}
@@ -420,7 +430,7 @@ export const walkthroughCss = `
 .knobs-ui .knobs-wt-spr{font:var(--_k-weight-label) var(--_k-type-label)/var(--kw-line) var(--_k-mono);color:var(--_k-fg-2);text-decoration:none;white-space:nowrap}
 .knobs-ui a.knobs-wt-spr:is(:hover,:focus-visible){color:var(--_k-fg);text-decoration:underline}
 .knobs-ui .knobs-wt-stitle{font-weight:var(--_k-weight-label);line-height:var(--kw-line);color:var(--_k-fg);text-align:left}
-.knobs-ui button.knobs-wt-stitle{cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui button.knobs-wt-stitle{cursor:default;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color calc(var(--_k-hover-out) * 1ms)}
 .knobs-ui :is(.knobs-wt-srow[data-go]:hover button.knobs-wt-stitle,button.knobs-wt-stitle:focus-visible){text-decoration-color:color-mix(in oklch,currentColor 45%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-ssummary{margin:0;max-width:var(--k-walkthrough-measure,68ch);color:var(--_k-fg-2)}
 .knobs-wt-smeta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;font:var(--_k-weight) var(--_k-type-small)/var(--kw-line) var(--_k-mono);font-variant-numeric:tabular-nums;color:var(--_k-fg-3)}
@@ -452,7 +462,7 @@ export const walkthroughCss = `
 .knobs-wt-tablebox{min-width:0}
 /* A row with a step goes there: the whole row, a wash under the pointer, no arrow, so rows with and
    without one line up. */
-.knobs-wt-tablebox [data-go]{cursor:pointer;outline:none}
+.knobs-wt-tablebox [data-go]{cursor:default;outline:none}
 .knobs-wt-tablebox tr[data-go]>td,.knobs-wt-trow[data-go]{transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-wt-tablebox tr[data-go]:is(:hover,:focus-visible)>td,.knobs-wt-trow[data-go]:is(:hover,:focus-visible){background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-tablebox [data-go]:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
@@ -508,13 +518,18 @@ export const walkthroughCss = `
 .knobs-wt-body:has(>.knobs-wt-chapters){display:flex;flex-direction:column;gap:var(--_k-space-title)}
 .knobs-wt-chapters{position:relative;display:flex;flex-direction:column;margin:0 calc(var(--_k-space-sibling) * -1)}
 .knobs-ui .knobs-wt-chapter{position:relative;display:grid;grid-template-columns:2ch minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;height:32px;padding:0 var(--_k-space-sibling);
-  border-radius:var(--_k-radius);color:var(--_k-fg-2);text-align:left;white-space:nowrap;cursor:pointer;transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-chapter:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+  border-radius:var(--_k-radius);color:var(--_k-fg-2);text-align:left;white-space:nowrap;cursor:default;transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-chapter:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-wt-chapter:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
 .knobs-wt-chapter-n{font-size:var(--_k-type-small);color:var(--_k-fg-3)}
 .knobs-wt-chapter-label{min-width:0;overflow:hidden;${fade}}
 .knobs-wt-chapter-time{font:var(--_k-weight) var(--_k-type-small)/1 var(--_k-mono);color:var(--_k-fg-3)}
 .knobs-pick-copy :is(.knobs-wt-chapter-n,.knobs-wt-chapter-time){color:var(--_k-fg-2)}
+/* Every hover in the walkthrough lands at once (hover-in, 0 ms) and eases out (hover-out): links,
+   buttons, chips, rail, chapter, table and stack rows (its own; the pieces inside keep theirs). */
+:is(.knobs-walkthrough,.knobs-wt-slot) :is(a,button,[data-go])[class*="knobs-wt-"]:is(:hover,:focus-visible),
+.knobs-walkthrough a:not([class]):hover,
+:is(.knobs-walkthrough,.knobs-wt-slot) :is(.knobs-wt-srow,tr)[data-go]:is(:hover,:focus-visible) :is(td,.knobs-wt-stitle){transition-duration:calc(var(--_k-hover-in) * 1ms)}
 @media(prefers-reduced-motion:reduce){:is(.knobs-walkthrough,.knobs-wt-slot) :where(*,::before,::after){transition-duration:.15s!important;transition-property:opacity,background,color!important}}
 @media(prefers-reduced-motion:reduce){.knobs-wt-disc-content{transition:opacity .15s}}
 `

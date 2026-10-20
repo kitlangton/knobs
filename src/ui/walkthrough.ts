@@ -78,6 +78,7 @@ import {
   type WalkthroughState,
   type WalkVoice,
   findPR,
+  issueNumber,
   prNumber,
 } from "./walkthrough-model.js"
 
@@ -1130,12 +1131,15 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     line.append(s)
     return s
   }
-  const findPRIn = (n: string) => findPR(page.prs, n, page.repo)
+  const findPRIn = (n: string, kind: "pr" | "issue" = "pr") => findPR(page.prs, n, page.repo, kind)
   const metaLink = (line: HTMLElement, text: string, href: string) => {
-    // A pull request reads as its chip: state, number, the title on hover.
+    // A pull request or issue reads as its chip: state, number, the title on hover.
     const n = prNumber(href)
-    if (n) {
-      const chip = prChip(doc, n, { href, ...findPRIn(n) })
+    const issue = n ? null : issueNumber(href)
+    if (n || issue) {
+      const chip = n
+        ? prChip(doc, n, { ...findPRIn(n), href })
+        : prChip(doc, issue!, { ...findPRIn(issue!, "issue"), href })
       line.append(chip)
       return chip
     }

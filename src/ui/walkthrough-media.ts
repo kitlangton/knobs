@@ -205,7 +205,6 @@ async function mountCompare(
   fit.style.setProperty("--kw-aspect", String(known ?? DEFAULT_ASPECT))
   const width = host.getBoundingClientRect().width
   const mode = m.mode ?? (width && width < 560 ? "wipe" : "side")
-  fit.toggleAttribute("data-overlay", mode !== "side")
   host.append(fit)
   const [aspect, lib] = await Promise.all([
     known ? Promise.resolve(known) : probeAspect(doc, after.src),
@@ -227,7 +226,6 @@ async function mountCompare(
     ...(aspect ? { aspect } : {}),
     ...(m.strip ? { strip: true } : {}),
     onMode: (next) => {
-      fit.toggleAttribute("data-overlay", next !== "side")
       onEvent?.({ what: "mode", detail: next })
       // The sides glide to their new places; the marks wait out the move, then come back there.
       const layer = marks?.element
@@ -253,6 +251,14 @@ async function mountCompare(
   // Marks on both sides (or the one picture overlaid), through the zoom, at the playhead; they
   // follow every frame while it plays or glides, and rest otherwise.
   const stage = fit.querySelector<HTMLElement>(".knobs-cmp-stage")
+  // What sits round the pictures (the mode bar, the line, their gaps), measured once when it's
+  // first laid out, so the card is exactly the pictures' height plus that, in every mode.
+  if (stage)
+    doc.defaultView?.requestAnimationFrame(() => {
+      const chrome = fit.clientHeight - stage.clientHeight
+      if (alive() && stage.clientHeight > 0 && chrome > 0)
+        fit.style.setProperty("--kw-chrome", `${Math.round(chrome)}px`)
+    })
   if (m.annotations?.length && stage) {
     const shape = { w: aspect ?? DEFAULT_ASPECT, h: 1 }
     marks = annotationLayer(stage, m.annotations, () => {
@@ -334,53 +340,47 @@ const round = (v: number) => Math.round(v * 100) / 100
 const MARK_GLIDE = 450
 const zoomedIn = (z: { w: number; h: number }) => z.w < 0.999 || z.h < 0.999
 
-function mountVideo(
+/** A video through `player()`: the picture, the thin line under it, and its chapters as rows. */
+async function mountVideo(
   host: HTMLElement,
   m: Extract<WalkMedia, { kind: "video" }>,
+  look: UiLook,
+  alive: () => boolean,
   onEvent: OnEvent,
-): Mounted {
+): Promise<Mounted> {
   const doc = host.ownerDocument
-  const frame = div(doc, "knobs-wt-frame")
+  const { player } = await import("./player.js")
+  if (!alive()) return { dispose() {} }
   const aspect = parseAspect(m.aspect)
-  if (aspect) frame.style.setProperty("--kw-aspect", String(aspect))
-  const v = doc.createElement("video")
-  v.controls = true
-  v.loop = true
-  v.muted = true
-  v.playsInline = true
-  v.preload = "metadata"
-  if (m.poster) v.poster = m.poster
-  if (!aspect)
-    v.addEventListener(
-      "loadedmetadata",
-      () =>
-        v.videoWidth &&
-        frame.style.setProperty("--kw-aspect", String(v.videoWidth / v.videoHeight)),
-      { once: true },
-    )
-  if (m.captions) {
-    const track = doc.createElement("track")
-    track.kind = "captions"
-    track.label = "Captions"
-    track.srclang = doc.documentElement.lang || "en"
-    track.default = true
-    track.src = m.captions
-    v.append(track)
-  }
-  v.src = m.src
-  v.addEventListener("play", () => onEvent?.({ what: "play", time: round(v.currentTime) }))
-  v.addEventListener("pause", () => onEvent?.({ what: "pause", time: round(v.currentTime) }))
-  v.addEventListener("seeked", () => {
-    if (v.paused) onEvent?.({ what: "seek", time: round(v.currentTime) })
+  let pills: ChapterPills | null = null
+  let marking: ReturnType<typeof follow> | null = null
+  const p = player(host, {
+    ...look,
+    src: m.src,
+    ...(m.poster ? { poster: m.poster } : {}),
+    ...(m.captions ? { captions: m.captions } : {}),
+    ...(aspect ? { aspect } : {}),
+    ...(m.label ? { label: m.label } : {}),
+    ...(m.chapters?.length
+      ? { chapters: m.chapters.map((c) => ({ label: c.label, start: c.start, ...(c.id ? { id: c.id } : {}) })) }
+      : {}),
+    onPlay: (on, time) => {
+      marking?.kick()
+      onEvent?.({ what: on ? "play" : "pause", time: round(time) })
+    },
+    onSeek: (time) => {
+      pills?.sync()
+      marking?.kick()
+      onEvent?.({ what: "seek", time: round(time) })
+    },
   })
-  frame.append(v)
-  host.append(frame)
-  const pills: ChapterPills | null = m.chapters?.length
+  const v = p.video
+  pills = m.chapters?.length
     ? chapterPills(host, m.chapters, {
-        now: () => v.currentTime,
+        now: () => p.time,
         seek: (t) => {
-          v.currentTime = t
-          void v.play().catch(() => {})
+          p.seek(t, { glide: true })
+          p.play()
         },
         onEvent,
       })
@@ -388,6 +388,7 @@ function mountVideo(
   const sync = () => pills?.sync()
   if (pills) for (const type of ["timeupdate", "seeking", "seeked"]) v.addEventListener(type, sync)
   // Marks follow the playhead every frame while it plays, and once on a seek.
+  const frame = p.element.querySelector<HTMLElement>(".knobs-player-frame") ?? p.element
   const marks = m.annotations?.length
     ? annotationLayer(frame, m.annotations, () => ({
         rects: [
@@ -396,33 +397,29 @@ function mountVideo(
             { w: v.videoWidth, h: v.videoHeight },
           ),
         ],
-        time: v.currentTime,
+        time: p.time,
       }))
     : null
-  const marking = marks ? follow(doc.defaultView!, () => !v.paused, () => marks.update()) : null
-  if (marking)
-    for (const type of ["play", "seeked", "loadedmetadata", "timeupdate"])
-      v.addEventListener(type, () => marking.kick())
+  if (marks) {
+    marking = follow(doc.defaultView!, () => p.playing, () => marks.update())
+    for (const type of ["seeked", "loadedmetadata", "timeupdate"])
+      v.addEventListener(type, () => marking?.kick())
+  }
   return {
-    pause: () => v.pause(),
-    seekBy: (d) => {
-      v.currentTime = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + d))
-    },
+    pause: () => p.pause(),
+    seekBy: (d) => p.seekBy(d),
     context: () => ({
       kind: "video",
-      time: round(v.currentTime),
-      ...(Number.isFinite(v.duration) ? { duration: round(v.duration) } : {}),
-      playing: !v.paused,
+      time: round(p.time),
+      ...(p.duration ? { duration: round(p.duration) } : {}),
+      playing: p.playing,
       ...(pills?.current ? { chapter: pills.current.label } : {}),
     }),
     dispose: () => {
       marking?.stop()
       marks?.dispose()
       pills?.dispose()
-      v.pause()
-      v.removeAttribute("src")
-      v.load()
-      frame.remove()
+      p.dispose()
     },
   }
 }
@@ -712,7 +709,7 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
       case "diff":
         return void mountDiff(host, m, look, alive, options.onEvent).then(done, fail("diff"))
       case "video":
-        return done(mountVideo(host, m, options.onEvent))
+        return void mountVideo(host, m, look, alive, options.onEvent).then(done, fail("video"))
       case "image":
         return done(mountImage(host, m))
       case "code":
