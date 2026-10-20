@@ -294,10 +294,6 @@ const css = `
 .knobs-timeline[data-scrubbing] .knobs-tl-hover{opacity:0}
 @media(prefers-reduced-motion:reduce){.knobs-timeline :where(*,::before,::after){transition:none!important}}
 @media(prefers-reduced-motion:reduce){:is(.knobs-tree,.knobs-split>.knobs-divider,.knobs-pane-head,.knobs-pane-rail) :where(*,::before,::after){transition:none!important}}
-`
-
-/** The pieces' stylesheet, as `injectUiStyles` writes it (after the token sheet). */
-export const uiCss = () =>
 .knobs-tl-tag{position:absolute;left:0;bottom:2px;font-size:var(--_k-text-meta);line-height:16px;color:var(--_k-fg);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;pointer-events:none;opacity:0}
 .knobs-tl-tag[data-on]{opacity:1}
 /* The lane (variant: "lane"): one slim track of ticks under a compare or a video; markers are
@@ -313,10 +309,20 @@ export const uiCss = () =>
 .knobs-timeline[data-variant="lane"] .knobs-tl-head::before{top:0}
 .knobs-timeline[data-variant="lane"] .knobs-tl-head::after{content:none}
 .knobs-timeline[data-variant="lane"] .knobs-tl-tag{top:2px;bottom:auto}
+`
+
+/** The pieces' stylesheet, as `injectUiStyles` writes it (after the token sheet). */
+export const uiCss = () =>
   aliased(
-    css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + selectionPillCss,
-  ) +
-  rollingCss
+    css +
+      readoutCss +
+      overlayCss +
+      bentoCss +
+      activityCss +
+      pickerCss +
+      compareCss +
+      selectionPillCss,
+  ) + rollingCss
 
 /** Adds the pieces' stylesheet once per document. */
 export function injectUiStyles(doc: Document) {
