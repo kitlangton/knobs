@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { APCA_BUDGET, defineTheme } from "../src/themes/define.js"
 import { knobs } from "../src/themes/knobs.js"
+import { reviewTheme } from "../src/themes/review.js"
 import { voidTheme } from "../src/themes/void.js"
 import { apca, TOKENS, type TokenDef } from "../src/tokens/index.js"
 
@@ -15,6 +16,7 @@ const slate = defineTheme({
 const themes = [
   knobs,
   voidTheme,
+  reviewTheme,
   slate,
   defineTheme({ name: "soft", extends: knobs, contrast: 0 }),
   defineTheme({ name: "hard", extends: knobs, contrast: 100 }),
@@ -32,6 +34,22 @@ describe("APCA budget", () => {
           ).toBeGreaterThanOrEqual(floor)
         expect(apca(t["on-accent"], t.accent)).toBeGreaterThanOrEqual(60)
       })
+})
+
+describe("the review look's hairlines", () => {
+  // Kit: "it's really hard to see some of these borders". Every hairline reads against the page
+  // it sits on: subtle about Lc 9, default about 12, strong past the Lc 15 divider floor.
+  for (const appearance of ["dark", "light"] as const)
+    it(appearance, () => {
+      const t = reviewTheme[appearance]
+      const lc = (role: "border-subtle" | "border" | "border-strong") => apca(t[role], t["bg-page"])
+      expect(lc("border-subtle")).toBeGreaterThanOrEqual(8)
+      expect(lc("border-subtle")).toBeLessThanOrEqual(11)
+      expect(lc("border")).toBeGreaterThanOrEqual(11)
+      expect(lc("border")).toBeLessThanOrEqual(14)
+      expect(lc("border-strong")).toBeGreaterThanOrEqual(15)
+      expect(t["bg-page"]).toBe(t.bg)
+    })
 })
 
 describe("the shipped looks", () => {
@@ -117,7 +135,7 @@ describe("defineTheme", () => {
   })
 
   it("contrast spreads the inks", () => {
-    const [soft, hard] = themes.slice(3)
+    const [soft, hard] = themes.slice(4)
     expect(apca(hard!.dark["fg-3"], hard!.dark.bg)).toBeGreaterThan(
       apca(knobs.dark["fg-3"], knobs.dark.bg),
     )

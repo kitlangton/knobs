@@ -219,7 +219,9 @@ describe("layout", () => {
       /@container knobs-wt \(max-width:960px\)\{\.knobs-walkthrough\[data-rail\] \.knobs-wt-layout\{grid-template-columns:minmax\(0,1fr\)/,
     )
     const src = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough.ts"), "utf8")
-    expect(src).toMatch(/root\.dataset\.rail = options\.rail === false \? "none" : options\.rail === "right" \? "right" : "left"/)
+    expect(src).toMatch(
+      /root\.dataset\.rail =\s+options\.rail === false \? "none" : options\.rail === "right" \? "right" : "left"/,
+    )
   })
 })
 

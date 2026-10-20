@@ -10,6 +10,7 @@ import { reducedMotion } from "../core/motion.js"
 import { icon } from "./icons.js"
 import { annotationLayer, type AnnotationLayer, type Rect } from "./walkthrough-annotations.js"
 import { applyLook, type UiLook } from "./look.js"
+import { reviewLook } from "./review-look.js"
 import { walkthroughCss } from "./walkthrough-css.js"
 import {
   chapterPills,
@@ -262,7 +263,11 @@ async function mountCompare(
   if (m.annotations?.length && stage) {
     const shape = { w: aspect ?? DEFAULT_ASPECT, h: 1 }
     marks = annotationLayer(stage, m.annotations, () => {
-      const l = compareLayout({ x: 0, y: 0, w: stage.clientWidth, h: stage.clientHeight }, shape, shape)
+      const l = compareLayout(
+        { x: 0, y: 0, w: stage.clientWidth, h: stage.clientHeight },
+        shape,
+        shape,
+      )
       return {
         rects: c.mode === "side" ? [l.side.before, l.side.after] : [l.overlay.after],
         view: c.zoom,
@@ -270,7 +275,11 @@ async function mountCompare(
       }
     })
     const layer = marks
-    marking = follow(doc.defaultView!, () => c.playing, () => layer.update())
+    marking = follow(
+      doc.defaultView!,
+      () => c.playing,
+      () => layer.update(),
+    )
   }
   const chapters = m.chapters?.length ? m.chapters : null
   if (chapters)
@@ -362,7 +371,13 @@ async function mountVideo(
     ...(aspect ? { aspect } : {}),
     ...(m.label ? { label: m.label } : {}),
     ...(m.chapters?.length
-      ? { chapters: m.chapters.map((c) => ({ label: c.label, start: c.start, ...(c.id ? { id: c.id } : {}) })) }
+      ? {
+          chapters: m.chapters.map((c) => ({
+            label: c.label,
+            start: c.start,
+            ...(c.id ? { id: c.id } : {}),
+          })),
+        }
       : {}),
     onPlay: (on, time) => {
       marking?.kick()
@@ -401,7 +416,11 @@ async function mountVideo(
       }))
     : null
   if (marks) {
-    marking = follow(doc.defaultView!, () => p.playing, () => marks.update())
+    marking = follow(
+      doc.defaultView!,
+      () => p.playing,
+      () => marks.update(),
+    )
     for (const type of ["seeked", "loadedmetadata", "timeupdate"])
       v.addEventListener(type, () => marking?.kick())
   }
@@ -628,9 +647,10 @@ const RELEASES = new Set(["compare", "video"])
 
 const labelOf = (m: WalkMedia) => ("label" in m && m.kind !== "metric" ? m.label : undefined)
 
-export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): MediaSlot {
+export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): MediaSlot {
   const doc = container.ownerDocument
   injectWalkthroughStyles(doc)
+  const options = reviewLook(given, container)
   const look: UiLook = {
     ...(options.preset ? { preset: options.preset } : {}),
     ...(options.theme ? { theme: options.theme } : {}),

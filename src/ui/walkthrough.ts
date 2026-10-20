@@ -28,6 +28,7 @@ import {
   tune,
   type UiLook,
 } from "./look.js"
+import { reviewLook } from "./review-look.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
 import { annotationsOn, setAnnotations } from "./walkthrough-annotations.js"
@@ -159,9 +160,10 @@ export interface TasteTest {
  * A vs B (or more): each option's letter, label and media side by side (stacking where it's
  * narrow). The picked one takes a check and a wash; the others step back.
  */
-export function tasteTest(container: HTMLElement, options: TasteTestOptions): TasteTest {
+export function tasteTest(container: HTMLElement, given: TasteTestOptions): TasteTest {
   const doc = container.ownerDocument
   injectWalkthroughStyles(doc)
+  const options = reviewLook(given, container)
   const look = lookOf(options)
   const list: WalkOption[] = options.options.map((o, i) =>
     "letter" in o
@@ -347,10 +349,11 @@ function scrollerOf(el: HTMLElement): HTMLElement {
   return (doc.scrollingElement as HTMLElement) ?? doc.documentElement
 }
 
-export function walkthrough(container: HTMLElement, options: WalkthroughOptions): Walkthrough {
+export function walkthrough(container: HTMLElement, given: WalkthroughOptions): Walkthrough {
   const doc = container.ownerDocument
   const win = doc.defaultView!
   injectWalkthroughStyles(doc)
+  const options = reviewLook(given, container)
   const look = lookOf(options)
   const storage = options.storage === undefined ? browserStorage() : options.storage
   const root = el(doc, "div", "knobs-walkthrough")
@@ -856,7 +859,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     box.inert = !open
     launch.inert = open
     /** Nothing written, recorded or drawn: the bar may fold away. */
-    const empty = () => !input.value.trim() && !voice.pending && !voice.recorder && !ink.on && !ink.paths.length
+    const empty = () =>
+      !input.value.trim() && !voice.pending && !voice.recorder && !ink.on && !ink.paths.length
     const onOutside = (e: PointerEvent) => {
       if (open && noteMode === "collapsed" && !dock.contains(e.target as Node) && empty())
         setOpen(false)
@@ -1226,7 +1230,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     views = []
     root.textContent = ""
     root.removeAttribute("data-settled")
-    root.dataset.rail = options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
+    root.dataset.rail =
+      options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
     root.toggleAttribute("data-cards", options.cards === true)
     root.toggleAttribute("data-review", review)
     const layout = el(doc, "div", "knobs-wt-layout")
@@ -1349,7 +1354,12 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         group = el(doc, "div", "knobs-wt-toc-group")
         const first = section.steps[0]?.key
         group.append(
-          tocRow(plainMarkdown(section.title), false, () => (first ? go(first) : undefined), section.id),
+          tocRow(
+            plainMarkdown(section.title),
+            false,
+            () => (first ? go(first) : undefined),
+            section.id,
+          ),
         )
         tocEl.append(group)
       }
@@ -1396,7 +1406,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   const more = (text: string) => {
     const box = el(doc, "div", "knobs-wt-more")
     const body = el(doc, "div", "knobs-wt-more-text")
-    for (const para of text.split(/\n\s*\n/)) if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
+    for (const para of text.split(/\n\s*\n/))
+      if (para.trim()) body.append(prose(doc, "p", "", para.trim()))
     discs.push(disclosure(box, { label: "More", content: body }))
     return box
   }
@@ -1483,7 +1494,9 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       media = el(doc, "div", "knobs-wt-media")
       media.style.setProperty("--kw-n", String(Math.min(step.media.length, step.columns)))
       for (const m of step.media)
-        slots.push(mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks, findPR: findPRIn }))
+        slots.push(
+          mediaSlot(media, { ...look, media: m, onEvent, steps: stepLinks, findPR: findPRIn }),
+        )
       card.append(media)
     }
     let taste: TasteTest | null = null
