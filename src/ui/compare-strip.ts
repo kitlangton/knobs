@@ -15,7 +15,7 @@ import {
 } from "./compare-model.js"
 import type { CompareSource } from "./compare.js"
 import { applyLook, type UiLook } from "./look.js"
-import { parseCssColor } from "./rgba.js"
+import { parseCssColor, tokenCss } from "./rgba.js"
 import type { Timeline } from "./timeline.js"
 import { frameTime } from "./timeline-model.js"
 
@@ -196,10 +196,10 @@ export function compareStrip(container: HTMLElement, options: CompareStripOption
   const readColors = () => {
     const cs = win.getComputedStyle(root)
     colors = {
-      surface: rgba(cs.getPropertyValue("--ku-surface"), [1, 1, 1, 0.055]),
-      accent: rgba(cs.getPropertyValue("--ku-accent"), [1, 1, 1, 1]),
-      diff: rgba(cs.getPropertyValue("--ku-cmp-diff"), [0.49, 0.81, 0.61, 1]),
-      wash: rgba(cs.getPropertyValue("--ku-surface-hi"), [1, 1, 1, 0.11]),
+      surface: rgba(tokenCss(cs, "--kv-fill", ""), [1, 1, 1, 0.055]),
+      accent: rgba(tokenCss(cs, "--kv-accent", ""), [1, 1, 1, 1]),
+      diff: rgba(tokenCss(cs, "--_ku-cmp-diff", ""), [0.49, 0.81, 0.61, 1]),
+      wash: rgba(tokenCss(cs, "--kv-fill-selected", ""), [1, 1, 1, 0.11]),
     }
   }
   let hover: number | null = null

@@ -80,3 +80,47 @@ export const mixRgba = (a: Rgba, b: Rgba, t: number): Rgba => {
 
 export const rgbaCss = (c: Rgba) =>
   `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${Math.round(c[3] * 1000) / 1000})`
+
+/**
+ * A token's computed value with each `light-dark(a, b)` in it (as theme colours arrive in custom
+ * properties) replaced by the side `light` picks, so a canvas can parse it.
+ */
+export function pickScheme(raw: string, light: boolean): string {
+  let s = raw
+  for (let at = s.lastIndexOf("light-dark("); at >= 0; at = s.lastIndexOf("light-dark(")) {
+    let depth = 0
+    let comma = -1
+    let end = -1
+    for (let i = at + 11; i < s.length; i++) {
+      const ch = s[i]
+      if (ch === "(") depth++
+      else if (ch === ")") {
+        if (depth === 0) {
+          end = i
+          break
+        }
+        depth--
+      } else if (ch === "," && depth === 0 && comma < 0) comma = i
+    }
+    if (end < 0 || comma < 0) break
+    const side = light ? s.slice(at + 11, comma) : s.slice(comma + 1, end)
+    s = s.slice(0, at) + side.trim() + s.slice(end + 1)
+  }
+  return s
+}
+
+/** Whether a knobs root (or anything in one) shows its light appearance. */
+export const isLightStyle = (style: CSSStyleDeclaration) =>
+  style.getPropertyValue("--_k-light").trim() === "1"
+
+/** A colour token (`--kv-fg`, `--_k-warn`) as `style`'s element shows it. */
+export function tokenColor(style: CSSStyleDeclaration, name: string, fallback: Rgba): Rgba {
+  const raw = style.getPropertyValue(name).trim()
+  return raw ? parseCssColor(pickScheme(raw, isLightStyle(style)), fallback) : fallback
+}
+
+/** A colour token as CSS a canvas takes, or `fallback`. */
+export function tokenCss(style: CSSStyleDeclaration, name: string, fallback: string): string {
+  const raw = style.getPropertyValue(name).trim()
+  return raw ? pickScheme(raw, isLightStyle(style)) : fallback
+}

@@ -244,7 +244,7 @@ test("variations swap descriptors in place; another item lands", async ({ page }
   await expect(size).toHaveAttribute("aria-valuenow", "120")
   const fill = await params(page)
     .locator('[data-field="size"] .knobs-fill')
-    .evaluate((el) => getComputedStyle(el).getPropertyValue("--k-fill"))
+    .evaluate((el) => getComputedStyle(el).getPropertyValue("--_k-fill-at"))
   expect(parseFloat(fill)).toBeCloseTo(((120 - 24) / 136) * 100, 0)
   await expect(root).not.toHaveAttribute("data-landing", "")
 })

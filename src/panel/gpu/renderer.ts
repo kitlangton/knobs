@@ -45,7 +45,7 @@ import type { ReadoutFont, ReadoutView } from "../../ui/readouts.js"
 
 /** Tokens whose glide moves layout, so cached rects can't be trusted while they run. */
 const LAYOUT_TOKENS = new Set(
-  ["width", "pad", "inset", "row", "gap", "font-size", "label-weight"].map((t) => `--kt-${t}`),
+  ["width", "pad", "inset", "row", "gap", "font-size", "weight-label"].map((t) => `--kt-${t}`),
 )
 
 /** `r` moved `dx` px sideways (a give, see give.ts). */

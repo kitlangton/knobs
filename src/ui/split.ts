@@ -387,7 +387,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     return row ? r.width : r.height
   }
   const total = () => along(root)
-  // A card sits half a gap inside its slot (--ku-pane-m; 0 in the flat frame).
+  // A card sits half a gap inside its slot (--_ku-pane-m; 0 in the flat frame).
   let paneM = 0
   const marginOf = (v: View) => (v.el.hasAttribute("data-nested") ? 0 : paneM)
   const headerSize = (v: View) => (v.head ? v.headPx + marginOf(v) * 2 : 0)
@@ -398,7 +398,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
     syncFrame(root)
     const probe = doc.createElement("div")
     probe.style.cssText =
-      "position:absolute;visibility:hidden;width:var(--ku-rail);height:var(--ku-pane-m)"
+      "position:absolute;visibility:hidden;width:var(--_ku-rail);height:var(--_ku-pane-m)"
     root.append(probe)
     const r = probe.getBoundingClientRect()
     paneM = r.height
@@ -544,7 +544,7 @@ export function split(container: HTMLElement, options: SplitOptions): Split {
       put(
         label,
         "color",
-        k === 0 ? "" : `color-mix(in srgb,var(--ku-text) ${(k * 100).toFixed(1)}%,var(--ku-label))`,
+        k === 0 ? "" : `color-mix(in srgb,var(--kv-fg) ${(k * 100).toFixed(1)}%,var(--kv-fg-2))`,
       )
     } else {
       put(label, "transform", "")

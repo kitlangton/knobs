@@ -1,6 +1,7 @@
 import type { ControlDescriptor, RemoteControls } from "./remote.js"
 import type { Choice, Schema, State, Values } from "./schema.js"
-import type { Controls, DensityMode, MountPanelOptions, ThemeMode } from "./store.js"
+import type { Controls, DensityMode, MountPanelOptions } from "./store.js"
+import { applyLook, type LookOptions, resolveLook } from "./appearance.js"
 
 export type ChoiceKey<S extends Schema> = {
   [K in keyof S]: S[K] extends Choice ? K : never
@@ -20,15 +21,20 @@ export type KnobsPanelProps<S extends Schema = Schema> = MountPanelOptions & {
   land?: boolean
 }
 
+/** The look a panel takes: its props' over its store's. */
+export const panelLook = <S extends Schema>(controls: Controls<S>, look: LookOptions = {}) =>
+  resolveLook(look, resolveLook({ theme: controls.theme, appearance: controls.appearance }))
+
+/** Restyles the mounted panel in place (theme, appearance, preset, density), so its tokens glide. */
 export function syncPanelLook<S extends Schema>(
   host: HTMLElement | null | undefined,
   controls: Controls<S>,
-  theme?: ThemeMode,
+  look: LookOptions = {},
   density?: DensityMode,
 ): void {
   const panel = host?.firstElementChild as HTMLElement | null | undefined
   if (!panel) return
-  panel.dataset.theme = theme ?? controls.theme
+  applyLook(panel, panelLook(controls, look))
   panel.dataset.density = density ?? controls.density
 }
 
@@ -52,8 +58,9 @@ export function mountPanelAdapter<S extends Schema>(
   const p = getProps()
   return controls.mount(host, {
     title: p.title,
-    // Theme and density restyle the mounted panel in place, so its tokens glide.
+    // Theme, appearance and density restyle the mounted panel in place, so its tokens glide.
     theme: p.theme,
+    appearance: p.appearance,
     density: p.density,
     renderer: p.renderer,
     variants: p.variants,
@@ -68,7 +75,7 @@ export function mountPanelAdapter<S extends Schema>(
     onClose: p.onClose ? () => getProps().onClose?.() : undefined,
     onReady(panel) {
       const cur = getProps()
-      syncPanelLook(host, controls, cur.theme, cur.density)
+      syncPanelLook(host, controls, cur, cur.density)
       cur.onReady?.(panel)
     },
   })

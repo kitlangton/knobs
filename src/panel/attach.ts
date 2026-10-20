@@ -1,4 +1,6 @@
 import type { ChipOptions, Controls } from "../core/store.js"
+import { applyLook, type Look, resolveLook } from "../core/appearance.js"
+import { panelLook } from "../core/adapter.js"
 import type { Schema } from "../core/schema.js"
 import { iconSvg } from "./icons.js"
 import type { Panel } from "./panel.js"
@@ -20,7 +22,7 @@ export function attach<S extends Schema>(
   const shortcut = options.shortcut ?? controls.chip.shortcut
   const chip = doc.createElement("button")
   chip.className = "knobs-root knobs-chip"
-  chip.dataset.theme = controls.theme
+  applyLook(chip, panelLook(controls))
   chip.type = "button"
   /** The cog, with the label beside it when there is one. */
   const renderFace = (text: string | undefined) => {
@@ -172,7 +174,7 @@ export function attach<S extends Schema>(
     update()
   }
   const offShortcut =
-    reveal === "shortcut" ? listenForShortcut(win, shortcut, controls.theme) : undefined
+    reveal === "shortcut" ? listenForShortcut(win, shortcut, panelLook(controls)) : undefined
   win.addEventListener(MODE_EVENT, onMode)
   // The page's toggle key hides the chip with the panels (its own panel hides itself).
   const toggled = controls.toggleKey
@@ -252,7 +254,7 @@ export function matchShortcut(shortcut: string): (event: KeyboardEvent) => boole
  * Toggles knobs mode on `shortcut` from anywhere on the page, except while typing in a field.
  * Several stores may listen for the same key: the first to see a press claims it.
  */
-function listenForShortcut(win: Window, shortcut: string, theme: string): () => void {
+function listenForShortcut(win: Window, shortcut: string, look: Look): () => void {
   const matches = matchShortcut(shortcut)
   const onKey = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.repeat || !matches(event)) return
@@ -266,7 +268,7 @@ function listenForShortcut(win: Window, shortcut: string, theme: string): () => 
     } catch {
       /* The mode still applies until reload. */
     }
-    showStatus(win.document, on ? "knobs on" : "knobs off", theme)
+    showStatus(win.document, on ? "knobs on" : "knobs off", look)
     win.dispatchEvent(new CustomEvent(MODE_EVENT))
   }
   win.addEventListener("keydown", onKey, true)
@@ -276,14 +278,13 @@ function listenForShortcut(win: Window, shortcut: string, theme: string): () => 
 /** A brief status at the bottom of the page, as knobs mode's "knobs on" ("knobs unlocked"). */
 export function status(text: string, doc: Document = document) {
   injectStyles(doc)
-  const light = doc.defaultView?.matchMedia("(prefers-color-scheme: light)").matches
-  showStatus(doc, text, light ? "light" : "dark")
+  showStatus(doc, text, resolveLook())
 }
 
 const statusTimers = new WeakMap<Document, ReturnType<typeof setTimeout>>()
 
 /** A small transient status at the bottom of the page. */
-function showStatus(doc: Document, text: string, theme: string) {
+function showStatus(doc: Document, text: string, look: Look) {
   let toast = doc.querySelector<HTMLElement>(".knobs-notice")
   if (!toast) {
     toast = doc.createElement("div")
@@ -293,7 +294,7 @@ function showStatus(doc: Document, text: string, theme: string) {
     doc.body.append(toast)
     toast.getBoundingClientRect()
   }
-  toast.dataset.theme = theme
+  applyLook(toast, look)
   toast.textContent = text
   toast.dataset.shown = "true"
   clearTimeout(statusTimers.get(doc))

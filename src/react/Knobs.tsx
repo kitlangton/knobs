@@ -50,7 +50,7 @@ export function Knobs<S extends Schema>({
   return cloneElement(children, { ref })
 }
 export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>) {
-  const { controls, descriptors, values, land, theme, density } = props
+  const { controls, descriptors, values, land, theme, appearance, preset, density } = props
   const enabled = useSyncExternalStore(
     controls.subscribe,
     () => controls.enabled,
@@ -68,8 +68,8 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>) {
     syncPanelValues(controls, descriptors, values, Boolean(land))
   }, [enabled, controls, descriptors, values, land])
   useEffect(() => {
-    syncPanelLook(ref.current, controls, theme, density)
-  }, [controls, theme, density])
+    syncPanelLook(ref.current, controls, { theme, appearance, preset }, density)
+  }, [controls, theme, appearance, preset, density])
   if (!enabled) return null
   return <div ref={ref} data-knobs-mount={controls.id} />
 }

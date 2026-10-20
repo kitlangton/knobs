@@ -163,7 +163,7 @@ export function createPresence(
       if (!root.dataset.presence || root.hidden) return undefined
       const look = presenceLook(spring.x, inline, reduced)
       const r = root.getBoundingClientRect()
-      radius ??= parseFloat(win.getComputedStyle(root).getPropertyValue("--kv-panel-radius")) || 12
+      radius ??= parseFloat(win.getComputedStyle(root).getPropertyValue("--kv-radius-panel")) || 12
       const s = look.scale
       const ox = r.left + r.width / 2
       const oy = inline ? r.top : r.top + r.height / 2

@@ -286,15 +286,16 @@ export function morphFromChip(
     if (shape) return shape
     const cs = getComputedStyle(root)
     // A square panel (radius 0, as labPreset's) stays square: 0 is a radius, not a missing one.
-    const r = parseFloat(cs.getPropertyValue("--kv-panel-radius"))
+    const r = parseFloat(cs.getPropertyValue("--kv-radius-panel"))
     if (Number.isFinite(r)) panelRadius = r
     shape = doc.createElement("div")
     shape.className = "knobs-root knobs-morph"
     shape.setAttribute("aria-hidden", "true")
-    for (const t of ["bg", "line", "rim", "edge", "glass", "glass-tone"])
+    for (const t of ["bg", "border", "rim", "border-subtle", "glass", "glass-tone"])
       shape.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))
-    shape.style.setProperty("--k-shadow", cs.getPropertyValue("--k-shadow"))
-    shape.style.setProperty("--k-shadow-strength", cs.getPropertyValue("--k-shadow-strength"))
+    for (const t of ["--_k-shadow-overlay", "--_k-shadow-k", "--_k-light"])
+      shape.style.setProperty(t, cs.getPropertyValue(t))
+    shape.style.colorScheme = cs.colorScheme
     root.before(shape)
     // The morph is the entrance: the CSS one mustn't start once the chrome comes back.
     root.style.animation = "none"

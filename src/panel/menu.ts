@@ -1,3 +1,7 @@
+import { TOKENS } from "../tokens/schema.js"
+
+const TOKEN_NAMES = TOKENS.map((t) => t.name)
+
 export interface MenuItem {
   readonly label: string
   /** Shown right-aligned, as macOS menus show key equivalents. */
@@ -16,22 +20,26 @@ export interface Menu {
   close(restore?: boolean): void
 }
 
-/** Tokens the menu borrows from its panel, so it matches the panel's theme and any overrides. */
-const TOKENS = [
+/**
+ * The menu borrows its panel's tokens as the panel resolved them (gliding values too), so it
+ * matches the panel's theme, appearance and any overrides wherever it floats.
+ */
+const BORROWED = TOKEN_NAMES.map((t) => `--_k-${t}`)
+const GLIDES = [
   "bg",
-  "surface",
-  "surface-hi",
-  "seg-bg",
-  "line",
-  "text",
-  "label",
-  "dim",
+  "fill",
+  "fill-selected",
+  "segmented-track",
+  "border",
+  "fg",
+  "fg-2",
+  "fg-3",
   "accent",
   "font-size",
   "radius",
   "row",
   "rim",
-]
+].map((t) => `--kv-${t}`)
 
 const reduced = (doc: Document) =>
   doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches ?? false
@@ -68,17 +76,7 @@ export function openMenu(
   menu.setAttribute("role", "menu")
   menu.tabIndex = -1
   const cs = win.getComputedStyle(panel)
-  for (const t of TOKENS) menu.style.setProperty(`--kv-${t}`, cs.getPropertyValue(`--kv-${t}`))
-  for (const t of [
-    "--k-font",
-    "--k-mono",
-    "--k-unit",
-    "--k-shadow",
-    "--k-font-weight",
-    "--k-title-weight",
-    "--k-control-h",
-  ])
-    menu.style.setProperty(t, cs.getPropertyValue(t))
+  for (const t of [...BORROWED, ...GLIDES]) menu.style.setProperty(t, cs.getPropertyValue(t))
   menu.style.colorScheme = cs.colorScheme
 
   let active = -1

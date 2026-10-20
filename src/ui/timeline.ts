@@ -4,6 +4,7 @@
 // add, drag, label and jump between; in/out loop ranges; playback on one rAF clock that moves
 // the playhead every frame and sleeps when nothing moves.
 import { Spring, springMotion } from "../core/spring.js"
+import { tokenCss } from "./rgba.js"
 import { SPRINGS } from "../core/motion.js"
 import { hints } from "../panel/page-hints.js"
 import { contextMenu, type MenuEntry } from "./menu.js"
@@ -242,11 +243,11 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const readColors = () => {
     const cs = win.getComputedStyle(root)
     colors = {
-      tick: cs.getPropertyValue("--ku-line-hi").trim() || "rgba(255,255,255,.18)",
-      major: cs.getPropertyValue("--ku-dim").trim() || "rgba(255,255,255,.42)",
-      label: cs.getPropertyValue("--ku-label").trim() || "rgba(255,255,255,.64)",
-      line: cs.getPropertyValue("--ku-line").trim() || "rgba(255,255,255,.1)",
-      font: `${cs.getPropertyValue("--ku-font-weight").trim() || 400} ${cs.getPropertyValue("--ku-text-meta").trim() || "11px"} ${cs.getPropertyValue("--ku-font").trim() || "system-ui"}`,
+      tick: tokenCss(cs, "--kv-border-strong", "rgba(255,255,255,.18)"),
+      major: tokenCss(cs, "--kv-fg-3", "rgba(255,255,255,.42)"),
+      label: tokenCss(cs, "--kv-fg-2", "rgba(255,255,255,.64)"),
+      line: tokenCss(cs, "--kv-border", "rgba(255,255,255,.1)"),
+      font: `${cs.getPropertyValue("--_k-weight").trim() || 400} ${(Number.parseFloat(cs.fontSize) || 12) - 1}px ${cs.getPropertyValue("--_k-font").trim() || "system-ui"}`,
     }
     drawn = ""
   }

@@ -1,47 +1,35 @@
+import { knobs } from "../themes/knobs.js"
+import { tokensCss } from "../tokens/css.js"
+import { DRIVERS } from "./glide.js"
+import { DEFAULT_LINEAR, motionCss } from "./motion.js"
+
 /**
- * The class every knobs top-level element carries: panels, chips, menus, the status toast, and
- * every knobs/ui piece's root.
+ * The class every knobs top-level element carries: panels, chips, menus, the status notice, and
+ * every knobs/ui piece's root. Each resolves the design tokens for itself (see tokens/css.ts), so
+ * a theme, an appearance or a host's token on any ancestor reaches what's derived from it.
  */
 export const ROOT_CLASS = "knobs-root"
 
-// :root holds only input tokens. Anything derived from another token is derived here, on each
-// knobs root, so an override on a panel, a preset or any ancestor (--k-accent on a light panel,
-// --k-density on a subtree, --k-contrast on one panel) reaches what's derived from it. Derived
-// values take private names (--_k-*), and each still honours its public token where a host sets
-// that (on :root, an ancestor or the element). Every input has a fallback, so a knobs/ui piece
-// without the panel's :root defaults derives the same values.
-//
-// Density scales sizes from their defaults at 1: .875 is compact (28px rows, 8px padding, 3px
-// gaps, 6px corners, 11px type) and 1.1875 comfortable (38, 12, 6, 10 and 13).
-const DENSITY = "var(--k-density,1)"
-const CONTRAST = "var(--k-contrast,1)"
-const derived: Record<string, string> = {
-  surface: `rgba(255,255,255,calc(.055 * ${CONTRAST}))`,
-  "surface-hi": `rgba(255,255,255,calc(.11 * ${CONTRAST}))`,
-  line: `rgba(255,255,255,calc(.1 * ${CONTRAST}))`,
-  "line-hi": `rgba(255,255,255,calc(.18 * ${CONTRAST}))`,
-  edge: `rgba(255,255,255,calc(.07 * ${CONTRAST}))`,
-  "seg-active": "var(--_k-surface-hi)",
-  "toggle-thumb": "var(--k-bg,#1c1c1e)",
-  row: `round(calc(32px * ${DENSITY}),2px)`,
-  pad: `round(calc(10px * ${DENSITY}),2px)`,
-  gap: `round(calc(var(--k-unit,4px) * (1 + (${DENSITY} - 1) * 2.5)),1px)`,
-  radius: `round(calc(8px * (1 + (${DENSITY} - 1) * 1.5)),2px)`,
-  "font-size": `round(calc(12px * (1 + (${DENSITY} - 1) * .5)),1px)`,
-  inset: "var(--_k-pad)",
-  "panel-radius": "calc(var(--_k-radius) + var(--k-unit,4px))",
-  "fill-base": "var(--_k-surface-hi)",
-  "fill-hover-mix": "var(--k-fill-rest-mix,20%)",
-  handle: "var(--k-accent,#fff)",
-  "value-font": 'var(--k-font,system-ui,-apple-system,"SF Pro Text",sans-serif)',
-  "reveal-ease": "var(--k-ease,cubic-bezier(.2,.8,.2,1))",
+// What every knobs root resolves beyond the design tokens: the panel's dials that differ by
+// appearance (numbers, which light-dark() can't pick: --_k-light is 0 or 1), and the slider fill's
+// base. Fixed shadows (a chip's, a tooltip's, a toast's) scale with --_k-shadow-k: as dark as they
+// were on dark, lighter on light.
+const extras = `:where(.${ROOT_CLASS}){--_k-shadow-k:calc(var(--k-shadow-strength,calc(.48 - .32 * var(--_k-light,0))) / .48);--_k-glass-tone:var(--k-glass-tone,calc(.5 + .58 * var(--_k-light,0)));--_k-fill-base:var(--k-fill-base,var(--_k-fill-selected));--_k-fill-hover-mix:var(--k-fill-hover-mix,var(--k-fill-rest-mix,20%));--_k-reveal-ease:var(--k-ease,cubic-bezier(.2,.8,.2,1))}`
+
+// The default spring as CSS (what tokens glide on, and slider fills).
+const spring = `:where(:root,:host){--k-fill-ease:${DEFAULT_LINEAR.easing};--k-fill-ms:${DEFAULT_LINEAR.ms}}`
+
+/**
+ * The token sheet: the Knobs theme's defaults, every root's resolution and appearance, the
+ * drivers that make tokens glide, and the motion tokens.
+ */
+export const rootCss = `${tokensCss(knobs)}\n${extras}\n${spring}\n${DRIVERS}\n${motionCss}`
+
+/** Adds the token sheet once per document. */
+export function injectTokens(doc: Document) {
+  if (doc.querySelector("style[data-knobs-tokens]")) return
+  const style = doc.createElement("style")
+  style.dataset.knobsTokens = ""
+  style.textContent = rootCss
+  doc.head.append(style)
 }
-
-/** Tokens derived on each knobs root: read them as `--_k-<name>`. */
-export const DERIVED_TOKENS: readonly string[] = Object.keys(derived)
-
-// Fixed shadows (a chip's, a tooltip's, a toast's) scale with --k-shadow-strength, the panel
-// shadow's (.48 on dark panels, .16 on light): as dark as they were on dark, lighter on light.
-export const rootCss = `:where(.${ROOT_CLASS}){${Object.entries(derived)
-  .map(([k, v]) => `--_k-${k}:var(--k-${k},${v})`)
-  .join(";")};--_k-shadow-k:calc(var(--k-shadow-strength,.48) / .48)}`

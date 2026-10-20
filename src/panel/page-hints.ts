@@ -522,13 +522,13 @@ function hintTokens(doc: Document, groups: readonly Group[]) {
   const panel = doc.querySelector(".knobs-panel")
   const piece = groups.find((g) => g.source && !g.source.paint)?.source?.root
   const pick = (k: string, fallback: string) =>
-    read(panel, [`--k-${k}`]) || read(piece, [`--ku-${k}`, `--k-${k}`]) || fallback
+    read(panel, [`--_k-${k}`]) || read(piece, [`--_k-${k}`]) || fallback
   return {
     "--kh-accent": pick("accent", "#fff"),
     "--kh-bg": pick("bg", "#1c1c1e"),
     "--kh-mono": pick("mono", "ui-monospace,Menlo,monospace"),
-    "--kh-radius": read(panel, ["--k-radius-sm"]) || "4px",
-    "--kh-size": read(panel, ["--k-text-cap"]) || "10px",
+    "--kh-radius": read(panel, ["--_k-radius-sm"]) || "4px",
+    "--kh-size": read(panel, ["--_k-text-cap"]) || "10px",
     "--kh-typed": read(panel, ["--k-hint-typed-opacity"]) || ".42",
     "--kh-lift": read(panel, ["--k-lift"]) || "1",
     "--kh-ease": read(panel, ["--k-ease"]) || "cubic-bezier(.2,.8,.2,1)",

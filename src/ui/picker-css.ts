@@ -8,39 +8,39 @@ const snappy = springLinear(SPRINGS.snappy)
 export const pickerCss = `
 :where(.knobs-picker,.knobs-picker-option,.knobs-picker-head,.knobs-picker-head *,.knobs-picker-card,.knobs-picker-body){box-sizing:border-box}
 .knobs-ui.knobs-picker{position:relative;display:flex;flex-direction:column;gap:2px;padding:0;outline:none;
-  font:var(--ku-font-weight) var(--ku-font-size)/1.35 var(--ku-font);color:var(--ku-text);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased;
-  --kp-card:var(--k-picker-card,var(--ku-surface));--kp-radius:var(--k-picker-radius,var(--ku-panel-radius));--kp-snappy:${snappy.easing};--kp-snappy-ms:${snappy.ms}ms}
+  font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;letter-spacing:normal;-webkit-font-smoothing:antialiased;
+  --kp-card:var(--_k-picker-card);--kp-radius:var(--k-picker-radius,var(--_k-radius-panel));--kp-snappy:${snappy.easing};--kp-snappy-ms:${snappy.ms}ms}
 .knobs-picker [hidden]{display:none!important}
 /* The selection: one card behind the selected option and its parameters, gliding between them. */
-.knobs-picker-card{position:absolute;left:0;right:0;top:0;height:0;border-radius:var(--kp-radius);background:var(--kp-card);box-shadow:inset 0 0 0 1px var(--ku-line);pointer-events:none}
+.knobs-picker-card{position:absolute;left:0;right:0;top:0;height:0;border-radius:var(--kp-radius);background:var(--kp-card);box-shadow:inset 0 0 0 1px var(--_k-border);pointer-events:none}
 .knobs-picker[data-frame="flat"] .knobs-picker-card{box-shadow:none}
 .knobs-picker-option{position:relative;flex:none}
-:where(.knobs-ui) .knobs-picker-head{all:revert;box-sizing:border-box;position:relative;display:flex;align-items:center;gap:8px;width:100%;height:var(--ku-row);padding:0 calc(var(--ku-inset) - 2px) 0 calc(var(--ku-inset) - 4px);
-  border:0;margin:0;background:transparent;color:var(--ku-label);font:inherit;letter-spacing:inherit;text-align:left;cursor:default;outline:none;user-select:none;-webkit-user-select:none}
+:where(.knobs-ui) .knobs-picker-head{all:revert;box-sizing:border-box;position:relative;display:flex;align-items:center;gap:8px;width:100%;height:var(--_k-row);padding:0 calc(var(--_k-inset) - 2px) 0 calc(var(--_k-inset) - 4px);
+  border:0;margin:0;background:transparent;color:var(--_k-fg-2);font:inherit;letter-spacing:inherit;text-align:left;cursor:default;outline:none;user-select:none;-webkit-user-select:none}
 /* Hover: in at once, out over 100 ms. Keyboard focus: the same wash, a little firmer. */
-.knobs-picker-head::before{content:"";position:absolute;inset:0;border-radius:var(--kp-radius);background:var(--ku-wash);opacity:0;transition:opacity calc(var(--k-hover-out,100) * 1ms) ease-out;pointer-events:none}
-.knobs-picker-option:not([data-selected]) .knobs-picker-head:hover::before{opacity:1;transition-duration:calc(var(--k-hover-in,0) * 1ms)}
-.knobs-picker-head:focus-visible::before{opacity:1;background:var(--ku-wash-hi);transition-duration:0s}
+.knobs-picker-head::before{content:"";position:absolute;inset:0;border-radius:var(--kp-radius);background:var(--_ku-wash);opacity:0;transition:opacity calc(var(--_k-hover-out,100) * 1ms) ease-out;pointer-events:none}
+.knobs-picker-option:not([data-selected]) .knobs-picker-head:hover::before{opacity:1;transition-duration:calc(var(--_k-hover-in,0) * 1ms)}
+.knobs-picker-head:focus-visible::before{opacity:1;background:var(--_ku-wash-hi);transition-duration:0s}
 .knobs-picker-head>*{position:relative}
-.knobs-picker-option[data-selected] .knobs-picker-head{color:var(--ku-text)}
+.knobs-picker-option[data-selected] .knobs-picker-head{color:var(--_k-fg)}
 /* Every row is numbered (only 1–9 are keys): tabular digits in a column two digits wide, so the
    names line up past the ninth. */
-.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;width:max(17px,calc(2ch + 6px));height:17px;padding:0;border-radius:5px;background:var(--ku-surface);
-  color:var(--ku-dim);font:var(--ku-label-weight) calc(var(--ku-font-size) - 1.5px)/1 var(--ku-font);font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
+.knobs-picker-key{flex:none;display:inline-flex;align-items:center;justify-content:center;width:max(17px,calc(2ch + 6px));height:17px;padding:0;border-radius:5px;background:var(--_k-fill);
+  color:var(--_k-fg-3);font:var(--_k-weight-label) calc(var(--_k-font-size) - 1.5px)/1 var(--_k-font);font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
 .knobs-picker-key:empty{visibility:hidden}
 /* An option's picture: cover-fit, the rows' corner language and a hairline drawn over it. Its
    space is kept while it loads (nothing drawn), it fades in once loaded, and one that fails
    gives its space back on the same ease. */
-.knobs-picker-thumb{flex:none;display:block;width:var(--k-picker-thumb,min(24px,calc(var(--ku-row) - 10px)));aspect-ratio:1;margin:0;border-radius:max(3px,calc(var(--ku-radius) - 2px));
-  object-fit:cover;background:none;outline:1px solid var(--ku-line);outline-offset:-1px;opacity:0;
+.knobs-picker-thumb{flex:none;display:block;width:var(--k-picker-thumb,min(24px,calc(var(--_k-row) - 10px)));aspect-ratio:1;margin:0;border-radius:max(3px,calc(var(--_k-radius) - 2px));
+  object-fit:cover;background:none;outline:1px solid var(--_k-border);outline-offset:-1px;opacity:0;
   transition:opacity .2s ease-out,width .18s ease-out,margin .18s ease-out}
 .knobs-picker-thumb[data-state="loaded"]{opacity:1}
 .knobs-picker-thumb[data-instant]{transition:none}
 .knobs-picker-thumb[data-state="failed"]{width:0;margin-right:-8px;outline-color:transparent}
-.knobs-picker-option[data-selected] .knobs-picker-key{background:var(--ku-surface-hi);color:var(--ku-text)}
-.knobs-picker-name{flex:1;min-width:0;overflow:hidden;white-space:nowrap;font-weight:var(--ku-label-weight)}
-.knobs-picker-suggested{flex:none;color:var(--ku-dim);font-size:var(--ku-text-meta)}
-.knobs-picker-check{flex:none;display:flex;width:14px;height:14px;color:var(--ku-accent);opacity:0;scale:.6;filter:blur(2px);
+.knobs-picker-option[data-selected] .knobs-picker-key{background:var(--_k-fill-selected);color:var(--_k-fg)}
+.knobs-picker-name{flex:1;min-width:0;overflow:hidden;white-space:nowrap;font-weight:var(--_k-weight-label)}
+.knobs-picker-suggested{flex:none;color:var(--_k-fg-3);font-size:var(--_k-text-meta)}
+.knobs-picker-check{flex:none;display:flex;width:14px;height:14px;color:var(--_k-accent);opacity:0;scale:.6;filter:blur(2px);
   transition:opacity .11s ease-in,scale .11s ease-in,filter .11s ease-in}
 .knobs-picker-check svg{display:block;width:14px;height:14px}
 .knobs-picker-option[data-chosen] .knobs-picker-check{opacity:1;scale:1;filter:none;transition:opacity .15s ease-out,scale var(--kp-snappy-ms) var(--kp-snappy),filter .15s ease-out}
@@ -52,6 +52,6 @@ export const pickerCss = `
 .knobs-picker-inner{padding:var(--k-picker-pad,0 8px 8px)}
 .knobs-picker-inner:empty{padding:0}
 .knobs-picker-inner .knobs-panel.knobs-inline{--k-chrome:0;padding:0}
-.knobs-picker-empty{padding:8px var(--ku-inset);color:var(--ku-dim)}
+.knobs-picker-empty{padding:8px var(--_k-inset);color:var(--_k-fg-3)}
 @media(prefers-reduced-motion:reduce){.knobs-picker :where(*,::before,::after){transition-duration:.15s!important;scale:none!important;filter:none!important}}
 `

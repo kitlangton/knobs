@@ -7,7 +7,7 @@ function stylesheet() {
   const doc = {
     querySelector: () => null,
     createElement: () => ({ dataset: {}, textContent: "" }),
-    head: { append: (style: { textContent: string }) => (text = style.textContent) },
+    head: { append: (style: { textContent: string }) => (text += style.textContent) },
   }
   injectStyles(doc as unknown as Document)
   return text
@@ -122,15 +122,29 @@ describe("panel stylesheet", () => {
 
   // Derived tokens resolve where they're declared: on :root they'd freeze to :root's inputs, so a
   // light panel's accent, a subtree's density or a panel's contrast wouldn't reach them.
-  it("declares only input tokens on :root", () => {
+  it("declares only the theme's values on :root", () => {
     const root = /:where\(:root,:host\)\{([^}]*)\}/.exec(css)![1]!
     expect(root).toContain("--k-bg:")
     expect(root).not.toMatch(/var\(--_?k-/)
   })
 
-  it("derives on the knobs root", () => {
-    expect(css).toContain(":where(.knobs-root){--_k-surface:var(--k-surface,")
-    expect(css).toContain("--_k-handle:var(--k-handle,var(--k-accent")
+  it("resolves on the knobs root, and the slider handle follows the accent there", () => {
+    expect(css).toContain("--_k-fill:var(--k-surface,var(--ku-surface,var(--k-fill,")
+    expect(css).toContain("--_k-slider-handle:var(--k-handle,var(--k-slider-handle,var(--_k-accent)))")
+  })
+
+  // Components read what the root resolved (or its gliding alias), never a token's public name,
+  // so a host's value anywhere reaches them and an old name a host sets still works.
+  it("reads no design token by its public or deprecated name", () => {
+    const rules = css.slice(css.indexOf(":where(.knobs-panel,.knobs-chip,.knobs-menu){"))
+    for (const name of ["--k-text", "--k-surface", "--k-bg", "--k-accent", "--k-line", "--k-label"])
+      expect(rules, name).not.toContain(`var(${name})`)
+  })
+
+  it("follows the appearance's color-scheme, not a dark default", () => {
+    const rules = css.slice(css.indexOf(":where(.knobs-panel,.knobs-chip,.knobs-menu){"))
+    expect(rules).not.toMatch(/color-scheme:dark/)
+    expect(rules).not.toContain('[data-theme="light"]')
   })
 
   it("sets density as --k-density alone", () => {

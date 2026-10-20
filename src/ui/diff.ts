@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { aliased } from "../core/glide.js"
 import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { browserStorage, storageKey, type StoragePort } from "../core/storage.js"
 import { diffCss } from "./diff-css.js"
@@ -167,7 +168,7 @@ function injectDiffStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-ui-diff]")) return
   const style = doc.createElement("style")
   style.dataset.knobsUiDiff = ""
-  style.textContent = diffCss
+  style.textContent = aliased(diffCss)
   doc.head.append(style)
 }
 
@@ -1352,6 +1353,7 @@ export function diffReview(container: HTMLElement, options: DiffReviewOptions): 
   const look: UiLook = {
     ...(options.preset ? { preset: options.preset } : {}),
     ...(options.theme ? { theme: options.theme } : {}),
+    ...(options.appearance ? { appearance: options.appearance } : {}),
   }
   const title = options.title ?? "Files"
   const store = options.storage === undefined ? browserStorage() : options.storage

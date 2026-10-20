@@ -355,9 +355,9 @@ export function createSlider(
   const reduced = doc.defaultView?.matchMedia("(prefers-reduced-motion: reduce)")
   const writeFill = (ratio: number) => {
     const p = `${ratio * 100}%`
-    fill.style.setProperty("--k-fill", p)
-    handle.style.setProperty("--k-fill", p)
-    ruler.style.setProperty("--k-fill", p)
+    fill.style.setProperty("--_k-fill-at", p)
+    handle.style.setProperty("--_k-fill-at", p)
+    ruler.style.setProperty("--_k-fill-at", p)
   }
   // The DOM moves the fill on CSS transitions, except where it needs the spring itself: a stepped
   // drag's resistance and snap, and edge blur (--k-motion-blur), which needs the edge's speed. Then
@@ -393,7 +393,7 @@ export function createSlider(
     if (frame) return
     // Pick up the edge where any CSS transition has it now (a style read, so only then).
     if (!synced) {
-      const shown = parseFloat(getComputedStyle(fill).getPropertyValue("--k-fill"))
+      const shown = parseFloat(getComputedStyle(fill).getPropertyValue("--_k-fill-at"))
       if (Number.isFinite(shown)) {
         fillSpring.x = shown / 100
         fillSpring.v = 0

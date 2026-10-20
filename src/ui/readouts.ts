@@ -27,10 +27,11 @@ import {
   type Palette,
   type PlotOp,
   SERIES,
+  SERIES_TOKENS,
   sampleAt,
   sparkScene,
 } from "./readout-model.js"
-import { parseCssColor, type Rgba, withAlpha } from "./rgba.js"
+import { parseCssColor, type Rgba, tokenColor, withAlpha } from "./rgba.js"
 import { virtualWindow } from "./tree-model.js"
 
 export type ReadoutFont = "value" | "mono" | "meta"
@@ -145,17 +146,18 @@ export function paletteOf(el: HTMLElement, now = performance.now()): Palette {
   const hit = palettes.get(el)
   if (hit && now - hit.at < 8) return hit.p
   const s = getComputedStyle(el)
-  const c = (name: string, fallback: Rgba) => parseCssColor(s.getPropertyValue(name), fallback)
+  const c = (name: string, fallback: Rgba) => tokenColor(s, name, fallback)
   const p: Palette = {
-    accent: c("--ku-accent", [1, 1, 1, 1]),
-    text: c("--ku-text", [1, 1, 1, 0.92]),
-    label: c("--ku-label", [1, 1, 1, 0.64]),
-    dim: c("--ku-dim", [1, 1, 1, 0.42]),
-    line: c("--ku-line", [1, 1, 1, 0.1]),
-    surfaceHi: c("--ku-surface-hi", [1, 1, 1, 0.11]),
-    warn: c("--ku-warn", [0.96, 0.68, 0.2, 1]),
-    critical: c("--ku-critical", [1, 0.37, 0.34, 1]),
-    radius: Number.parseFloat(s.getPropertyValue("--ku-radius")) || 0,
+    accent: c("--kv-accent", [1, 1, 1, 1]),
+    text: c("--kv-fg", [1, 1, 1, 0.92]),
+    label: c("--kv-fg-2", [1, 1, 1, 0.64]),
+    dim: c("--kv-fg-3", [1, 1, 1, 0.42]),
+    line: c("--kv-border", [1, 1, 1, 0.1]),
+    surfaceHi: c("--kv-fill-selected", [1, 1, 1, 0.11]),
+    warn: c("--_k-warn", [0.96, 0.68, 0.2, 1]),
+    critical: c("--_k-danger", [1, 0.37, 0.34, 1]),
+    series: SERIES_TOKENS.map((name, i) => c(name, parseCssColor(SERIES[i % SERIES.length]!))),
+    radius: Number.parseFloat(s.getPropertyValue("--kv-radius")) || 0,
   }
   palettes.set(el, { at: now, p })
   return p
@@ -636,7 +638,7 @@ function createGraph(env: ReadoutEnv): ReadoutView {
       ? parseCssColor(s.color, p.accent)
       : i === 0
         ? p.accent
-        : parseCssColor(SERIES[(i - 1) % SERIES.length]!)
+        : p.series[(i - 1) % p.series.length]!
   }
   const rt = runtime(env, root, (now, dt) => {
     const rs = rings()

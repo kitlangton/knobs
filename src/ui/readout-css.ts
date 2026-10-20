@@ -6,25 +6,25 @@ export const readoutCss = `
 :where(.knobs-ui) :is(.knobs-rd-chip,.knobs-rd-copy,.knobs-rd-jump,.knobs-rd-find,.knobs-rd-match){all:revert;box-sizing:border-box;
   font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;border-radius:0;margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
 .knobs-ui.knobs-rd,.knobs-rd *{box-sizing:border-box}
-.knobs-ui.knobs-rd{display:flex;align-items:center;gap:8px;min-width:0;color:var(--ku-text);letter-spacing:normal}
-.knobs-rd .knobs-rd-v{font:var(--ku-font-weight) var(--ku-value-size)/1.25 var(--ku-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap}
-.knobs-rd .knobs-rd-mono{font:400 var(--ku-text-meta)/1.25 var(--ku-mono);font-variant-numeric:tabular-nums;white-space:pre}
-.knobs-rd .knobs-rd-meta{font:var(--ku-font-weight) var(--ku-text-meta)/1.25 var(--ku-font);white-space:nowrap}
+.knobs-ui.knobs-rd{display:flex;align-items:center;gap:8px;min-width:0;color:var(--_k-fg);letter-spacing:normal}
+.knobs-rd .knobs-rd-v{font:var(--_k-weight) var(--_k-value-size)/1.25 var(--_k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap}
+.knobs-rd .knobs-rd-mono{font:400 var(--_k-text-meta)/1.25 var(--_k-mono);font-variant-numeric:tabular-nums;white-space:pre}
+.knobs-rd .knobs-rd-meta{font:var(--_k-weight) var(--_k-text-meta)/1.25 var(--_k-font);white-space:nowrap}
 .knobs-rd .knobs-rd-value{display:inline-flex;justify-content:flex-end;align-items:baseline;flex:none;margin-left:auto;contain:layout paint style}
-.knobs-rd .knobs-rd-num{color:var(--ku-text);text-align:right;transition:color .15s}
-.knobs-rd .knobs-rd-unit{margin-left:var(--k-unit-gap,.28em);color:var(--ku-dim)}
+.knobs-rd .knobs-rd-num{color:var(--_k-fg);text-align:right;transition:color .15s}
+.knobs-rd .knobs-rd-unit{margin-left:var(--k-unit-gap,.28em);color:var(--_k-fg-3)}
 .knobs-rd .knobs-rd-unit[hidden]{display:none}
 .knobs-rd.knobs-rd-watch{flex:1 1 auto;justify-content:flex-end}
 .knobs-rd.knobs-rd-spark,.knobs-rd.knobs-rd-meter{flex:0 1 64%;margin-left:auto}
-.knobs-rd .knobs-rd-plot{display:block;flex:1 1 0;min-width:24px;height:max(12px,calc(var(--ku-control-h) - 2px))}
+.knobs-rd .knobs-rd-plot{display:block;flex:1 1 0;min-width:24px;height:max(12px,calc(var(--_k-control-h) - 2px))}
 .knobs-rd.knobs-rd-meter>.knobs-rd-plot{height:8px}
-.knobs-rd.knobs-rd-spark[data-hover] .knobs-rd-num{color:var(--ku-label)}
-.knobs-rd .knobs-rd-cap,.knobs-rd .knobs-rd-head>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ku-label);font-weight:var(--ku-label-weight)}
+.knobs-rd.knobs-rd-spark[data-hover] .knobs-rd-num{color:var(--_k-fg-2)}
+.knobs-rd .knobs-rd-cap,.knobs-rd .knobs-rd-head>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--_k-fg-2);font-weight:var(--_k-weight-label)}
 
 /* Blocks: a head line (the label and what goes with it) over a body. In a panel the row grows to fit. */
 .knobs-panel .knobs-row.knobs-rd-rowblock{display:block;height:auto}
 .knobs-rd.knobs-rd-block{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%}
-.knobs-rd .knobs-rd-head{display:flex;align-items:center;gap:0 10px;min-height:var(--ku-row);min-width:0}
+.knobs-rd .knobs-rd-head{display:flex;align-items:center;gap:0 10px;min-height:var(--_k-row);min-width:0}
 /* The title keeps its words; the legend or tools beside it give way (see fitHead). */
 .knobs-rd .knobs-rd-head>span:first-child{flex:0 0 auto;max-width:100%}
 .knobs-rd .knobs-rd-legend{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0;overflow:hidden}
@@ -32,16 +32,16 @@ export const readoutCss = `
 .knobs-rd .knobs-rd-tools>.knobs-rd-find{flex:1 1 56px;min-width:56px;max-width:84px}
 .knobs-rd .knobs-rd-head[data-short] .knobs-rd-legend .knobs-rd-unit{display:none}
 .knobs-rd .knobs-rd-head[data-wrap]{flex-wrap:wrap;padding-bottom:4px}
-.knobs-rd .knobs-rd-head[data-wrap]>span:first-child{display:flex;align-items:center;min-height:var(--ku-row)}
+.knobs-rd .knobs-rd-head[data-wrap]>span:first-child{display:flex;align-items:center;min-height:var(--_k-row)}
 .knobs-rd .knobs-rd-head[data-wrap]>:is(.knobs-rd-legend,.knobs-rd-tools){flex:1 0 100%;margin-left:0}
 .knobs-rd .knobs-rd-head[data-wrap]>.knobs-rd-tools{flex-wrap:wrap;row-gap:4px}
 .knobs-rd .knobs-rd-key{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .knobs-rd .knobs-rd-swatch{flex:none;width:8px;height:2px;border-radius:1px}
-.knobs-rd .knobs-rd-name{color:var(--ku-label)}
+.knobs-rd .knobs-rd-name{color:var(--_k-fg-2)}
 .knobs-rd .knobs-rd-key>.knobs-rd-value{margin-left:2px}
 .knobs-rd .knobs-rd-plotbox{position:relative;outline:none;margin-bottom:6px}
 .knobs-rd .knobs-rd-plotbox>.knobs-rd-plot{position:absolute;inset:0;width:100%;height:100%;min-width:0}
-.knobs-rd .knobs-rd-tick,.knobs-rd .knobs-rd-mark{position:absolute;color:var(--ku-dim);pointer-events:none;line-height:14px;height:14px}
+.knobs-rd .knobs-rd-tick,.knobs-rd .knobs-rd-mark{position:absolute;color:var(--_k-fg-3);pointer-events:none;line-height:14px;height:14px}
 .knobs-rd .knobs-rd-tick{left:0}
 .knobs-rd .knobs-rd-tick[data-at="top"]{top:-2px}
 .knobs-rd .knobs-rd-tick[data-at="bottom"]{bottom:0}
@@ -50,36 +50,36 @@ export const readoutCss = `
 
 .knobs-rd .knobs-rd-grid{display:grid;column-gap:14px;align-items:center;outline:none;margin-bottom:4px}
 .knobs-rd .knobs-rd-tr{display:contents}
-.knobs-rd .knobs-rd-tr>*{height:calc(var(--ku-row) * .72);line-height:calc(var(--ku-row) * .72);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.knobs-rd .knobs-rd-thead>*{height:var(--ku-row);line-height:var(--ku-row)}
-.knobs-rd .knobs-rd-th{color:var(--ku-dim);text-align:right}
-.knobs-rd .knobs-rd-td{color:var(--ku-text)}
-.knobs-rd .knobs-rd-td:first-child{color:var(--ku-label)}
+.knobs-rd .knobs-rd-tr>*{height:calc(var(--_k-row) * .72);line-height:calc(var(--_k-row) * .72);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-rd .knobs-rd-thead>*{height:var(--_k-row);line-height:var(--_k-row)}
+.knobs-rd .knobs-rd-th{color:var(--_k-fg-3);text-align:right}
+.knobs-rd .knobs-rd-td{color:var(--_k-fg)}
+.knobs-rd .knobs-rd-td:first-child{color:var(--_k-fg-2)}
 .knobs-rd .knobs-rd-td[data-num]{text-align:right}
 
 .knobs-rd.knobs-rd-log{--rd-lh:18px}
 .knobs-rd .knobs-rd-chips{display:inline-flex;align-items:center;gap:2px;margin-right:auto}
-.knobs-ui .knobs-rd-chip,.knobs-ui .knobs-rd-copy{height:calc(var(--ku-control-h) - 2px);padding:0 7px;border-radius:min(var(--ku-radius),5px);color:var(--ku-label);cursor:pointer;transition:background .15s,color .15s}
-.knobs-ui .knobs-rd-chip:hover,.knobs-ui .knobs-rd-copy:hover{background:var(--ku-wash);color:var(--ku-text)}
-.knobs-ui .knobs-rd-chip[aria-checked="true"]{background:var(--ku-wash-hi);color:var(--ku-text)}
-.knobs-ui .knobs-rd-find{width:84px;height:calc(var(--ku-control-h) - 2px);padding:0 7px;border-radius:min(var(--ku-radius),5px);
-  background:color-mix(in srgb,var(--ku-surface-hi) 60%,transparent);color:var(--ku-text);caret-color:var(--ku-accent)}
-.knobs-rd .knobs-rd-find::placeholder{color:var(--ku-dim)}
+.knobs-ui .knobs-rd-chip,.knobs-ui .knobs-rd-copy{height:calc(var(--_k-control-h) - 2px);padding:0 7px;border-radius:min(var(--_k-radius),5px);color:var(--_k-fg-2);cursor:pointer;transition:background .15s,color .15s}
+.knobs-ui .knobs-rd-chip:hover,.knobs-ui .knobs-rd-copy:hover{background:var(--_ku-wash);color:var(--_k-fg)}
+.knobs-ui .knobs-rd-chip[aria-checked="true"]{background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-rd-find{width:84px;height:calc(var(--_k-control-h) - 2px);padding:0 7px;border-radius:min(var(--_k-radius),5px);
+  background:color-mix(in srgb,var(--_k-fill-selected) 60%,transparent);color:var(--_k-fg);caret-color:var(--_k-accent)}
+.knobs-rd .knobs-rd-find::placeholder{color:var(--_k-fg-3)}
 .knobs-rd .knobs-rd-find::-webkit-search-cancel-button{display:none}
 .knobs-rd .knobs-rd-logbody{position:relative;margin-bottom:6px}
 .knobs-rd .knobs-rd-scroll{position:relative;overflow-x:hidden;overflow-y:auto;height:calc(var(--knobs-rd-lines,8) * var(--rd-lh));outline:none;
-  background:color-mix(in srgb,var(--ku-surface-hi) 45%,transparent);border-radius:min(var(--ku-radius),6px);scrollbar-width:thin;overscroll-behavior:contain}
+  background:color-mix(in srgb,var(--_k-fill-selected) 45%,transparent);border-radius:min(var(--_k-radius),6px);scrollbar-width:thin;overscroll-behavior:contain}
 .knobs-rd .knobs-rd-space{position:relative;width:100%}
 .knobs-rd .knobs-rd-line{position:absolute;left:0;right:0;top:0;display:flex;gap:10px;height:var(--rd-lh);line-height:var(--rd-lh);padding:0 8px;contain:layout style;will-change:transform}
 .knobs-rd .knobs-rd-line[hidden]{display:none}
-.knobs-rd .knobs-rd-time{flex:none;color:var(--ku-dim)}
-.knobs-rd .knobs-rd-text{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ku-text)}
-.knobs-rd .knobs-rd-line[data-level="warn"]>.knobs-rd-text{color:var(--ku-warn)}
-.knobs-rd .knobs-rd-line[data-level="error"]>.knobs-rd-text{color:var(--ku-critical)}
-.knobs-rd .knobs-rd-line[data-level="debug"]>.knobs-rd-text{color:var(--ku-dim)}
-.knobs-ui .knobs-rd-match{color:var(--ku-accent)}
-.knobs-ui .knobs-rd-jump{position:absolute;left:50%;bottom:6px;height:20px;padding:0 10px;border-radius:calc(var(--ku-radius) * 999);
-  background:var(--ku-accent);color:var(--ku-bg);opacity:0;transform:translate(-50%,6px);cursor:pointer;white-space:nowrap}
+.knobs-rd .knobs-rd-time{flex:none;color:var(--_k-fg-3)}
+.knobs-rd .knobs-rd-text{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--_k-fg)}
+.knobs-rd .knobs-rd-line[data-level="warn"]>.knobs-rd-text{color:var(--_k-warn)}
+.knobs-rd .knobs-rd-line[data-level="error"]>.knobs-rd-text{color:var(--_k-danger)}
+.knobs-rd .knobs-rd-line[data-level="debug"]>.knobs-rd-text{color:var(--_k-fg-3)}
+.knobs-ui .knobs-rd-match{color:var(--_k-accent)}
+.knobs-ui .knobs-rd-jump{position:absolute;left:50%;bottom:6px;height:20px;padding:0 10px;border-radius:calc(var(--_k-radius) * 999);
+  background:var(--_k-accent);color:var(--_k-bg);opacity:0;transform:translate(-50%,6px);cursor:pointer;white-space:nowrap}
 
 /* Under the GPU overlay the readouts' DOM stays for focus, hit-testing and screen readers; the
    overlay draws them. Their filter field sits above it. */

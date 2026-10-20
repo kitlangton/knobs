@@ -1,4 +1,5 @@
 import { Spring, springMotion } from "../core/spring.js"
+import { applyLook as applyLookAttrs, lookAt } from "../core/appearance.js"
 import { SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
 import { applyLook, frameLoop, ICONS, reducedMotion, syncFrame, type UiLook } from "./look.js"
@@ -221,7 +222,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     syncFrame(root)
     const probe = doc.createElement("div")
     probe.style.cssText =
-      "position:absolute;visibility:hidden;height:var(--ku-row);width:var(--ku-indent);padding-left:var(--ku-inset)"
+      "position:absolute;visibility:hidden;height:var(--_k-row);width:var(--_ku-indent);padding-left:var(--_k-inset)"
     root.append(probe)
     const r = probe.getBoundingClientRect()
     h = options.rowHeight ?? (r.height || 26)
@@ -728,8 +729,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     const ids = topmost(items, access, isSelected(id) ? sel.ids : [id])
     const ghost = doc.createElement("div")
     ghost.className = "knobs-root knobs-ui knobs-tree-ghost"
-    if (options.preset) ghost.dataset.preset = options.preset.name
-    if (options.theme) ghost.dataset.theme = options.theme
+    applyLookAttrs(ghost, lookAt(root))
     ghost.textContent =
       ids.length === 1
         ? (renamed.get(ids[0]!) ?? access.label(index.get(ids[0]!)!.item))

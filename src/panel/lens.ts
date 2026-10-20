@@ -254,7 +254,7 @@ export function createLens(o: LensOptions): Lens {
       const top = Math.max(r.top, o.header?.getBoundingClientRect().bottom ?? 0)
       const bottom = Math.min(r.bottom, win?.innerHeight ?? r.bottom)
       const pad = 8 + inset
-      const radius = parseFloat(getComputedStyle(root).getPropertyValue("--kt-panel-radius")) || 0
+      const radius = parseFloat(getComputedStyle(root).getPropertyValue("--kt-radius-panel")) || 0
       return {
         x: r.left + pad,
         y: top + pad,

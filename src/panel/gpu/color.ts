@@ -1,6 +1,16 @@
 import { springMotion } from "../../core/spring.js"
 import { MOTION } from "../../core/motion.js"
-import { mixRgba as mixColor, parseCssColor, type Rgba, withAlpha } from "../../ui/rgba.js"
+import {
+  isLightStyle,
+  mixRgba as mixColor,
+  parseCssColor,
+  pickScheme,
+  type Rgba,
+  withAlpha,
+} from "../../ui/rgba.js"
+import { themeOf } from "../../core/appearance.js"
+import { knobs } from "../../themes/knobs.js"
+import type { GpuColors, Theme } from "../../themes/define.js"
 
 export { mixColor, parseCssColor, type Rgba, withAlpha }
 
@@ -136,9 +146,17 @@ export interface PanelThemeTokens {
   readonly shadowStrength: number
 }
 
-/** A token as the panel shows it now: the gliding alias (see styles.ts), else the public value. */
+/**
+ * A token as the panel shows it now: the gliding alias (core/glide.ts), else what the knobs root
+ * resolved, else a public value; a theme colour's `light-dark()` resolved for the panel.
+ */
 const token = (style: CSSStyleDeclaration, name: string) =>
-  style.getPropertyValue(`--kv-${name}`) || style.getPropertyValue(`--k-${name}`)
+  pickScheme(
+    style.getPropertyValue(`--kv-${name}`) ||
+      style.getPropertyValue(`--_k-${name}`) ||
+      style.getPropertyValue(`--k-${name}`),
+    isLightStyle(style),
+  )
 
 const numProp = (style: CSSStyleDeclaration, name: string, fallback: number): number => {
   const raw = parseFloat(token(style, name))
@@ -157,7 +175,7 @@ const colorProp = (style: CSSStyleDeclaration, name: string, fallback: Rgba): Rg
 
 const optColor = (style: CSSStyleDeclaration, name: string): Rgba | null => {
   const raw = style.getPropertyValue(`--k-${name}`).trim()
-  return raw ? parseCssColor(raw, [0, 0, 0, 0]) : null
+  return raw ? parseCssColor(pickScheme(raw, isLightStyle(style)), [0, 0, 0, 0]) : null
 }
 const optLength = (style: CSSStyleDeclaration, name: string, em: number): number | null => {
   const raw = style.getPropertyValue(`--k-${name}`).trim()
@@ -174,49 +192,27 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     if (hit && hit.version === version) return hit.tokens
   }
   const style = getComputedStyle(panel)
-  const bg = parseCssColor(token(style, "bg"), [0.11, 0.11, 0.12, 1])
-  const isLight = bg[0] * 0.2126 + bg[1] * 0.7152 + bg[2] * 0.0722 > 0.55
-  const surface = parseCssColor(
-    token(style, "surface"),
-    isLight ? [0, 0, 0, 0.05] : [1, 1, 1, 0.055],
-  )
-  const surfaceHi = parseCssColor(
-    token(style, "surface-hi"),
-    isLight ? [0, 0, 0, 0.095] : [1, 1, 1, 0.11],
-  )
-  const line = parseCssColor(token(style, "line"), isLight ? [0, 0, 0, 0.1] : [1, 1, 1, 0.1])
-  const lineHi = parseCssColor(token(style, "line-hi"), isLight ? [0, 0, 0, 0.2] : [1, 1, 1, 0.18])
-  const text = parseCssColor(token(style, "text"), isLight ? [0, 0, 0, 0.88] : [1, 1, 1, 0.92])
-  const label = parseCssColor(
-    token(style, "label"),
-    isLight ? [0.23, 0.23, 0.26, 0.68] : [1, 1, 1, 0.64],
-  )
-  const dim = parseCssColor(
-    token(style, "dim"),
-    isLight ? [0.235, 0.235, 0.263, 0.5] : [1, 1, 1, 0.42],
-  )
-  const accent = parseCssColor(
-    token(style, "accent"),
-    isLight ? [0.11, 0.11, 0.12, 1] : [1, 1, 1, 1],
-  )
-  const modified = parseCssColor(
-    token(style, "modified"),
-    isLight ? [0, 0, 0, 0.42] : [1, 1, 1, 0.5],
-  )
-  const segBg = parseCssColor(token(style, "seg-bg"), isLight ? [0, 0, 0, 0.065] : [0, 0, 0, 0.26])
-  const segActive = parseCssColor(token(style, "seg-active"), surfaceHi)
-  const toggleTrack = parseCssColor(
-    token(style, "toggle-track"),
-    isLight ? [0, 0, 0, 0.14] : [1, 1, 1, 0.14],
-  )
+  // The theme's own colours stand in for anything unset (its values for the appearance shown).
+  const light = isLightStyle(style)
+  const theme = gpuDefaults(themeOf(panel), light)
+  const bg = parseCssColor(token(style, "bg"), theme.bg)
+  const isLight = light || bg[0] * 0.2126 + bg[1] * 0.7152 + bg[2] * 0.0722 > 0.55
+  const surface = parseCssColor(token(style, "fill"), theme.fill)
+  const surfaceHi = parseCssColor(token(style, "fill-selected"), theme["fill-selected"])
+  const line = parseCssColor(token(style, "border"), theme.border)
+  const lineHi = parseCssColor(token(style, "border-strong"), theme["border-strong"])
+  const text = parseCssColor(token(style, "fg"), theme.fg)
+  const label = parseCssColor(token(style, "fg-2"), theme["fg-2"])
+  const dim = parseCssColor(token(style, "fg-3"), theme["fg-3"])
+  const accent = parseCssColor(token(style, "accent"), theme.accent)
+  const modified = parseCssColor(token(style, "modified"), theme.modified)
+  const segBg = parseCssColor(token(style, "segmented-track"), theme["segmented-track"])
+  const segActive = parseCssColor(token(style, "segmented-active"), theme["segmented-active"])
+  const toggleTrack = parseCssColor(token(style, "toggle-track"), theme["toggle-track"])
   const fillBase = style.getPropertyValue("--k-fill-base").trim()
     ? parseCssColor(token(style, "fill-base"), surfaceHi)
     : surfaceHi
-  const accentLum = accent[0] * 0.2126 + accent[1] * 0.7152 + accent[2] * 0.0722
-  const toggleThumb = parseCssColor(
-    token(style, "toggle-thumb"),
-    !isLight && accentLum > 0.78 ? bg : [1, 1, 1, 1],
-  )
+  const toggleThumb = parseCssColor(token(style, "toggle-thumb"), theme["toggle-thumb"])
 
   const [duration, bounce] = style.getPropertyValue("--k-spring").trim().split(/\s+/).map(Number)
   const fill =
@@ -226,10 +222,10 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
 
   const fontFamily =
     style.fontFamily ||
-    style.getPropertyValue("--k-font").trim() ||
+    style.getPropertyValue("--_k-font").trim() ||
     'system-ui, -apple-system, "SF Pro Text", sans-serif'
   const monoFamily =
-    style.getPropertyValue("--k-mono").trim() ||
+    style.getPropertyValue("--_k-mono").trim() ||
     '"SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace'
 
   const unit = numProp(style, "unit", 4)
@@ -239,11 +235,11 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   const gap = numProp(style, "gap", 4)
   const trayPad = numProp(style, "tray-pad", unit * 0.5)
   const radius = numProp(style, "radius", 8)
-  const panelRadius = numProp(style, "panel-radius", radius + unit)
+  const panelRadius = numProp(style, "radius-panel", radius + unit)
   const radiusMd = Math.max(0, radius - trayPad)
   const radiusSm = Math.max(0, radius - trayPad * 2)
   const fontSize = parseFloat(style.fontSize) || numProp(style, "font-size", 12)
-  const roundRaw = style.getPropertyValue("--k-round").trim()
+  const roundRaw = style.getPropertyValue("--_k-round").trim()
   const round = /^-?[\d.]+(px)?$/.test(roundRaw)
     ? Math.max(0, parseFloat(roundRaw))
     : radius > 0
@@ -265,23 +261,20 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     segActive,
     toggleTrack,
     toggleThumb,
-    rim: parseCssColor(token(style, "rim"), isLight ? [1, 1, 1, 0.6] : [1, 1, 1, 0.1]),
-    edge: parseCssColor(token(style, "edge"), isLight ? [0, 0, 0, 0.07] : [1, 1, 1, 0.07]),
+    rim: parseCssColor(token(style, "rim"), theme.rim),
+    edge: parseCssColor(token(style, "border-subtle"), theme["border-subtle"]),
     rimWidth: lengthProp(style, "rim-width", fontSize, 1),
-    page: parseCssColor(
-      token(style, "page"),
-      isLight ? [0.902, 0.902, 0.922, 1] : [0.063, 0.063, 0.071, 1],
-    ),
+    page: parseCssColor(token(style, "bg-page"), theme["bg-page"]),
     rowHover: withAlpha(surface, 0.5),
     rowGap: numProp(style, "row-gap", 0),
     hoverIn: numProp(style, "hover-in", 0),
     hoverOut: numProp(style, "hover-out", 120),
     handleRest: numProp(style, "handle-rest", 0),
-    handle: colorProp(style, "handle", accent),
+    handle: colorProp(style, "slider-handle", accent),
     handleInset: lengthProp(style, "handle-inset", fontSize, 0),
     groupUpper: style.getPropertyValue("--k-group-transform").trim() !== "none",
     groupSize: lengthProp(style, "group-size", fontSize, fontSize - 2),
-    groupColor: colorProp(style, "group-color", dim),
+    groupColor: colorProp(style, "group-label", dim),
     groupTracking: lengthProp(style, "group-tracking", 1, 0.04),
     groupDivider: colorProp(style, "group-divider", [0, 0, 0, 0]),
     unitGap: lengthProp(style, "unit-gap", fontSize - 0.5, (fontSize - 0.5) * 0.28),
@@ -289,7 +282,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
       ? null
       : colorProp(style, "unit-color", dim),
     readoutMark: numProp(style, "readout-mark", 0),
-    valueFamily: style.getPropertyValue("--k-value-font").trim() || fontFamily,
+    valueFamily: style.getPropertyValue("--_k-value-font").trim() || fontFamily,
     curveInset: lengthProp(style, "curve-inset", fontSize, 6),
     curveDashed: style.getPropertyValue("--k-curve-guide").trim() === "dashed",
     curveDot: numProp(style, "curve-dot", 1),
@@ -318,7 +311,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     textControl: fontSize - 0.5,
     textMeta: fontSize - 1,
     textCap: fontSize - 2,
-    valueSize: parseFloat(style.getPropertyValue("--kc-value-size")) || fontSize - 0.5,
+    valueSize: parseFloat(style.getPropertyValue("--_k-value-size")) || fontSize - 0.5,
     buttonBg: optColor(style, "button-bg"),
     buttonLine: optColor(style, "button-line"),
     buttonHoverBg: optColor(style, "button-hover-bg"),
@@ -332,7 +325,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     ),
     iconSize: numProp(style, "icon-size", 14),
     iconSm: numProp(style, "icon-sm", 13),
-    labelWeight: numProp(style, "label-weight", 500),
+    labelWeight: numProp(style, "weight-label", 500),
     disabledOpacity: numProp(style, "disabled-opacity", 0.32),
     hintTypedOpacity: numProp(style, "hint-typed-opacity", 0.42),
     blurStrength: numProp(style, "blur", 1),
@@ -346,14 +339,34 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     fontFamily,
     monoFamily,
     isLight,
-    fontWeight: numProp(style, "font-weight", 400),
-    titleWeight: numProp(style, "title-weight", 600),
+    fontWeight: numProp(style, "weight", 400),
+    titleWeight: numProp(style, "weight-title", 600),
     round,
     flat: style.getPropertyValue("--k-frame").trim() === "flat",
-    thumb: colorProp(style, "thumb", [1, 1, 1, 1]),
+    thumb: colorProp(style, "toggle-thumb-off", theme["toggle-thumb-off"]),
     lift: Math.max(0, numProp(style, "lift", 1)),
     shadowStrength: Math.max(0, numProp(style, "shadow-strength", isLight ? 0.16 : 0.48)),
   }
   if (version >= 0) tokenCache.set(panel, { version, tokens })
   return tokens
+}
+
+const toSrgb = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)
+const defaults = new WeakMap<Theme, { dark: GpuColors; light: GpuColors }>()
+/**
+ * A theme's colours for one appearance, as the renderer draws them (sRGB, straight alpha): what
+ * the panel shows where no CSS (a host's override, a preset, a glide) says otherwise.
+ */
+export function gpuDefaults(theme: Theme | undefined, light: boolean): GpuColors {
+  const t = theme ?? knobs
+  let hit = defaults.get(t)
+  if (!hit) {
+    const convert = (g: GpuColors) =>
+      Object.fromEntries(
+        Object.entries(g).map(([k, [r, gg, b, a]]) => [k, [toSrgb(r), toSrgb(gg), toSrgb(b), a]]),
+      ) as unknown as GpuColors
+    hit = { dark: convert(t.gpu.dark), light: convert(t.gpu.light) }
+    defaults.set(t, hit)
+  }
+  return light ? hit.light : hit.dark
 }

@@ -126,7 +126,9 @@ import {
   resolveKeys,
   setKeyPrefs,
 } from "./prefs.js"
-import { DELAYED, injectPreset, injectStyles } from "./styles.js"
+import { DELAYED, injectStyles } from "./styles.js"
+import { applyLook } from "../core/appearance.js"
+import { panelLook } from "../core/adapter.js"
 
 export interface Panel {
   element: HTMLElement
@@ -216,12 +218,8 @@ function buildPanel<S extends Schema>(
       : "knobs-root knobs-panel"
   root.dataset.controls = controls.id
   const untrackHas = trackHas(root)
-  root.dataset.theme = options.theme ?? controls.theme
+  applyLook(root, panelLook(controls, options))
   root.dataset.density = options.density ?? controls.density
-  if (options.preset) {
-    injectPreset(doc, options.preset)
-    root.dataset.preset = options.preset.name
-  }
   const titleText = options.title === undefined ? controls.id : options.title
   // The page's show/hide key (toggle.ts). A full page is the whole tool, so it stays unless asked.
   const toggleKey =
@@ -4612,7 +4610,14 @@ function buildPanel<S extends Schema>(
   const rowsObserver = new MutationObserver(syncRows)
   rowsObserver.observe(root, {
     attributes: true,
-    attributeFilter: ["style", "class", "data-theme", "data-preset", "data-density"],
+    attributeFilter: [
+      "style",
+      "class",
+      "data-appearance",
+      "data-knobs-theme",
+      "data-preset",
+      "data-density",
+    ],
   })
   // The frame and button looks are known before the first row is built, so nothing glides in.
   syncRows()
@@ -4750,7 +4755,7 @@ function buildPanel<S extends Schema>(
   })
   modeObserver.observe(doc.documentElement, {
     attributes: true,
-    attributeFilter: ["data-knobs-renderer", "data-theme", "style"],
+    attributeFilter: ["data-knobs-renderer", "data-theme", "data-appearance", "class", "style"],
   })
 
   const panel: Panel = {

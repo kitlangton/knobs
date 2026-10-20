@@ -47,12 +47,23 @@ export interface Palette {
   readonly surfaceHi: Rgba
   readonly warn: Rgba
   readonly critical: Rgba
+  /** Series colours after the first (the accent): the theme's `--k-series-*`. */
+  readonly series: readonly Rgba[]
   /** Corner radius (px); 0 squares the bars. */
   readonly radius: number
 }
 
-/** Series colours after the first (the accent). */
-export const SERIES = ["#5ac8fa", "#ff9f0a", "#bf5af2", "#30d158", "#ff6482"]
+/** The theme's chart series, read for the series after the first (the accent). */
+export const SERIES_TOKENS = [
+  "--_k-series-1",
+  "--_k-series-2",
+  "--_k-series-3",
+  "--_k-series-4",
+  "--_k-series-5",
+  "--_k-series-6",
+] as const
+/** Series colours where no token sheet has loaded. */
+export const SERIES = ["#5ac8fa", "#ff9f0a", "#bf5af2", "#30d158", "#ff6482", "#64d2ff"]
 
 /** A number as text: `decimals` places, else fewer as it grows (2 under 10, 1 under 100, 0 past). */
 export function formatNumber(v: number, decimals?: number): string {

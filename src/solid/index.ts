@@ -128,7 +128,12 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Ele
     syncPanelValues(props.controls, props.descriptors, props.values, Boolean(props.land))
   })
   createEffect(() => {
-    syncPanelLook(host, props.controls, props.theme, props.density)
+    syncPanelLook(
+      host,
+      props.controls,
+      { theme: props.theme, appearance: props.appearance, preset: props.preset },
+      props.density,
+    )
   })
   return host as unknown as JSX.Element
 }

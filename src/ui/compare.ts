@@ -44,7 +44,7 @@ import {
 } from "./compare-model.js"
 import { compareStrip, type CompareStrip } from "./compare-strip.js"
 import { applyLook, frameLoop, isTypingTarget, reducedMotion, tune, type UiLook } from "./look.js"
-import { parseCssColor } from "./rgba.js"
+import { tokenColor } from "./rgba.js"
 import { timeline as makeTimeline, type Timeline } from "./timeline.js"
 
 export type { CompareMode, MediaKind, ZoomRegion } from "./compare-model.js"
@@ -218,6 +218,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const look: UiLook = {
     ...(options.preset ? { preset: options.preset } : {}),
     ...(options.theme ? { theme: options.theme } : {}),
+    ...(options.appearance ? { appearance: options.appearance } : {}),
   }
   let mode: CompareMode = options.mode ?? "side"
   let wipe = Math.min(1, Math.max(0, options.wipe ?? 0.5))
@@ -1034,10 +1035,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     stageRect = null
   }
   const readColors = () => {
-    const c = parseCssColor(
-      win.getComputedStyle(root).getPropertyValue("--ku-cmp-diff"),
-      [0.49, 0.81, 0.61, 1],
-    )
+    const c = tokenColor(win.getComputedStyle(root), "--_ku-cmp-diff", [0.49, 0.81, 0.61, 1])
     accent = [c[0], c[1], c[2]]
     labelW = [labels[0].offsetWidth, labels[1].offsetWidth]
     requestDraw()

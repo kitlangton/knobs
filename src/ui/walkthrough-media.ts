@@ -5,6 +5,7 @@
 // highlighter); videos pause once they're out of view, and a compare or video far from it lets go
 // of its decoders and GPU context, holding its height, until it comes near again.
 import { mediaKind } from "./compare-model.js"
+import { aliased } from "../core/glide.js"
 import { applyLook, svg, type UiLook } from "./look.js"
 import { walkthroughCss } from "./walkthrough-css.js"
 import {
@@ -61,7 +62,7 @@ export function injectWalkthroughStyles(doc: Document) {
   if (doc.querySelector("style[data-knobs-ui-walkthrough]")) return
   const style = doc.createElement("style")
   style.dataset.knobsUiWalkthrough = ""
-  style.textContent = walkthroughCss
+  style.textContent = aliased(walkthroughCss)
   doc.head.append(style)
 }
 

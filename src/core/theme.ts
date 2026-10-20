@@ -1,9 +1,12 @@
 import { springCss } from "./spring.js"
 
 /**
- * A named set of `--k-*` token values for dark and light, applied to panels mounted with
+ * A named set of `--k-*` token values for dark and light, applied to knobs elements mounted with
  * `{ preset }` (or with `data-preset="<name>"` and `presetCss(preset)` in your own stylesheet).
- * `css` adds rules for anything tokens don't cover; `&` stands for the panel.
+ * `css` adds rules for anything tokens don't cover; `&` stands for the element.
+ *
+ * @deprecated Use `defineTheme` (from `knobs/themes`), which generates both appearances from a
+ * few dials. Presets keep working; their token names go through the deprecated aliases.
  */
 export interface TokenPreset {
   readonly name: string
@@ -12,22 +15,26 @@ export interface TokenPreset {
   readonly css?: string
 }
 
-const block = (tokens: Readonly<Record<string, string | number>>) =>
-  Object.entries(tokens)
-    .map(([k, v]) => `${k.startsWith("--") || k === "color-scheme" ? k : `--k-${k}`}:${v}`)
-    .join(";")
+const property = (k: string) => (k.startsWith("--") ? k : `--k-${k}`)
 
-/** The stylesheet for a preset: its dark tokens, its light ones wherever a panel is light. */
+/**
+ * The stylesheet for a preset. A token it gives for both appearances becomes `light-dark(light,
+ * dark)`, so it follows the element's appearance (its `color-scheme`) like the theme's colours
+ * do; anything else holds in both.
+ */
 export function presetCss(preset: TokenPreset): string {
   if (!/^[\w-]+$/.test(preset.name)) throw new Error(`Invalid preset name: ${preset.name}`)
-  const at = `.knobs-panel[data-preset="${preset.name}"]`
-  const light = preset.light
-    ? `:where(.knobs-panel)[data-preset="${preset.name}"][data-theme="light"],` +
-      `:where([data-knobs-theme="light"]) ${at}:not([data-theme="dark"]),` +
-      `:where(:root[data-theme="light"]) ${at}[data-theme="auto"]{${block(preset.light)}}` +
-      `@media(prefers-color-scheme:light){:where(:root:not([data-theme="dark"])) ${at}[data-theme="auto"]{${block(preset.light)}}}`
-    : ""
-  return `${at}{${block(preset.dark)}}${light}${(preset.css ?? "").replaceAll("&", at)}`
+  const at = `.knobs-root[data-preset="${preset.name}"]`
+  const light = preset.light ?? {}
+  const decls = Object.entries(preset.dark).map(([k, dark]) => {
+    const l = light[k]
+    return l === undefined || String(l) === String(dark)
+      ? `${property(k)}:${dark}`
+      : `${property(k)}:light-dark(${l},${dark})`
+  })
+  for (const [k, l] of Object.entries(light))
+    if (!(k in preset.dark) && k !== "color-scheme") decls.push(`${property(k)}:${l}`)
+  return `${at}{${decls.join(";")}}${(preset.css ?? "").replaceAll("&", at)}`
 }
 
 const glide = /* @__PURE__ */ springCss({ duration: 0.185, bounce: 0.14 })
@@ -75,6 +82,7 @@ export const labPreset: TokenPreset = {
     glass: 0,
     glow: 0,
     lift: 0,
+    "lift-shadow": "none",
     blur: 0.6,
     "hover-in": 0,
     "hover-out": 120,
@@ -115,7 +123,6 @@ export const labPreset: TokenPreset = {
     rim: "transparent",
     "group-color": "rgba(60,60,67,.68)",
     "group-divider": "rgba(0,0,0,.1)",
-    "color-scheme": "light",
   },
 }
 
@@ -203,6 +210,5 @@ export const problemsPreset: TokenPreset = {
     rim: "transparent",
     "group-color": "rgba(60,60,67,.66)",
     "group-divider": "rgba(0,0,0,.07)",
-    "color-scheme": "light",
   },
 }

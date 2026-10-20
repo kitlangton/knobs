@@ -10,7 +10,7 @@ function stylesheet(inject: (doc: Document) => void = injectUiStyles) {
   const doc = {
     querySelector: () => null,
     createElement: () => ({ dataset: {}, textContent: "" }),
-    head: { append: (style: { textContent: string }) => (text = style.textContent) },
+    head: { append: (style: { textContent: string }) => (text += style.textContent) },
   }
   inject(doc as unknown as Document)
   return text
@@ -19,21 +19,27 @@ function stylesheet(inject: (doc: Document) => void = injectUiStyles) {
 describe("knobs/ui stylesheet", () => {
   const css = stylesheet()
 
-  // The panel registers --kc-value-size (initial 11.5px), so a fallback on it never applies.
+  // A registered --kc-value-size (initial 11.5px) would beat every fallback on it.
   it("sizes readouts from --k-value-size or the piece's font size", () => {
-    expect(css).not.toContain("var(--kc-value-size")
-    expect(css).toContain("--ku-value-size:var(--k-value-size,calc(var(--ku-font-size) - .5px))")
+    expect(css).not.toContain("--kc-value-size")
+    expect(css).toContain("--_k-value-size:var(--k-value-size,var(--ku-value-size,calc(var(--_k-font-size) - .5px)))")
   })
 
-  it("derives on the knobs root, standing alone", () => {
+  it("resolves on the knobs root, standing alone, from the same sheet as panels", () => {
     expect(css).toContain(":where(.knobs-root){")
-    expect(css).toContain("--ku-row:var(--_k-row)")
+    expect(css).toContain("--_k-row:var(--ku-row,var(--k-row,")
+    expect(css).toContain("height:var(--kv-row)")
   })
 
-  it("takes the light theme from a [data-knobs-theme] ancestor, as panels do", () => {
-    expect(css).toContain(
-      ':where([data-knobs-theme="light"]) :where(.knobs-ui):not([data-theme="dark"])',
-    )
+  // The pieces kept a second copy of the defaults; now there's one token sheet.
+  it("declares no defaults of its own", () => {
+    const own = css.slice(css.indexOf(":where(.knobs-ui){"))
+    expect(own).not.toMatch(/--k-(bg|text|surface|accent):/)
+    expect(own).not.toContain("rgba(255,255,255,.92)")
+  })
+
+  it("takes the light appearance from a host's [data-knobs-theme] or [data-theme] ancestor", () => {
+    expect(css).toContain('[data-theme="light"],[data-appearance="light"],[data-knobs-theme="light"]) :where(.knobs-root){color-scheme:light')
   })
 
   // A dark shadow on a light theme reads as a smudge: fixed shadows follow --k-shadow-strength.
@@ -50,9 +56,11 @@ describe("light variants", () => {
   it("labPreset has a light block that keeps its shape", () => {
     const css = presetCss(labPreset)
     expect(labPreset.light).toBeDefined()
-    expect(css).toContain('[data-preset="lab"][data-theme="light"]')
+    // Light colours follow the element's appearance as light-dark() pairs.
+    expect(css).toContain('.knobs-root[data-preset="lab"]{')
+    expect(css).toContain("--k-bg:light-dark(#f5f5f7,#191a1e)")
+    expect(css).toContain("--k-row:26px")
     expect(labPreset.light).not.toHaveProperty("row")
-    expect(labPreset.light!["color-scheme"]).toBe("light")
   })
 
   it("walkthrough metrics and callouts take the tone tokens", () => {

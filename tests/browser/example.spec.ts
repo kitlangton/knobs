@@ -634,7 +634,7 @@ test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ pag
     const row = document.querySelector('[aria-label="splat controls"] [data-field="count"]')
     return [
       Number(row.querySelector('[role="slider"]').getAttribute("aria-valuenow")),
-      parseFloat(row.querySelector(".knobs-fill").style.getPropertyValue("--k-fill")),
+      parseFloat(row.querySelector(".knobs-fill").style.getPropertyValue("--_k-fill-at")),
       row.classList.contains("knobs-active") && !row.classList.contains("knobs-animate"),
     ]
   })()`
@@ -681,7 +681,7 @@ test("sliders: default notch magnet, ⌥ fine drag, trackpad pans", async ({ pag
   expect(await now()).toBe(300)
   const fillOf = () =>
     row.evaluate((el) =>
-      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--k-fill")),
+      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--_k-fill-at")),
     )
   expect(await fillOf()).toBeCloseTo(100, 5)
   expect(await row.evaluate((el) => (el as HTMLElement).style.transform)).toBe("")
@@ -706,7 +706,7 @@ test("stepped sliders resist around their stop, snap past halfway, and land as o
   const now = async () => Number(await voices.getAttribute("aria-valuenow"))
   const fill = () =>
     row.evaluate((el) =>
-      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--k-fill")),
+      parseFloat(el.querySelector<HTMLElement>(".knobs-fill")!.style.getPropertyValue("--_k-fill-at")),
     )
   const stop = (n: number) => ((n - 1) / 6) * 100
   await page.mouse.move(at(2 / 6), y)

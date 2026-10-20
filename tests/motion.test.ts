@@ -16,7 +16,7 @@ function panelCss() {
   const doc = {
     querySelector: () => null,
     createElement: () => ({ dataset: {}, textContent: "" }),
-    head: { append: (style: { textContent: string }) => (text = style.textContent) },
+    head: { append: (style: { textContent: string }) => (text += style.textContent) },
   }
   injectStyles(doc as unknown as Document)
   return text
@@ -47,7 +47,7 @@ describe("named springs", () => {
     const css = panelCss()
     expect(SPRING_TOKEN).toBe("0.3 0")
     expect(css).toContain(`--k-spring:${SPRING_TOKEN};`)
-    expect(css).toContain(`--k-fill-ms:${DEFAULT_LINEAR.ms};`)
+    expect(css).toMatch(new RegExp(`--k-fill-ms:${DEFAULT_LINEAR.ms}[;}]`))
     expect(css).toContain(`--k-fill-ease:${DEFAULT_LINEAR.easing};`)
     expect(FILL).toEqual(springMotion(SPRINGS.default))
   })

@@ -36,6 +36,7 @@ const palette: Palette = {
   surfaceHi: [1, 1, 1, 0.11],
   warn: [1, 0.62, 0.04, 1],
   critical: [1, 0.27, 0.23, 1],
+  series: [[0.35, 0.78, 0.98, 1]],
   radius: 0,
 }
 

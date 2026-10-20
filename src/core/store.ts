@@ -11,6 +11,8 @@ import {
   type ReadoutState,
 } from "./readout.js"
 import type { TokenPreset } from "./theme.js"
+import type { Appearance, ThemeMode } from "./appearance.js"
+import type { Theme } from "../themes/define.js"
 import {
   equal,
   normalize,
@@ -38,7 +40,7 @@ const devBuild = (): boolean =>
   typeof __KNOBS_DEV__ !== "undefined"
     ? __KNOBS_DEV__
     : ((import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? true)
-export type ThemeMode = "dark" | "light" | "auto"
+export type { Appearance, ThemeMode } from "./appearance.js"
 export type DensityMode = "compact" | "default" | "comfortable"
 export type RendererMode = "gpu" | "dom" | "auto"
 /** When a store's chip shows; see `ChipOptions.reveal`. */
@@ -217,7 +219,7 @@ export interface MountPanelOptions extends LabelOptions {
    * (a prototype's settings), where "default" means nothing. The store's `marks` by default.
    */
   readonly marks?: boolean
-  /** Token values to style the panel with, e.g. `problemsPreset` (see `TokenPreset`). */
+  /** @deprecated Token values to style the panel with (see `TokenPreset`); use `theme`. */
   readonly preset?: TokenPreset
   /**
    * `false` drops the header (title and buttons) for a host that draws its own. An object keeps
@@ -288,7 +290,13 @@ export interface MountPanelOptions extends LabelOptions {
   readonly onReady?: (panel: PanelHandle) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
-  readonly theme?: ThemeMode
+  /**
+   * A theme from `defineTheme` (`themes.knobs`, `themes.void`); the store's by default. The old
+   * `"dark" | "light" | "auto"` still sets the appearance.
+   */
+  readonly theme?: Theme | ThemeMode
+  /** dark | light | system | inherit (the default: follow the page, else the OS). */
+  readonly appearance?: Appearance
   readonly density?: DensityMode
   readonly renderer?: RendererMode
   readonly variants?: boolean
@@ -408,7 +416,10 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    */
   groupPresets?: Readonly<Record<string, readonly GroupPreset<Values<S>>[]>>
   actions?: readonly ControlAction<Values<S>>[]
-  theme?: ThemeMode
+  /** Its panels' theme (see `MountPanelOptions.theme`). */
+  theme?: Theme | ThemeMode
+  /** Its panels' appearance (see `MountPanelOptions.appearance`). */
+  appearance?: Appearance
   density?: DensityMode
   renderer?: RendererMode
   /** Default key bindings for this store's panels (see `MountPanelOptions.keys`). */
@@ -439,7 +450,9 @@ export interface Controls<S extends Schema = Schema> {
   readonly presets: Readonly<Record<string, Values<S>>>
   readonly variants: Variants<Values<S>>
   readonly actions: readonly ControlAction<Values<S>>[]
-  readonly theme: ThemeMode
+  /** Its panels' theme, as given (see `ControlsOptions.theme`). */
+  readonly theme: Theme | ThemeMode | undefined
+  readonly appearance: Appearance | undefined
   readonly density: DensityMode
   readonly renderer: RendererMode
   readonly keys: PanelKeys | undefined
@@ -629,7 +642,8 @@ export function defineControls<const S extends Schema>(
   let schema = Object.freeze({ ...input }) as S
   let locked = normalize(schema, {})
   const actions = Object.freeze([...(options.actions ?? [])])
-  const theme: ThemeMode = options.theme ?? "dark"
+  const theme = options.theme
+  const appearance = options.appearance
   const density: DensityMode = options.density ?? "default"
   const renderer: RendererMode = options.renderer ?? "auto"
   // Development builds, a store shipped as product UI (`ship`), which stays live in production,
@@ -1376,6 +1390,7 @@ export function defineControls<const S extends Schema>(
     },
     actions,
     theme,
+    appearance,
     density,
     renderer,
     keys: options.keys,
