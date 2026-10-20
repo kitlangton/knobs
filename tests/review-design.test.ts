@@ -80,6 +80,31 @@ describe("space", () => {
   })
 })
 
+describe("edges", () => {
+  // A box is a fill or a hairline, never both: only the card itself (cards mode) and what floats
+  // over the page (the notes bar, its launcher, the back button, a step opened full) are surfaces.
+  const SURFACES = [
+    ".knobs-wt-step",
+    ":where(.knobs-ui) .knobs-wt-launch",
+    ".knobs-wt-notebar",
+    ".knobs-ui .knobs-wt-back",
+    ".knobs-wt-step[data-full]",
+  ]
+  test("walkthrough: nothing on the page has both a fill and a ring", () => {
+    const both: string[] = []
+    for (const m of walkthroughCss
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const fill = /(?:^|;)\s*background(?:-color)?:\s*([^;]+)/.exec(m[2]!)?.[1]?.trim()
+      const ring = /box-shadow:[^;]*(inset 0 0 0 1px|--_ku-pane-ring|--kw-card-ring)/.test(m[2]!)
+      const selector = m[1]!.trim()
+      if (fill && fill !== "transparent" && fill !== "none" && ring && !SURFACES.includes(selector))
+        both.push(selector)
+    }
+    expect(both).toEqual([])
+  })
+})
+
 describe("facts", () => {
   test("a record or a list, code split into chips, values always a list", () => {
     expect(fillFacts({ Sees: "Two rows", Steps: ["One", "Two"] })).toEqual([

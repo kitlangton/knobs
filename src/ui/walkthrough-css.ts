@@ -371,14 +371,15 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-frame>:is(video,img){position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;margin:0;border:0}
 .knobs-wt-frame[data-natural]{aspect-ratio:auto;background:transparent}
 .knobs-wt-frame[data-natural]>img{position:static;height:auto}
-/* Diff, code and terminal: one plain container (no glass): a flat inset fill, a hairline ring, the
-   control radius and room inside, so a diff's buttons and the code under them can breathe. */
-.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-pad-card);border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
+/* Diff, code and terminal: one plain well, drawn by its hairline alone (a fill and a ring would be
+   two edges for one box), the panel radius and room inside, so a diff's buttons and the code under
+   them can breathe. */
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:var(--_k-pad-card);border-radius:var(--_k-radius-panel);box-shadow:inset 0 0 0 1px var(--_k-border-subtle)}
 /* The diff inside it: its header row 28 high on the container's padding, a hairline under it, and
    no line of its own under the code (the container's ring closes it). */
 .knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"]){--kd-head:28px;--kd-x:0px}
 .knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"])::after{display:none}
-.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius-panel);background:var(--_k-bg-inset);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
+.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius-panel);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
 .knobs-surface :is(.knobs-wt-code,.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body){padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-code[data-terminal]{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -394,10 +395,10 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-mdelta{--kw-tone:var(--_k-fg-2);font-size:var(--_k-type-small);font-weight:var(--_k-weight-label);color:var(--kw-tone)}
 .knobs-wt-mdelta[data-tone="good"]{--kw-tone:var(--kw-good)}
 .knobs-wt-mdelta[data-tone="bad"]{--kw-tone:var(--_k-danger)}
-.knobs-wt-mtrack{position:relative;height:4px;border-radius:2px;background:color-mix(in srgb,var(--_k-fg) 8%,transparent)}
+.knobs-wt-mtrack{position:relative;height:4px;border-radius:2px;background:var(--_k-fill-selected)}
 .knobs-wt-mtrack>span{position:absolute;top:0;bottom:0;left:0;border-radius:inherit}
 .knobs-wt-mtrack>.knobs-wt-mafter{background:var(--_k-accent)}
-.knobs-wt-mtrack>.knobs-wt-mbefore{background:color-mix(in srgb,var(--_k-fg) 30%,transparent)}
+.knobs-wt-mtrack>.knobs-wt-mbefore{background:var(--_k-fg-4)}
 .knobs-wt-callout{--kw-tone:var(--kw-info);display:flex;gap:var(--_k-space-sibling);max-width:var(--kw-measure);color:var(--_k-fg)}
 .knobs-wt-callout::before{content:"";flex:none;width:6px;height:6px;margin-top:7px;border-radius:50%;background:var(--kw-tone)}
 .knobs-wt-callout[data-tone="good"]{--kw-tone:var(--kw-good)}

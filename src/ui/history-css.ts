@@ -38,7 +38,7 @@ export const historyCss = `
 .knobs-hy-layer{position:absolute;inset:0;grid-column:2;grid-row:1/-1;pointer-events:none}
 
 /* Bands and month lines behind the lanes; today, the selection and the pointer's line over them. */
-.knobs-hy-band{position:absolute;top:0;bottom:0;background:color-mix(in oklch,var(--_k-fg) 3.5%,transparent);box-shadow:inset 1px 0 0 var(--_k-border-subtle)}
+.knobs-hy-band{position:absolute;top:0;bottom:0;background:var(--_k-fill);box-shadow:inset 1px 0 0 var(--_k-border-subtle)}
 :is(.knobs-hy-grid,.knobs-hy-today,.knobs-hy-hover,.knobs-hy-sel){position:absolute;left:0;top:calc(var(--hy-bandrow) + var(--hy-axis));bottom:0;width:1px;margin-left:-.5px}
 .knobs-hy-grid{background:var(--_k-border-subtle)}
 .knobs-hy-today{top:calc(var(--hy-bandrow) + var(--hy-axis) - 4px);background:var(--_k-accent)}
