@@ -15,6 +15,8 @@ export interface CompareDraw {
   /** Device px: the part of the stage each side may draw in. */
   readonly beforeClip: Rect
   readonly afterClip: Rect
+  /** Device px: the clips' corner radii, Before's left and right, then After's. */
+  readonly radii: readonly [number, number, number, number]
   readonly width: number
   readonly height: number
   readonly dpr: number
@@ -67,6 +69,7 @@ struct U {
   loupe: vec4f,  // x, y, r, zoom (0: none)
   src: vec4f,    // Before, After from their previews
   ca: vec4f, cb: vec4f, // where each side may draw
+  radii: vec4f,  // the clips' corners: Before left, right; After left, right
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var A: texture_2d<f32>;
@@ -88,8 +91,18 @@ fn cover(p: vec2f, r: vec4f) -> f32 {
   return clamp(d + 0.5, 0.0, 1.0);
 }
 
-// A side's colour where rect r maps it to p, and its coverage inside clip c there.
-fn take(t: texture_2d<f32>, p: vec2f, r: vec4f, c0: vec4f, near: bool, ready: f32) -> vec4f {
+// Coverage of rect r at p with its left corners rounded rl and its right ones rr.
+fn coverRound(p: vec2f, r: vec4f, rl: f32, rr: f32) -> f32 {
+  let h = r.zw * 0.5;
+  let q0 = p - (r.xy + h);
+  let rad = min(select(rl, rr, q0.x > 0.0), min(h.x, h.y));
+  let q = abs(q0) - h + vec2f(rad);
+  let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - rad;
+  return clamp(0.5 - d, 0.0, 1.0);
+}
+
+// A side's colour where rect r maps it to p, and its coverage inside clip c (corners rc) there.
+fn take(t: texture_2d<f32>, p: vec2f, r: vec4f, c0: vec4f, rc: vec2f, near: bool, ready: f32) -> vec4f {
   let uv = clamp((p - r.xy) / max(r.zw, vec2f(1e-3)), vec2f(0.0), vec2f(1.0));
   var c: vec3f;
   if (near) {
@@ -98,16 +111,16 @@ fn take(t: texture_2d<f32>, p: vec2f, r: vec4f, c0: vec4f, near: bool, ready: f3
   } else {
     c = textureSampleLevel(t, smp, uv, 0.0).rgb;
   }
-  return vec4f(c, min(cover(p, r), cover(p, c0)) * ready);
+  return vec4f(c, min(cover(p, r), coverRound(p, c0, rc.x, rc.y)) * ready);
 }
 
 fn takeA(p: vec2f, r: vec4f, c0: vec4f, near: bool) -> vec4f {
-  if (u.src.x > 0.5) { return take(PA, p, r, c0, near, 1.0); }
-  return take(A, p, r, c0, near, u.diff.z);
+  if (u.src.x > 0.5) { return take(PA, p, r, c0, u.radii.xy, near, 1.0); }
+  return take(A, p, r, c0, u.radii.xy, near, u.diff.z);
 }
 fn takeB(p: vec2f, r: vec4f, c0: vec4f, near: bool) -> vec4f {
-  if (u.src.y > 0.5) { return take(PB, p, r, c0, near, 1.0); }
-  return take(B, p, r, c0, near, u.diff.w);
+  if (u.src.y > 0.5) { return take(PB, p, r, c0, u.radii.zw, near, 1.0); }
+  return take(B, p, r, c0, u.radii.zw, near, u.diff.w);
 }
 
 fn pm(c: vec4f) -> vec4f { return vec4f(c.rgb * c.a, c.a); }
@@ -215,8 +228,8 @@ export async function createCompareGpu(
   }
   lostListeners.add(lost)
 
-  const uniforms = device.createBuffer({ size: 176, usage: 64 | 8 /* UNIFORM | COPY_DST */ })
-  const data = new Float32Array(44)
+  const uniforms = device.createBuffer({ size: 192, usage: 64 | 8 /* UNIFORM | COPY_DST */ })
+  const data = new Float32Array(48)
   const make = (w: number, h: number) =>
     device.createTexture({
       size: [Math.max(1, w), Math.max(1, h)],
@@ -288,6 +301,7 @@ export async function createCompareGpu(
       data.set([f.preview[0] ? 1 : 0, f.preview[1] ? 1 : 0, 0, 0], 32)
       r(36, f.beforeClip)
       r(40, f.afterClip)
+      data.set(f.radii, 44)
       device.queue.writeBuffer(uniforms, 0, data)
       const encoder = device.createCommandEncoder()
       const pass = encoder.beginRenderPass({

@@ -60,14 +60,14 @@ export const diffCss = `
   margin:0;padding:0;min-width:0;box-shadow:none;outline:none}
 .knobs-ui .knobs-diff-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:calc(var(--_k-radius) * 999);color:var(--_k-fg-3);cursor:pointer;
   transition:background .15s,color .15s,opacity .15s}
-.knobs-ui .knobs-diff-btn:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-diff-btn:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-diff-btn[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
 .knobs-ui .knobs-diff-btn:disabled{opacity:.35;cursor:default;background:transparent}
 .knobs-diff-btn svg{width:16px;height:16px}
 /* Viewed: a check with its word, as on GitHub; the path dims once it's ticked. */
 .knobs-ui .knobs-diff-viewed{flex:none;display:inline-flex;align-items:center;gap:5px;height:var(--_k-control-h);padding:0 8px 0 6px;border-radius:var(--kd-ctl);color:var(--_k-fg-2);
   font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
-.knobs-ui .knobs-diff-viewed:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-diff-viewed:is(:hover,:focus-visible){background:var(--_ku-wash-hi);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-diff-viewed[aria-pressed="true"]{color:var(--_k-fg);background:var(--_ku-wash)}
 .knobs-diff-viewed svg{width:16px;height:16px}
 .knobs-diff-viewed[aria-pressed="true"] svg{color:var(--kd-add)}
@@ -87,7 +87,7 @@ export const diffCss = `
 .knobs-diff-seg{position:relative;flex:none;display:grid;grid-template-columns:1fr 1fr;height:var(--_k-control-h);padding:2px;border-radius:var(--kd-ctl);background:var(--_k-fill)}
 .knobs-ui .knobs-diff-choice{padding:0 9px;border-radius:max(0px,calc(var(--kd-ctl) - 2px));color:var(--_k-fg-2);font-size:var(--_k-text-meta);
   font-weight:var(--_k-weight-label);white-space:nowrap;cursor:pointer;transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-diff-choice:is(:hover,:focus-visible){color:var(--_k-fg)}
+.knobs-ui .knobs-diff-choice:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* The diff: one layer per file or layout on show, the old fading under the new. */
 .knobs-diff-body{position:relative;flex:1;min-height:0}
 .knobs-diff-probe{position:absolute;left:0;top:0;width:0;height:var(--kd-line);visibility:hidden;pointer-events:none}
@@ -108,8 +108,8 @@ export const diffCss = `
 .knobs-diff-hbar{position:absolute;height:5px;pointer-events:none}
 .knobs-diff-hbar>i{position:absolute;left:0;top:0;height:5px;border-radius:3px;background:color-mix(in srgb,var(--_k-fg) 30%,transparent);opacity:0;pointer-events:none;
   transition:opacity .3s,background .15s}
-.knobs-diff-body:hover .knobs-diff-hbar>i,.knobs-diff-hbar:is([data-active],[data-dragging])>i{opacity:1;pointer-events:auto;transition-duration:.12s,.15s}
-.knobs-diff-hbar>i:hover,.knobs-diff-hbar[data-dragging]>i{background:color-mix(in srgb,var(--_k-fg) 48%,transparent)}
+.knobs-diff-body:hover .knobs-diff-hbar>i,.knobs-diff-hbar:is([data-active],[data-dragging])>i{opacity:1;pointer-events:auto;transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-diff-hbar>i:hover,.knobs-diff-hbar[data-dragging]>i{background:color-mix(in srgb,var(--_k-fg) 48%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* stack: every file down one scroller, each header sticking until the next pushes it off. It's
    flush (square, no card around its file), opaque in the code's own colour, with a hairline
    under it only while it's stuck; a gap, not a line, parts one file from the next. */
@@ -184,7 +184,7 @@ export const diffCss = `
 .knobs-ui .knobs-diff-filter>input{flex:1;min-width:0;height:100%;font:var(--_k-weight) var(--_k-font-size)/1 var(--_k-font);color:var(--_k-fg);caret-color:var(--_k-accent);background:transparent}
 .knobs-ui .knobs-diff-filter>input::placeholder{color:var(--_k-fg-3)}
 .knobs-ui .knobs-diff-filter>button{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;color:var(--_k-fg-3);cursor:pointer;transition:background .12s,color .12s,opacity .12s}
-.knobs-ui .knobs-diff-filter>button:hover{background:var(--_ku-wash-hi);color:var(--_k-fg)}
+.knobs-ui .knobs-diff-filter>button:hover{background:var(--_ku-wash-hi);color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-diff-filter>button svg{width:12px;height:12px}
 .knobs-diff-list{position:relative;flex:1;min-height:0}
 .knobs-diff-files .knobs-diff-counts{font-size:var(--_k-text-meta);align-items:center}

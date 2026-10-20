@@ -172,8 +172,11 @@ export function compareLayout(box: Rect, before: Size, after: Size): CompareLayo
   }
 }
 
-/** The fuse's feather at its middle, the seam's blur as it starts and the overlap it fades in over (px). */
-export const FUSE = { feather: 24, blur: 4, seamFade: 48 } as const
+/**
+ * Kit Motion's blend blur, in px: the feather Before's cut swells to mid-fuse, the blur of the
+ * strip over the seam at its peak (mid-fuse too), and the overlap the seam fades in over.
+ */
+export const FUSE = { feather: 32, blur: 8, seamFade: 48 } as const
 
 export interface FuseFrame {
   /** Where Before is cut: the split side by side, the wipe's line fused. */
@@ -182,15 +185,16 @@ export interface FuseFrame {
   readonly feather: number
   /** The seam's (and the wipe handle's) opacity, 0–1. */
   readonly seam: number
-  /** The seam's blur (px), gone once fused. */
+  /** The seam's blur (px): none apart or fused, `FUSE.blur` mid-fuse. */
   readonly blur: number
 }
 
 /**
  * Kit Motion's Comparison fuse, one frame of it: side by side (`k` 0) the panes glide together
  * into one (`k` 1). Before is cut only where the inner edges overlap, with a feather that swells
- * mid-transition; the seam fades in as they overlap, blurred until they've fused. `before` and
- * `after` are where the sides are drawn this frame.
+ * mid-transition, and a blurred strip over the seam blends the two, strongest mid-transition
+ * (the blend blur); it fades in as they overlap. `before` and `after` are where the sides are
+ * drawn this frame.
  */
 export function fuseFrame(
   L: CompareLayout,
@@ -214,13 +218,24 @@ export function fuseFrame(
     t > 0.001 && overlap >= 0
       ? Math.min(1, Math.max(0, overlap / FUSE.seamFade)) * Math.min(1, t * 4)
       : 0
-  return { cut, feather, seam, blur: t < 0.995 ? FUSE.blur * (1 - t) : 0 }
+  const blur = t > 0.005 && t < 0.995 ? FUSE.blur * Math.sin(Math.PI * t) : 0
+  return { cut, feather, seam, blur }
 }
 
 /**
  * A label folded `fold` (0 open, 1 folded to its name): its mark's width, opacity and blur (px,
  * up to `blur` as it goes, kit-motion's in-place exit).
  */
+/**
+ * Each side's corner radii, `left` and `right` (px), so the frame is rounded at every frame of the
+ * fuse: a side's outer corners always take the frame's radius `r`; its inner ones (at the split)
+ * are square apart and grow to `r` as the sides fuse into one picture.
+ */
+export const fuseCorners = (r: number, k: number) => {
+  const inner = r * Math.min(1, Math.max(0, k))
+  return { before: { left: r, right: inner }, after: { left: inner, right: r } }
+}
+
 export const labelFold = (fold: number, mark: number, blur = 3) => {
   const f = Math.min(1, Math.max(0, fold))
   const open = 1 - f
