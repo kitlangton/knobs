@@ -3,10 +3,13 @@ import { inTriangle, matchItem, safeTriangle, stepItem } from "../src/ui/overlay
 import {
   adjacentMarker,
   advance,
+  CATCH_UP,
   clampView,
+  currentMarker,
   followView,
   frameTime,
   magnet,
+  moveHead,
   rulerTicks,
   scrubTime,
   timeLabel,
@@ -129,5 +132,42 @@ describe("menu model", () => {
     expect(inTriangle({ x: 150, y: 120 }, a, b, c)).toBe(true)
     expect(inTriangle({ x: 150, y: 10 }, a, b, c)).toBe(false)
     expect(inTriangle({ x: 90, y: 50 }, a, b, c)).toBe(false)
+  })
+})
+
+describe("playhead catch-up", () => {
+  const at = (x: number, target = x) => ({ x, target })
+  test("a jump the hand didn't make catches up from where the playhead is drawn", () => {
+    expect(moveHead(at(1), 4, "jump", false)).toEqual({ x: 1, target: 4, catching: true })
+  })
+  test("a jump within the gap just lands", () => {
+    expect(moveHead(at(1), 1.01, "jump", false, 0.02)).toEqual({ x: 1.01, target: 1.01, catching: false })
+  })
+  test("a drag is 1:1", () => {
+    expect(moveHead(at(1), 3, "follow", false)).toEqual({ x: 3, target: 3, catching: false })
+  })
+  test("moves during a catch-up follow the hand; the remaining offset settles on its own", () => {
+    // Mid catch-up from 1 to 4, drawn at 2: the hand moves the time on by 0.5.
+    const next = moveHead(at(2, 4), 4.5, "follow", true)
+    expect(next).toEqual({ x: 2.5, target: 4.5, catching: true })
+    // The offset still to settle is unchanged: it doesn't jump, and it doesn't restart.
+    expect(next.target - next.x).toBeCloseTo(2, 9)
+  })
+  test("a new jump mid catch-up retargets from where it's drawn", () => {
+    expect(moveHead(at(2, 4), 0, "jump", true)).toEqual({ x: 2, target: 0, catching: true })
+  })
+  test("the spring is quick and has no bounce", () => {
+    expect(CATCH_UP).toEqual({ duration: 0.15, bounce: 0 })
+  })
+  test("the current chapter is the last marker at or before the time", () => {
+    const ms = [
+      { id: "a", time: 0 },
+      { id: "b", time: 2 },
+      { id: "c", time: 5 },
+    ]
+    expect(currentMarker(ms, 1.9, 30)?.id).toBe("a")
+    expect(currentMarker(ms, 1.99, 30)?.id).toBe("b")
+    expect(currentMarker(ms, 9, 30)?.id).toBe("c")
+    expect(currentMarker([{ id: "x", time: 1 }], 0.5, 30)).toBeNull()
   })
 })

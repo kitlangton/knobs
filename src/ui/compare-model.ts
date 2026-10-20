@@ -3,7 +3,34 @@
 // frame strip samples.
 import type { TimeView } from "./timeline-model.js"
 
-export type CompareMode = "side" | "wipe" | "difference" | "flicker"
+/** Side by side, a wipe, or (opt in) a difference. */
+export type CompareMode = "side" | "wipe" | "difference"
+
+const ALL_MODES: readonly CompareMode[] = ["side", "wipe", "difference"]
+const MODE_KEYS: Record<CompareMode, string> = { side: "s", wipe: "w", difference: "d" }
+
+/**
+ * The modes a viewer offers (`["side", "wipe"]` unless given; `difference` only when asked for),
+ * in their order, and the mode it starts in (the first offered when the asked one isn't).
+ */
+export function compareModes(
+  modes?: readonly CompareMode[],
+  mode?: CompareMode,
+): { readonly modes: readonly CompareMode[]; readonly mode: CompareMode } {
+  const list = [...new Set((modes ?? ["side", "wipe"]).filter((m) => ALL_MODES.includes(m)))]
+  const offered = list.length ? list : (["side", "wipe"] as CompareMode[])
+  return { modes: offered, mode: mode && offered.includes(mode) ? mode : offered[0]! }
+}
+
+/** The mode a key picks among those offered: a digit by position, or S, W, D. */
+export function modeForKey(key: string, modes: readonly CompareMode[]): CompareMode | null {
+  const k = key.toLowerCase()
+  if (/^[1-9]$/.test(k)) return modes[Number(k) - 1] ?? null
+  return modes.find((m) => MODE_KEYS[m] === k) ?? null
+}
+
+/** A mode's letter key (S, W, D). */
+export const modeKey = (mode: CompareMode) => MODE_KEYS[mode].toUpperCase()
 export type MediaKind = "video" | "image"
 
 const VIDEO = /\.(mp4|m4v|mov|webm|ogv|mkv)$/i
@@ -122,7 +149,7 @@ export interface CompareLayout {
    * up), each side in its half; `split` is the middle's x.
    */
   readonly side: { readonly before: Rect; readonly after: Rect; readonly split: number }
-  /** Overlaid (wipe, difference, flicker): both in the same place. */
+  /** Overlaid (wipe, difference): both in the same place. */
   readonly overlay: { readonly before: Rect; readonly after: Rect }
 }
 
@@ -226,6 +253,25 @@ export function wipeGrab(x: number, rect: Rect, wipe: number, slop = 12) {
   const line = wipeX(rect, wipe)
   const onLine = Math.abs(x - line) <= slop
   return { onLine, offset: onLine ? x - line : 0 }
+}
+
+/**
+ * Wiping, Before and After ride either side of the seam at `x`, `gap` from it, each fading out as
+ * its side runs out of room (`left`/`right`: the wipe's edges; `wb`/`wa`: the labels' widths).
+ */
+export function seamLabels(x: number, left: number, right: number, wb: number, wa: number, gap = 8) {
+  const room = (space: number, w: number) => Math.min(1, Math.max(0, (space - w - 2 * gap) / gap))
+  return {
+    before: { x: x - gap - wb, opacity: room(x - left, wb) },
+    after: { x: x + gap, opacity: room(right - x, wa) },
+  }
+}
+
+/** Where the wipe's grip sits for a pointer at `y`: its top, kept `margin` inside the line. */
+export function gripTop(y: number, rect: Rect, grip: number, margin = 8) {
+  const lo = rect.y + margin
+  const hi = rect.y + rect.h - margin - grip
+  return hi < lo ? rect.y + (rect.h - grip) / 2 : Math.min(hi, Math.max(lo, y - grip / 2))
 }
 
 /** The wipe moved by a key: 1% a press, 10% with Shift. */

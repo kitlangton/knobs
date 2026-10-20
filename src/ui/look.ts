@@ -237,22 +237,20 @@ const css = `
   box-shadow:0 0 0 1px var(--_k-border-strong),0 6px 18px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));pointer-events:none;white-space:nowrap;font:var(--_k-weight) var(--_k-font-size)/1.6 var(--_k-font)}
 .knobs-tree-empty{padding:10px var(--_k-inset);color:var(--_k-fg-3)}
 
-/* Timeline: a transport (play, the time) beside a track: the ruler's canvas over a lane of
-   markers, ranges as soft bands, and the playhead, a hairline in the accent with a cap. */
+/* Timeline: play beside a track: the ruler's canvas over a lane of markers, ranges as soft bands,
+   and the playhead, a hairline in the accent with a cap. No clock: the time shows under the
+   pointer on the track (the tag), in seconds, while hovering or scrubbing. */
 :where(.knobs-timeline,.knobs-timeline *){box-sizing:border-box}
 .knobs-ui.knobs-timeline{display:flex;align-items:stretch;gap:10px;width:100%;height:100%;min-height:52px;padding:6px var(--_k-inset) 8px 8px;outline:none;user-select:none;-webkit-user-select:none;
   font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
 :where(.knobs-ui) :is(.knobs-tl-play,.knobs-tl-edit){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;margin:0;padding:0;outline:none;box-shadow:none}
-.knobs-tl-transport{flex:none;display:flex;align-items:center;gap:8px;min-width:96px}
+.knobs-tl-transport{flex:none;display:flex;align-items:center}
 .knobs-ui .knobs-tl-play{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);min-width:22px;min-height:22px;border-radius:calc(var(--_k-radius) * 999);
   background:var(--_k-fill-selected);color:var(--_k-fg);cursor:pointer;transition:background .15s,transform .15s var(--_ku-ease)}
 .knobs-ui .knobs-tl-play:hover{background:color-mix(in srgb,var(--_k-fg) 16%,transparent)}
 .knobs-ui .knobs-tl-play:active{transform:scale(.94)}
 .knobs-tl-play svg{width:12px;height:12px}
 .knobs-timeline[data-playing] .knobs-tl-play{background:var(--_k-accent);color:var(--_k-bg)}
-.knobs-tl-time{display:flex;flex-direction:column;line-height:1.2;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.knobs-tl-now{font:var(--_k-weight) var(--_k-value-size)/1.2 var(--_k-value-font);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";color:var(--_k-fg);white-space:nowrap}
-.knobs-tl-sub{font-size:var(--_k-text-meta);color:var(--_k-fg-3);white-space:nowrap}
 .knobs-tl-track{position:relative;flex:1;min-width:0;overflow:hidden;border-radius:var(--_k-radius);background:var(--_k-fill);cursor:col-resize;touch-action:none;
   transition:background calc(var(--_k-hover-out) * 1ms)}
 .knobs-timeline:focus-visible .knobs-tl-track,.knobs-timeline[data-keyboard]:focus .knobs-tl-track{background:color-mix(in srgb,var(--_k-fill-selected) 80%,transparent)}
@@ -301,6 +299,21 @@ const css = `
 
 /** The pieces' stylesheet, as `injectUiStyles` writes it (after the token sheet). */
 export const uiCss = () =>
+.knobs-tl-tag{position:absolute;left:0;bottom:2px;font-size:var(--_k-text-meta);line-height:16px;color:var(--_k-fg);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;pointer-events:none;opacity:0}
+.knobs-tl-tag[data-on]{opacity:1}
+/* The lane (variant: "lane"): one slim track of ticks under a compare or a video; markers are
+   faint chapter ticks, the current one in text colour; nothing to edit. */
+.knobs-ui.knobs-timeline[data-variant="lane"]{height:auto;min-height:0;padding:0;gap:var(--_k-gap)}
+.knobs-timeline[data-variant="lane"] .knobs-tl-track{height:var(--_k-control-h)}
+.knobs-timeline[data-variant="lane"] .knobs-tl-ruler{height:100%}
+.knobs-timeline[data-variant="lane"] .knobs-tl-lane{top:0}
+.knobs-timeline[data-variant="lane"] .knobs-tl-marker{top:0}
+.knobs-timeline[data-variant="lane"] .knobs-tl-marker::before{top:0;bottom:50%;left:-.75px;width:1.5px;background:var(--_k-fg-3)}
+.knobs-timeline[data-variant="lane"] .knobs-tl-marker[data-current]::before{background:var(--_k-fg)}
+.knobs-timeline[data-variant="lane"] :is(.knobs-tl-pin,.knobs-tl-mlabel,.knobs-tl-rlabel){display:none}
+.knobs-timeline[data-variant="lane"] .knobs-tl-head::before{top:0}
+.knobs-timeline[data-variant="lane"] .knobs-tl-head::after{content:none}
+.knobs-timeline[data-variant="lane"] .knobs-tl-tag{top:2px;bottom:auto}
   aliased(
     css + readoutCss + overlayCss + bentoCss + activityCss + pickerCss + compareCss + selectionPillCss,
   ) +

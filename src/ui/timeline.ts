@@ -13,9 +13,12 @@ import { softClamp } from "./split-model.js"
 import {
   adjacentMarker,
   advance,
+  CATCH_UP,
   clampView,
+  currentMarker,
   followView,
   frameTime,
+  moveHead,
   rulerTicks,
   scrubTime,
   type TimeUnits,
@@ -67,6 +70,13 @@ export interface TimelineOptions extends UiLook {
    * the playhead gliding there; `,` and `.` step a frame either way.
    */
   readonly arrows?: "frames" | { readonly step: number; readonly shift: number }
+  /**
+   * `"editor"` (the default): a ruler with labels over a lane of markers to add, drag and name,
+   * zoomed and panned by the wheel. `"lane"`: one slim lane under a compare or a video, with ticks
+   * and no labels, markers as faint chapter ticks (the current one in text colour), nothing to
+   * edit, and the wheel left to the page.
+   */
+  readonly variant?: "editor" | "lane"
   readonly label?: string
   /** The time moved: scrubbed, stepped, jumped, played (every frame) or set from code. */
   onSeek?(time: number, source: SeekSource): void
@@ -106,7 +116,10 @@ export interface Timeline {
   readonly markers: readonly TimelineMarker[]
   readonly ranges: readonly TimelineRange[]
   readonly view: TimeView
-  /** `glide`: the playhead springs there (the time, and what it drives, land at once). */
+  /**
+   * `glide`: a jump the hand didn't make (a chapter's click, say): the playhead catches up from
+   * where it is on a quick spring; the time, and what it drives, land at once.
+   */
   seek(time: number, options?: { readonly glide?: boolean }): void
   play(): void
   pause(): void
@@ -138,9 +151,10 @@ const RULER = 22
 // timeline makes itself (following the playhead, fitting) glide on calm (.4 s, no bounce).
 const INSTANT = springMotion(SPRINGS.instant)
 const CALM = springMotion(SPRINGS.calm)
-// A keyed or coded jump (`seek(t, { glide })`, ←/→ in seconds): the playhead glides on snappy (.25 s), no
-// bounce; the time itself lands at once.
-const GLIDE = springMotion(SPRINGS.snappy)
+// A jump the hand didn't make (`seek(t, { glide })`, ←/→ in seconds, a marker's click, a loop's
+// wrap, a press on the lane away from the playhead, play from elsewhere): the playhead catches up
+// from where it is on .15 s, no bounce; the time itself lands at once. A drag stays 1:1.
+const GLIDE = springMotion(CATCH_UP)
 let uid = 0
 
 export function timeline(container: HTMLElement, options: TimelineOptions): Timeline {
@@ -152,6 +166,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let speed = options.speed ?? 1
   let repeat = options.repeat ?? true
   const arrows = options.arrows ?? "frames"
+  const lane = options.variant === "lane"
   let time = Math.min(duration, Math.max(0, options.time ?? 0))
   let playing = false
   let markers: TimelineMarker[] = [...(options.markers ?? [])]
@@ -184,20 +199,20 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   root.setAttribute("aria-label", options.label ?? "Timeline")
   root.setAttribute("aria-keyshortcuts", "Space ArrowLeft ArrowRight , . Home End [ ] I O M")
   applyLook(root, options)
+  if (lane) root.dataset.variant = "lane"
+  // No clock beside play: the time shows under the pointer on the track (`tag`), in seconds.
   const transport = el("div", "knobs-tl-transport")
   const playBtn = el("button", "knobs-tl-play")
   playBtn.type = "button"
   playBtn.tabIndex = -1
-  const readout = el("div", "knobs-tl-time")
-  const now = el("span", "knobs-tl-now")
-  const sub = el("span", "knobs-tl-sub")
-  readout.append(now, sub)
-  transport.append(playBtn, readout)
+  transport.append(playBtn)
   const track = el("div", "knobs-tl-track")
   const canvas = el("canvas", "knobs-tl-ruler")
   canvas.setAttribute("aria-hidden", "true")
-  const lane = el("div", "knobs-tl-lane")
+  const markerLane = el("div", "knobs-tl-lane")
   const hover = el("div", "knobs-tl-hover")
+  const tag = el("span", "knobs-tl-tag")
+  tag.setAttribute("aria-hidden", "true")
   const head = el("div", "knobs-tl-head")
   // The playhead is the slider screen readers and keys work with.
   head.id = `${id}-head`
@@ -205,7 +220,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   head.setAttribute("aria-label", "Playhead")
   head.setAttribute("aria-valuemin", "0")
   head.setAttribute("aria-valuemax", String(duration))
-  track.append(canvas, lane, hover, head)
+  track.append(canvas, markerLane, hover, head, tag)
   root.append(transport, track)
   container.append(root)
 
@@ -254,12 +269,13 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   let drawn = ""
   const drawRuler = () => {
     const v = view()
-    const key = `${v.start.toFixed(6)}:${v.span.toFixed(6)}:${width}:${units}:${fps}`
+    const key = `${v.start.toFixed(6)}:${v.span.toFixed(6)}:${width}:${height}:${units}:${fps}`
     if (key === drawn) return
     drawn = key
     const dpr = win.devicePixelRatio || 1
     const w = Math.max(1, Math.round(width * dpr))
-    const h = Math.round(RULER * dpr)
+    const rh = lane ? height : RULER
+    const h = Math.round(rh * dpr)
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w
       canvas.height = h
@@ -267,8 +283,16 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, width, RULER)
+    ctx.clearRect(0, 0, width, rh)
     const ticks = rulerTicks(v, width, { fps, units })
+    if (lane) {
+      // Ticks up from the bottom at subpixel places (no rounding moiré), no labels.
+      ctx.fillStyle = colors.tick
+      for (const t of ticks.minor) if (t >= -1e-9 && t <= duration + 1e-9) ctx.fillRect(xOf(t) - 0.5, rh - 4, 1, 4)
+      ctx.fillStyle = colors.major
+      for (const m of ticks.major) if (m.t >= -1e-9 && m.t <= duration + 1e-9) ctx.fillRect(xOf(m.t) - 0.5, rh - 7, 1, 7)
+      return
+    }
     const px = (t: number) => Math.round(xOf(t)) + 0.5
     ctx.fillStyle = colors.line
     ctx.fillRect(0, RULER - 1, width, 1)
@@ -304,7 +328,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         const pin = el("span", "knobs-tl-pin")
         const label = el("span", "knobs-tl-mlabel")
         n.append(pin, label)
-        lane.append(n)
+        markerLane.append(n)
         markerEls.set(m.id, n)
         if (built) enter(n)
       }
@@ -313,6 +337,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       label.hidden = !m.label
       n.style.setProperty("--knobs-tl-color", m.color ?? "")
       n.toggleAttribute("data-selected", selected?.kind === "marker" && selected.id === m.id)
+      n.toggleAttribute("data-current", m.id === currentId)
       n.title = `${m.label ? `${m.label} · ` : ""}${clock(m.time)}`
     }
     placeMarkers()
@@ -337,7 +362,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         b.dataset.edge = "end"
         const label = el("span", "knobs-tl-rlabel")
         n.append(label, a, b)
-        track.insertBefore(n, lane)
+        track.insertBefore(n, markerLane)
         rangeEls.set(r.id, n)
         if (built) enter(n)
       }
@@ -390,14 +415,18 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const clock = (t: number) =>
     units === "frames" ? `f${toFrame(t, fps)}` : `${timeLabel(t, "seconds", fps, 0.01)}`
   let shownHead = time
+  let currentId: string | null = null
   const renderHead = () => {
     head.style.transform = `translateX(${xOf(shownHead).toFixed(2)}px)`
-    const main = units === "frames" ? `f${toFrame(time, fps)}` : `${time.toFixed(2)}s`
-    const minor = units === "frames" ? `${time.toFixed(2)}s` : `f${toFrame(time, fps)}`
-    if (now.textContent !== main) now.textContent = main
-    if (sub.textContent !== minor) sub.textContent = minor
     head.setAttribute("aria-valuenow", time.toFixed(3))
     head.setAttribute("aria-valuetext", `${time.toFixed(2)} seconds, frame ${toFrame(time, fps)}`)
+    // The current chapter: the last marker at or before the time, its tick in text colour.
+    const cur = currentMarker(markers, time, fps)?.id ?? null
+    if (cur !== currentId) {
+      markerEls.get(currentId ?? "")?.removeAttribute("data-current")
+      currentId = cur
+      markerEls.get(cur ?? "")?.setAttribute("data-current", "")
+    }
   }
   let viewSent = ""
   const render = () => {
@@ -424,17 +453,28 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   // ——— time ———
   const caret = new Spring(time, GLIDE.omega, GLIDE.zeta, 1e-5)
   let gliding = false
-  const setTime = (t: number, source: SeekSource, shown = t, glide = false) => {
-    const next = Math.min(duration, Math.max(0, t))
-    if (glide && !reducedMotion(win)) {
-      if (!gliding) caret.snap(shownHead)
-      caret.set(next)
+  /** Moves the drawn playhead: a jump catches up from where it is, a follow lands (see moveHead). */
+  const headTo = (shown: number, motion: "jump" | "follow") => {
+    const from = gliding ? { x: caret.x, target: caret.target } : { x: shownHead, target: shownHead }
+    const jump = motion === "jump" && !reducedMotion(win)
+    // Less than 2 px away there's nothing to catch up.
+    const next = moveHead(from, shown, jump ? "jump" : "follow", gliding, 2 / pxPerSec())
+    if (next.catching) {
+      if (!gliding) caret.snap(from.x)
+      caret.x = next.x
+      caret.target = next.target
       gliding = true
+      shownHead = caret.x
       loop.wake()
     } else {
       gliding = false
-      shownHead = shown
+      caret.snap(next.x)
+      shownHead = next.x
     }
+  }
+  const setTime = (t: number, source: SeekSource, shown = t, glide = false) => {
+    const next = Math.min(duration, Math.max(0, t))
+    headTo(Math.min(duration, Math.max(0, shown)), glide ? "jump" : "follow")
     const moved = next !== time
     time = next
     renderHead()
@@ -474,8 +514,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         for (const m of markers)
           if (m.time >= (r ? r.start : 0) && m.time <= step.t) options.onCross?.(m)
       time = step.t
-      shownHead = time
-      gliding = false
+      // The clock carries the playhead 1:1; a wrap is a jump it catches up from.
+      headTo(time, step.wrapped ? "jump" : "follow")
       emitSeek(time, "play")
       keepInView()
       if (step.ended) {
@@ -488,7 +528,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       shownHead = caret.step(dt)
       if (caret.resting) {
         gliding = false
-        shownHead = time
+        shownHead = caret.target
       }
     }
     vStart.step(dt)
@@ -500,8 +540,9 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   const play = () => {
     if (playing) return
     const r = loopRange()
-    if (r && (time < r.start || time >= r.end - 0.5 / fps)) setTime(r.start, "code")
-    else if (!r && time >= duration - 0.5 / fps) setTime(0, "code")
+    // Play from elsewhere (the loop's start, or the top from the end): the playhead catches up.
+    if (r && (time < r.start || time >= r.end - 0.5 / fps)) setTime(r.start, "code", r.start, true)
+    else if (!r && time >= duration - 0.5 / fps) setTime(0, "code", 0, true)
     playing = true
     syncPlay()
     emitPlay(true)
@@ -646,24 +687,36 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         x0: number
       }
   let drag: Drag | null = null
-  const scrubTo = (x: number) => {
+  /** `press`: the hand landed away from the playhead, which catches up; a drag after is 1:1. */
+  const scrubTo = (x: number, press = false) => {
     // Past the ends it slows softly into them, as split panes do into their limits.
     const shownX = softClamp(x, xOf(0), xOf(duration), 10)
     const s = scrubTime(tOf(shownX), {
       duration,
       fps,
       pxPerSec: pxPerSec(),
-      stops: snapMarkers ? markers.map((m) => m.time) : [],
+      stops: snapMarkers && !lane ? markers.map((m) => m.time) : [],
       frames: snapFrames,
     })
-    setTime(s.t, "scrub", s.shown)
+    setTime(s.t, "scrub", s.shown, press)
     root.toggleAttribute("data-stuck", s.stop !== null)
   }
+  // The time under the pointer, in seconds, while it's over the track or scrubbing.
+  const showTag = (x: number) => {
+    const at = Math.min(duration, Math.max(0, tOf(x)))
+    const text = `${at.toFixed(2)} s`
+    if (tag.textContent !== text) tag.textContent = text
+    const cx = Math.min(width, Math.max(0, x))
+    const flip = cx > width - tag.offsetWidth - 12
+    tag.style.transform = `translateX(${cx.toFixed(1)}px) translateX(${flip ? "calc(-100% - 4px)" : "4px"})`
+    tag.dataset.on = ""
+  }
+  const hideTag = () => delete tag.dataset.on
   track.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || editing) return
     root.focus({ preventScroll: true })
     const t = e.target as HTMLElement
-    const markerEl = t.closest<HTMLElement>(".knobs-tl-marker")
+    const markerEl = lane ? null : t.closest<HTMLElement>(".knobs-tl-marker")
     const edgeEl = t.closest<HTMLElement>(".knobs-tl-edge")
     const rangeEl = t.closest<HTMLElement>(".knobs-tl-range")
     track.setPointerCapture(e.pointerId)
@@ -705,13 +758,15 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       }
       root.dataset.scrubbing = ""
       for (const l of listeners) l.onScrub?.(true)
-      scrubTo(localX(e))
+      scrubTo(localX(e), true)
+      showTag(localX(e))
     }
     e.preventDefault()
   })
   track.addEventListener("pointermove", (e) => {
     const x = localX(e)
     hover.style.transform = `translateX(${x.toFixed(1)}px)`
+    if (!drag || drag.kind === "scrub") showTag(x)
     if (!drag) return
     if (drag.kind === "scrub") return scrubTo(x)
     if (drag.kind === "marker") {
@@ -755,8 +810,9 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     root.removeAttribute("data-stuck")
     if (d.kind === "scrub") {
       // Let go off a marker's pull, it rests where the time is.
-      shownHead = time
+      headTo(time, "follow")
       renderHead()
+      if (!track.matches(":hover")) hideTag()
       for (const l of listeners) l.onScrub?.(false)
       if (d.wasPlaying) play()
     } else if (d.kind === "marker") {
@@ -766,7 +822,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         emitMarkers()
       } else {
         const m = markers.find((x) => x.id === d.id)
-        if (m) setTime(m.time, "marker")
+        if (m) setTime(m.time, "marker", m.time, true)
       }
     } else if (d.kind === "edge" || d.moved) emitRanges()
   }
@@ -774,19 +830,24 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
   track.addEventListener("pointercancel", endDrag)
   track.addEventListener("lostpointercapture", endDrag)
   track.addEventListener("pointerleave", () => {
-    if (!drag) hover.style.transform = "translateX(-100px)"
+    if (drag) return
+    hover.style.transform = "translateX(-100px)"
+    hideTag()
   })
   track.addEventListener("dblclick", (e) => {
+    if (lane) return
     const markerEl = (e.target as HTMLElement).closest<HTMLElement>(".knobs-tl-marker")
     if (markerEl) return rename(markerEl.dataset.id!)
     if ((e.target as HTMLElement).closest(".knobs-tl-edge,.knobs-tl-rlabel")) return
     const m = addMarker(tOf(localX(e)))
     if (m) rename(m.id)
   })
-  // ⌘wheel or a pinch zooms around the pointer; the wheel and two fingers pan.
+  // ⌘wheel or a pinch zooms around the pointer; the wheel and two fingers pan. A lane leaves the
+  // wheel to the page.
   track.addEventListener(
     "wheel",
     (e) => {
+      if (lane) return
       e.preventDefault()
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? height : 1
       if (e.ctrlKey || e.metaKey) {
@@ -857,7 +918,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         const m = adjacentMarker(markers, time, e.key === "]" ? 1 : -1, fps)
         if (!m) return
         select({ kind: "marker", id: m.id })
-        return setTime(m.time, "marker")
+        return setTime(m.time, "marker", m.time, true)
       }
       case "i":
       case "I":
@@ -869,11 +930,12 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         return setEdge("end", time)
       case "m":
       case "M":
+        if (lane) return
         claim()
         addMarker(time)
         return
       case "Enter":
-        if (selected?.kind === "marker") {
+        if (selected?.kind === "marker" && !lane) {
           claim()
           rename(selected.id)
         }
@@ -890,12 +952,15 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         return
       case "=":
       case "+":
+        if (lane) return
         claim()
         return zoom(1.5)
       case "-":
+        if (lane) return
         claim()
         return zoom(1 / 1.5)
       case "0":
+        if (lane) return
         claim()
         return fit()
     }
@@ -908,7 +973,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
           root,
           () => [
             { el: playBtn, label: playing ? "Pause" : "Play", activate: toggle },
-            ...markers.flatMap((m) => {
+            ...(lane ? [] : markers).flatMap((m) => {
               const n = markerEls.get(m.id)
               if (!n || n.dataset.leaving !== undefined) return []
               const label = n.querySelector<HTMLElement>(".knobs-tl-mlabel")
@@ -919,7 +984,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
                   ...(label && !label.hidden ? { labelEl: label } : {}),
                   activate: () => {
                     select({ kind: "marker", id: m.id })
-                    setTime(m.time, "marker")
+                    setTime(m.time, "marker", m.time, true)
                     root.focus({ preventScroll: true })
                   },
                 },
@@ -934,8 +999,8 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
           { listen: false, rank: 1 },
         )
 
-  // A context menu on markers, ranges and the ruler.
-  const menu = contextMenu(track, (e) => {
+  // A context menu on markers, ranges and the ruler (not on a lane: nothing there to edit).
+  const menu = lane ? null : contextMenu(track, (e) => {
     const t = (e?.target as HTMLElement | null) ?? null
     const markerEl = t?.closest<HTMLElement>(".knobs-tl-marker")
     const rangeEl = t?.closest<HTMLElement>(".knobs-tl-range")
@@ -949,7 +1014,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
           shortcut: "]",
           run: () => {
             const m = markers.find((x) => x.id === mid)
-            if (m) setTime(m.time, "marker")
+            if (m) setTime(m.time, "marker", m.time, true)
           },
         },
         { label: "Rename…", shortcut: "Enter", run: () => rename(mid) },
@@ -1109,7 +1174,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
       listeners.clear()
       loop.stop()
       ro.disconnect()
-      menu.dispose()
+      menu?.dispose()
       root.remove()
     },
   }

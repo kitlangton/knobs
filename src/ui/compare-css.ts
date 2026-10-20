@@ -1,8 +1,9 @@
 // The compare viewer: a soft rounded stage holding the two sides (side by side, a split screen
 // down the middle with no margins; overlaid, letterboxed, never cropped), with light chrome: the
-// modes as words above it, Before and After as small glass labels in their sides' corners, the
-// wipe as a hairline with a small grip, and, zoomed, a glass pill with the zoom and a Reset. The
-// timeline sits under it.
+// modes as a segmented control above it (the selection pill on the one picked), Before and After
+// as small glass labels in their sides' corners (wiping, either side of the seam), the wipe as a
+// hairline with a raised grip at the pointer's height, and, zoomed, a glass pill with the zoom and
+// a reset. Its timeline, a slim lane, sits under it.
 export const compareCss = `
 :where(.knobs-compare,.knobs-compare *,.knobs-cmp-strip,.knobs-cmp-strip *){box-sizing:border-box}
 .knobs-ui.knobs-compare{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));--_ku-cmp-line:var(--_k-compare-divider);
@@ -10,12 +11,20 @@ export const compareCss = `
   display:flex;flex-direction:column;gap:6px;width:100%;height:100%;min-height:160px;outline:none;user-select:none;-webkit-user-select:none;
   font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
 :where(.knobs-ui) :is(.knobs-cmp-mode,.knobs-cmp-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;margin:0;padding:0;outline:none;box-shadow:none}
-.knobs-cmp-bar{flex:none;display:flex;align-items:center;gap:2px;height:24px;padding:0 2px}
-.knobs-cmp-modes{display:flex;align-items:center;gap:2px}
-.knobs-ui .knobs-cmp-mode,.knobs-ui .knobs-cmp-toggle{height:22px;padding:0 7px;border-radius:max(0px,calc(var(--_k-radius) - 2px));color:var(--_k-fg-3);cursor:pointer;white-space:nowrap;
-  transition:color .15s,background .15s}
-.knobs-ui .knobs-cmp-mode:is(:hover,:focus-visible),.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_ku-wash)}
-.knobs-ui .knobs-cmp-mode[aria-checked="true"],.knobs-ui .knobs-cmp-toggle[aria-pressed="true"]{color:var(--_k-fg);font-weight:var(--_k-weight-label)}
+.knobs-cmp-bar{flex:none;display:flex;align-items:center;gap:var(--_k-gap);height:var(--_k-control-h)}
+/* The modes: one fill, the selection pill on the one picked; a mode isn't brighter for being
+   picked: the pill's bright copy is. */
+.knobs-cmp-modes{position:relative;display:inline-flex;height:var(--_k-control-h);border-radius:var(--_k-radius);background:var(--_k-fill)}
+.knobs-cmp-modes[hidden]{display:none}
+.knobs-ui .knobs-cmp-mode{display:inline-flex;align-items:center;height:100%;padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:pointer;white-space:nowrap;
+  transition:color calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-cmp-mode:is(:hover,:focus-visible){color:var(--_k-fg)}
+/* Toggles: icon buttons, the accent's wash when on. */
+.knobs-ui .knobs-cmp-toggle{display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:var(--_k-radius);color:var(--_k-fg-3);cursor:pointer;
+  transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-cmp-toggle[aria-pressed="true"]{color:var(--_k-accent-fg);background:var(--_k-accent-soft)}
+.knobs-cmp-toggle svg{display:block}
 .knobs-cmp-fill{flex:1}
 .knobs-cmp-toggle[hidden]{display:none}
 /* One surface: on a card (a walkthrough's step, a split's pane, anything .knobs-surface) or marked
@@ -30,7 +39,8 @@ export const compareCss = `
 /* Unzoomed, a finger still scrolls the page up and down; zoomed, the stage takes every gesture. */
 .knobs-compare[data-zoomed] .knobs-cmp-stage{cursor:grab;touch-action:none}
 .knobs-compare[data-panning],.knobs-compare[data-panning] *{cursor:grabbing!important}
-.knobs-compare[data-dragging],.knobs-compare[data-dragging] *{cursor:ew-resize!important}
+/* Wiping, the grip stands in for the cursor. */
+.knobs-compare[data-dragging],.knobs-compare[data-dragging] *{cursor:none!important}
 .knobs-cmp-sizer{position:absolute;left:0;right:0;top:0;height:0;visibility:hidden;pointer-events:none}
 .knobs-cmp-canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .knobs-cmp-media{position:absolute;left:0;top:0;display:block;max-width:none;margin:0;padding:0;border:0;object-fit:fill;transform-origin:0 0;pointer-events:none;will-change:transform}
@@ -39,17 +49,20 @@ export const compareCss = `
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
 .knobs-cmp-label{position:absolute;left:0;top:0;padding:1px 7px;border-radius:999px;font-size:var(--_k-text-meta);line-height:16px;color:var(--_k-fg-2);white-space:nowrap;pointer-events:none;will-change:transform;transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-cmp-label[data-lit]{color:var(--_k-fg)}
-.knobs-cmp-label[data-dim]{color:var(--_k-fg-3)}
-/* The wipe: a hairline down the line with a grip at its middle; a wider strip takes the hand and
-   the keys (a slider). It fades with the mode. */
+/* The wipe: a hairline down the line with a raised grip at the pointer's height; a wider strip
+   takes the hand and the keys (a slider). It fades with the mode; wiping, line and grip brighten. */
 .knobs-cmp-handle{cursor:ew-resize;position:absolute;left:-12px;top:0;width:24px;height:0;opacity:0;pointer-events:none;outline:none;will-change:transform;transition:opacity .18s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-handle[data-on]{opacity:1;pointer-events:auto;transition:opacity .22s cubic-bezier(.2,.8,.2,1)}
-.knobs-cmp-handle::before{content:"";position:absolute;top:0;bottom:0;left:11.5px;width:1px;background:var(--_ku-cmp-line);box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 0 6px rgba(0,0,0,.25)}
-.knobs-cmp-handle::after{content:"";position:absolute;top:50%;left:9px;width:6px;height:28px;margin-top:-14px;border-radius:3px;background:var(--_ku-cmp-line);
-  box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.2);transition:scale .18s var(--_ku-ease),box-shadow .15s}
-.knobs-compare[data-dragging] .knobs-cmp-handle::after{scale:1.12}
-.knobs-cmp-handle:focus-visible::after,.knobs-compare[data-keyboard] .knobs-cmp-handle:focus::after{box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 3px color-mix(in srgb,var(--_k-accent) 40%,transparent)}
+.knobs-cmp-handle::before{content:"";position:absolute;top:0;bottom:0;left:11.5px;width:1px;background:color-mix(in srgb,var(--_ku-cmp-line) 72%,transparent);box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 0 6px rgba(0,0,0,.25)}
+.knobs-compare[data-dragging] .knobs-cmp-handle::before{background:var(--_ku-cmp-line)}
+.knobs-cmp-grip{position:absolute;top:0;left:4px;width:16px;height:28px;border-radius:min(8px,calc(var(--_k-radius) * 999));background:var(--_k-bg-overlay);
+  box-shadow:var(--_k-shadow-overlay),inset 0 0 0 1px var(--_k-border),inset 0 1px 0 var(--_k-rim);will-change:transform;transition:box-shadow calc(var(--_k-hover-out) * 1ms)}
+.knobs-cmp-grip::before,.knobs-cmp-grip::after{content:"";position:absolute;top:10px;width:1px;height:8px;background:var(--_k-fg-3);transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-cmp-grip::before{left:6px}
+.knobs-cmp-grip::after{left:9px}
+.knobs-compare[data-dragging] .knobs-cmp-grip{box-shadow:var(--_k-shadow-overlay),inset 0 0 0 1px var(--_k-border-strong),inset 0 1px 0 var(--_k-rim)}
+.knobs-compare[data-dragging] .knobs-cmp-grip::before,.knobs-compare[data-dragging] .knobs-cmp-grip::after{background:var(--_k-fg)}
+.knobs-cmp-handle:focus-visible .knobs-cmp-grip,.knobs-compare[data-keyboard] .knobs-cmp-handle:focus .knobs-cmp-grip{box-shadow:var(--_k-shadow-overlay),0 0 0 2px var(--_k-accent)}
 /* The split's hairline, down the middle side by side. */
 .knobs-cmp-split{position:absolute;left:0;top:0;width:1px;height:0;margin-left:-.5px;background:color-mix(in srgb,var(--_k-bg) 72%,transparent);pointer-events:none;will-change:transform,opacity}
 /* Zoomed: how far, and a way back, in the stage's corner; it fades in and out, nothing shifts. */
@@ -58,12 +71,12 @@ export const compareCss = `
   opacity:0;scale:.96;pointer-events:none;transition:opacity .16s cubic-bezier(.4,0,1,1),scale .16s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
-  height:20px;padding:0 8px;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:pointer;transition:color .15s,background .15s}
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:pointer;transition:color .15s,background .15s}
 :where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){color:var(--_k-fg);background:color-mix(in srgb,var(--_k-fg) 12%,transparent)}
 .knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);font-size:var(--_k-text-meta);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
 .knobs-cmp-strip-host{flex:none;height:60px;min-height:0}
-.knobs-cmp-timeline-host{flex:none;height:56px;min-height:0}
+.knobs-cmp-timeline-host{flex:none;min-height:0}
 /* The frame strip: Before over After per column, a difference bar under them, a dot where it peaks. */
 .knobs-ui.knobs-cmp-strip{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));position:relative;width:100%;height:100%;min-height:40px;overflow:hidden;cursor:col-resize;touch-action:none;
   font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg)}

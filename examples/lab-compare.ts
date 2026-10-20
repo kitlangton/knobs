@@ -1,8 +1,9 @@
 // The Lab's compare: the top bar's View switch (or ?compare, ?compare=stills) lays a before/after
 // viewer over the viewport, run by the scene's own timeline under it: its playhead drives both
 // videos and playing follows After's clock. S side by side (the default: a split screen; pinch,
-// ⌘-wheel or double-click zooms both, drag pans), W wipe, D difference, hold X to flick, hold Z for
-// the loupe, L loops; Space plays, ←/→ seek half a second (⇧ two), , and . step a frame. The media
+// ⌘-wheel or double-click zooms both, drag pans), W wipe (drag the line, or press anywhere and it
+// catches up), hold Z for the loupe, L loops; Space plays, ←/→ seek half a second (⇧ two), , and .
+// step a frame. The media
 // are generated (assets/compare/make.sh): After moves a card, recolours a button, widens the ball
 // and flashes a badge from 1.5 s to 2.6 s.
 import { compare, type Compare, type Timeline } from "knobs/ui"

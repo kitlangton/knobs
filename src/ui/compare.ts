@@ -1,6 +1,6 @@
 // compare(container, options): a before/after viewer for videos and images. Side by side (the
-// default: a split screen down the middle, zoomed and panned together), a wipe, a difference or a
-// flicker, drawn by one WebGPU pass (two <video>s with a
+// default: a split screen down the middle, zoomed and panned together), a wipe, or (opt in) a
+// difference, drawn by one WebGPU pass (two <video>s with a
 // clip-path wipe where there's no WebGPU). Both videos run from one clock: paused, scrubbed or
 // stepped, each seeks to the frame's midpoint, coalesced, and while a seek is in flight the nearest
 // decoded frame from a shared cache (compare-frames.ts) shows at once; playing, After leads,
@@ -16,18 +16,23 @@ import {
   clampZoom,
   type CompareMode,
   compareLayout,
+  compareModes,
   frameMidpoint,
   frameOf,
+  gripTop,
   lastFrame,
   lerpRect,
   loopAround,
   type MediaKind,
   mediaKind,
+  modeForKey,
+  modeKey,
   panBy,
   pointIn,
   type Rect,
   requestSeek,
   SEEK_IDLE,
+  seamLabels,
   type SeekState,
   seeked,
   type Size,
@@ -43,9 +48,12 @@ import {
   type ZoomRegion,
 } from "./compare-model.js"
 import { compareStrip, type CompareStrip } from "./compare-strip.js"
+import { icon } from "./icons.js"
 import { applyLook, frameLoop, isTypingTarget, reducedMotion, tune, type UiLook } from "./look.js"
 import { tokenColor } from "./rgba.js"
+import { selectionPill } from "./selection-pill.js"
 import { timeline as makeTimeline, type Timeline } from "./timeline.js"
+import { CATCH_UP, moveHead } from "./timeline-model.js"
 
 export type { CompareMode, MediaKind, ZoomRegion } from "./compare-model.js"
 
@@ -80,8 +88,13 @@ export interface CompareSource {
 export interface CompareOptions extends UiLook {
   readonly before: CompareSource
   readonly after: CompareSource
-  /** `"side"` (side by side) by default. */
+  /** The first of `modes` (`"side"`, side by side) by default. */
   readonly mode?: CompareMode
+  /**
+   * The modes it offers, in the mode bar's order and on `1`–`3`: `["side", "wipe"]` by default.
+   * Add `"difference"` to offer a difference. One mode hides the bar.
+   */
+  readonly modes?: readonly CompareMode[]
   /** Where the wipe's line sits, 0 (all After) to 1 (all Before); 0.5. */
   readonly wipe?: number
   /** Frames per second (the bound timeline's, else 30): steps, and where paused videos land. */
@@ -92,8 +105,8 @@ export interface CompareOptions extends UiLook {
   readonly threshold?: number
   /**
    * The clock: an existing `timeline()` (its time drives both sides; while playing it follows
-   * After), or `true` for one of its own under the viewer. Without one, `seek`, `play` and keys
-   * still work.
+   * After), or `true` for a slim one of its own under the viewer (the `"lane"` variant: its
+   * markers are chapter ticks). Without one, `seek`, `play` and keys still work.
    */
   readonly timeline?: Timeline | boolean
   /** The frame strip over the timeline (off; one timeline is made if there's none). */
@@ -120,6 +133,8 @@ export interface CompareOptions extends UiLook {
 export interface Compare {
   readonly element: HTMLElement
   readonly mode: CompareMode
+  /** The modes it offers. */
+  readonly modes: readonly CompareMode[]
   readonly wipe: number
   readonly loupe: boolean
   /** Seconds. */
@@ -141,7 +156,11 @@ export interface Compare {
       Pick<CompareOptions, "before" | "after" | "mode" | "wipe" | "loupe" | "threshold" | "fps">
     >,
   ): void
-  seek(time: number): void
+  /**
+   * `glide`: a jump the hand didn't make (a chapter's click): the timeline's playhead catches up
+   * from where it is while the videos land at once.
+   */
+  seek(time: number, options?: { readonly glide?: boolean }): void
   /** Moves by `seconds`, the timeline's playhead gliding there (playing carries on). */
   seekBy(seconds: number): void
   play(): void
@@ -160,27 +179,28 @@ export interface Compare {
 // kit-motion: a mode change is a state change. Side ↔ overlaid glides on .35 s, no bounce; one
 // mode's look crossfades into the next on .25 s (.15 s with reduced motion, which drops the glide).
 // A zoom's reset, a double-click or a key's zoom is a state change too: .35 s, no bounce (snapped
-// with reduced motion). The wipe, the loupe, scrubbing, pans and pinches follow the hand 1:1.
+// with reduced motion). The wipe, the loupe, scrubbing, pans and pinches follow the hand 1:1; a
+// press on the stage away from the wipe's line catches up from where it is (.15 s, no bounce).
 const LAYOUT = springMotion({ duration: 0.35, bounce: 0 })
 const FADE = springMotion(SPRINGS.snappy)
 const FADE_REDUCED = springMotion(FADE_SPRING)
 const ZOOM = springMotion({ duration: 0.35, bounce: 0 })
-const FLICKER_MS = 400
+const WIPE_CATCH = springMotion(CATCH_UP)
 const SLOP = 12
-/** Labels sit this far inside their side's corner. */
+/** Labels sit this far inside their side's corner, and this far from the wipe's seam. */
 const INSET = 8
+/** The wipe's grip: a raised capsule on the line at the pointer's height. */
+const GRIP = { w: 16, h: 28 }
 const LOUPE = { r: 88, zoom: 4 }
 /** Mid-scrub with no decoded frame this close, a keyframe seek (`fastSeek`) answers first. */
 const FAST_SEEK_FRAMES = 15
 /** Off screen this long (ms), its videos and frames are let go. */
 const RELEASE_MS = 3000
-const MODES: readonly { mode: CompareMode; label: string; key: string }[] = [
-  { mode: "side", label: "Side by side", key: "S" },
-  { mode: "wipe", label: "Wipe", key: "W" },
-  { mode: "difference", label: "Difference", key: "D" },
-  { mode: "flicker", label: "Flicker", key: "" },
-]
-const KEY_MODE: Record<string, CompareMode> = { s: "side", w: "wipe", d: "difference" }
+const MODE_LABEL: Record<CompareMode, { short: string; long: string }> = {
+  side: { short: "Side", long: "Side by side" },
+  wipe: { short: "Wipe", long: "Wipe" },
+  difference: { short: "Difference", long: "Difference" },
+}
 
 interface Side {
   readonly index: 0 | 1
@@ -220,7 +240,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     ...(options.theme ? { theme: options.theme } : {}),
     ...(options.appearance ? { appearance: options.appearance } : {}),
   }
-  let mode: CompareMode = options.mode ?? "side"
+  const offered = compareModes(options.modes, options.mode)
+  const modeList = offered.modes
+  let mode: CompareMode = offered.mode
   let wipe = Math.min(1, Math.max(0, options.wipe ?? 0.5))
   let loupeOn = options.loupe ?? false
   let threshold = options.threshold ?? 4 / 255
@@ -242,44 +264,47 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   root.setAttribute("aria-label", options.label ?? "Compare")
   root.setAttribute(
     "aria-keyshortcuts",
-    "Space ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight , . 1 2 3 4 S W D X Z L 0 = -",
+    `Space ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight , . ${modeList.map((m, i) => `${i + 1} ${modeKey(m)}`).join(" ")} Z L 0 = -`,
   )
   applyLook(root, options)
   root.dataset.mode = mode
   if (auto) root.dataset.auto = ""
   const bar = el("div", "knobs-cmp-bar")
+  // The modes: a segmented control, the selection pill sliding to the one picked.
   const modes = el("div", "knobs-cmp-modes")
   modes.setAttribute("role", "radiogroup")
   modes.setAttribute("aria-label", "Mode")
-  const modeBtns = MODES.map((m, i) => {
+  modes.hidden = modeList.length < 2
+  const modeBtns = modeList.map((m, i) => {
     const b = el("button", "knobs-cmp-mode")
     b.type = "button"
     b.tabIndex = -1
-    b.textContent = m.label
-    b.title = `${m.label} · ${i + 1}${m.key ? ` or ${m.key}` : " (hold X to flick)"}`
+    b.textContent = MODE_LABEL[m].short
+    b.title = `${MODE_LABEL[m].long} · ${i + 1} or ${modeKey(m)}`
     b.setAttribute("role", "radio")
-    b.setAttribute("aria-keyshortcuts", m.key ? `${i + 1} ${m.key}` : `${i + 1}`)
+    b.setAttribute("aria-keyshortcuts", `${i + 1} ${modeKey(m)}`)
     b.addEventListener("click", () => {
-      setMode(m.mode)
+      setMode(m)
       root.focus({ preventScroll: true })
     })
     modes.append(b)
     return b
   })
-  const loupeBtn = el("button", "knobs-cmp-toggle")
-  loupeBtn.type = "button"
-  loupeBtn.tabIndex = -1
-  loupeBtn.textContent = "Loupe"
-  loupeBtn.title = "Loupe · hold Z"
+  const toggleBtn = (name: Parameters<typeof icon>[0], label: string, title: string) => {
+    const b = el("button", "knobs-cmp-toggle")
+    b.type = "button"
+    b.tabIndex = -1
+    b.innerHTML = icon(name)
+    b.setAttribute("aria-label", label)
+    b.title = title
+    return b
+  }
+  const loupeBtn = toggleBtn("magnifyingGlass", "Loupe", "Loupe · hold Z")
   loupeBtn.addEventListener("click", () => {
     setLoupe(!loupeOn)
     root.focus({ preventScroll: true })
   })
-  const loopBtn = el("button", "knobs-cmp-toggle")
-  loopBtn.type = "button"
-  loopBtn.tabIndex = -1
-  loopBtn.textContent = "Loop"
-  loopBtn.title = "Loop · L (drag its ends on the timeline)"
+  const loopBtn = toggleBtn("repeat", "Loop", "Loop · L (drag its ends on the timeline)")
   loopBtn.setAttribute("aria-keyshortcuts", "L")
   loopBtn.addEventListener("click", () => {
     api.setLoop(!loopNow())
@@ -297,7 +322,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const zoomReset = el("button", "knobs-cmp-zoom-reset")
   zoomReset.type = "button"
   zoomReset.tabIndex = -1
-  zoomReset.textContent = "Reset"
+  zoomReset.innerHTML = icon("arrowCounterClockwise", { small: true })
+  zoomReset.setAttribute("aria-label", "Reset zoom")
   zoomReset.title = "Fit · 0 or double-click"
   zoomReset.addEventListener("click", () => {
     api.setZoom(null)
@@ -312,6 +338,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   handle.setAttribute("aria-label", "Wipe")
   handle.setAttribute("aria-valuemin", "0")
   handle.setAttribute("aria-valuemax", "100")
+  const grip = el("span", "knobs-cmp-grip")
+  grip.setAttribute("aria-hidden", "true")
+  handle.append(grip)
   const note = el("div", "knobs-cmp-note")
   stage.append(canvas, split, labels[0], labels[1], handle, zoomPill, note)
   root.append(bar, stage)
@@ -330,6 +359,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     root.append(host)
     tl = makeTimeline(host, {
       ...look,
+      variant: "lane",
       duration: 1,
       fps: fps(),
       arrows: { step: 0.5, shift: 2 },
@@ -350,9 +380,11 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const fade = new Spring(1, FADE.omega, FADE.zeta, 1e-3)
   let fromMode: CompareMode = mode
   let toMode: CompareMode = mode
-  let phase = false
-  let flickerTimer = 0
-  let flickHeld = false
+  // The wipe's line as drawn: it catches up to `wipe` after a press away from it, else lands.
+  const wipeLine = new Spring(wipe, WIPE_CATCH.omega, WIPE_CATCH.zeta, 1e-4)
+  let wipeCatching = false
+  /** The pointer's height over the stage, where the grip rides (null: the middle). */
+  let gripY: number | null = null
   let loupeHeld = false
   let pointer: { x: number; y: number } | null = null
   type Drag =
@@ -662,25 +694,16 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   }
 
   // ——— modes ———
-  const syncFlicker = () => {
-    win.clearInterval(flickerTimer)
-    flickerTimer = 0
-    phase = false
-    if (mode === "flicker")
-      flickerTimer = win.setInterval(() => {
-        phase = !phase
-        requestDraw()
-      }, FLICKER_MS)
-  }
   const syncModeUi = () => {
     root.dataset.mode = mode
-    MODES.forEach((m, i) => {
-      modeBtns[i]!.setAttribute("aria-checked", String(m.mode === mode))
+    modeList.forEach((m, i) => {
+      modeBtns[i]!.setAttribute("aria-checked", String(m === mode))
     })
     handle.tabIndex = mode === "wipe" ? 0 : -1
+    modePill?.update()
   }
   const setMode = (next: CompareMode, emit = true) => {
-    if (next === mode) return
+    if (next === mode || !modeList.includes(next)) return
     mode = next
     const reduced = reducedMotion(win)
     tune(fade, reduced ? FADE_REDUCED : FADE)
@@ -694,17 +717,34 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     if (reduced) lay.snap(next === "side" ? 0 : 1)
     else lay.set(next === "side" ? 0 : 1)
     syncModeUi()
-    syncFlicker()
     if (emit) options.onMode?.(next)
     requestDraw()
   }
-  const setWipe = (next: number, emit = true) => {
+  /**
+   * `jump`: a press away from the line, which catches up from where it's drawn; otherwise the
+   * hand's (a drag, a key, code), drawn at once, or, mid catch-up, followed with the rest settling.
+   */
+  const setWipe = (next: number, emit = true, jump = false) => {
     const w = Math.min(1, Math.max(0, next))
-    if (w === wipe) return
+    if (w === wipe && !jump) return
     wipe = w
+    const minGap = 2 / Math.max(1, wipeRect(layoutNow().L.overlay).w)
+    const head = moveHead(
+      { x: wipeLine.x, target: wipeLine.target },
+      w,
+      jump && !reducedMotion(win) ? "jump" : "follow",
+      wipeCatching,
+      minGap,
+    )
+    wipeCatching = head.catching
+    if (head.catching) {
+      wipeLine.x = head.x
+      wipeLine.target = head.target
+    } else wipeLine.snap(head.x)
     if (emit) options.onWipe?.(w)
     // The hand's: drawn now, not next frame.
-    drawNow()
+    if (head.catching) requestDraw()
+    else drawNow()
   }
   const setLoupe = (on: boolean) => {
     loupeOn = on
@@ -856,37 +896,55 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     options.onView({ zoom: clampZoom(z), loop: l })
   }
 
+  /** Each label's place and opacity in a mode: its side's top corner, or wiping, the seam. */
+  const labelsIn = (
+    m: CompareMode,
+    r: ReturnType<typeof layoutNow>,
+    wr: Rect,
+    wx: number,
+  ): [{ x: number; opacity: number }, { x: number; opacity: number }] => {
+    if (m === "wipe") {
+      const at = seamLabels(wx, wr.x, wr.x + wr.w, labelW[0], labelW[1], INSET)
+      return [at.before, at.after]
+    }
+    // After's moves from its left (side by side) to its right (overlaid), clear of Before's.
+    const ax = r.after.x + INSET + (r.after.w - labelW[1] - INSET * 2) * lay.x
+    return [
+      { x: r.before.x + INSET, opacity: 1 },
+      { x: ax, opacity: 1 },
+    ]
+  }
+  /** The grip rides the line at the pointer's height (the middle until there's a pointer). */
+  const placeGrip = (wr: Rect) => {
+    const gy = gripTop(gripY ?? wr.y + wr.h / 2, wr, GRIP.h) - wr.y
+    grip.style.transform = `translate3d(0,${gy.toFixed(2)}px,0)`
+  }
   const draw = () => {
     dirty = false
     const r = layoutNow()
     const wr = wipeRect(r.L.overlay)
-    const wx = wipeX(wr, wipe)
+    const wx = wipeX(wr, wipeLine.x)
     const k = lay.x
-    // Labels sit inside their sides' top corners: After's moves from its left (side by side) to
-    // its right (overlaid), clear of Before's.
-    const ax = r.after.x + INSET + (r.after.w - labelW[1] - INSET * 2) * k
-    labels[0].style.transform = `translate(${(r.before.x + INSET).toFixed(2)}px,${(r.before.y + INSET).toFixed(2)}px)`
-    labels[1].style.transform = `translate(${ax.toFixed(2)}px,${(r.after.y + INSET).toFixed(2)}px)`
-    const showsBefore = flickHeld || (mode === "flicker" && phase)
-    const flickering = flickHeld || mode === "flicker"
-    labels[0].toggleAttribute("data-lit", flickering && showsBefore)
-    labels[1].toggleAttribute("data-lit", flickering && !showsBefore)
-    labels[0].toggleAttribute(
-      "data-dim",
-      (flickering && !showsBefore) || (mode === "wipe" && wipe < 0.02),
-    )
-    labels[1].toggleAttribute(
-      "data-dim",
-      (flickering && showsBefore) || (mode === "wipe" && wipe > 0.98),
-    )
+    // Labels sit inside their sides' top corners; wiping, they ride either side of the seam,
+    // fading where there's no room. A mode change carries them between the two.
+    const a = labelsIn(fromMode, r, wr, wx)
+    const b = labelsIn(toMode, r, wr, wx)
+    const f = Math.min(1, Math.max(0, fade.x))
+    const ys = [r.before.y + INSET, r.after.y + INSET]
+    for (const i of [0, 1] as const) {
+      const x = a[i].x + (b[i].x - a[i].x) * f
+      labels[i].style.transform = `translate(${x.toFixed(2)}px,${ys[i]!.toFixed(2)}px)`
+      labels[i].style.opacity = (a[i].opacity + (b[i].opacity - a[i].opacity) * f).toFixed(3)
+    }
     // The split's hairline, down the middle side by side, gone as the sides come together.
     const top = Math.min(r.L.side.before.y, r.L.side.after.y)
     split.style.transform = `translate(${r.L.side.split.toFixed(2)}px,${top.toFixed(2)}px)`
     split.style.height = `${Math.max(0, r.L.side.after.h).toFixed(2)}px`
     split.style.opacity = String(Math.max(0, 1 - k * 2))
-    handle.toggleAttribute("data-on", mode === "wipe" && !flickHeld)
+    handle.toggleAttribute("data-on", mode === "wipe")
     handle.style.transform = `translate(${wx.toFixed(2)}px,${wr.y.toFixed(2)}px)`
     handle.style.height = `${Math.max(0, wr.h).toFixed(2)}px`
+    placeGrip(wr)
     handle.setAttribute("aria-valuenow", String(Math.round(wipe * 100)))
     handle.setAttribute("aria-valuetext", `${Math.round(wipe * 100)}% Before`)
     const pct = `${Math.round(100 / zw.x)}%`
@@ -911,7 +969,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
             ? `inset(${t.toFixed(2)}px ${right.toFixed(2)}px ${b.toFixed(2)}px ${l.toFixed(2)}px)`
             : ""
       }
-      const cut = mode === "wipe" && !flickHeld ? wx : Number.POSITIVE_INFINITY
+      const cut = mode === "wipe" ? wx : Number.POSITIVE_INFINITY
       for (const s of sides) {
         const rect = s.index === 0 ? r.zBefore : r.zAfter
         const clip = s.index === 0 ? r.before : r.after
@@ -919,10 +977,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         place(s.el, rect, clip, at)
         place(s.preview, rect, clip, at)
         if (s.index !== 0) continue
-        for (const n of [s.el, s.preview]) {
-          n.style.mixBlendMode = mode === "difference" && !flickHeld ? "difference" : ""
-          n.style.opacity = mode === "flicker" && !showsBefore ? "0" : ""
-        }
+        for (const n of [s.el, s.preview]) n.style.mixBlendMode = mode === "difference" ? "difference" : ""
       }
       return
     }
@@ -942,8 +997,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       from: MODE_INDEX[fromMode],
       to: MODE_INDEX[toMode],
       mix: Math.min(1, Math.max(0, fade.x)),
-      flick: flickHeld,
-      phase,
       threshold,
       gain: 1,
       accent,
@@ -962,6 +1015,10 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   const loop = frameLoop(win, (dt) => {
     lay.step(dt)
     fade.step(dt)
+    if (wipeCatching) {
+      wipeLine.step(dt)
+      if (wipeLine.resting) wipeCatching = false
+    }
     zu.step(dt)
     zv.step(dt)
     zw.step(dt)
@@ -990,7 +1047,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (gpu)
         for (const s of sides) if (videoOf(s) && performance.now() - s.frameAt > 120) pushFrame(s)
     }
-    const moving = !lay.resting || !fade.resting || !zoomResting()
+    const moving = !lay.resting || !fade.resting || !zoomResting() || wipeCatching
     if (moving) dirty = true
     // Sizing itself, its height follows the mode's glide.
     if (auto && !lay.resting) fitHeight()
@@ -1132,17 +1189,20 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       e.preventDefault()
       return startPinch()
     }
-    if (mode === "wipe" && !flickHeld) {
+    if (mode === "wipe") {
       const wr = wipeRect(layoutNow().L.overlay)
       const inside =
         p.x >= wr.x - SLOP && p.x <= wr.x + wr.w + SLOP && p.y >= wr.y && p.y <= wr.y + wr.h
-      const grab = wipeGrab(p.x, wr, wipe, SLOP)
+      const grab = wipeGrab(p.x, wr, wipeLine.x, SLOP)
       // Zoomed, only the line itself takes the wipe; elsewhere the hand pans.
       if (inside && (grab.onLine || !zoomed())) {
         drag = { kind: "wipe", offset: grab.offset }
         root.dataset.dragging = ""
+        gripY = p.y
         e.preventDefault()
-        if (!grab.onLine) setWipe(wipeAt(p.x, wr))
+        // Away from the line, it catches up to the hand from where it is; then it's 1:1.
+        if (!grab.onLine) setWipe(wipeAt(p.x, wr), true, true)
+        else drawNow()
         return
       }
     }
@@ -1166,6 +1226,10 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       const k = d / Math.max(1, pinch.d)
       pinch = { d, x: mid.x, y: mid.y }
       return handZoom(zoomAbout(panned, k, q.pu, q.pv))
+    }
+    if (mode === "wipe" && drag?.kind !== "pan") {
+      gripY = p.y
+      if (!drag) placeGrip(wipeRect(layoutNow().L.overlay))
     }
     if (drag?.kind === "wipe") setWipe(wipeAt(p.x, wipeRect(layoutNow().L.overlay), drag.offset))
     else if (drag?.kind === "pan") {
@@ -1241,12 +1305,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   }
 
   // ——— keys ———
-  const holdFlick = (on: boolean) => {
-    if (flickHeld === on) return
-    flickHeld = on
-    // The hand's own flip: no fade.
-    drawNow()
-  }
   const holdLoupe = (on: boolean) => {
     if (loupeHeld === on) return
     loupeHeld = on
@@ -1289,24 +1347,17 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       case "s":
       case "w":
       case "d":
-        // S is the page's hint key once hint mode is on (as in a tree's type-ahead); 1 still works.
-        if (e.altKey || e.shiftKey || (key === "s" && claimsHintKey(doc, key))) return
-        claim()
-        return setMode(KEY_MODE[key]!)
       case "1":
       case "2":
-      case "3":
-      case "4":
-        // Digits pick the focused piece's options, as in a panel's rows.
-        if (e.altKey || e.shiftKey) return
+      case "3": {
+        // Digits pick the offered modes in order, as in a panel's rows; S, W and D the ones
+        // offered. S is the page's hint key once hint mode is on (as in a tree's type-ahead).
+        if (e.altKey || e.shiftKey || (key === "s" && claimsHintKey(doc, key))) return
+        const m = modeForKey(key, modeList)
+        if (!m) return
         claim()
-        return setMode(MODES[Number(key) - 1]!.mode)
-      case "x":
-        // Held, Before shows in After's place (a flick).
-        if (e.altKey) return
-        claim()
-        if (!e.repeat) holdFlick(true)
-        return
+        return setMode(m)
+      }
       case "z":
         if (e.altKey) return
         claim()
@@ -1360,8 +1411,14 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   labels[1].textContent = labelOf(1)
   loupeBtn.setAttribute("aria-pressed", String(loupeOn))
   loopBtn.setAttribute("aria-pressed", String(loopNow() !== null))
+  const modePill =
+    modeList.length > 1
+      ? selectionPill(modes, {
+          rows: () => modeBtns,
+          selected: () => modeBtns[modeList.indexOf(mode)] ?? null,
+        })
+      : null
   syncModeUi()
-  syncFlicker()
 
   const unlisten = tl?.listen({
     onSeek: (t, source) => {
@@ -1421,13 +1478,10 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   })
   root.addEventListener("keydown", onKey)
   root.addEventListener("keyup", (e) => {
-    const key = e.key.toLowerCase()
-    if (key === "x") holdFlick(false)
-    else if (key === "z") holdLoupe(false)
+    if (e.key.toLowerCase() === "z") holdLoupe(false)
   })
   root.addEventListener("focusout", (e) => {
     if (root.contains(e.relatedTarget as Node | null)) return
-    holdFlick(false)
     holdLoupe(false)
   })
 
@@ -1437,11 +1491,13 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       : hints.register(
           root,
           () => [
-            ...MODES.map((m, i) => ({
-              el: modeBtns[i]!,
-              label: m.label,
-              activate: () => setMode(m.mode),
-            })),
+            ...(modeList.length > 1
+              ? modeList.map((m, i) => ({
+                  el: modeBtns[i]!,
+                  label: MODE_LABEL[m].long,
+                  activate: () => setMode(m),
+                }))
+              : []),
             { el: loopBtn, label: "Loop", activate: () => api.setLoop(!loopNow()) },
             ...(loupeBtn.hidden
               ? []
@@ -1479,6 +1535,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     get mode() {
       return mode
     },
+    modes: modeList,
     get wipe() {
       return wipe
     },
@@ -1524,7 +1581,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (next.fps !== undefined && ownTimeline) tl?.update({ fps: next.fps })
       requestDraw()
     },
-    seek: (t) => (tl ? tl.seek(t) : ownSeek(t)),
+    seek: (t, o) => (tl ? tl.seek(t, o?.glide ? { glide: true } : undefined) : ownSeek(t)),
     seekBy(d) {
       const total = duration || tl?.duration || 0
       const t = Math.min(total, Math.max(0, now() + d))
@@ -1562,7 +1619,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     dispose() {
       disposed = true
       loop.stop()
-      win.clearInterval(flickerTimer)
+      modePill?.dispose()
       win.clearTimeout(releaseTimer)
       ro.disconnect()
       nearIo?.disconnect()

@@ -201,3 +201,41 @@ export function advance(
   }
   return { t: hi, ended: true, wrapped: false }
 }
+
+/** A jump the hand didn't make catches up on this: quick, no bounce. */
+export const CATCH_UP = { duration: 0.15, bounce: 0 } as const
+
+/** Where the playhead is drawn (`x`) and where it's going (`target`), in seconds. */
+export interface HeadPosition {
+  readonly x: number
+  readonly target: number
+}
+
+/**
+ * The playhead's next move. A `jump` (a chapter or marker click, a loop's wrap, a press on the
+ * lane away from it, play from elsewhere, a glide from code) catches up from where it's drawn when
+ * it's more than `minGap` seconds away. A `follow` (a drag, the clock, a step) lands 1:1; during a
+ * catch-up it shifts both ends, so it follows the hand and the remaining offset settles on its own.
+ */
+export function moveHead(
+  head: HeadPosition,
+  t: number,
+  motion: "jump" | "follow",
+  catching: boolean,
+  minGap = 0,
+): HeadPosition & { readonly catching: boolean } {
+  if (motion === "jump" && Math.abs(t - head.x) > minGap) return { x: head.x, target: t, catching: true }
+  if (catching) return { x: head.x + (t - head.target), target: t, catching: true }
+  return { x: t, target: t, catching: false }
+}
+
+/** The last marker at or before `t` (half a frame's leeway): the current chapter. */
+export function currentMarker<M extends { readonly time: number }>(
+  markers: readonly M[],
+  t: number,
+  fps: number,
+): M | null {
+  let best: M | null = null
+  for (const m of markers) if (m.time <= t + 0.5 / fps && (!best || m.time >= best.time)) best = m
+  return best
+}

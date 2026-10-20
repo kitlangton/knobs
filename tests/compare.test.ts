@@ -5,16 +5,20 @@ import { decodeRuns, demuxMp4 } from "../src/ui/compare-mp4"
 import {
   clampZoom,
   compareLayout,
+  compareModes,
   frameMidpoint,
   frameOf,
+  gripTop,
   lastFrame,
   letterbox,
   loopAround,
   meanAbsDiff,
   mediaKind,
+  modeForKey,
   panBy,
   requestSeek,
   sameFrame,
+  seamLabels,
   SEEK_IDLE,
   seeked,
   seekTime,
@@ -282,5 +286,47 @@ describe("split screen and zoom", () => {
     expect(loopAround(10, 41)).toEqual({ start: 8, end: 12 })
     expect(loopAround(0.2, 6)).toEqual({ start: 0, end: 1.2 })
     expect(loopAround(5.9, 6)).toEqual({ start: 4.8, end: 6 })
+  })
+})
+
+describe("modes", () => {
+  test("Side and Wipe by default; difference only when asked for; unknown ones dropped", () => {
+    expect(compareModes()).toEqual({ modes: ["side", "wipe"], mode: "side" })
+    expect(compareModes(undefined, "difference")).toEqual({ modes: ["side", "wipe"], mode: "side" })
+    expect(compareModes(["wipe", "difference"], "difference")).toEqual({
+      modes: ["wipe", "difference"],
+      mode: "difference",
+    })
+    expect(compareModes(["flicker" as never, "wipe"]).modes).toEqual(["wipe"])
+    expect(compareModes([])).toEqual({ modes: ["side", "wipe"], mode: "side" })
+  })
+  test("digits pick by position; S, W and D only the modes offered", () => {
+    expect(modeForKey("1", ["side", "wipe"])).toBe("side")
+    expect(modeForKey("2", ["side", "wipe"])).toBe("wipe")
+    expect(modeForKey("3", ["side", "wipe"])).toBeNull()
+    expect(modeForKey("d", ["side", "wipe"])).toBeNull()
+    expect(modeForKey("D", ["side", "wipe", "difference"])).toBe("difference")
+    expect(modeForKey("x", ["side", "wipe"])).toBeNull()
+  })
+})
+
+describe("the wipe's seam", () => {
+  test("labels ride either side of the seam, a gap from it", () => {
+    const at = seamLabels(300, 0, 600, 50, 40, 8)
+    expect(at.before).toEqual({ x: 242, opacity: 1 })
+    expect(at.after).toEqual({ x: 308, opacity: 1 })
+  })
+  test("a label fades as its side runs out of room, never crossing the seam", () => {
+    expect(seamLabels(74, 0, 600, 50, 40, 8).before.opacity).toBe(1)
+    expect(seamLabels(70, 0, 600, 50, 40, 8).before.opacity).toBeCloseTo(0.5, 9)
+    expect(seamLabels(66, 0, 600, 50, 40, 8).before.opacity).toBe(0)
+    expect(seamLabels(590, 0, 600, 50, 40, 8).after.opacity).toBe(0)
+  })
+  test("the grip rides at the pointer's height, kept inside the line", () => {
+    const rect = { x: 0, y: 10, w: 400, h: 200 }
+    expect(gripTop(110, rect, 28)).toBe(96)
+    expect(gripTop(0, rect, 28)).toBe(18)
+    expect(gripTop(999, rect, 28)).toBe(174)
+    expect(gripTop(50, { x: 0, y: 0, w: 10, h: 30 }, 28)).toBe(1)
   })
 })

@@ -6,7 +6,7 @@
 // device and pipeline; each has its own canvas, textures and uniforms.
 import type { Rect } from "./compare-model.js"
 
-export const MODE_INDEX = { side: 0, wipe: 1, difference: 2, flicker: 3 } as const
+export const MODE_INDEX = { side: 0, wipe: 1, difference: 2 } as const
 
 export interface CompareDraw {
   /** Device px: where each side's picture lands (zoomed, it's larger than its clip). */
@@ -25,10 +25,6 @@ export interface CompareDraw {
   readonly to: number
   /** 0 shows `from`, 1 shows `to`. */
   readonly mix: number
-  /** Before in After's place (X held). */
-  readonly flick: boolean
-  /** Flicker mode's phase: Before showing. */
-  readonly phase: boolean
   readonly threshold: number
   readonly gain: number
   readonly accent: readonly [number, number, number]
@@ -61,8 +57,8 @@ const WGSL = /* wgsl */ `
 struct U {
   ra: vec4f, rb: vec4f,
   view: vec4f,   // w, h, dpr, _
-  wipe: vec4f,   // x, soft, _, phase
-  modes: vec4f,  // from, to, mix, flick
+  wipe: vec4f,   // x, soft, _, _
+  modes: vec4f,  // from, to, mix, _
   diff: vec4f,   // threshold, gain, readyA, readyB
   accent: vec4f,
   loupe: vec4f,  // x, y, r, zoom (0: none)
@@ -113,21 +109,14 @@ fn takeB(p: vec2f, r: vec4f, c0: vec4f, near: bool) -> vec4f {
 
 fn pm(c: vec4f) -> vec4f { return vec4f(c.rgb * c.a, c.a); }
 
-fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f, a2: vec4f) -> vec4f {
-  let flick = u.modes.w > 0.5;
+fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f) -> vec4f {
   switch mode {
-    case 0u: {
-      let bb = select(b, vec4f(a2.rgb, b.a), flick);
-      return vec4f(a.rgb * a.a + bb.rgb * bb.a * (1.0 - a.a), a.a + bb.a * (1.0 - a.a));
-    }
     case 1u: {
-      if (flick) { return pm(a); }
       let s = max(u.wipe.y, 0.5);
       let m = smoothstep(u.wipe.x - s, u.wipe.x + s, p.x);
       return pm(vec4f(mix(a.rgb, b.rgb, m), mix(a.a, b.a, m)));
     }
     case 2u: {
-      if (flick) { return pm(a); }
       let d = abs(a.rgb - b.rgb);
       let h = smoothstep(u.diff.x, u.diff.x + 0.06, max(d.r, max(d.g, d.b)) * u.diff.y) * min(a.a, b.a);
       let c = mix(vec3f(luma(b.rgb) * 0.35), u.accent.rgb, h);
@@ -135,8 +124,8 @@ fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f, a2: vec4f) -> vec4f {
     }
     default: {}
   }
-  // Flicker: After, or Before while X is held or on the flicker's other beat.
-  return pm(select(b, a, flick || u.wipe.w > 0.5));
+  // Side by side: each side in its own place, Before over After where they meet.
+  return vec4f(a.rgb * a.a + b.rgb * b.a * (1.0 - a.a), a.a + b.a * (1.0 - a.a));
 }
 
 @fragment fn fs(@builtin(position) q: vec4f) -> @location(0) vec4f {
@@ -154,9 +143,7 @@ fn composite(mode: u32, p: vec2f, a: vec4f, b: vec4f, a2: vec4f) -> vec4f {
   }
   let a = takeA(p, u.ra, u.ca, near);
   let b = takeB(p, u.rb, u.cb, near);
-  // Before in After's place (X held, side by side): After's rect, as if Before were zoomed there.
-  let a2 = takeA(p, u.rb, u.cb, near);
-  var o = mix(composite(u32(u.modes.x), p, a, b, a2), composite(u32(u.modes.y), p, a, b, a2), u.modes.z);
+  var o = mix(composite(u32(u.modes.x), p, a, b), composite(u32(u.modes.y), p, a, b), u.modes.z);
   if (near) { o = o + vec4f(0.05, 0.05, 0.06, 1.0) * (1.0 - o.a); }
   o = mix(o, vec4f(0.92), ring * 0.9);
   return o;
@@ -292,8 +279,8 @@ export async function createCompareGpu(
       r(0, f.before)
       r(4, f.after)
       data.set([f.width, f.height, f.dpr, 0], 8)
-      data.set([f.wipeX, f.soft, 0, f.phase ? 1 : 0], 12)
-      data.set([f.from, f.to, f.mix, f.flick ? 1 : 0], 16)
+      data.set([f.wipeX, f.soft, 0, 0], 12)
+      data.set([f.from, f.to, f.mix, 0], 16)
       data.set([f.threshold, f.gain, ready[0]!, ready[1]!], 20)
       data.set([f.accent[0], f.accent[1], f.accent[2], 1], 24)
       const l = f.loupe
