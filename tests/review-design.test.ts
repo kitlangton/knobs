@@ -3,6 +3,10 @@
 import { describe, expect, test } from "vitest"
 import { MEASURE, SPACE, TYPE, trackingAt } from "../src/review/foundations"
 import { TOKEN_BY_NAME, type TokenName } from "../src/tokens/schema"
+import { compareCss } from "../src/ui/compare-css"
+import { diffCss } from "../src/ui/diff-css"
+import { historyCss } from "../src/ui/history-css"
+import { playerCss } from "../src/ui/player-css"
 import { walkthroughCss } from "../src/ui/walkthrough-css"
 import { fillFacts, fillMedia, optionColumns } from "../src/ui/walkthrough-model"
 
@@ -21,7 +25,13 @@ const declarations = (css: string) =>
     (m) => ({ property: m[1]!, value: m[2]!.trim() }),
   )
 
-const SHEETS = { walkthrough: walkthroughCss }
+const SHEETS = {
+  walkthrough: walkthroughCss,
+  compare: compareCss,
+  player: playerCss,
+  diff: diffCss,
+  history: historyCss,
+}
 const SIZE = /var\(--_k-type-(heading|title|body|label|small)\)/
 
 describe("type", () => {

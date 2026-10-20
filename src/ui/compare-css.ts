@@ -9,7 +9,7 @@ export const compareCss = `
 .knobs-ui.knobs-compare{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));--_ku-cmp-line:var(--_k-compare-divider);
   --_ku-cmp-stage:var(--_k-compare-stage);
   display:flex;flex-direction:column;gap:6px;width:100%;height:100%;min-height:160px;outline:none;user-select:none;-webkit-user-select:none;
-  font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
+  font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
 :where(.knobs-ui) :is(.knobs-cmp-mode,.knobs-cmp-toggle){all:revert;box-sizing:border-box;font:inherit;color:inherit;letter-spacing:inherit;background:transparent;border:0;margin:0;padding:0;outline:none;box-shadow:none}
 .knobs-cmp-bar{flex:none;display:flex;align-items:center;gap:var(--_k-gap);height:var(--_k-control-h)}
 /* The modes: one fill, the selection pill on the one picked; a mode isn't brighter for being
@@ -54,7 +54,7 @@ export const compareCss = `
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
 /* ✗ Before · ✓ After: Before quieter (fg-3), After in full text. Neutral: no colour of its own. */
-.knobs-cmp-label{position:absolute;left:0;top:0;display:flex;align-items:center;gap:4px;padding:1px 7px 1px 5px;border-radius:999px;font-size:var(--_k-text-meta);line-height:16px;font-weight:var(--_k-weight-label);
+.knobs-cmp-label{position:absolute;left:0;top:0;display:flex;align-items:center;gap:4px;padding:1px 7px 1px 5px;border-radius:999px;font-weight:var(--_k-weight-label);
   white-space:nowrap;pointer-events:none;will-change:transform}
 .knobs-cmp-label[data-side="before"]{color:var(--_k-fg-3)}
 .knobs-cmp-label[data-side="after"]{color:var(--_k-fg)}
@@ -83,19 +83,19 @@ export const compareCss = `
 .knobs-cmp-split{position:absolute;left:0;top:0;width:1px;height:0;margin-left:-.5px;background:color-mix(in srgb,var(--_k-bg) 72%,transparent);pointer-events:none;will-change:transform,opacity}
 /* Zoomed: how far, and a way back, in the stage's corner; it fades in and out, nothing shifts. */
 .knobs-cmp-zoom{position:absolute;right:8px;bottom:8px;display:flex;align-items:center;gap:4px;height:26px;padding:0 3px 0 10px;border-radius:999px;
-  color:var(--_k-fg);font-size:var(--_k-text-meta);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;
+  color:var(--_k-fg);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";white-space:nowrap;
   opacity:0;scale:.96;pointer-events:none;transition:opacity .16s cubic-bezier(.4,0,1,1),scale .16s cubic-bezier(.4,0,1,1)}
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
   display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);font-size:var(--_k-text-meta);pointer-events:none}
+.knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
 .knobs-cmp-strip-host{flex:none;height:60px;min-height:0}
 .knobs-cmp-timeline-host{flex:none;min-height:0}
 /* The frame strip: Before over After per column, a difference bar under them, a dot where it peaks. */
 .knobs-ui.knobs-cmp-strip{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));position:relative;width:100%;height:100%;min-height:40px;overflow:hidden;cursor:col-resize;touch-action:none;
-  font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg)}
+  font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);color:var(--_k-fg)}
 .knobs-cmp-strip>canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 @media(prefers-reduced-motion:reduce){:is(.knobs-compare,.knobs-cmp-strip) :where(*,::before,::after){transition-duration:.12s!important}}
 `

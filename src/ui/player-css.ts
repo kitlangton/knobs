@@ -4,7 +4,7 @@
 export const playerCss = `
 :where(.knobs-player,.knobs-player *){box-sizing:border-box}
 .knobs-ui.knobs-player{--_kp-stage:var(--_k-compare-stage);display:flex;flex-direction:column;gap:6px;width:100%;outline:none;
-  font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
+  font:var(--_k-weight) var(--_k-type-small)/var(--_k-leading-small) var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left}
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip) .knobs-ui.knobs-player,.knobs-ui.knobs-player[data-nested]{--_kp-stage:var(--k-compare-stage,transparent)}
 .knobs-player-frame{position:relative;width:100%;aspect-ratio:var(--kp-aspect,16/9);overflow:hidden;border-radius:var(--_k-radius-panel);background:var(--_kp-stage)}
 .knobs-player[data-frame="flat"] .knobs-player-frame{border-radius:0}
