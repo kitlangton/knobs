@@ -242,7 +242,7 @@ const PATCH = `diff --git a/src/connect.ts b/src/connect.ts
 index a1dbf70..a16c034 100644
 --- a/src/connect.ts
 +++ b/src/connect.ts
-@@ -1,7 +1,6 @@
+@@ -1,6 +1,5 @@
  export const INTEGRATIONS = [
 -  { id: "opencode-go", label: "OpenCode Go", auth: "api-key" },
    { id: "opencode", label: "OpenCode", auth: "oauth" },
