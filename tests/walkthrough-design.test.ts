@@ -13,6 +13,8 @@ import {
   normalizeWalkthrough,
   noteBarReserve,
   plainMarkdown,
+  findPR,
+  prNumber,
   tableStacks,
   type WalkthroughDoc,
   type WalkthroughSection,
@@ -153,6 +155,25 @@ describe("step media and more", () => {
     expect(p.more).toBe("The page's rest.")
     expect(p.sections[0]!.more).toBe("The section's rest.")
     expect(p.steps.map((s) => s.more)).toEqual(["First.\n\nSecond.", undefined])
+  })
+})
+
+describe("pull requests", () => {
+  test("are known from section links, the doc's prs and its repo", () => {
+    const p = normalizeWalkthrough({
+      id: "p",
+      title: "P",
+      repo: "https://github.com/anomalyco/opencode/",
+      prs: { "#57148": { state: "merged", title: "Catalog refresh" }, "57151": { state: "draft" } },
+      sections: [section("Models", { link: `${pr(57148)}/files` })],
+    })
+    expect(p.repo).toBe("anomalyco/opencode")
+    expect(p.prs["57148"]).toEqual({ href: pr(57148), state: "merged", title: "Catalog refresh" })
+    expect(p.prs["57151"]).toEqual({ state: "draft", href: pr(57151) })
+    expect(findPR(p.prs, "40000", p.repo)).toEqual({ href: pr(40000) })
+    expect(findPR(p.prs, "40000")).toBeNull()
+    expect(prNumber(`${pr(9)}#x`)).toBe("9")
+    expect(prNumber("https://github.com/a/b/issues/9")).toBeNull()
   })
 })
 

@@ -54,9 +54,20 @@ export const walkthroughCss = `
 .knobs-wt-metaline{display:flex;align-items:baseline;gap:var(--_k-space-inside);min-width:0;overflow:hidden;white-space:nowrap;font-size:var(--_k-type-small);line-height:var(--_k-leading-small);color:var(--_k-fg-3);${fade}}
 .knobs-wt-metaline>*{flex:none}
 .knobs-wt-metaline>*+*::before{content:"·";margin-right:var(--_k-space-inside);color:var(--_k-fg-3)}
-.knobs-walkthrough .knobs-wt-metaline a{display:inline-flex;align-items:baseline;color:inherit;text-decoration:none;transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-walkthrough .knobs-wt-metaline a:hover{color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-walkthrough .knobs-wt-metaline a:not(.knobs-wt-pr){display:inline-flex;align-items:baseline;color:inherit;text-decoration:none;transition:color calc(var(--_k-hover-out) * 1ms)}
+.knobs-walkthrough .knobs-wt-metaline a:not(.knobs-wt-pr):hover{color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-wt-metaline svg{align-self:center;width:12px;height:12px;margin-left:2px}
+/* A pull request: a small chip, its state's icon and number in a quiet tint of the state (open
+   the success hue, merged the violet series, draft and closed neutral), its title on hover. */
+.knobs-ui .knobs-wt-pr{--kw-pr:var(--_k-fg-2);display:inline-flex;align-items:center;gap:3px;height:18px;padding:0 5px 0 4px;margin:0 1px;border-radius:calc(var(--_k-radius) / 2);vertical-align:1px;
+  background:color-mix(in oklch,var(--kw-pr) 12%,transparent);color:var(--kw-pr);font:var(--_k-weight-label) var(--_k-type-small)/1 var(--_k-font);font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;
+  transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-pr[data-state="open"]{--kw-pr:color-mix(in oklch,var(--_k-ok) 60%,var(--_k-fg-2))}
+.knobs-ui .knobs-wt-pr[data-state="merged"]{--kw-pr:color-mix(in oklch,var(--_k-series-5) 60%,var(--_k-fg-2))}
+.knobs-ui .knobs-wt-pr:is([data-state="draft"],[data-state="closed"]){--kw-pr:var(--_k-fg-3)}
+.knobs-ui a.knobs-wt-pr:is(:hover,:focus-visible){background:color-mix(in oklch,var(--kw-pr) 22%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-wt-pr svg{flex:none}
+.knobs-wt-metaline .knobs-wt-pr{align-self:center;margin:0}
 .knobs-wt-kicker-lead{color:var(--_k-fg);font-weight:var(--kw-strong)}
 .knobs-wt-metaline [data-status="on"]{color:var(--_k-fg)}
 .knobs-wt-metaline [data-status="warn"]{color:var(--_k-warn)}

@@ -30,7 +30,7 @@ import {
 } from "./look.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
-import { disclosure, type Disclosure } from "./walkthrough-blocks.js"
+import { disclosure, type Disclosure, linkPRs, prChip } from "./walkthrough-blocks.js"
 import {
   CHECK,
   injectWalkthroughStyles,
@@ -76,6 +76,8 @@ import {
   type WalkthroughOption,
   type WalkthroughState,
   type WalkVoice,
+  findPR,
+  prNumber,
 } from "./walkthrough-model.js"
 
 const el = <K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, cls?: string) => {
@@ -1127,7 +1129,15 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     line.append(s)
     return s
   }
+  const findPRIn = (n: string) => findPR(page.prs, n, page.repo)
   const metaLink = (line: HTMLElement, text: string, href: string) => {
+    // A pull request reads as its chip: state, number, the title on hover.
+    const n = prNumber(href)
+    if (n) {
+      const chip = prChip(doc, n, { href, ...findPRIn(n) })
+      line.append(chip)
+      return chip
+    }
     const a = el(doc, "a")
     a.href = href
     a.target = "_blank"
@@ -1347,6 +1357,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       }
       flow.append(sec)
     }
+    linkPRs(flow, findPRIn)
     main.append(flow)
     if (noteMode !== "hidden") main.append(bar.dock)
 
