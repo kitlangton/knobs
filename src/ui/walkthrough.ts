@@ -276,7 +276,8 @@ export interface WalkthroughOptions extends UiLook {
   readonly review?: boolean
   /**
    * The contents and progress rail (on by default): sticky at the page's left edge, the column
-   * centred in the room beside it; `"right"` mirrors it. Under 960 px it folds to a bar on top.
+   * centred in the room beside it; `"right"` mirrors it. Under 960 px it hides (with review
+   * on, a bar on top keeps the progress and the export).
    */
   readonly rail?: boolean | "left" | "right"
   /** Each step on a card of its own (off by default: steps sit on the page, hairlines between). */
@@ -1212,6 +1213,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     root.removeAttribute("data-settled")
     root.dataset.rail = options.rail === false ? "none" : options.rail === "right" ? "right" : "left"
     root.toggleAttribute("data-cards", options.cards === true)
+    root.toggleAttribute("data-review", review)
     const layout = el(doc, "div", "knobs-wt-layout")
     const main = el(doc, "div", "knobs-wt-main")
     // The page's blocks, a section's room apart with a hairline in the middle: the intro, the
@@ -1273,16 +1275,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       rail.setAttribute("aria-label", "Contents")
       tocEl = el(doc, "nav", "knobs-wt-toc")
       tocEl.setAttribute("aria-label", "Contents")
-      // A leading column for a section's PR, as wide as the longest (none when no section has one).
-      const ns = page.sections.map((s) => (s.kicker && s.link ? s.link.label : ""))
-      const nw = Math.max(0, ...ns.map((n) => n.length))
-      tocEl.style.setProperty("--kw-toc-n", nw ? `${nw + 0.5}ch` : "0px")
-      if (!nw) tocEl.dataset.bare = ""
       if (feedEl) {
         const group = el(doc, "div", "knobs-wt-toc-group")
         const target = feedEl
         group.append(
-          tocRow("Latest", "", String(page.feed.length), false, () =>
+          tocRow("Latest", false, () =>
             target.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" }),
           ),
         )
@@ -1337,9 +1334,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       if (tocEl) {
         group = el(doc, "div", "knobs-wt-toc-group")
         const first = section.steps[0]?.key
-        const n = section.kicker && section.link ? section.link.label : ""
         group.append(
-          tocRow(plainMarkdown(section.title), n, "", false, () => (first ? go(first) : undefined), section.id),
+          tocRow(plainMarkdown(section.title), false, () => (first ? go(first) : undefined), section.id),
         )
         tocEl.append(group)
       }
@@ -1389,26 +1385,19 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     return box
   }
 
-  /** A contents row: a title row (32 high) or a step under it (20 high), on one spine. */
-  const tocRow = (
-    label: string,
-    n: string,
-    end: string,
-    sub: boolean,
-    run: () => void,
-    section?: string,
-  ) => {
+  /**
+   * A contents row: a title row (32 high) or a step under it (20 high), every one on the same
+   * text edge and in the same colour; only the pill marks where Kit is.
+   */
+  const tocRow = (label: string, sub: boolean, run: () => void, section?: string) => {
     const b = el(doc, "button", sub ? "knobs-wt-toc-row knobs-wt-toc-sub" : "knobs-wt-toc-row")
     b.type = "button"
     if (section) b.dataset.section = section
-    const ncol = el(doc, "span", "knobs-wt-toc-n")
-    ncol.textContent = n
     const t = el(doc, "span", "knobs-wt-toc-label")
     t.textContent = label
     const e = el(doc, "span", "knobs-wt-toc-end")
-    e.textContent = end
     b.title = label
-    b.append(ncol, t, e)
+    b.append(t, e)
     b.addEventListener("mousedown", (ev) => ev.preventDefault())
     b.addEventListener("click", run)
     tocRows.push(b)
@@ -1503,9 +1492,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     let toc: HTMLElement | null = null
     let glyph: HTMLElement | null = null
     if (group) {
-      toc = tocRow(plainMarkdown(step.title), "", "", true, () => go(step.key))
-      glyph = el(doc, "span", "knobs-wt-toc-glyph")
-      toc.querySelector(".knobs-wt-toc-end")!.append(glyph)
+      toc = tocRow(plainMarkdown(step.title), true, () => go(step.key))
+      if (review) {
+        glyph = el(doc, "span", "knobs-wt-toc-glyph")
+        toc.querySelector(".knobs-wt-toc-end")!.append(glyph)
+      }
       group.append(toc)
     }
     return { step, card, media, notes, toc, glyph, taste, slots }

@@ -260,25 +260,21 @@ export const walkthroughCss = `
 .knobs-wt-bar{position:relative;height:4px;border-radius:2px;overflow:hidden;background:var(--_k-fill)}
 .knobs-wt-fill{position:absolute;inset:0;border-radius:inherit;background:var(--_k-accent);transform-origin:0 50%;transform:scaleX(var(--kw-done,0))}
 .knobs-walkthrough[data-settled] .knobs-wt-fill{transition:transform var(--kw-calm-ms) var(--kw-calm)}
-/* The contents: rows centred on one spine, title rows (32 high, the control radius) and the
-   steps under them (20 high, half of it), bled out so their text sits on the rail's edge; the
-   selection pill slides to the current step, and base rows never brighten for being current. */
+/* The contents: every row on one text edge and in one colour, title rows (32 high, the control
+   radius) and the steps under them (20 high, half of it), bled out so their text sits on the
+   rail's edge; the selection pill slides to the current step, and base rows never brighten. */
 .knobs-wt-toc{position:relative;flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:var(--_k-space-sibling);margin:0 calc(var(--_k-space-sibling) * -1);padding:0 0 8px}
 .knobs-wt-toc::-webkit-scrollbar{display:none}
 .knobs-wt-toc-group{display:flex;flex-direction:column;min-width:0}
-.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:var(--kw-toc-n,0px) minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:32px;
-  padding:0 var(--_k-space-sibling);border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--kw-strong);text-align:left;white-space:nowrap;cursor:pointer;
+.knobs-ui .knobs-wt-toc-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--_k-space-sibling);align-items:center;flex:none;width:100%;height:32px;
+  padding:0 var(--_k-space-sibling);border-radius:var(--_k-radius);color:var(--_k-fg-2);font-size:var(--_k-type-body);line-height:var(--_k-leading-body);font-weight:var(--_k-weight);text-align:left;white-space:nowrap;cursor:pointer;
   transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-toc-sub{height:20px;border-radius:calc(var(--_k-radius) / 2);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight);color:var(--_k-fg-3)}
-.knobs-wt-toc[data-bare] .knobs-wt-toc-row{grid-template-columns:minmax(0,1fr) auto}
-.knobs-wt-toc[data-bare] .knobs-wt-toc-n{display:none}
+.knobs-ui .knobs-wt-toc-sub{height:20px;border-radius:calc(var(--_k-radius) / 2);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight)}
 .knobs-ui .knobs-wt-toc-row:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-ui .knobs-wt-toc-sub:is(:hover,:focus-visible){color:var(--_k-fg-2)}
 .knobs-ui .knobs-wt-toc-row:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
-.knobs-wt-toc-n,.knobs-wt-toc-end{display:flex;align-items:center;font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight);color:var(--_k-fg-3)}
-.knobs-wt-toc-row[data-active] .knobs-wt-toc-n{color:var(--_k-fg-2)}
+.knobs-wt-toc-end{display:flex;align-items:center;font-size:var(--_k-type-small);line-height:var(--_k-leading-small);font-weight:var(--_k-weight);color:var(--_k-fg-3)}
 .knobs-wt-toc-label{min-width:0;overflow:hidden;${fade}}
-.knobs-pick-copy .knobs-wt-toc-n,.knobs-pick-copy .knobs-wt-toc-end{color:var(--_k-fg-2)}
+.knobs-pick-copy .knobs-wt-toc-end{color:var(--_k-fg-2)}
 /* A step's state: an open ring, a filled dot once answered, nothing to answer a faint ring. */
 .knobs-wt-toc-glyph{--kw-tone:var(--_k-fg-3);display:block;width:6px;height:6px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--kw-tone);
   transition:background var(--kw-snappy-ms) var(--kw-snappy),box-shadow var(--kw-snappy-ms) var(--kw-snappy)}
@@ -293,10 +289,12 @@ export const walkthroughCss = `
 .knobs-ui .knobs-wt-btn[data-primary]:is(:hover,:focus-visible){background:color-mix(in srgb,var(--_k-fg) 16%,transparent)}
 .knobs-wt-keys{color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small)}
 .knobs-wt-keys kbd{font:inherit;color:var(--_k-fg-2)}
-/* Narrow: the rail becomes a bar along the top, with the progress and the export only. */
+/* Narrow: the contents go; with review on, the rail becomes a bar along the top with the
+   progress and the export. */
 @container knobs-wt (max-width:960px){
   .knobs-wt-rail{z-index:4;flex-direction:row;align-items:center;gap:var(--_k-space-title);max-height:none;margin:0 calc(var(--_k-pad-page) * -1);padding:8px var(--_k-pad-page);top:0;background:var(--_k-bg-page)}
   .knobs-wt-progress{flex:1}.knobs-wt-toc,.knobs-wt-keys{display:none}
+  .knobs-walkthrough:not([data-review]) .knobs-wt-rail{display:none}
   .knobs-wt-step,.knobs-wt-shead,.knobs-wt-feed{scroll-margin-top:60px}
 }
 
