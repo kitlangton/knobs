@@ -49,6 +49,14 @@ describe("the shipped looks", () => {
     expect(knobs.declared.dark.glass).toBe("0.6")
   })
 
+  it("keeps a comparison's Before and After neutral", () => {
+    for (const theme of [knobs, voidTheme])
+      for (const appearance of ["dark", "light"] as const) {
+        expect(theme[appearance].before).toBe(theme[appearance]["fg-3"])
+        expect(theme[appearance].after).toBe(theme[appearance].fg)
+      }
+  })
+
   it("Void is true black, capped text, flat with solid hairlines", () => {
     expect(voidTheme.dark).toMatchObject({
       "bg-page": "#000000",

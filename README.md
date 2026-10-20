@@ -1417,7 +1417,7 @@ Panels take a `theme`, an `appearance`, `density: "compact" | "default" | "comfo
 
 ### Themes and appearance
 
-Three themes ship in `knobs/themes`: **Knobs** (the default: a near-black glass panel, a white accent, alpha hairlines), **Void** (true black and flat, solid hairlines, text capped at `#ededed`, a black stage behind compared media; for OLED screens and video review) and **Gallery** (the PROBLEMS review pages: a `#0b0b0c` page, `#0f0f11` cards, one neutral ink at fixed opacities for fills, hairlines and text at 1 / .56 / .34, coral Before and near-white After; its dark text tiers are a reading page's, quieter than the APCA budget the others meet). Each has a dark and a light appearance. `--k-before` and `--k-after` colour a comparison's two sides; Knobs and Void keep them neutral.
+Two themes ship in `knobs/themes`: **Knobs** (the default: a near-black glass panel, a white accent, alpha hairlines) and **Void** (true black and flat, solid hairlines, text capped at `#ededed`, a black stage behind compared media; for OLED screens and video review). Each has a dark and a light appearance. `--k-before` and `--k-after` name a comparison's two sides, neutral by default (`fg-3` and `fg`).
 
 ```ts
 import { defineTheme, themes } from "knobs/themes"
