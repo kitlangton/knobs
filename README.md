@@ -856,7 +856,7 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-shadow-strength` | `.48` (light: `.16`) | How dark the WebGPU renderer draws the panel's drop shadow. Set it beside `--k-shadow` when you change that, so both renderers match (a host blending a dark look into a light one moves both together) |
 | `--k-frame` | `card` | `flat`: no card inside the host's own card (see below) |
 | `--k-disabled-opacity` | `.32` | How far a disabled row dims |
-| `--k-warn`, `--k-critical` | `#ff9f0a`, `#ff453a` (light: `#c56a00`, `#e0352b`) | Readouts' warning and critical colours (meters past `warn` / `critical`, log levels), and a destructive confirm |
+| `--k-warn`, `--k-critical` | unset; knobs/ui falls back to `#ff9f0a`, `#ff453a` (light: `#c56a00`, `#e0352b`) | Readouts' warning and critical colours (meters past `warn` / `critical`, log levels), and a destructive confirm. Only knobs/ui pieces read them |
 | `--k-control-h` | row − 2 × unit | Height of the controls inside a row: segments, menus, switches, number cells, key caps, toolbar buttons |
 | `--k-value-size` | font size − `.5px` | Size of every readout (sliders, cells, ranges, dials, seeds, editor summaries) |
 | `--k-button-bg`, `--k-button-line`, `--k-button-hover-bg`, `--k-button-hover-line` | each button's own | Fill and outline of custom actions, Export/Import, toolbar buttons, action rows and preset chips, at rest and hovered. With a fill or outline set, an action row is a sized button in its row and the presets strip a row of buttons (`data-buttons` on the panel) |
@@ -1336,7 +1336,7 @@ When `renderer: "gpu"` (or `?gpu`) is active, all floating and inline panels sha
 
 The overlay is one canvas at the top of the page, so a panel's DOM overlays (search, inline editors) can only stay above it if they aren't trapped in a stacking context. An inline panel inside an ancestor that creates one (a `transform`, `filter`, `opacity` below 1, a `z-index` on a positioned or flex item, `contain`, `isolation`, …) therefore draws with the DOM renderer, which looks the same, and is marked `data-gpu-trapped`. To keep such a panel on the GPU, take the stacking context off its ancestors. `knobs/ui` panes don't create any.
 
-Override CSS variables on `:root` or `.knobs-panel`:
+Override CSS variables on `:root`, `.knobs-panel` or any ancestor. Tokens derived from others (the handle from the accent, sizes from `--k-density`, surfaces from `--k-contrast`) are derived on each panel and knobs/ui piece, so an override anywhere above them carries through:
 
 ```css
 :root {
@@ -1347,7 +1347,7 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-text: rgba(255, 255, 255, 0.92);
   --k-label: rgba(255, 255, 255, 0.64);
   --k-accent: #fff;
-  --k-modified: #ff9f0a;
+  --k-modified: rgba(255, 255, 255, 0.5);
   --k-width: 288px;
   --k-pad: 10px;
   --k-inset: 10px;
@@ -1363,16 +1363,18 @@ Override CSS variables on `:root` or `.knobs-panel`:
   --k-curve-blur: .5;   /* up to 1: morphing curves, easings and gradients smear by their speed */
   --k-step-resist: 0.25; /* a stepped slider's pull off its stop (0 snaps, 1 follows) */
   --k-glow: 0.5;
-  --k-roll: 420;        /* readout roll (ms) */
+  --k-roll: 320;        /* readout roll (ms) */
   --k-drag-roll: 0;     /* roll while dragging (ms; 0 snaps) */
   --k-cascade: 12;      /* preset ripple between rows (ms; 0 moves them together) */
   --k-glass: 0.6;       /* 0 is opaque; up to 1 thins the panel over a blurred backdrop */
   --k-glass-tone: 0.5;  /* backdrop brightness under full glass (light theme: 1.08) */
-  --k-spring: 0.24 0.16; /* duration and bounce values settle on (GPU); pair with: */
+  --k-spring: 0.3 0;    /* duration and bounce values settle on (GPU); pair with: */
   --k-fill-ease: linear(...); /* springCss(value).easing, for CSS transitions */
-  --k-fill-ms: 300;     /* springCss(value).duration */
+  --k-fill-ms: 433;     /* springCss(value).duration */
   --k-reveal-ease: cubic-bezier(.2, .8, .2, 1); /* how editors and messages open */
-  --k-rim: rgba(255, 255, 255, 0.09);
+  --k-rim: rgba(255, 255, 255, 0.1);
+  --k-density: 1;       /* scales row, pad, gap, radius and font size (.875 compact, 1.1875 comfortable) */
+  --k-contrast: 1;      /* scales surface, line and edge alphas */
 }
 ```
 
