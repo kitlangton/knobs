@@ -53,6 +53,7 @@ export {
 } from "./menu.js"
 export { popover, type Popover, type PopoverCloseReason, type PopoverOptions } from "./popover.js"
 export { readout, type Readout } from "./readouts.js"
+export { icon, ICON_NAMES, type IconName } from "./icons.js"
 export {
   planPill,
   pillBoxOf,
