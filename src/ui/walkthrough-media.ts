@@ -251,6 +251,14 @@ async function mountCompare(
   // Marks on both sides (or the one picture overlaid), through the zoom, at the playhead; they
   // follow every frame while it plays or glides, and rest otherwise.
   const stage = fit.querySelector<HTMLElement>(".knobs-cmp-stage")
+  // What sits round the pictures (the mode bar, the line, their gaps), measured once when it's
+  // first laid out, so the card is exactly the pictures' height plus that, in every mode.
+  if (stage)
+    doc.defaultView?.requestAnimationFrame(() => {
+      const chrome = fit.clientHeight - stage.clientHeight
+      if (alive() && stage.clientHeight > 0 && chrome > 0)
+        fit.style.setProperty("--kw-chrome", `${Math.round(chrome)}px`)
+    })
   if (m.annotations?.length && stage) {
     const shape = { w: aspect ?? DEFAULT_ASPECT, h: 1 }
     marks = annotationLayer(stage, m.annotations, () => {
