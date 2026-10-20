@@ -71,7 +71,7 @@ export const overlayCss = `
 .knobs-palette .knobs-palette-item[aria-disabled="true"]{opacity:.4}
 .knobs-palette .knobs-palette-empty{padding:18px 10px;color:var(--_k-fg-3);text-align:center}
 
-.knobs-layers>.knobs-scrim{inset:0;width:100%;height:100%;background:rgba(0,0,0,.3)}
+.knobs-layers>.knobs-scrim{inset:0;width:100%;height:100%;background:var(--_k-scrim)}
 .knobs-layers>.knobs-confirm{left:50%;top:42%;translate:-50% -50%;width:min(340px,calc(100vw - 32px));padding:18px 18px 14px}
 .knobs-confirm .knobs-confirm-title{margin:0 0 6px;font-size:calc(var(--_k-font-size) + 1.5px);font-weight:var(--_k-weight-title);color:var(--_k-fg);line-height:1.3}
 .knobs-confirm .knobs-confirm-body{margin:0;color:var(--_k-fg-2);line-height:1.45}
