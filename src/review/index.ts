@@ -26,7 +26,11 @@ export {
   type WalkthroughOptions,
 } from "../ui/walkthrough.js"
 export {
+  decision,
+  facts,
   mediaSlot,
+  type DecisionOptions,
+  type FactsOptions,
   type MediaSlot,
   type MediaSlotOptions,
   type StepLinks,
@@ -83,6 +87,10 @@ export {
   type WalkStep,
   type WalkthroughAnnotation,
   type WalkthroughChapter,
+  type WalkthroughDecisionOption,
+  type WalkthroughFact,
+  type WalkthroughFactGroup,
+  type WalkthroughFacts,
   type WalkthroughDoc,
   type WalkthroughEvidence,
   type WalkthroughFeedback,

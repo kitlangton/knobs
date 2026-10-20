@@ -248,27 +248,53 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-step[data-full] .knobs-wt-slot[data-kind="video"] .knobs-player{flex:1;min-height:0}
 .knobs-wt-step[data-full] .knobs-wt-slot[data-kind="video"] .knobs-player-frame{flex:1;min-height:0;aspect-ratio:auto}
 
-/* ——— a taste test: the options side by side, Kit's pick checked and the rest stepping back. On
-   the step's card, so no fill of their own ——— */
-.knobs-wt-options{display:grid;grid-template-columns:repeat(var(--kw-n,2),minmax(0,1fr));gap:var(--_k-space-group) var(--_k-space-column)}
-@container knobs-wt-step (max-width:640px){.knobs-wt-options{grid-template-columns:minmax(0,1fr)}}
-.knobs-wt-option{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-sibling);min-width:0}
-.knobs-wt-option>:not(.knobs-wt-pick){transition:opacity var(--kw-snappy-ms) var(--kw-snappy)}
-.knobs-wt-options[data-has-pick] .knobs-wt-option:not([data-picked])>:not(.knobs-wt-pick){opacity:.55}
-.knobs-ui .knobs-wt-pick{display:flex;align-items:center;gap:8px;width:100%;min-height:28px;margin:0 -6px;width:calc(100% + 12px);padding:0 6px;border-radius:var(--_k-radius);cursor:default;color:var(--_k-fg-2);text-align:left;
-  transition:background calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-wt-pick:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_k-fill);transition-duration:calc(var(--_k-hover-in) * 1ms)}
-.knobs-wt-letter{flex:none;font-weight:var(--kw-strong);color:var(--_k-fg)}
-.knobs-wt-olabel{flex:1;min-width:0;font-weight:var(--kw-strong);color:var(--_k-fg)}
-.knobs-wt-suggested{flex:none;font-size:var(--_k-type-small);color:var(--_k-fg-3)}
-.knobs-wt-check{flex:none;display:flex;width:18px;height:18px;align-items:center;justify-content:center;border-radius:50%;background:var(--_k-fill);color:transparent;
-  transition:background var(--kw-snappy-ms) var(--kw-snappy),color var(--kw-snappy-ms) var(--kw-snappy)}
+/* ——— options: a decision, or a taste test when Kit picks. Columns that fill whole rows (4 → 4, 2
+   or 1 across; 3 → 3 or 1), a hairline between neighbours and between rows, no card of their own.
+   Each: a kicker ("Option 1 · Recommended", the mark a quiet word in text colour), its title, a
+   sentence, its media and what changes as facts. A pick dims the rest ——— */
+.knobs-wt-options{--kw-ogap:var(--_k-space-group);display:grid;grid-template-columns:repeat(var(--kw-cols,1),minmax(0,1fr));gap:var(--kw-ogap);min-width:0}
+.knobs-wt-option{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-title);min-width:0}
+.knobs-wt-option[data-col]:not([data-col="0"])::before{content:"";position:absolute;top:0;bottom:0;left:calc(var(--kw-ogap) / -2);width:1px;background:var(--_k-border-subtle);pointer-events:none}
+.knobs-wt-option[data-col]:not([data-row="0"])::before{top:calc(var(--kw-ogap) / -2)}
+.knobs-wt-option[data-col]:not([data-last-row])::before{bottom:calc(var(--kw-ogap) / -2)}
+.knobs-wt-option[data-col]:not([data-row="0"])::after{content:"";position:absolute;top:calc(var(--kw-ogap) / -2);left:calc(var(--kw-ogap) / -2);right:calc(var(--kw-ogap) / -2);height:1px;background:var(--_k-border-subtle);pointer-events:none}
+.knobs-wt-option[data-col="0"]::after{left:0}
+.knobs-wt-option[data-end]::after{right:0}
+.knobs-wt-option>:not(.knobs-wt-ohead){transition:opacity var(--kw-snappy-ms) var(--kw-snappy)}
+.knobs-wt-options[data-has-pick] .knobs-wt-option:not([data-picked])>:not(.knobs-wt-ohead){opacity:.55}
+.knobs-wt-ohead{display:flex;flex-direction:column;gap:var(--_k-space-inside);min-width:0;text-align:left}
+.knobs-wt-okicker{display:flex;align-items:center;gap:var(--_k-space-inside);min-width:0;height:var(--_k-leading-small);color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);white-space:nowrap}
+.knobs-wt-orec{color:var(--_k-fg);font-weight:var(--kw-strong)}
+.knobs-wt-orec::before{content:"·";margin-right:var(--_k-space-inside);color:var(--_k-fg-3);font-weight:var(--_k-weight)}
+.knobs-wt-otitle{color:var(--_k-fg);font-weight:var(--kw-strong);text-wrap:balance}
+.knobs-wt-osum{max-width:var(--kw-measure);color:var(--_k-fg-2)}
+/* Picking: the head is the radio, bled out so its words keep the column's edge; a fill under the
+   pointer at once; a check at the kicker's end that fills when picked. */
+.knobs-ui .knobs-wt-pick{margin:-6px -8px;padding:6px 8px;border-radius:var(--_k-radius);cursor:default;transition:background calc(var(--_k-hover-out) * 1ms)}
+.knobs-ui .knobs-wt-pick:is(:hover,:focus-visible){background:var(--_k-fill-hover);transition-duration:calc(var(--_k-hover-in) * 1ms)}
+.knobs-ui .knobs-wt-pick:focus-visible{box-shadow:inset 0 0 0 1px var(--_k-focus)}
+.knobs-wt-check{flex:none;display:flex;width:16px;height:16px;margin-left:auto;align-items:center;justify-content:center;border-radius:50%;box-shadow:inset 0 0 0 1px var(--_k-border-strong);color:transparent;
+  transition:background var(--kw-snappy-ms) var(--kw-snappy),color var(--kw-snappy-ms) var(--kw-snappy),box-shadow var(--kw-snappy-ms) var(--kw-snappy)}
 .knobs-wt-check svg{width:12px;height:12px}
-.knobs-wt-option[data-picked] .knobs-wt-check{background:var(--_k-accent);color:var(--_k-bg)}
-.knobs-wt-key{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 3px;border-radius:4px;background:var(--_k-fill);color:var(--_k-fg-3);
-  font:var(--kw-strong) var(--_k-type-small)/1 var(--_k-font);opacity:.5;transition:opacity .15s}
-.knobs-wt-step[data-current] .knobs-wt-key{opacity:1}
-.knobs-wt-ocap{color:var(--_k-fg-2);max-width:var(--kw-measure)}
+.knobs-wt-option[data-picked] .knobs-wt-check{background:var(--_k-accent);box-shadow:none;color:var(--_k-on-accent)}
+
+/* ——— facts: terms in a fixed gutter beside their values, sharing a baseline; groups under a
+   heading, a hairline between them. Code and evidence are small mono chips. Too narrow for the
+   gutter, each term sits over its value ——— */
+.knobs-wt-facts{--kw-term:144px;display:flex;flex-direction:column;gap:var(--_kr-block);min-width:0}
+.knobs-wt-fgroup{position:relative;display:flex;flex-direction:column;gap:var(--_k-space-title);min-width:0}
+.knobs-wt-fgroup+.knobs-wt-fgroup::before{content:"";position:absolute;left:0;right:0;top:calc(var(--_kr-block) / -2);height:1px;background:var(--_k-border-subtle);pointer-events:none}
+.knobs-wt-fhead{margin:0;color:var(--_k-fg);font-weight:var(--kw-strong);text-wrap:balance}
+.knobs-wt-fterms{display:grid;grid-template-columns:var(--kw-term) minmax(0,1fr);gap:var(--_k-space-sibling) var(--_kr-block);align-items:baseline;margin:0;min-width:0}
+.knobs-wt-fact{display:contents}
+.knobs-wt-fterms dt{margin:0;color:var(--_k-fg-3);font-size:var(--_k-type-small);line-height:var(--_k-leading-small);text-wrap:balance}
+.knobs-wt-fterms dd{display:flex;flex-direction:column;gap:var(--_k-space-inside);min-width:0;margin:0;color:var(--_k-fg-2);overflow-wrap:anywhere;text-wrap:pretty}
+.knobs-wt-fterms dd[data-code]{flex-flow:row wrap}
+.knobs-wt-fterms dd[data-code]>code{padding:2px 6px;line-height:var(--_k-leading-label);color:var(--_k-fg)}
+@container knobs-wt-slot (max-width:400px){
+  .knobs-wt-fterms{display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
+  .knobs-wt-fact{display:flex;flex-direction:column;gap:var(--_k-space-inside)}
+}
 
 /* ——— the rail: progress, contents, export ——— */
 .knobs-wt-rail{position:sticky;top:var(--_k-pad-page);display:flex;flex-direction:column;gap:var(--_k-space-title);max-height:calc(100vh - var(--_k-pad-page) * 2);min-height:0;font-size:var(--_k-type-small);line-height:var(--_k-leading-small)}

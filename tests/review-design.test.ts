@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest"
 import { MEASURE, SPACE, TYPE, trackingAt } from "../src/review/foundations"
 import { TOKEN_BY_NAME, type TokenName } from "../src/tokens/schema"
 import { walkthroughCss } from "../src/ui/walkthrough-css"
+import { fillFacts, fillMedia, optionColumns } from "../src/ui/walkthrough-model"
 
 const px = (name: string) => {
   const t = TOKEN_BY_NAME.get(name as TokenName)!
@@ -76,5 +77,69 @@ describe("space", () => {
     const from = SPACE.findIndex((s) => s.role === "title")
     for (let i = from + 1; i < SPACE.length; i++)
       expect(SPACE[i]!.px).toBeGreaterThanOrEqual(SPACE[i - 1]!.px * 2)
+  })
+})
+
+describe("facts", () => {
+  test("a record or a list, code split into chips, values always a list", () => {
+    expect(fillFacts({ Sees: "Two rows", Steps: ["One", "Two"] })).toEqual([
+      { term: "Sees", value: ["Two rows"], code: false },
+      { term: "Steps", value: ["One", "Two"], code: false },
+    ])
+    expect(fillFacts([{ term: "Evidence", value: "a.tsx:8-11, b.ts:742", code: true }])).toEqual([
+      { term: "Evidence", value: ["a.tsx:8-11", "b.ts:742"], code: true },
+    ])
+  })
+
+  test("the media kind: its run first, then its groups; filling again changes nothing", () => {
+    const m = fillMedia({
+      kind: "facts",
+      title: "Compared",
+      facts: { A: "1" },
+      groups: [{ title: "v2 TUI", facts: [{ term: "Evidence", value: "x.ts, y.ts", code: true }] }],
+    })
+    expect(m).toEqual({
+      kind: "facts",
+      title: "Compared",
+      groups: [
+        { facts: [{ term: "A", value: ["1"], code: false }] },
+        { title: "v2 TUI", facts: [{ term: "Evidence", value: ["x.ts", "y.ts"], code: true }] },
+      ],
+    })
+    expect(fillMedia(m)).toEqual(m)
+  })
+})
+
+describe("decision", () => {
+  test("numbers its options, keeps their ids unique, and puts pros and cons last as facts", () => {
+    const m = fillMedia({
+      kind: "decision",
+      options: [
+        { title: "One row", recommended: true, facts: { Size: "~30 lines" }, pros: ["Simple"] },
+        { title: "One row", cons: ["Two rows", "Drift"], media: "a.png" },
+      ],
+    })
+    if (m.kind !== "decision") throw new Error("not a decision")
+    expect(m.options.map((o) => [o.id, o.number, o.recommended])).toEqual([
+      ["one-row", "Option 1", true],
+      ["one-row-2", "Option 2", false],
+    ])
+    expect(m.options[0]!.facts.map((f) => f.term)).toEqual(["Size", "For"])
+    expect(m.options[1]!.facts).toEqual([
+      { term: "Against", value: ["Two rows", "Drift"], code: false },
+    ])
+    expect(m.options[1]!.media).toEqual({ kind: "image", src: "a.png" })
+    expect(fillMedia(m)).toEqual(m)
+  })
+
+  test("sits side by side only in whole rows, as many as fit at 280 px", () => {
+    expect(optionColumns(4, 1400)).toBe(4)
+    expect(optionColumns(4, 960)).toBe(2)
+    expect(optionColumns(4, 500)).toBe(1)
+    expect(optionColumns(3, 960)).toBe(3)
+    expect(optionColumns(3, 700)).toBe(1)
+    expect(optionColumns(2, 700)).toBe(2)
+    expect(optionColumns(5, 2000)).toBe(1)
+    expect(optionColumns(6, 960)).toBe(3)
   })
 })

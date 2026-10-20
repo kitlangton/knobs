@@ -11,6 +11,7 @@ import { icon } from "./icons.js"
 import { annotationLayer, type AnnotationLayer, type Rect } from "./walkthrough-annotations.js"
 import { applyLook, type UiLook } from "./look.js"
 import { reviewLook } from "./review-look.js"
+import { layoutOptions, optionTile, renderFacts } from "./review-options.js"
 import { walkthroughCss } from "./walkthrough-css.js"
 import {
   chapterPills,
@@ -642,11 +643,47 @@ function mountProse(
   return { dispose: () => el.remove() }
 }
 
+function mountFacts(host: HTMLElement, m: Extract<WalkMedia, { kind: "facts" }>): Mounted {
+  const box = renderFacts(host.ownerDocument, m.groups)
+  host.append(box)
+  return { dispose: () => box.remove() }
+}
+
+/** The options side by side, each its own media in a slot of its own. */
+function mountDecision(
+  host: HTMLElement,
+  m: Extract<WalkMedia, { kind: "decision" }>,
+  slot: (tile: HTMLElement, media: WalkMedia) => MediaSlot,
+): Mounted {
+  const root = div(host.ownerDocument, "knobs-wt-options")
+  const slots: MediaSlot[] = []
+  const tiles = m.options.map(
+    (o) =>
+      optionTile(host.ownerDocument, o, {
+        media: (tile) => {
+          if (o.media) slots.push(slot(tile, o.media))
+        },
+      }).tile,
+  )
+  root.append(...tiles)
+  host.append(root)
+  const unlayout = layoutOptions(root, tiles)
+  return {
+    pause: () => slots.forEach((s) => s.pause()),
+    dispose: () => {
+      unlayout()
+      slots.forEach((s) => s.dispose())
+      root.remove()
+    },
+  }
+}
+
 /** Which kinds wait for the view, and which let go far from it. */
 const HEAVY = new Set(["compare", "video", "diff", "mount"])
 const RELEASES = new Set(["compare", "video"])
 
-const labelOf = (m: WalkMedia) => ("label" in m && m.kind !== "metric" ? m.label : undefined)
+const labelOf = (m: WalkMedia) =>
+  m.kind === "facts" ? m.title : "label" in m && m.kind !== "metric" ? m.label : undefined
 
 export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): MediaSlot {
   const doc = container.ownerDocument
@@ -663,7 +700,11 @@ export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): Medi
   const label = labelOf(m)
   if (
     label &&
-    (m.kind === "video" || m.kind === "image" || m.kind === "code" || m.kind === "terminal")
+    (m.kind === "video" ||
+      m.kind === "image" ||
+      m.kind === "code" ||
+      m.kind === "terminal" ||
+      m.kind === "facts")
   ) {
     const l = doc.createElement("span")
     l.className = "knobs-wt-slot-label"
@@ -747,6 +788,20 @@ export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): Medi
         return done(mountStack(host, m, options.steps, options.findPR))
       case "table":
         return done(mountTable(host, m, options.steps))
+      case "facts":
+        return done(mountFacts(host, m))
+      case "decision":
+        return done(
+          mountDecision(host, m, (tile, media) =>
+            mediaSlot(tile, {
+              ...look,
+              media,
+              ...(options.lazy === false ? { lazy: false } : {}),
+              ...(options.steps ? { steps: options.steps } : {}),
+              ...(options.onEvent ? { onEvent: options.onEvent } : {}),
+            }),
+          ),
+        )
       case "mount": {
         const cleanup = m.mount(host)
         return done({ dispose: () => (cleanup ? cleanup() : (host.textContent = "")) })
@@ -800,3 +855,44 @@ export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): Medi
 }
 
 export const CHECK = icon("check", { small: true })
+
+type FactsMedia = Extract<WalkthroughMedia, { kind: "facts" }>
+type DecisionMedia = Extract<WalkthroughMedia, { kind: "decision" }>
+
+export interface FactsOptions extends UiLook, Omit<FactsMedia, "kind"> {}
+export interface DecisionOptions
+  extends UiLook,
+    Omit<DecisionMedia, "kind">,
+    Pick<MediaSlotOptions, "lazy" | "steps" | "onEvent"> {}
+
+/**
+ * Term → value pairs in an aligned grid: terms small and faint in a fixed gutter, values beside
+ * them, code and evidence as small mono chips; groups under a heading, hairlines between. Each
+ * term sits over its value where it's narrow. Also a walkthrough's `{ kind: "facts" }`.
+ */
+export function facts(container: HTMLElement, options: FactsOptions): MediaSlot {
+  const { title, facts: list, groups, ...look } = options
+  return mediaSlot(container, {
+    ...look,
+    media: {
+      kind: "facts",
+      ...(title ? { title } : {}),
+      ...(list ? { facts: list } : {}),
+      ...(groups ? { groups } : {}),
+    },
+  })
+}
+
+/**
+ * N ways to go, one recommended: each a title, a sentence, optional media and what changes as
+ * facts, side by side where there's room (whole rows only), hairlines between, the recommended one
+ * marked by a quiet word. Also a walkthrough's `{ kind: "decision" }`; a step's `options` (Kit
+ * picks) look the same.
+ */
+export function decision(container: HTMLElement, options: DecisionOptions): MediaSlot {
+  const { options: list, noun, ...rest } = options
+  return mediaSlot(container, {
+    ...rest,
+    media: { kind: "decision", options: list, ...(noun ? { noun } : {}) },
+  })
+}
