@@ -80,7 +80,7 @@ const css = `
   .join(";")};
   --ku-control-h:var(--k-control-h,calc(var(--ku-row) - 8px));
   --ku-value-font:var(--_k-value-font);
-  --ku-value-size:var(--kc-value-size,calc(var(--ku-font-size) - .5px));
+  --ku-value-size:var(--k-value-size,calc(var(--ku-font-size) - .5px));
   --ku-text-meta:var(--k-text-meta,calc(var(--ku-font-size) - 1px));
   --ku-hit:var(--k-ui-hit,9px);
   --ku-rail:var(--k-ui-rail,var(--ku-row));
