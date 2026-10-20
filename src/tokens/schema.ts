@@ -33,6 +33,11 @@ export interface TokenDef {
   readonly doc: string
   /** Today's names (`--k-*`, `--ku-*`) that now read this token. Removed after one release. */
   readonly deprecated?: readonly string[]
+  /**
+   * How the knobs root resolves the token from its value (`$`), when that isn't the value itself:
+   * the control radius scales with density.
+   */
+  readonly resolve?: string
 }
 
 const theme = { from: "theme" } as const
@@ -67,8 +72,9 @@ export const TOKENS = [
     type: "length",
     group: "Shape",
     source: theme,
-    doc: "Control corner radius. 0 squares everything, including capsules.",
+    doc: "Control corner radius. 0 squares everything, including capsules. Scales with density.",
     deprecated: ["--ku-radius"],
+    resolve: "round(calc($ * (1 + (var(--_k-density) - 1) * 1.5)),2px)",
   },
   {
     name: "density",
@@ -483,7 +489,7 @@ export const TOKENS = [
     tier: "semantic",
     type: "length",
     group: "Type",
-    source: css("round(calc(12px * var(--k-density)),.5px)"),
+    source: css("round(calc(12px * (1 + (var(--k-density) - 1) * .5)),1px)"),
     doc: "Body size; a 5-step scale derives privately.",
     deprecated: ["--ku-font-size"],
   },
@@ -602,8 +608,17 @@ export const TOKENS = [
     type: "color",
     group: "Hooks",
     source: css("var(--k-accent)"),
-    doc: "Slider handle and thumbs.",
-    deprecated: ["--k-handle", "--k-thumb"],
+    doc: "Slider handle and range thumbs.",
+    deprecated: ["--k-handle"],
+  },
+  {
+    name: "toggle-thumb-off",
+    tier: "hook",
+    type: "color",
+    group: "Hooks",
+    source: css("#ffffff"),
+    doc: "A switch's thumb while off, and the ring around colour and gradient thumbs.",
+    deprecated: ["--k-thumb"],
   },
   {
     name: "toggle-track",
@@ -792,7 +807,7 @@ export const TOKENS = [
     tier: "private",
     type: "length",
     group: "Private",
-    source: css("round(calc(var(--k-unit) * var(--k-density)),1px)"),
+    source: css("round(calc(var(--k-unit) * (1 + (var(--k-density) - 1) * 2.5)),1px)"),
     doc: "Gap between rows.",
     deprecated: ["--k-gap"],
   },
@@ -994,9 +1009,8 @@ export const DEPRECATED: ReadonlyMap<string, string> = new Map(
 )
 
 /**
- * Today's internal names that collide with a new public token of a different kind. Rename them
- * (to `--_k-*`) before the token sheet loads: `--k-fill` is registered today as a `<percentage>`
- * via `@property`, which would invalidate the new colour.
+ * Names knobs used internally that now belong to a public token of a different kind, and so must
+ * never be registered or set as anything else: the slider's position was `--k-fill`.
  */
 export const RETIRED_INTERNAL = ["--k-fill"] as const
 

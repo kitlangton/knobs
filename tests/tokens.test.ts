@@ -115,29 +115,40 @@ describe("generated CSS", () => {
     expect(css).toContain(":where(.knobs-root){")
   })
 
-  it("defines everything it reads", () => {
+  // A read with a fallback may name something only a host sets (a deprecated name, a public
+  // token); a read without one must be defined.
+  it("defines everything it reads without a fallback", () => {
     const defined = new Set([...css.matchAll(/(--_?ku?-[a-z0-9-]+):/g)].map((m) => m[1]))
-    for (const [, read] of css.matchAll(/var\((--_?ku?-[a-z0-9-]+)/g))
+    for (const [, read] of css.matchAll(/var\((--_?ku?-[a-z0-9-]+)\)/g))
       expect(defined.has(read), `${read} is read but never defined`).toBe(true)
   })
 
-  it("declares every token exactly once and every alias", () => {
+  it("resolves every token once, honouring its deprecated names first", () => {
     for (const t of defs) {
-      const matches = css.match(new RegExp(`[{;]${cssName(t)}:`, "g")) ?? []
-      expect(matches.length, cssName(t)).toBe(1)
+      const matches = css.match(new RegExp(`[{;]--_k-${t.name}:`, "g")) ?? []
+      expect(matches.length, t.name).toBe(1)
     }
-    for (const [old, next] of DEPRECATED) expect(css).toContain(`${old}:var(${next})`)
+    for (const [old, next] of DEPRECATED) {
+      const name = next.replace(/^--_?k-/, "")
+      expect(css).toMatch(new RegExp(`--_k-${name}:[^;]*var\\(${old},`))
+    }
+    // Knobs never declares a deprecated name, so a host's value at any level reaches the resolver.
+    for (const old of DEPRECATED.keys()) expect(css).not.toContain(`${old}:`)
   })
 
-  it("puts inputs on :root, derivations on .knobs-root, colours as light-dark pairs", () => {
+  it("puts the theme on :root, resolutions on .knobs-root, colours as light-dark pairs", () => {
     const [root, derived] = css.split(":where(.knobs-root){")
     expect(root).toContain("--k-bg:light-dark(#f5f5f7,#1c1c1d)")
     expect(root).toContain("--k-radius:8px")
     expect(root).not.toMatch(/var\(/)
+    expect(root).not.toContain("--k-fill:")
     expect(derived).toContain(
-      "--k-fill:color-mix(in oklch,var(--k-fg) calc(5.5% * var(--k-contrast)),transparent)",
+      "--_k-fill:var(--k-surface,var(--ku-surface,var(--k-fill,color-mix(in oklch,var(--_k-fg) calc(5.5% * var(--_k-contrast)),transparent))))",
     )
-    expect(css).toContain(':where(.knobs-root[data-appearance="dark"]){color-scheme:dark}')
+    expect(derived).toContain("--_k-bg:var(--ku-bg,var(--k-bg))")
+    expect(css).toContain(
+      ':where(.knobs-root[data-appearance="dark"]){color-scheme:dark;--_k-light:0}',
+    )
     expect(css).not.toMatch(/in srgb/)
   })
 
