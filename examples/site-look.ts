@@ -404,33 +404,33 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
       "--kicker": col("kicker"),
       "--lift": `0 1px 2px ${col("liftA")},0 0 0 .5px ${col("liftB")}`,
       "--k-bg": col("kBg"),
-      "--k-page": col("kPage"),
-      "--k-surface": col("kSurface"),
-      "--k-surface-hi": col("kSurfaceHi"),
-      "--k-line": col("kLine"),
-      "--k-line-hi": col("kLineHi"),
-      "--k-text": col("kText"),
-      "--k-label": col("kLabel"),
-      "--k-dim": col("kDim"),
+      "--k-bg-page": col("kPage"),
+      "--k-fill": col("kSurface"),
+      "--k-fill-selected": col("kSurfaceHi"),
+      "--k-border": col("kLine"),
+      "--k-border-strong": col("kLineHi"),
+      "--k-fg": col("kText"),
+      "--k-fg-2": col("kLabel"),
+      "--k-fg-3": col("kDim"),
       "--k-accent": col("kAccent"),
       "--k-modified": col("kModified"),
-      "--k-seg-bg": col("kSegBg"),
-      "--k-seg-active": col("kSegActive"),
+      "--k-segmented-track": col("kSegBg"),
+      "--k-segmented-active": col("kSegActive"),
       "--k-toggle-track": col("kToggleTrack"),
       "--k-toggle-thumb": col("kToggleThumb"),
       "--k-rim": col("kRim"),
-      "--k-edge": col("kEdge"),
-      "--k-thumb": col("kThumb"),
-      "--k-group-ink": col("kGroupInk"),
+      "--k-border-subtle": col("kEdge"),
+      "--k-toggle-thumb-off": col("kThumb"),
+      "--k-group-label": col("kGroupInk"),
       "--k-radius": px(n.kRadius!),
-      "--k-panel-radius": px(n.kPanelRadius!),
+      "--k-radius-panel": px(n.kPanelRadius!),
       "--k-round": px(roundPx(n.kRound!)),
       "--k-glass": n.kGlass!.toFixed(3),
       "--k-glow": n.kGlow!.toFixed(3),
       "--k-glass-tone": n.kGlassTone!.toFixed(3),
       "--k-lift": n.lift!.toFixed(3),
       // The DOM's shadow and the GPU's strength, dark (0) to light (1), × the surface's.
-      "--k-shadow": `0 ${lerp(12, 10, s).toFixed(2)}px ${lerp(36, 32, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.52, 0.14, s))}),0 1px ${lerp(2, 3, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.3, 0.08, s))})`,
+      "--k-shadow-overlay": `0 ${lerp(12, 10, s).toFixed(2)}px ${lerp(36, 32, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.52, 0.14, s))}),0 1px ${lerp(2, 3, s).toFixed(2)}px rgba(0,0,0,${a(lerp(0.3, 0.08, s))})`,
       "--k-shadow-strength": a(lerp(0.48, 0.16, s)),
       "--r-stage": px(n.rStage!),
       "--r-ctl": px(n.rCtl!),
@@ -583,6 +583,10 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   }
 
   // ── First paint: the resting look, at once ──
+  // A look kept under the old token names (before the design system) would shadow the new ones.
+  const names = vars(current)
+  for (const name of [...root.style])
+    if (name.startsWith("--k-") && !(name in names)) root.style.removeProperty(name)
   root.dataset.siteLook = ""
   if ((root.dataset.theme === "light") === dark) options.onPolarity(dark)
   apply(current)

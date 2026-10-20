@@ -2,6 +2,9 @@
    that follows them. site-look.ts writes the custom properties below on the root, once a frame
    while the look moves; the defaults here are Night, the page as it was. Nothing that holds a panel
    gets a transform, filter, clip or blend (the WebGPU overlay would lose it). */
+/* Below knobs' own layers: see the Themes reset further down. */
+@layer site-reset, knobs;
+
 @property --t-size {
   syntax: "<number>";
   inherits: true;
@@ -161,38 +164,73 @@
 }
 
 /* ── Everything that follows the knob ── */
-/* Panels take the root's tokens over their own light and dark blocks; a preset's panel keeps its own. */
+/* Panels and knobs/ui pieces take the tokens the loop writes on the root (a preset's keep its own). */
 :root[data-site-look]
-:is(.knobs-panel, .knobs-chip, .knobs-notice, .knobs-menu, .knobs-ui):not([data-preset]) {
+:is(.knobs-panel, .knobs-chip, .knobs-notice, .knobs-menu, .knobs-ui):not([data-preset], [data-knobs-theme]) {
   --k-bg: inherit;
-  --k-page: inherit;
-  --k-surface: inherit;
-  --k-surface-hi: inherit;
-  --k-line: inherit;
-  --k-line-hi: inherit;
-  --k-text: inherit;
-  --k-label: inherit;
-  --k-dim: inherit;
+  --k-bg-page: inherit;
+  --k-fill: inherit;
+  --k-fill-selected: inherit;
+  --k-border: inherit;
+  --k-border-strong: inherit;
+  --k-border-subtle: inherit;
+  --k-fg: inherit;
+  --k-fg-2: inherit;
+  --k-fg-3: inherit;
   --k-accent: inherit;
   --k-modified: inherit;
-  --k-seg-bg: inherit;
-  --k-seg-active: inherit;
+  --k-segmented-track: inherit;
+  --k-segmented-active: inherit;
   --k-toggle-track: inherit;
   --k-toggle-thumb: inherit;
+  --k-toggle-thumb-off: inherit;
   --k-rim: inherit;
-  --k-edge: inherit;
-  --k-thumb: inherit;
-  --k-group-ink: inherit;
+  --k-group-label: inherit;
   --k-radius: inherit;
-  --k-panel-radius: inherit;
+  --k-radius-panel: inherit;
   --k-round: inherit;
   --k-glass: inherit;
   --k-glow: inherit;
   --k-glass-tone: inherit;
-  --k-shadow: inherit;
+  --k-shadow-overlay: inherit;
   --k-shadow-strength: inherit;
   --k-lift: inherit;
   color-scheme: inherit;
+}
+/* A piece given a theme of its own (the Themes section) shows that theme, not the page's: here,
+   under every knobs layer, the root's tokens are let go, so the theme's own declarations and
+   derivations stand. */
+@layer site-reset {
+  :root[data-site-look] [data-knobs-theme] {
+    --k-bg: initial;
+    --k-bg-page: initial;
+    --k-fill: initial;
+    --k-fill-selected: initial;
+    --k-border: initial;
+    --k-border-strong: initial;
+    --k-border-subtle: initial;
+    --k-fg: initial;
+    --k-fg-2: initial;
+    --k-fg-3: initial;
+    --k-accent: initial;
+    --k-modified: initial;
+    --k-segmented-track: initial;
+    --k-segmented-active: initial;
+    --k-toggle-track: initial;
+    --k-toggle-thumb: initial;
+    --k-toggle-thumb-off: initial;
+    --k-rim: initial;
+    --k-group-label: initial;
+    --k-radius: initial;
+    --k-radius-panel: initial;
+    --k-round: initial;
+    --k-glass: initial;
+    --k-glow: initial;
+    --k-glass-tone: initial;
+    --k-shadow-overlay: initial;
+    --k-shadow-strength: initial;
+    --k-lift: initial;
+  }
 }
 /* The loop writes every frame: nothing else eases behind it. */
 :root[data-site-look],

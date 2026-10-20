@@ -63,7 +63,7 @@ export function uiSections({
     })
     const box = h("div", "ui-box")
     // Concentric with the cards inside it, half a gap in.
-    box.style.cssText += ";height:220px;border-radius:calc(var(--k-panel-radius,12px) + 3px)"
+    box.style.cssText += ";height:220px;border-radius:calc(var(--k-radius-panel,12px) + 3px)"
     s.slot.append(box)
     const note = (text: string) => {
       const p = h("div")
@@ -187,7 +187,7 @@ export function uiSections({
     // corners sit concentric with its own.
     const box = h("div", "ui-box")
     box.style.cssText +=
-      ";height:236px;padding:var(--k-ui-row-x,6px) 0;border-radius:var(--k-panel-radius,12px)"
+      ";height:236px;padding:var(--k-ui-row-x,6px) 0;border-radius:var(--k-radius-panel,12px)"
     s.slot.append(box)
     const picked = h("p", "note", "Nothing selected")
     s.side.prepend(picked)
@@ -307,7 +307,7 @@ export function uiSections({
     const view = () => live(story, (top ? story[0] : story[story.length - 1])?.id)
     // The rail insets its rows by the same amount all round (concentric with a panel's corners).
     const box = h("div", "ui-box")
-    box.style.cssText += ";height:340px;border-radius:var(--k-panel-radius,12px)"
+    box.style.cssText += ";height:340px;border-radius:var(--k-radius-panel,12px)"
     s.slot.append(box)
     const status = h("p", "note", "Nothing selected")
     status.style.minHeight = "18px"
