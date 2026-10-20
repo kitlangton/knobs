@@ -272,7 +272,8 @@ const css = `
 .knobs-tl-pin{position:absolute;top:13px;left:-5px;width:10px;height:10px;pointer-events:auto;cursor:grab}
 .knobs-tl-pin::after{content:"";position:absolute;inset:1.5px;border-radius:min(2px,var(--_k-radius));background:var(--knobs-tl-c);rotate:45deg;transition:background .15s,scale .2s var(--_ku-ease)}
 .knobs-tl-mlabel{position:absolute;top:26px;left:3px;max-width:140px;padding:0 6px;border-radius:max(0px,calc(var(--_k-radius) - 3px));background:var(--_k-fill-selected);color:var(--_k-fg);
-  font-size:var(--_k-text-meta);line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:auto;cursor:grab;transition:background .15s,color .15s}
+  font-size:var(--_k-text-meta);line-height:17px;white-space:nowrap;pointer-events:auto;cursor:grab;transition:background .15s,color .15s}
+.knobs-tl-mtext{display:block;overflow:hidden;white-space:nowrap}
 .knobs-tl-marker[data-selected]{--knobs-tl-c:var(--_k-accent)}
 .knobs-tl-marker[data-selected] .knobs-tl-mlabel{background:color-mix(in srgb,var(--_k-accent) 24%,var(--_k-fill-selected))}
 .knobs-tl-marker[data-selected] .knobs-tl-pin::after{scale:1.2}

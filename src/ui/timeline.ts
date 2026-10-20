@@ -327,13 +327,16 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
         n.dataset.id = m.id
         const pin = el("span", "knobs-tl-pin")
         const label = el("span", "knobs-tl-mlabel")
+        // A long name fades out at its trailing edge (no ellipsis), inside the chip.
+        label.append(el("span", "knobs-tl-mtext knobs-scroll-fade-x"))
         n.append(pin, label)
         markerLane.append(n)
         markerEls.set(m.id, n)
         if (built) enter(n)
       }
       const label = n.querySelector<HTMLElement>(".knobs-tl-mlabel")!
-      if (label.textContent !== (m.label ?? "")) label.textContent = m.label ?? ""
+      const text = label.firstElementChild as HTMLElement
+      if (text.textContent !== (m.label ?? "")) text.textContent = m.label ?? ""
       label.hidden = !m.label
       n.style.setProperty("--knobs-tl-color", m.color ?? "")
       n.toggleAttribute("data-selected", selected?.kind === "marker" && selected.id === m.id)
