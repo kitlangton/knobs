@@ -177,6 +177,18 @@ describe("pull requests", () => {
   })
 })
 
+describe("layout", () => {
+  test("goes to one column where it's narrow, whatever side the rail is on", () => {
+    const css = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough-css.ts"), "utf8")
+    // As specific as the rail-side rules ([data-rail="right"]) and after them, so it wins.
+    expect(css).toMatch(
+      /@container knobs-wt \(max-width:960px\)\{\.knobs-walkthrough\[data-rail\] \.knobs-wt-layout\{grid-template-columns:minmax\(0,1fr\)/,
+    )
+    const src = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough.ts"), "utf8")
+    expect(src).toMatch(/root\.dataset\.rail = options\.rail === false \? "none" : options\.rail === "right" \? "right" : "left"/)
+  })
+})
+
 describe("table stacking", () => {
   const table = fillMedia({
     kind: "table",

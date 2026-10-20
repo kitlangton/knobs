@@ -47,7 +47,7 @@ export const walkthroughCss = `
 /* The intro, the updates and each section: a section's room apart, the hairline in the middle. */
 .knobs-wt-flow{display:flex;flex-direction:column;gap:calc(var(--_k-space-section) / 2);min-width:0}
 .knobs-wt-flow>*+*{padding-top:calc(var(--_k-space-section) / 2);box-shadow:inset 0 1px 0 var(--_k-border-subtle)}
-@container knobs-wt (max-width:960px){.knobs-walkthrough .knobs-wt-layout{grid-template-columns:minmax(0,1fr);gap:var(--_k-space-title)}
+@container knobs-wt (max-width:960px){.knobs-walkthrough[data-rail] .knobs-wt-layout{grid-template-columns:minmax(0,1fr);gap:var(--_k-space-title)}
   .knobs-walkthrough[data-rail] .knobs-wt-layout>*{grid-column:auto;grid-row:auto}}
 
 /* ——— one line of facts: small, faint, joined by ·, its trailing edge fading ——— */
