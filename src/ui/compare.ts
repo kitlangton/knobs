@@ -19,6 +19,7 @@ import {
   compareModes,
   frameMidpoint,
   frameOf,
+  fuseCorners,
   fuseFrame,
   gripTop,
   labelFold,
@@ -432,6 +433,8 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   let stageRect: DOMRect | null = null
   let accent: readonly [number, number, number] = [0.49, 0.81, 0.61]
   let labelW: [number, number] = [0, 0]
+  /** The stage's corner radius (px), which each side's picture takes too. */
+  let frameRadius = 0
   let dirty = true
   let disposed = false
   let near = options.lazy === false
@@ -943,6 +946,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     const wr = wipeRect(r.L.overlay)
     const k = Math.min(1, Math.max(0, lay.x))
     const fu = fuseFrame(r.L, r.before, r.after, k, wipeLine.x)
+    // The frame's radius on each side, at every frame of the fuse (the stage rounds only its own
+    // corners, which the sides leave as they come together).
+    const corners = fuseCorners(frameRadius, k)
     const dw = differenceWeight()
     const fusing = 1 - dw
     // Labels: in their sides' top corners apart; fusing, they fold to their names and ride either
@@ -1004,6 +1010,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       // Before is cut at the seam, feathered mid-fuse (a difference shows it whole).
       const cut = mode === "difference" ? null : fu
       const place = (n: HTMLElement, rect: Rect, clip: Rect, before: boolean) => {
+        const round = before ? corners.before : corners.after
         const st = n.style
         st.transform = `translate(${rect.x.toFixed(2)}px,${rect.y.toFixed(2)}px)`
         st.width = `${rect.w.toFixed(2)}px`
@@ -1013,9 +1020,12 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         const l = Math.max(0, clip.x - rect.x)
         const b = Math.max(0, rect.y + rect.h - (clip.y + clip.h))
         const right = Math.max(0, rect.x + rect.w - Math.min(clip.x + clip.w, edge))
+        // Cut short of its side's edge (the seam), the right corners are the seam's: square.
+        const rr = edge < clip.x + clip.w - 0.5 ? 0 : round.right
+        const rl = round.left
         st.clipPath =
-          t + l + b + right > 0.01
-            ? `inset(${t.toFixed(2)}px ${right.toFixed(2)}px ${b.toFixed(2)}px ${l.toFixed(2)}px)`
+          t + l + b + right + rl + rr > 0.01
+            ? `inset(${t.toFixed(2)}px ${right.toFixed(2)}px ${b.toFixed(2)}px ${l.toFixed(2)}px round ${rl.toFixed(2)}px ${rr.toFixed(2)}px ${rr.toFixed(2)}px ${rl.toFixed(2)}px)`
             : ""
         const mask =
           before && cut && cut.feather > 0.5
@@ -1059,6 +1069,12 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
           ? { x: pointer.x * dpr, y: pointer.y * dpr, r: LOUPE.r * dpr, zoom: LOUPE.zoom }
           : null,
       preview: [Boolean(sides[0].shown?.cached), Boolean(sides[1].shown?.cached)],
+      radii: [
+        corners.before.left * dpr,
+        corners.before.right * dpr,
+        corners.after.left * dpr,
+        corners.after.right * dpr,
+      ],
     })
   }
   const drawNow = () => {
@@ -1146,6 +1162,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     // Open widths, whatever the fold is now.
     const unfold = MARK.w - labelFold(folded, MARK.w).width + MARK.gap * folded
     labelW = [labels[0].offsetWidth + unfold, labels[1].offsetWidth + unfold]
+    frameRadius = Number.parseFloat(win.getComputedStyle(stage).borderTopLeftRadius) || 0
     requestDraw()
   }
   const measure = () => {

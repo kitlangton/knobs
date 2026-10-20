@@ -8,6 +8,7 @@ import {
   compareModes,
   frameMidpoint,
   frameOf,
+  fuseCorners,
   fuseFrame,
   gripTop,
   labelFold,
@@ -178,8 +179,18 @@ describe("layout and the wipe", () => {
     // Mid-fuse the feather swells, never past where the sides overlap.
     const mid = at(0.5)
     expect(mid.feather).toBeGreaterThan(10)
-    expect(mid.feather).toBeLessThanOrEqual(25)
-    expect(mid.blur).toBeGreaterThan(0)
+    expect(mid.feather).toBeLessThanOrEqual(33)
+    // The blend blur peaks mid-fuse and is gone at either end.
+    expect(mid.blur).toBeCloseTo(8)
+    expect(at(0.1).blur).toBeLessThan(mid.blur)
+  })
+  test("rounded at every frame of the fuse: outer corners always, inner ones growing", () => {
+    expect(fuseCorners(10, 0)).toEqual({
+      before: { left: 10, right: 0 },
+      after: { left: 0, right: 10 },
+    })
+    expect(fuseCorners(10, 0.5).before.right).toBe(5)
+    expect(fuseCorners(10, 1).after).toEqual({ left: 10, right: 10 })
   })
   test("a label folds to its name: the mark narrows and fades", () => {
     expect(labelFold(0, 12)).toEqual({ width: 12, opacity: 1, blur: 0 })

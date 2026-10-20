@@ -30,6 +30,7 @@ import {
 } from "./look.js"
 import { selectionPill, type SelectionPill } from "./selection-pill.js"
 import { toast } from "./toast.js"
+import { annotationsOn, setAnnotations } from "./walkthrough-annotations.js"
 import { disclosure, type Disclosure, linkPRs, prChip } from "./walkthrough-blocks.js"
 import {
   CHECK,
@@ -1156,7 +1157,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     if (f.at !== null) {
       const when = metaText(meta, ago(f.at, now))
       when.title = new Date(f.at).toLocaleString()
-    } else metaText(meta, f.kind === "qa" ? "Answer" : "Update")
+    }
     const step = f.step ? page.steps.find((s) => s.key === f.step) : undefined
     if (step) {
       const section = page.sections.find((s) => s.id === step.section)
@@ -1167,14 +1168,14 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       b.addEventListener("click", () => go(step.key))
       meta.append(b)
     }
-    if (f.status) {
+    if (f.status && review) {
       const id = f.status.toLowerCase()
       const shipped = /^(ship|shipped|merged|done)$/.test(id)
       const changes = /^(changes?|changes queued)$/.test(id)
       const s = metaText(meta, shipped ? "Shipped" : changes ? "Changes queued" : f.status)
       s.dataset.status = shipped ? "on" : changes ? "warn" : ""
     }
-    q.append(meta)
+    if (meta.childNodes.length) q.append(meta)
     if (f.q) q.append(prose(doc, "p", "knobs-wt-fi-ask", f.q))
     else q.append(prose(doc, "p", "knobs-wt-fi-text", f.text))
     li.append(q)
@@ -1196,7 +1197,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
           }
           list.append(row)
         }
-        discs.push(disclosure(a, { label: "Context", count: f.trail.length, content: list }))
+        discs.push(disclosure(a, { label: "Context", content: list }))
       }
       li.append(a)
     }
@@ -1267,9 +1268,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const fh = el(doc, "header", "knobs-wt-feed-head")
       const h = el(doc, "h2", "knobs-wt-feed-title")
       h.textContent = page.feed.some((f) => f.kind === "qa") ? "Updates & Q&A" : "Updates"
-      const n = el(doc, "span", "knobs-wt-feed-count")
-      n.textContent = String(page.feed.length)
-      fh.append(h, n)
+      fh.append(h)
       const list = el(doc, "ol", "knobs-wt-feed-list")
       const now = Date.now()
       for (const f of page.feed) list.append(feedItem(f, now))
@@ -1407,9 +1406,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     if (section) b.dataset.section = section
     const t = el(doc, "span", "knobs-wt-toc-label")
     t.textContent = label
-    const e = el(doc, "span", "knobs-wt-toc-end")
     b.title = label
-    b.append(t, e)
+    b.append(t)
+    // Its state glyph's place, with review on.
+    if (review) b.append(el(doc, "span", "knobs-wt-toc-end"))
     b.addEventListener("mousedown", (ev) => ev.preventDefault())
     b.addEventListener("click", run)
     tocRows.push(b)
@@ -1577,6 +1577,10 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       const d = (key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 2 : 0.5)
       if (seekBy(d)) claim()
       return
+    }
+    if (key === "a" && !e.shiftKey && root.querySelector(".knobs-wt-anno")) {
+      claim()
+      return setAnnotations(root, !annotationsOn(root))
     }
     if (key === "n" && noteMode !== "hidden") {
       claim()

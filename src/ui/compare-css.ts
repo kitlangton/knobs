@@ -18,11 +18,11 @@ export const compareCss = `
 .knobs-cmp-modes[hidden]{display:none}
 .knobs-ui .knobs-cmp-mode{display:inline-flex;align-items:center;height:100%;padding:0 8px;border-radius:var(--_k-radius);color:var(--_k-fg-2);cursor:pointer;white-space:nowrap;
   transition:color calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-cmp-mode:is(:hover,:focus-visible){color:var(--_k-fg)}
+.knobs-ui .knobs-cmp-mode:is(:hover,:focus-visible){color:var(--_k-fg);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 /* Toggles: icon buttons, the accent's wash when on. */
 .knobs-ui .knobs-cmp-toggle{display:inline-flex;align-items:center;justify-content:center;width:var(--_k-control-h);height:var(--_k-control-h);border-radius:var(--_k-radius);color:var(--_k-fg-3);cursor:pointer;
   transition:color calc(var(--_k-hover-out) * 1ms),background calc(var(--_k-hover-out) * 1ms)}
-.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_ku-wash)}
+.knobs-ui .knobs-cmp-toggle:is(:hover,:focus-visible){color:var(--_k-fg);background:var(--_ku-wash);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-ui .knobs-cmp-toggle[aria-pressed="true"]{color:var(--_k-accent-fg);background:var(--_k-accent-soft)}
 .knobs-cmp-toggle svg{display:block}
 .knobs-cmp-fill{flex:1}
@@ -88,7 +88,7 @@ export const compareCss = `
 .knobs-cmp-zoom[data-on]{opacity:1;scale:1;pointer-events:auto;transition:opacity .2s cubic-bezier(.2,.8,.2,1),scale .2s cubic-bezier(.2,.8,.2,1)}
 :where(.knobs-ui) .knobs-cmp-zoom-reset{all:revert;box-sizing:border-box;font:inherit;letter-spacing:inherit;margin:0;border:0;outline:none;box-shadow:none;
   display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:999px;background:transparent;color:var(--_k-fg-2);cursor:pointer;transition:color .15s,background .15s}
-:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){color:var(--_k-fg);background:color-mix(in srgb,var(--_k-fg) 12%,transparent)}
+:where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){color:var(--_k-fg);background:color-mix(in srgb,var(--_k-fg) 12%,transparent);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);font-size:var(--_k-text-meta);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
 .knobs-cmp-strip-host{flex:none;height:60px;min-height:0}

@@ -20,4 +20,8 @@ export const playerCss = `
 .knobs-player-glyph svg{width:16px;height:16px}
 .knobs-player-glyph[data-flash]{opacity:1;filter:none;scale:1}
 .knobs-player-line{flex:none;min-height:0}
+/* Hover in is immediate (0 ms), out eases. The timeline's own stylesheet is look.ts's; its hover
+   states are set here, after it, so the player's line and every timeline share them. */
+.knobs-ui .knobs-tl-play:hover,.knobs-tl-edge:hover::after,.knobs-tl-rlabel:hover,.knobs-tl-track:hover .knobs-tl-hover,
+.knobs-timeline[data-variant="line"] .knobs-tl-track:hover .knobs-tl-segs{transition-duration:calc(var(--_k-hover-in) * 1ms)}
 `

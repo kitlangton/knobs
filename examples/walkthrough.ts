@@ -477,13 +477,18 @@ export const doc: WalkthroughDoc = {
         {
           title: "The picker, narrated",
           caption:
-            "A video with chapters and captions: click a chapter to jump there; the lit one follows playback.",
+            "A video with chapters, captions and annotations: click a chapter to jump there; the lit one follows playback.",
           media: {
             kind: "video",
             src: asset("57148-picker-after.mp4"),
             aspect: DESKTOP_PICKER,
             captions: asset("57148-picker.vtt"),
             chapters: PICKER_CHAPTERS,
+            // Demo marks (a is the switch): one for the refresh, one at the end.
+            annotations: [
+              { x: 0.32, y: 0.22, w: 0.36, h: 0.5, label: "The list after the refresh", at: [9, 13] },
+              { x: 0.5, y: 0.5, label: "Picker again", shape: "dot", at: [13, 30] },
+            ],
           },
         },
         {

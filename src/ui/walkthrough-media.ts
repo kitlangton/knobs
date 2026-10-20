@@ -4,9 +4,11 @@
 // and the diff load their code then, so a page without them never loads WebGPU or the
 // highlighter); videos pause once they're out of view, and a compare or video far from it lets go
 // of its decoders and GPU context, holding its height, until it comes near again.
-import { mediaKind } from "./compare-model.js"
+import { compareLayout, mediaKind } from "./compare-model.js"
 import { aliased } from "../core/glide.js"
+import { reducedMotion } from "../core/motion.js"
 import { icon } from "./icons.js"
+import { annotationLayer, type AnnotationLayer, type Rect } from "./walkthrough-annotations.js"
 import { applyLook, type UiLook } from "./look.js"
 import { walkthroughCss } from "./walkthrough-css.js"
 import {
@@ -210,6 +212,8 @@ async function mountCompare(
   if (aspect) fit.style.setProperty("--kw-aspect", String(aspect))
   let lastZoom = "all"
   let lastLoop = "off"
+  let marks: AnnotationLayer | null = null
+  let marking: ReturnType<typeof follow> | null = null
   const c = lib.compare(fit, {
     ...look,
     before: side(before, "Before"),
@@ -222,6 +226,15 @@ async function mountCompare(
     onMode: (next) => {
       fit.toggleAttribute("data-overlay", next !== "side")
       onEvent?.({ what: "mode", detail: next })
+      // The sides glide to their new places; the marks wait out the move, then come back there.
+      const layer = marks?.element
+      if (layer) {
+        layer.dataset.moving = ""
+        setTimeout(() => {
+          delete layer.dataset.moving
+          marks?.update()
+        }, MARK_GLIDE)
+      }
     },
     // A zoom or loop that changed goes in the log, in words.
     onView: (view) => {
@@ -231,8 +244,25 @@ async function mountCompare(
       const l = view.loop
       const loopKey = l ? `${formatTime(l.start)}–${formatTime(l.end)}` : "off"
       if (loopKey !== lastLoop) onEvent?.({ what: "loop", detail: (lastLoop = loopKey) })
+      marking?.kick(MARK_GLIDE)
     },
   })
+  // Marks on both sides (or the one picture overlaid), through the zoom, at the playhead; they
+  // follow every frame while it plays or glides, and rest otherwise.
+  const stage = fit.querySelector<HTMLElement>(".knobs-cmp-stage")
+  if (m.annotations?.length && stage) {
+    const shape = { w: aspect ?? DEFAULT_ASPECT, h: 1 }
+    marks = annotationLayer(stage, m.annotations, () => {
+      const l = compareLayout({ x: 0, y: 0, w: stage.clientWidth, h: stage.clientHeight }, shape, shape)
+      return {
+        rects: c.mode === "side" ? [l.side.before, l.side.after] : [l.overlay.after],
+        view: c.zoom,
+        time: c.time,
+      }
+    })
+    const layer = marks
+    marking = follow(doc.defaultView!, () => c.playing, () => layer.update())
+  }
   const chapters = m.chapters?.length ? m.chapters : null
   if (chapters)
     c.timeline?.update({
@@ -251,9 +281,13 @@ async function mountCompare(
   const unlisten = c.timeline?.listen({
     onSeek: (time, source) => {
       pills?.sync()
+      marking?.kick()
       if (source !== "play") onEvent?.({ what: "seek", time: round(time) })
     },
-    onPlay: (on) => onEvent?.({ what: on ? "play" : "pause", time: round(c.time) }),
+    onPlay: (on) => {
+      marking?.kick()
+      onEvent?.({ what: on ? "play" : "pause", time: round(c.time) })
+    },
   })
   // Its height follows a change of mode on a spring, from here on, not into place on load.
   requestAnimationFrame(() => requestAnimationFrame(() => (fit.dataset.settled = "")))
@@ -282,6 +316,8 @@ async function mountCompare(
       }
     },
     dispose: () => {
+      marking?.stop()
+      marks?.dispose()
       unlisten?.()
       pills?.dispose()
       c.dispose()
@@ -291,6 +327,8 @@ async function mountCompare(
 }
 
 const round = (v: number) => Math.round(v * 100) / 100
+/** How long marks follow a compare's glide (a mode's fuse, a zoom): its spring and a little. */
+const MARK_GLIDE = 450
 const zoomedIn = (z: { w: number; h: number }) => z.w < 0.999 || z.h < 0.999
 
 function mountVideo(
@@ -346,6 +384,22 @@ function mountVideo(
     : null
   const sync = () => pills?.sync()
   if (pills) for (const type of ["timeupdate", "seeking", "seeked"]) v.addEventListener(type, sync)
+  // Marks follow the playhead every frame while it plays, and once on a seek.
+  const marks = m.annotations?.length
+    ? annotationLayer(frame, m.annotations, () => ({
+        rects: [
+          contain(
+            { w: frame.clientWidth, h: frame.clientHeight },
+            { w: v.videoWidth, h: v.videoHeight },
+          ),
+        ],
+        time: v.currentTime,
+      }))
+    : null
+  const marking = marks ? follow(doc.defaultView!, () => !v.paused, () => marks.update()) : null
+  if (marking)
+    for (const type of ["play", "seeked", "loadedmetadata", "timeupdate"])
+      v.addEventListener(type, () => marking.kick())
   return {
     pause: () => v.pause(),
     seekBy: (d) => {
@@ -359,6 +413,8 @@ function mountVideo(
       ...(pills?.current ? { chapter: pills.current.label } : {}),
     }),
     dispose: () => {
+      marking?.stop()
+      marks?.dispose()
       pills?.dispose()
       v.pause()
       v.removeAttribute("src")
@@ -377,9 +433,56 @@ function mountImage(host: HTMLElement, m: Extract<WalkMedia, { kind: "image" }>)
   img.decoding = "async"
   img.alt = m.alt ?? m.label ?? ""
   img.src = m.src
+  // A picture that arrives after the first paint fades into focus.
+  if (!img.complete) {
+    frame.dataset.loading = ""
+    img.addEventListener("load", () => delete frame.dataset.loading, { once: true })
+    img.addEventListener("error", () => delete frame.dataset.loading, { once: true })
+  }
   frame.append(img)
   host.append(frame)
-  return { dispose: () => frame.remove() }
+  const marks = m.annotations?.length
+    ? annotationLayer(frame, m.annotations, () => ({
+        rects: [{ x: 0, y: 0, w: frame.clientWidth, h: frame.clientHeight }],
+      }))
+    : null
+  if (marks) img.addEventListener("load", () => marks.update(), { once: true })
+  return {
+    dispose: () => {
+      marks?.dispose()
+      frame.remove()
+    },
+  }
+}
+
+/** Where a picture of `natural` size sits in `box` with `object-fit: contain`. */
+function contain(box: { w: number; h: number }, natural: { w: number; h: number }): Rect {
+  if (!(natural.w > 0 && natural.h > 0)) return { x: 0, y: 0, w: box.w, h: box.h }
+  const k = Math.min(box.w / natural.w, box.h / natural.h)
+  const w = natural.w * k
+  const h = natural.h * k
+  return { x: (box.w - w) / 2, y: (box.h - h) / 2, w, h }
+}
+
+/** Calls `fn` every frame while `on()` holds, then once more; `kick()` starts it. */
+function follow(win: Window, on: () => boolean, fn: () => void) {
+  let raf = 0
+  let until = 0
+  const tick = () => {
+    fn()
+    raf = on() || performance.now() < until ? win.requestAnimationFrame(tick) : 0
+  }
+  return {
+    /** Follows for `ms` more (a glide), or while `on()`. */
+    kick(ms = 0) {
+      until = Math.max(until, performance.now() + ms)
+      if (!raf) raf = win.requestAnimationFrame(tick)
+    },
+    stop() {
+      if (raf) win.cancelAnimationFrame(raf)
+      raf = 0
+    },
+  }
 }
 
 async function mountDiff(
@@ -556,6 +659,15 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
   let disposed = false
   let generation = 0
 
+  // Media mounting after the first paint (near the view, or back after being let go) comes into
+  // focus: a fade with a small blur on the quick spring, top-anchored; nothing moves on load.
+  const born = performance.now()
+  const enter = () => {
+    const win = doc.defaultView
+    if (!win || performance.now() - born < 120 || reducedMotion(win)) return
+    host.dataset.entering = ""
+    win.requestAnimationFrame(() => win.requestAnimationFrame(() => delete host.dataset.entering))
+  }
   const hold = (px: number | null) => {
     host.style.minHeight = px === null ? "" : `${px}px`
     host.classList.toggle("knobs-wt-hold", px !== null)
@@ -572,6 +684,7 @@ export function mediaSlot(container: HTMLElement, options: MediaSlotOptions): Me
       pending = false
       if (!alive()) return r.dispose()
       mounted = r
+      enter()
       if (filled) r.fill?.(true)
       if (r.ready)
         r.ready.then(

@@ -6,6 +6,7 @@ import { resolve } from "node:path"
 import { describe, expect, test } from "vitest"
 import { rootCss } from "../src/core/root"
 import { TOKEN_BY_NAME, TOKENS, type TokenDef } from "../src/tokens/schema"
+import { placeMark, showsAt } from "../src/ui/walkthrough-annotations"
 import {
   fillMedia,
   findStep,
@@ -186,6 +187,27 @@ describe("layout", () => {
     )
     const src = readFileSync(resolve(import.meta.dirname, "../src/ui/walkthrough.ts"), "utf8")
     expect(src).toMatch(/root\.dataset\.rail = options\.rail === false \? "none" : options\.rail === "right" \? "right" : "left"/)
+  })
+})
+
+describe("annotations", () => {
+  const rect = { x: 10, y: 20, w: 200, h: 100 }
+  test("sit in 0–1 of the picture, through a zoom, and leave when out of view", () => {
+    expect(placeMark({ x: 0.5, y: 0.5, w: 0.25, h: 0.5 }, rect)).toEqual({ x: 110, y: 70, w: 50, h: 50 })
+    // Zoomed 2× into the top-left quarter: the point at .25, .25 lands in the middle.
+    expect(placeMark({ x: 0.25, y: 0.25 }, rect, { u: 0, v: 0, w: 0.5, h: 0.5 })).toEqual({
+      x: 110,
+      y: 70,
+      w: 0,
+      h: 0,
+    })
+    expect(placeMark({ x: 0.9, y: 0.9 }, rect, { u: 0, v: 0, w: 0.5, h: 0.5 })).toBeNull()
+  })
+  test("show only within their times, on media that has a time", () => {
+    const a = { x: 0, y: 0, at: [2, 4] as const }
+    expect([1, 2, 3, 4, 5].map((t) => showsAt(a, t))).toEqual([false, true, true, true, false])
+    expect(showsAt(a, undefined)).toBe(true)
+    expect(showsAt({ x: 0, y: 0 }, 9)).toBe(true)
   })
 })
 

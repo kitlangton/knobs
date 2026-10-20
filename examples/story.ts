@@ -1,7 +1,7 @@
 // The onboarding story (~/code/home/artifacts/2026-10-20-onboarding/story) rebuilt from knobs/ui
 // on a text budget: a one-sentence summary and three numbers up top, a claim and at most one
 // sentence per section and step, then media; everything longer sits in `more`, folded away. The
-// history is the new history() piece, mounted until the walkthrough draws it for `kind: "history"`.
+// history is `kind: "history"`, which the walkthrough draws with history().
 // The recordings are OpenCode's, so examples/assets/story is gitignored: copy them from the
 // artifact's assets/ folder, or the page draws a placeholder where each one goes.
 import { themes } from "knobs/themes"
@@ -10,9 +10,9 @@ import {
   type Walkthrough,
   type WalkthroughDoc,
   type WalkthroughMedia,
+  type HistoryData,
   type WalkthroughSection,
 } from "knobs/ui"
-import { history, type HistoryData } from "../src/ui/history"
 
 const asset = (name: string) => new URL(`./assets/story/${name}`, import.meta.url).href
 const gh = (n: number) => ({ label: `#${n}`, href: `https://github.com/anomalyco/opencode/pull/${n}` })
@@ -290,22 +290,11 @@ async function compare(p: Pair): Promise<WalkthroughMedia> {
 }
 
 let page: Walkthrough | null = null
-const jump = (ref: string) => {
-  const step = page?.page.steps.find((s) => s.id === ref || s.key === ref)
-  if (step) page?.go(step.key)
-}
 
 const historyMedia: WalkthroughMedia = {
-  kind: "mount",
-  height: 300,
-  mount: (host) => {
-    const h = history(host, {
-      data: HISTORY,
-      label: "How long onboarding has been broken",
-      onJump: jump,
-    })
-    return () => h.dispose()
-  },
+  kind: "history",
+  label: "How long onboarding has been broken",
+  ...HISTORY,
 }
 
 // `more` (folded Markdown under a summary or caption) is landing on sections in the walkthrough;
