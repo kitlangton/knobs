@@ -205,7 +205,6 @@ async function mountCompare(
   fit.style.setProperty("--kw-aspect", String(known ?? DEFAULT_ASPECT))
   const width = host.getBoundingClientRect().width
   const mode = m.mode ?? (width && width < 560 ? "wipe" : "side")
-  fit.toggleAttribute("data-overlay", mode !== "side")
   host.append(fit)
   const [aspect, lib] = await Promise.all([
     known ? Promise.resolve(known) : probeAspect(doc, after.src),
@@ -227,7 +226,6 @@ async function mountCompare(
     ...(aspect ? { aspect } : {}),
     ...(m.strip ? { strip: true } : {}),
     onMode: (next) => {
-      fit.toggleAttribute("data-overlay", next !== "side")
       onEvent?.({ what: "mode", detail: next })
       // The sides glide to their new places; the marks wait out the move, then come back there.
       const layer = marks?.element
