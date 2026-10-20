@@ -54,6 +54,9 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
   a hole.*
 - **One inner padding** for frames and wells (`pad-card`, 12). *Why: every bounded thing breathes
   the same.*
+- **Buttons sit 8 px in on their text side and 6 px by an icon; chips 6 and 5; list rows bleed
+  8 px** so their text keeps the column's edge. *Why: the same control has the same room wherever
+  it shows.*
 
 ## Colour and lines
 
@@ -67,7 +70,11 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
 - **Fills step 6 / 10 / 14%**: rest, hover, selected. *Why: a hover has to be visible without a
   glow.*
 - **No box in a box.** A frame or well is the only bounded thing; what's inside uses hairlines and
-  space. Nothing inside a card has both a fill and a ring. *Why: nested borders are noise.*
+  space. A box is a fill or a ring, never both (a test holds it). *Why: nested borders are noise.*
+- **Rows part on the subtle hairline**; only a table's head takes the firmer one.
+- **Over a picture, a quiet scrim**: black at 50%, blurred, white type, no ring, in either
+  appearance (compare's labels, zoom and grip, the video line's tag, annotation labels). *Why: a
+  picture is no lighter in light mode, and a ringed chip on a frame reads as another box.*
 - **Status colour is for state only**, quiet: a tinted word or glyph, never a filled pill.
 
 ## Shape
@@ -80,8 +87,9 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
 
 - **The arrow cursor everywhere**, links included. *Why: the hover fill says what's live; the hand
   is noise.*
-- **Hover is a background, on at once, off in 120 ms.** *Why: immediate feedback, no flicker when
-  the pointer crosses rows.*
+- **Hover is one background (`fill-hover`), on at once, off in 120 ms**; nothing else changes
+  with it. Pressed is `fill-selected`. *Why: immediate feedback, no flicker when the pointer
+  crosses rows.* A test fails on a hand cursor or a hover that fades in.
 - **Clicking a video or a compare plays and pauses it**, as Space does. No glyph flashes over the
   picture. The play button stays.
 - **Focus is a 1–2 px ring**, inset on rows. *Why: visible, and never shifts layout.*
