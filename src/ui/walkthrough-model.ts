@@ -385,6 +385,10 @@ export interface WalkthroughDoc {
 
 export interface WalkthroughPR {
   readonly state?: "merged" | "open" | "draft" | "closed"
+  /** An issue rather than a pull request (`issue:` refs and `/issues/` links are). */
+  readonly kind?: "pr" | "issue"
+  /** Its checks pass (a stack item's status saying green, passing or CI). */
+  readonly checks?: boolean
   readonly title?: string
   /** Its URL, when neither `repo` nor a link on the page gives it. */
   readonly href?: string
@@ -1003,7 +1007,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
     })),
     sections: withKickers(sections, doc.sections, doc.kickers),
     steps,
-    prs: knownPRs(doc, sections),
+    prs: knownPRs(doc, sections, steps),
     ...(repoOf(doc) ? { repo: repoOf(doc) } : {}),
   }
 }
@@ -1015,21 +1019,73 @@ export const prNumber = (href: string): string | null =>
 const repoOf = (doc: WalkthroughDoc) =>
   doc.repo?.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "") || undefined
 
-/** Every pull request the page knows, with the URL each one's chip links to where there is one. */
+export type PRState = NonNullable<WalkthroughPR["state"]>
+const PR_STATES: readonly string[] = ["merged", "open", "draft", "closed"]
+
+/**
+ * A pull request's state from some status words: the first word when it's merged, draft, open or
+ * closed (any case; shipped and done read as merged), and whether they say its checks pass
+ * ("green", "passing", "CI"). The state comes from the words, never a tone.
+ */
+export function prStatus(status: string | undefined): { state: PRState | null; checks: boolean } {
+  const words = (status ?? "").trim().toLowerCase()
+  const first = /^[a-z]+/.exec(words)?.[0] ?? ""
+  const state = PR_STATES.includes(first)
+    ? (first as PRState)
+    : first === "shipped" || first === "done"
+      ? "merged"
+      : null
+  return { state, checks: /\b(green|passing|passed|ci|checks? pass)/.test(words) }
+}
+
+/**
+ * Every pull request the page knows, with the URL each one's chip links to where there is one.
+ * What each says comes first from the doc's `prs`, then the stacks on the page (an item's title,
+ * link and the state in its status), then the section that links it (its title and status).
+ */
 function knownPRs(
   doc: WalkthroughDoc,
   sections: readonly WalkSection[],
+  steps: readonly { readonly media: readonly WalkMedia[] }[] = [],
 ): Record<string, WalkthroughPR> {
   const out: Record<string, WalkthroughPR> = {}
   const repo = repoOf(doc)
-  for (const s of sections) {
-    const n = s.link && prNumber(s.link.href)
-    if (n) out[n] = { href: s.link!.href.replace(/(\/pull\/\d+).*$/, "$1") }
+  /** Fills in what's still missing; a source earlier in the order keeps what it said. */
+  const add = (n: string, pr: WalkthroughPR) => {
+    const known = out[n] ?? {}
+    const next: Record<string, unknown> = { ...known }
+    for (const [k, v] of Object.entries(pr)) if (v !== undefined && next[k] === undefined) next[k] = v
+    out[n] = next as WalkthroughPR
   }
   for (const [k, pr] of Object.entries(doc.prs ?? {})) {
     const n = k.replace(/^#/, "")
     if (!/^\d+$/.test(n)) continue
-    out[n] = { ...out[n], ...pr }
+    add(n, pr)
+  }
+  for (const step of steps)
+    for (const m of step.media) {
+      if (m.kind !== "stack") continue
+      for (const it of m.items) {
+        const n = it.pr.replace(/^#/, "")
+        if (!/^\d+$/.test(n)) continue
+        const said = prStatus(it.status)
+        add(n, {
+          ...(said.state ? { state: said.state } : {}),
+          ...(said.state && said.checks ? { checks: true } : {}),
+          ...(it.title ? { title: plainMarkdown(it.title) } : {}),
+          ...(it.href ? { href: it.href } : {}),
+        })
+      }
+    }
+  for (const s of sections) {
+    const n = s.link && prNumber(s.link.href)
+    if (!n) continue
+    const said = prStatus(s.status)
+    add(n, {
+      href: s.link!.href.replace(/(\/pull\/\d+).*$/, "$1"),
+      ...(said.state ? { state: said.state } : {}),
+      title: plainMarkdown(s.title),
+    })
   }
   if (repo)
     for (const n of Object.keys(out))
@@ -1037,17 +1093,28 @@ function knownPRs(
   return out
 }
 
-/** A pull request by number: what the page knows, or (with a repo) its URL. */
+/**
+ * A pull request (or an issue) by number: what the page knows, or (with a repo) its URL; null
+ * when it knows nothing. An issue takes only what `prs` says of it as an issue.
+ */
 export function findPR(
   prs: Readonly<Record<string, WalkthroughPR>>,
   n: string,
   repo?: string,
+  kind: "pr" | "issue" = "pr",
 ): WalkthroughPR | null {
-  const known = prs[n]
-  const href = repo ? `https://github.com/${repo}/pull/${n}` : undefined
-  if (known) return known.href || !href ? known : { ...known, href }
-  return href ? { href } : null
+  const entry = prs[n]
+  const known = entry && (entry.kind ?? "pr") === kind ? entry : undefined
+  const path = kind === "issue" ? "issues" : "pull"
+  const href = repo ? `https://github.com/${repo}/${path}/${n}` : undefined
+  const base = kind === "issue" ? { kind } : {}
+  if (known) return known.href || !href ? { ...base, ...known } : { ...base, ...known, href }
+  return href ? { ...base, href } : kind === "issue" ? { kind } : null
 }
+
+/** The number in an issue's URL (`…/issues/123`), or null. */
+export const issueNumber = (href: string): string | null =>
+  /^https?:\/\/[^/]+\/.+\/issues\/(\d+)\/?(?:[?#].*)?$/.exec(href)?.[1] ?? null
 
 /** Whether a link is a pull (or merge) request: GitHub's `/pull/123`, GitLab's merge requests. */
 export const isPullRequest = (href: string) => /\/(?:pull|merge_requests)\/\d+(?:[/?#]|$)/.test(href)

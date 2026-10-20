@@ -177,6 +177,38 @@ describe("pull requests", () => {
     expect(prNumber(`${pr(9)}#x`)).toBe("9")
     expect(prNumber("https://github.com/a/b/issues/9")).toBeNull()
   })
+
+  test("take their state from prs, then the page's stacks, then the section linking them", () => {
+    const p = normalizeWalkthrough({
+      id: "p",
+      title: "P",
+      prs: { "57148": { state: "merged" } },
+      sections: [
+        section("Fix", { link: pr(57151), status: "draft" }),
+        section("Stack", {
+          steps: [
+            {
+              title: "The stack",
+              media: {
+                kind: "stack",
+                items: [
+                  { pr: 57148, title: "A", branch: "a → dev", status: "Draft" },
+                  { pr: 57158, title: "Serve v2", branch: "b → dev", status: "Open · CI green", tone: "warn" },
+                  { pr: 57151, title: "Models", branch: "c → dev", status: "Merged" },
+                ],
+              },
+            },
+          ],
+        }),
+      ],
+    })
+    expect(p.prs["57148"]?.state).toBe("merged")
+    expect(p.prs["57158"]).toMatchObject({ state: "open", checks: true, title: "Serve v2" })
+    expect(p.prs["57151"]).toMatchObject({ state: "merged", title: "Models", href: pr(57151) })
+    // An issue: its own link from the repo, never a pull request's state.
+    expect(findPR(p.prs, "57148", "a/b", "issue")).toEqual({ kind: "issue", href: "https://github.com/a/b/issues/57148" })
+    expect(findPR({}, "12", undefined, "issue")).toEqual({ kind: "issue" })
+  })
 })
 
 describe("layout", () => {
