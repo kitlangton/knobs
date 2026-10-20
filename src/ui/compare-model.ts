@@ -217,10 +217,18 @@ export function fuseFrame(
   return { cut, feather, seam, blur: t < 0.995 ? FUSE.blur * (1 - t) : 0 }
 }
 
-/** A label folded `fold` (0 open, 1 folded to its name): its mark's width and opacity. */
-export const labelFold = (fold: number, mark: number) => {
-  const open = 1 - Math.min(1, Math.max(0, fold))
-  return { width: mark * open, opacity: Math.min(1, Math.max(0, (open - 0.2) / 0.8)) }
+/**
+ * A label folded `fold` (0 open, 1 folded to its name): its mark's width, opacity and blur (px,
+ * up to `blur` as it goes, kit-motion's in-place exit).
+ */
+export const labelFold = (fold: number, mark: number, blur = 3) => {
+  const f = Math.min(1, Math.max(0, fold))
+  const open = 1 - f
+  return {
+    width: mark * open,
+    opacity: Math.min(1, Math.max(0, (open - 0.2) / 0.8)),
+    blur: blur * Math.min(1, Math.max(0, (f - 0.25) / 0.75)),
+  }
 }
 
 /** The height a split screen of `w` needs so neither side has margins: half its width, in shape. */

@@ -936,6 +936,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   let folded = 0
   const draw = () => {
     dirty = false
+    // The media comes in once both sides have a frame (a fade and a 4px blur), never again.
+    if (!root.hasAttribute("data-ready") && sides.every((x) => x.shown || x.failed))
+      root.setAttribute("data-ready", "")
     const r = layoutNow()
     const wr = wipeRect(r.L.overlay)
     const k = Math.min(1, Math.max(0, lay.x))
@@ -964,6 +967,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         mark.style.width = `${fold.width.toFixed(2)}px`
         mark.style.marginRight = `${(-MARK.gap * folded).toFixed(2)}px`
         mark.style.opacity = fold.opacity.toFixed(3)
+        mark.style.filter = fold.blur > 0.05 ? `blur(${fold.blur.toFixed(2)}px)` : ""
       }
     }
     // The split's hairline, down the middle side by side, gone as the sides come together.

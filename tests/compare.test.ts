@@ -182,8 +182,8 @@ describe("layout and the wipe", () => {
     expect(mid.blur).toBeGreaterThan(0)
   })
   test("a label folds to its name: the mark narrows and fades", () => {
-    expect(labelFold(0, 12)).toEqual({ width: 12, opacity: 1 })
-    expect(labelFold(1, 12)).toEqual({ width: 0, opacity: 0 })
+    expect(labelFold(0, 12)).toEqual({ width: 12, opacity: 1, blur: 0 })
+    expect(labelFold(1, 12)).toEqual({ width: 0, opacity: 0, blur: 3 })
     expect(labelFold(0.5, 12).width).toBe(6)
   })
   test("the line, and where a pointer puts it", () => {

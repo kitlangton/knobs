@@ -47,6 +47,9 @@ export const compareCss = `
 .knobs-cmp-canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .knobs-cmp-media{position:absolute;left:0;top:0;display:block;max-width:none;margin:0;padding:0;border:0;object-fit:fill;transform-origin:0 0;pointer-events:none;will-change:transform}
 .knobs-compare[data-renderer="gpu"] .knobs-cmp-media{opacity:0}
+/* The media comes in with its first frames: a fade and a 4px blur on the default spring. */
+.knobs-cmp-canvas,.knobs-compare[data-renderer="dom"] .knobs-cmp-media{transition:opacity calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default),filter calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default)}
+.knobs-compare:not([data-ready]) :is(.knobs-cmp-canvas,.knobs-cmp-media){opacity:0;filter:blur(4px)}
 /* Glass: what's behind shows through, blurred, on the knobs tokens. */
 .knobs-cmp-label,.knobs-cmp-zoom{background:color-mix(in srgb,var(--_k-bg) 52%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   box-shadow:inset 0 0 0 .5px var(--_k-border),inset 0 1px 0 var(--_k-rim),0 2px 10px rgba(0,0,0,calc(.18 * var(--_k-shadow-k,1)))}
