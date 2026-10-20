@@ -511,11 +511,13 @@ export const doc: WalkthroughDoc = {
 
 const status = (text: string) => console.info(`[walkthrough] ${text}`)
 
-// ?cards puts each step on a card; ?bar=docked keeps the note bar open.
+// ?review brings Kit's review tools (progress, notes, picks, Copy feedback); ?cards puts each
+// step on a card; ?bar=docked keeps the note bar open.
 const params = new URLSearchParams(location.search)
 const w = walkthrough(document.getElementById("page")!, {
   ...uiLook(),
   doc,
+  review: params.has("review"),
   cards: params.has("cards"),
   noteBar: params.get("bar") === "docked" ? "docked" : "collapsed",
   onFeedback: (fb) => status(`${fb.reviewed} of ${fb.total} reviewed`),

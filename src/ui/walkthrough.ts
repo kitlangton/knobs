@@ -136,6 +136,8 @@ export interface TasteTestOptions extends UiLook {
   readonly lazy?: boolean
   /** The page's steps, for media that name one. */
   readonly steps?: StepLinks
+  /** Options can be picked (on by default); off, they sit side by side under their labels. */
+  readonly pickable?: boolean
 }
 
 export interface TasteTest {
@@ -169,15 +171,23 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
           suggested: o.suggested === true,
         },
   )
-  let picked = options.picked ?? null
+  const pickable = options.pickable !== false
+  let picked = pickable ? (options.picked ?? null) : null
   const root = el(doc, "div", "knobs-wt-options")
-  root.setAttribute("role", "radiogroup")
-  root.setAttribute("aria-label", "Options")
+  if (pickable) {
+    root.setAttribute("role", "radiogroup")
+    root.setAttribute("aria-label", "Options")
+  } else root.dataset.static = ""
   root.style.setProperty("--kw-n", String(Math.min(list.length, 3)))
   if (!container.closest(".knobs-ui")) applyLook(root, options)
   const slots: MediaSlot[] = []
   const tiles = list.map((o, i) => {
     const tile = el(doc, "div", "knobs-wt-option")
+    if (!pickable) {
+      const name = el(doc, "span", "knobs-wt-slot-label")
+      name.textContent = o.label
+      tile.append(name)
+    }
     const pick = el(doc, "button", "knobs-wt-pick")
     pick.type = "button"
     pick.setAttribute("role", "radio")
@@ -205,7 +215,7 @@ export function tasteTest(container: HTMLElement, options: TasteTestOptions): Ta
       api.pick(next)
       options.onPick?.(next)
     })
-    tile.append(pick)
+    if (pickable) tile.append(pick)
     if (o.media)
       slots.push(
         mediaSlot(tile, {
@@ -258,6 +268,12 @@ export interface WalkthroughOptions extends UiLook {
   readonly onFeedback?: (feedback: WalkthroughFeedback) => void
   /** The page's keys (on by default). */
   readonly keys?: boolean
+  /**
+   * Kit's review tools (off by default): progress, notes (typed, voice, ink) and their bar,
+   * Copy feedback, the key hints, and picking between options. Off, the page only shows: options
+   * sit side by side, and j / k, f and the arrows still work.
+   */
+  readonly review?: boolean
   /**
    * The contents and progress rail (on by default): sticky at the page's left edge, the column
    * centred in the room beside it; `"right"` mirrors it. Under 960 px it folds to a bar on top.
@@ -359,7 +375,8 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
   let tocRows: HTMLElement[] = []
   let discs: Disclosure[] = []
   let full: Full | null = null
-  const noteMode = options.noteBar ?? "collapsed"
+  const review = options.review === true
+  const noteMode = review ? (options.noteBar ?? "collapsed") : "hidden"
   /** The note bar's height and the gaps around it, kept clear at the page's bottom. */
   let reserve = noteBarReserve(52, DOCK_INSET, DOCK_GAP)
 
@@ -1253,13 +1270,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
     count = fill = tocEl = null
     if (options.rail !== false) {
       rail = el(doc, "aside", "knobs-wt-rail")
-      rail.setAttribute("aria-label", "Progress")
-      const progress = el(doc, "div", "knobs-wt-progress")
-      count = el(doc, "div", "knobs-wt-count")
-      const meter = el(doc, "div", "knobs-wt-bar")
-      fill = el(doc, "div", "knobs-wt-fill")
-      meter.append(fill)
-      progress.append(count, meter)
+      rail.setAttribute("aria-label", "Contents")
       tocEl = el(doc, "nav", "knobs-wt-toc")
       tocEl.setAttribute("aria-label", "Contents")
       // A leading column for a section's PR, as wide as the longest (none when no section has one).
@@ -1277,8 +1288,18 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
         )
         tocEl.append(group)
       }
-      rail.append(progress, tocEl, actions(true))
-      if (options.keys !== false) {
+      if (review) {
+        const progress = el(doc, "div", "knobs-wt-progress")
+        count = el(doc, "div", "knobs-wt-count")
+        const meter = el(doc, "div", "knobs-wt-bar")
+        fill = el(doc, "div", "knobs-wt-fill")
+        meter.append(fill)
+        progress.append(count, meter)
+        rail.append(progress)
+      }
+      rail.append(tocEl)
+      if (review) rail.append(actions(true))
+      if (review && options.keys !== false) {
         const keys = el(doc, "div", "knobs-wt-keys")
         keys.innerHTML =
           "<kbd>j</kbd> <kbd>k</kbd> steps · <kbd>←</kbd> <kbd>→</kbd> seek · <kbd>f</kbd> full · <kbd>n</kbd> note" +
@@ -1460,10 +1481,11 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       card.append(media)
     }
     let taste: TasteTest | null = null
-    if (step.question) card.append(prose(doc, "p", "knobs-wt-question", step.question))
+    if (step.question && review) card.append(prose(doc, "p", "knobs-wt-question", step.question))
     if (step.ask === "pick") {
       taste = tasteTest(card, {
         ...look,
+        pickable: review,
         options: step.options,
         picked: state.steps[step.key]?.pick ?? null,
         onPick: (id) => pick(step.key, id),
@@ -1472,7 +1494,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       media ??= taste.element
     }
     const notes = el(doc, "div", "knobs-wt-notes")
-    card.append(notes)
+    if (review) card.append(notes)
     card.addEventListener("focusin", () => {
       if (scroll.to) return
       pinUntil = performance.now() + 250
@@ -1559,7 +1581,7 @@ export function walkthrough(container: HTMLElement, options: WalkthroughOptions)
       return
     }
     const v = viewOf(current)
-    if (!v || e.shiftKey) return
+    if (!v || e.shiftKey || !review) return
     const choice = digitChoice(v.step, state.steps[v.step.key], key)
     if (choice === undefined) return
     claim()
