@@ -20,6 +20,107 @@ export interface WalkthroughSource {
   readonly label?: string
 }
 
+/** A status colour: a dot, a chip or a cell's badge. */
+export type WalkthroughTone = "good" | "warn" | "bad" | "info" | "dim"
+
+/** A small tag that backs a claim: a PR, a commit, a log, as a link or not. */
+export interface WalkthroughEvidence {
+  readonly label: string
+  readonly href?: string
+}
+
+/** One dated moment in a `history`. */
+export interface WalkthroughHistoryEvent {
+  /** As written: "Apr 9, 2026", "2026-04-09", "May 7–8". */
+  readonly date: string
+  /** How long ago, or how long it lasted: "116d ago". */
+  readonly age?: string
+  readonly title: string
+  readonly detail?: string
+  readonly tone?: WalkthroughTone
+  /** Seen in the record (`"verified"`) or worked out from behaviour (`"inferred"`). */
+  readonly provenance?: "verified" | "inferred"
+  /** Where it was seen or inferred from: `"git"` shows as "verified · git". */
+  readonly source?: string
+  readonly evidence?: readonly WalkthroughEvidence[]
+  /** A step it's about: its key, id or number ("1.2"). */
+  readonly step?: string
+  /** What happened, which shapes its dot: a release a diamond, an audit a square. */
+  readonly type?: "commit" | "release" | "channel" | "audit" | (string & {})
+}
+
+export interface WalkthroughHistoryGroup {
+  readonly heading?: string
+  readonly summary?: string
+  readonly events?: readonly WalkthroughHistoryEvent[]
+  /** Another name for `events`. */
+  readonly rows?: readonly WalkthroughHistoryEvent[]
+}
+
+/** One PR in a `stack`. */
+export interface WalkthroughStackItem {
+  /** "#57148" (or 57148). */
+  readonly pr: string | number
+  readonly href?: string
+  readonly title: string
+  /** Its branch: `"head → base"` (or `->`), or just the head (on `base`, else the trunk). */
+  readonly branch?: string
+  /** The branch it merges into, when `branch` names only its head. */
+  readonly base?: string
+  /** Lines changed: `"+164 / -18"`, or `{ add, del }`. */
+  readonly delta?: string | { readonly add: number; readonly del: number }
+  readonly status?: string
+  readonly tone?: WalkthroughTone
+  readonly summary?: string
+  /** Its head branch, with `base`: another way to write `branch`. */
+  readonly head?: string
+  /** The step that shows it: its key, id or number. */
+  readonly step?: string
+  /** Another name for `step`. */
+  readonly stepId?: string
+  /** Its place as written: "01", "06 · 1/4". */
+  readonly order?: string | number
+}
+
+/** A table's cell: its text, or that with a link, code, a badge, a colour or a step. */
+export type WalkthroughTableCell =
+  | string
+  | number
+  | {
+      readonly text: string | number
+      readonly href?: string
+      readonly code?: boolean
+      /** Drawn as a chip in this colour. */
+      readonly badge?: WalkthroughTone
+      /** The text in this colour. */
+      readonly tone?: WalkthroughTone
+      readonly step?: string
+    }
+
+export interface WalkthroughTableColumn {
+  readonly key: string
+  readonly label: string
+  readonly mono?: boolean
+  /** Numbers go right by default. */
+  readonly align?: "left" | "right" | "center"
+}
+
+/** A row: its cells by column key, bare or under `cells`. */
+export type WalkthroughTableRow =
+  | Readonly<Record<string, WalkthroughTableCell>>
+  | { readonly cells: Readonly<Record<string, WalkthroughTableCell>> }
+
+/** A stretch of a video: a pill under it, and a marker on its timeline. */
+export interface WalkthroughChapter {
+  readonly id?: string
+  readonly label: string
+  /** Seconds. */
+  readonly start: number
+  /** Seconds; else `start + duration`, else the next chapter's start. */
+  readonly end?: number
+  readonly duration?: number
+}
+
 /**
  * What a step shows. A bare string is a video or image URL (by its extension). `mount` is the one
  * kind that isn't JSON: anything of your own, given its element, returning its cleanup.
@@ -36,6 +137,8 @@ export type WalkthroughMedia =
       readonly aspect?: number | string
       /** The frame strip over the timeline. */
       readonly strip?: boolean
+      /** Pills under it that seek, and markers on its timeline. */
+      readonly chapters?: readonly WalkthroughChapter[]
     }
   | {
       readonly kind: "video"
@@ -43,6 +146,32 @@ export type WalkthroughMedia =
       readonly label?: string
       readonly aspect?: number | string
       readonly poster?: string
+      /** Pills under it that seek; the one playing lit. */
+      readonly chapters?: readonly WalkthroughChapter[]
+      /** A WebVTT file's URL, shown by default. */
+      readonly captions?: string
+      /** Another name for `captions`. */
+      readonly captionsSrc?: string
+    }
+  | {
+      readonly kind: "history"
+      /** Dated events under quiet headings… */
+      readonly groups?: readonly WalkthroughHistoryGroup[]
+      /** …or one run of them. */
+      readonly events?: readonly WalkthroughHistoryEvent[]
+    }
+  | {
+      readonly kind: "stack"
+      /** The branch the stack lands on ("dev"); else the one most items merge into. */
+      readonly base?: string
+      /** In merge order; an item on another's branch hangs under it. */
+      readonly items: readonly WalkthroughStackItem[]
+    }
+  | {
+      readonly kind: "table"
+      readonly columns: readonly WalkthroughTableColumn[]
+      readonly rows: readonly WalkthroughTableRow[]
+      readonly caption?: string
     }
   | { readonly kind: "image"; readonly src: string; readonly label?: string; readonly alt?: string }
   | {
@@ -171,14 +300,77 @@ export interface WalkthroughDoc {
 // ——— filled in ———
 
 type CompareMedia = Extract<WalkthroughMedia, { kind: "compare" }>
+type VideoMedia = Extract<WalkthroughMedia, { kind: "video" }>
 
-/** Media filled in: no bare URLs, and a compare's sides as sources. */
+/** A chapter filled in: an id, and its end where one can be known. */
+export interface WalkChapter {
+  readonly id: string
+  readonly label: string
+  readonly start: number
+  readonly end?: number
+}
+
+export interface WalkHistoryGroup {
+  readonly heading?: string
+  readonly summary?: string
+  readonly events: readonly WalkthroughHistoryEvent[]
+}
+
+/** A stack's item filled in: its PR as `#123`, its branch split, `step` for `stepId`. */
+export interface WalkStackItem {
+  readonly pr: string
+  readonly href?: string
+  readonly title: string
+  readonly head?: string
+  readonly base?: string
+  readonly delta?: string | { readonly add: number; readonly del: number }
+  readonly status?: string
+  readonly tone?: WalkthroughTone
+  readonly summary?: string
+  readonly step?: string
+  readonly order?: string
+}
+
+export interface WalkTableCell {
+  readonly text: string
+  readonly href?: string
+  readonly code?: boolean
+  readonly badge?: WalkthroughTone
+  readonly tone?: WalkthroughTone
+  readonly step?: string
+}
+
+export interface WalkTableColumn {
+  readonly key: string
+  readonly label: string
+  readonly mono?: boolean
+  readonly align: "left" | "right" | "center"
+}
+
+/**
+ * Media filled in: no bare URLs, a compare's sides as sources, chapters with their ends, history in
+ * groups, a stack's branches split and a table's cells as objects. Filling it again changes
+ * nothing.
+ */
 export type WalkMedia =
-  | Exclude<WalkthroughMedia, string | CompareMedia>
-  | (Omit<CompareMedia, "before" | "after"> & {
+  | Exclude<
+      WalkthroughMedia,
+      string | { readonly kind: "compare" | "video" | "history" | "stack" | "table" }
+    >
+  | (Omit<CompareMedia, "before" | "after" | "chapters"> & {
       readonly before: WalkthroughSource
       readonly after: WalkthroughSource
+      readonly chapters?: readonly WalkChapter[]
     })
+  | (Omit<VideoMedia, "chapters" | "captionsSrc"> & { readonly chapters?: readonly WalkChapter[] })
+  | { readonly kind: "history"; readonly groups: readonly WalkHistoryGroup[] }
+  | { readonly kind: "stack"; readonly base?: string; readonly items: readonly WalkStackItem[] }
+  | {
+      readonly kind: "table"
+      readonly columns: readonly WalkTableColumn[]
+      readonly rows: readonly Readonly<Record<string, WalkTableCell>>[]
+      readonly caption?: string
+    }
 
 export interface WalkOption {
   readonly id: string
@@ -304,19 +496,258 @@ function source(s: string | WalkthroughSource, base?: string): WalkthroughSource
 export function fillMedia(m: WalkthroughMedia, base?: string): WalkMedia {
   if (typeof m === "string") return mediaOf(resolveSrc(m, base))
   switch (m.kind) {
-    case "compare":
-      return { ...m, before: source(m.before, base), after: source(m.after, base) }
-    case "video":
+    case "compare": {
+      const { chapters, ...rest } = m
       return {
-        ...m,
+        ...rest,
+        before: source(m.before, base),
+        after: source(m.after, base),
+        ...(chapters?.length ? { chapters: fillChapters(chapters) } : {}),
+      }
+    }
+    case "video": {
+      const { chapters, captionsSrc, captions, ...rest } = m
+      const vtt = captions ?? captionsSrc
+      return {
+        ...rest,
         src: resolveSrc(m.src, base),
         ...(m.poster ? { poster: resolveSrc(m.poster, base) } : {}),
+        ...(vtt ? { captions: resolveSrc(vtt, base) } : {}),
+        ...(chapters?.length ? { chapters: fillChapters(chapters) } : {}),
       }
+    }
     case "image":
       return { ...m, src: resolveSrc(m.src, base) }
+    case "history":
+      return { kind: "history", groups: fillHistory(m) }
+    case "stack":
+      return {
+        kind: "stack",
+        ...(m.base ? { base: m.base } : {}),
+        items: m.items.map(fillStackItem),
+      }
+    case "table":
+      return fillTable(m)
     default:
       return m
   }
+}
+
+// ——— history, stacks, tables and chapters ———
+
+/** A history's events in groups: `rows` read as `events`, bare `events` as one group first. */
+function fillHistory(m: Extract<WalkthroughMedia, { kind: "history" }>): WalkHistoryGroup[] {
+  const groups: WalkHistoryGroup[] = []
+  if (m.events?.length) groups.push({ events: m.events })
+  for (const g of m.groups ?? [])
+    groups.push({
+      ...(g.heading ? { heading: g.heading } : {}),
+      ...(g.summary ? { summary: g.summary } : {}),
+      events: g.events ?? g.rows ?? [],
+    })
+  return groups
+}
+
+/** `"head → base"` (or `->`, `=>`, `⇒`) as its two branches; one name is the head alone. */
+export function parseBranch(branch: string | undefined): { head?: string; base?: string } {
+  if (!branch?.trim()) return {}
+  const [head, base] = branch.split(/\s*(?:→|->|=>|⇒)\s*/, 2).map((s) => s.trim())
+  return { ...(head ? { head } : {}), ...(base ? { base } : {}) }
+}
+
+/** `"+164 / -18"`, `"+164 −18"` or `{ add, del }` as numbers; other text stays as written. */
+export function parseDelta(
+  delta: WalkthroughStackItem["delta"],
+): { add: number; del: number } | string | undefined {
+  if (delta === undefined || typeof delta === "object") return delta
+  const m = /\+\s*([\d,_]+)[^\d+]*?[-−–]\s*([\d,_]+)/.exec(delta)
+  if (!m) return delta.trim() || undefined
+  const n = (s: string) => Number(s.replace(/[,_]/g, ""))
+  return { add: n(m[1]!), del: n(m[2]!) }
+}
+
+function fillStackItem(it: WalkthroughStackItem): WalkStackItem {
+  const parsed = parseBranch(it.branch)
+  const head = parsed.head ?? it.head
+  const base = parsed.base ?? it.base
+  const delta = parseDelta(it.delta)
+  const step = it.step ?? it.stepId
+  const pr = String(it.pr).trim()
+  return {
+    pr: /^\d+$/.test(pr) ? `#${pr}` : pr,
+    ...(it.href ? { href: it.href } : {}),
+    title: it.title,
+    ...(head ? { head } : {}),
+    ...(base ? { base } : {}),
+    ...(delta !== undefined ? { delta } : {}),
+    ...(it.status ? { status: it.status } : {}),
+    ...(it.tone ? { tone: it.tone } : {}),
+    ...(it.summary ? { summary: it.summary } : {}),
+    ...(step ? { step } : {}),
+    ...(it.order !== undefined && it.order !== "" ? { order: String(it.order) } : {}),
+  }
+}
+
+/** One row of a stack as drawn: where it hangs, and which rails pass beside it. */
+export interface StackRow {
+  readonly item: WalkStackItem
+  /** Its place in `items`. */
+  readonly index: number
+  /** 0 on the trunk; one more for each item it's stacked on. */
+  readonly depth: number
+  /** The item it's stacked on (its place in `items`); null on the trunk. */
+  readonly parent: number | null
+  /** The last of its siblings: its rail ends here (└) rather than going on (├). */
+  readonly last: boolean
+  /** For each level above its own (0 the trunk's), whether that level's rail passes beside it. */
+  readonly rails: readonly boolean[]
+  readonly children: number
+  /** The branch it merges into when that's neither the trunk nor another item's. */
+  readonly offBase?: string
+}
+
+export interface StackLayout {
+  /** The branch it lands on: `base`, else the one most items merge into; null when none says. */
+  readonly trunk: string | null
+  /** Depth-first in merge order: each item after the one it's stacked on. */
+  readonly rows: readonly StackRow[]
+  /** Nothing is stacked on anything, and there's no trunk: a plain list. */
+  readonly flat: boolean
+}
+
+/** A stack's branch topology: which item each one is stacked on, in rows to draw as a graph. */
+export function stackLayout(m: {
+  readonly base?: string
+  readonly items: readonly WalkStackItem[]
+}): StackLayout {
+  const items = m.items
+  const byHead = new Map<string, number>()
+  items.forEach((it, i) => it.head && !byHead.has(it.head) && byHead.set(it.head, i))
+  let trunk = m.base ?? null
+  if (!trunk) {
+    const tally = new Map<string, number>()
+    for (const it of items)
+      if (it.base && !byHead.has(it.base)) tally.set(it.base, (tally.get(it.base) ?? 0) + 1)
+    let best = 0
+    for (const [b, n] of tally) if (n > best) [trunk, best] = [b, n]
+  }
+  const parentOf = items.map((it, i) => {
+    const p = it.base === undefined ? undefined : byHead.get(it.base)
+    return p === undefined || p === i ? null : p
+  })
+  // A loop of items stacked on each other: the first of it written goes on the trunk.
+  items.forEach((_, i) => {
+    const seen = new Set<number>()
+    for (let n: number | null = i; n !== null; n = parentOf[n]!) {
+      if (seen.has(n)) {
+        const loop = [n]
+        for (let k = parentOf[n]!; k !== n && k !== null; k = parentOf[k]!) loop.push(k)
+        parentOf[Math.min(...loop)] = null
+        break
+      }
+      seen.add(n)
+    }
+  })
+  const kids = items.map((): number[] => [])
+  const roots: number[] = []
+  parentOf.forEach((p, i) => (p === null ? roots : kids[p]!).push(i))
+  const rows: StackRow[] = []
+  const walk = (list: number[], depth: number, rails: boolean[]) =>
+    list.forEach((i, n) => {
+      const it = items[i]!
+      const last = n === list.length - 1
+      const off = parentOf[i] === null && it.base && it.base !== trunk ? it.base : undefined
+      rows.push({
+        item: it,
+        index: i,
+        depth,
+        parent: parentOf[i]!,
+        last,
+        rails,
+        children: kids[i]!.length,
+        ...(off ? { offBase: off } : {}),
+      })
+      walk(kids[i]!, depth + 1, [...rails, !last])
+    })
+  walk(roots, 0, [])
+  return { trunk, rows, flat: !trunk && rows.every((r) => r.depth === 0 && !r.children) }
+}
+
+const isNum = (c: WalkthroughTableCell | undefined) =>
+  typeof c === "number" || (typeof c === "object" && typeof c.text === "number")
+
+function fillCell(c: WalkthroughTableCell): WalkTableCell {
+  if (typeof c !== "object") return { text: String(c) }
+  return { ...c, text: String(c.text) }
+}
+
+/** A table's rows as bare cell maps, its cells as objects, number columns aligned right. */
+function fillTable(m: Extract<WalkthroughMedia, { kind: "table" }>): WalkMedia {
+  const wrapped = !m.columns.some((c) => c.key === "cells")
+  const raw = m.rows.map((r) => {
+    const keys = Object.keys(r)
+    const cells = (r as { cells?: unknown }).cells
+    return wrapped && keys.length === 1 && keys[0] === "cells" && cells && typeof cells === "object"
+      ? (cells as Readonly<Record<string, WalkthroughTableCell>>)
+      : (r as Readonly<Record<string, WalkthroughTableCell>>)
+  })
+  const columns = m.columns.map((c): WalkTableColumn => {
+    const present = raw.map((r) => r[c.key]).filter((v) => v !== undefined && v !== "")
+    const numeric = present.length > 0 && present.every(isNum)
+    return { ...c, align: c.align ?? (numeric ? "right" : "left") }
+  })
+  const rows = raw.map((r) => {
+    const out: Record<string, WalkTableCell> = {}
+    for (const [k, v] of Object.entries(r)) if (v !== undefined && v !== null) out[k] = fillCell(v)
+    return out
+  })
+  return { kind: "table", columns, rows, ...(m.caption ? { caption: m.caption } : {}) }
+}
+
+/** Chapters with ids and, where it can be known, an end: given, `start + duration`, or the next. */
+export function fillChapters(chapters: readonly WalkthroughChapter[]): WalkChapter[] {
+  const id = uniqueIds()
+  const starts = chapters.map((c) => c.start).sort((a, b) => a - b)
+  return chapters.map((c) => {
+    const next = starts.find((s) => s > c.start)
+    const end =
+      c.end ?? (c.duration !== undefined ? Math.round((c.start + c.duration) * 1e3) / 1e3 : next)
+    return {
+      id: id(c.id ?? slug(c.label)),
+      label: c.label,
+      start: c.start,
+      ...(end !== undefined && end > c.start ? { end } : {}),
+    }
+  })
+}
+
+/** The chapter playing at `time` (seconds): the one it's in that started last; -1 for none. */
+export function chapterAt(chapters: readonly WalkChapter[], time: number): number {
+  let at = -1
+  chapters.forEach((c, i) => {
+    if (time >= c.start && time < (c.end ?? Infinity) && (at < 0 || c.start >= chapters[at]!.start))
+      at = i
+  })
+  return at
+}
+
+/** Seconds as a clock: `1:05`, `1:02:05` past the hour. */
+export function clock(seconds: number): string {
+  const t = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(t / 3600)
+  const m = Math.floor((t % 3600) / 60)
+  const s = String(t % 60).padStart(2, "0")
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`
+}
+
+/** A step named by its key, id or number ("1.2"), a leading `#` allowed; undefined if there's none. */
+export function findStep(
+  steps: readonly WalkStep[],
+  ref: string | undefined,
+): WalkStep | undefined {
+  if (ref === undefined) return undefined
+  const r = ref.trim().replace(/^#/, "")
+  return steps.find((s) => s.key === r || s.id === r || s.number === r)
 }
 
 /** A GitHub PR or issue URL's number as `#123`; else the URL's last part. */
@@ -395,10 +826,7 @@ export function normalizeWalkthrough(doc: WalkthroughDoc): WalkPage {
         label: k,
         value,
       }))
-  const stepRef = (ref: string | undefined) =>
-    ref === undefined
-      ? null
-      : (steps.find((s) => s.key === ref || s.id === ref || s.number === ref)?.key ?? null)
+  const stepRef = (ref: string | undefined) => findStep(steps, ref)?.key ?? null
   const feed = sortFeed([
     ...(doc.updates ?? []).map(
       (u): FeedItem => ({ kind: "update", at: parseAt(u.at), text: u.text, step: stepRef(u.step) }),
@@ -519,6 +947,8 @@ export interface MediaContext {
   readonly time?: number
   readonly duration?: number
   readonly playing?: boolean
+  /** The chapter the time is in, by its label. */
+  readonly chapter?: string
   /** The loop range, in seconds. */
   readonly loop?: { readonly start: number; readonly end: number }
   /** A compare's mode. */
@@ -738,6 +1168,7 @@ export function describeMedia(m: MediaContext | undefined): string {
   if (m.file) parts.push(`${m.kind} ${m.file}`)
   else if (m.time !== undefined) parts.push(`${m.kind} at ${formatTime(m.time)}`)
   else parts.push(m.kind)
+  if (m.chapter) parts[0] += ` in “${m.chapter}”`
   if (m.loop) parts.push(`loop ${formatTime(m.loop.start)}–${formatTime(m.loop.end)}`)
   if (m.zoom) parts.push(`zoomed ${zoomWords(m.zoom)}`)
   if (m.mode) parts.push(m.mode)
