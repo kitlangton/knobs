@@ -1311,6 +1311,8 @@ function buildPanel<S extends Schema>(
     const specs: RowSpec[] = []
     const placed = new Set<string>()
     for (const [key, field] of entries) {
+      // A variants choice is switched from the preset strip; it has no row of its own.
+      if (field.kind === "choice" && field.variants) continue
       const pair = field.kind === "knob" && field.spring ? halves.get(field.spring.id) : undefined
       if (pair?.duration && pair.bounce && field.kind === "knob" && field.spring) {
         if (placed.has(field.spring.id)) continue

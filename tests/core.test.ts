@@ -1524,6 +1524,52 @@ describe("labels apart from ids", () => {
     expect(controls.get()).toMatchObject({ a: 1, b: 1, c: 2 })
   })
 
+  it("makes a variants choice's options the presets, the default option first", () => {
+    const hero = choice("Stand up", ["Stand up", "Roll", "Trace"], {
+      variants: true,
+      labels: { Trace: "Trace on" },
+    })
+    expect(hero.random).toBe(false)
+    const controls = defineControls(
+      "variants",
+      {
+        variant: hero,
+        speed: knob(1, { min: 0, max: 2, step: 0.1 }),
+      },
+      {
+        enabled: true,
+        storage: memoryStorage(),
+        presets: { Roll: { speed: 0.5 }, calm: { speed: 0.2 } },
+      },
+    )
+    expect(Object.keys(controls.presets)).toEqual(["default", "Roll", "Trace", "calm"])
+    expect(controls.presets.Roll).toEqual({ variant: "Roll", speed: 0.5 })
+    expect(controls.presets.Trace).toEqual({ variant: "Trace", speed: 1 })
+    expect(controls.presets.calm).toEqual({ variant: "Stand up", speed: 0.2 })
+    expect(controls.presetLabel("default")).toBe("Stand up")
+    expect(controls.presetLabel("Trace")).toBe("Trace on")
+    expect(controls.presetLabel("calm")).toBe("calm")
+    controls.preset("Roll")
+    expect(controls.get()).toEqual({ variant: "Roll", speed: 0.5 })
+    expect(controls.activePreset()).toEqual({ kind: "preset", id: "Roll" })
+    // Random explores around the variant without leaving it.
+    controls.randomize()
+    expect(controls.get().variant).toBe("Roll")
+  })
+
+  it("keeps the default variant's values in the schema", () => {
+    const schema = { variant: choice("A", ["A", "B"], { variants: true }) }
+    expect(() =>
+      defineControls("variants-default", schema, { enabled: true, presets: { A: {} } }),
+    ).toThrow(/default variant/)
+    expect(() =>
+      defineControls("variants-two", {
+        a: choice("A", ["A", "B"], { variants: true }),
+        b: choice("C", ["C", "D"], { variants: true }),
+      }),
+    ).toThrow(/Only one choice/)
+  })
+
   it("carries descriptor labels through remote controls; Swift and resets keep the ids", () => {
     const resets: unknown[] = []
     const remote = createRemoteControls(

@@ -317,6 +317,38 @@ live.watch("events", { level: "warn", text: "Gutter drip over budget" })
 
 Readouts cost nothing at rest. They draw on one shared clock, only while on screen and only when something arrived, so a paused feed lets the page, and the GPU overlay, sleep. Graphics are canvases redrawn from a list of drawing ops (the GPU overlay draws the same ops). Text changes at most `hz` times a second (4 by default), in boxes that only grow, so nothing reflows as numbers change. Scales snap to round steps (1, 2 or 5 × 10ⁿ) and ease there on a spring, in log space, so a spike rescales smoothly. The store keeps each readout's history, so a panel mounted later starts with it. On their own, outside a panel: `readout(sparkline({ unit: "ms" }), { preset })` from `knobs/ui` returns `{ element, push(value), value, dispose() }`.
 
+## Versions of a design: variants in the strip
+
+When a page has several versions of one design (nine hero animations, three card layouts), the
+preset strip at the top of the panel is where you switch them. Each version is a preset. Don't
+add a `variant` choice beside it: two ways to switch the same thing is one too many.
+
+When the page's code branches on which version is on, give that choice `variants: true`:
+
+```ts
+const controls = defineControls("upsell", {
+  variant: choice("Stand up", ["Stand up", "Anamorphic", "Roll", "Trace"], { variants: true }),
+  speed: knob(1, { min: 0.25, max: 2, step: 0.05 }),
+}, {
+  presets: { Roll: { speed: 0.8 } }, // optional: values a variant changes beside itself
+})
+
+render(controls.get().variant) // "Stand up", until another chip is picked
+```
+
+- **Each option is a chip in the strip.** The default option is the `default` preset, named after
+  it; the others follow in order, then any other `presets`. Their ids are the options, and
+  `labels` name the chips.
+- **The choice has no row.** The strip is the one place to switch, with a click, a sideways pan,
+  `[` / `]`, or `1`–`9`.
+- **Random leaves it be** (`random: false` unless you say otherwise). Random explores around the
+  active variant, and Reset goes back to it, as with any preset.
+- **`presets` keyed by an option add to that variant.** The default variant's values are the
+  schema's defaults, so it takes none there.
+
+Versions that differ only in their values need no choice at all: they're plain `presets`, with
+`defaultLabel` naming the first.
+
 ## Presets: names and the base
 
 The strip holds the schema's `presets` (and `default`) beside the variants you save. Saving (`+` or `⇧S`) puts a field where the new chip goes, its name ("Variant 3") selected so typing replaces it; `Enter` keeps what you typed, `Esc` keeps "Variant 3", and the field opens out to the chip's width without moving anything else. `F2` or `Enter` on the strip, or a double-click, renames a saved one the same way (`controls.variants.rename(id, name)`); names are kept with the variants in the store's storage. The schema's presets keep their names.
@@ -1882,7 +1914,7 @@ The package has two core exports selected through the standard `development` con
 | Function | Behavior |
 | --- | --- |
 | `knob(value, { min, max, step?, unit?, decimals?, detents?, shortcut?, label?, group?, groupLabel?, section?, sectionLabel? })` | Numeric slider control with rolling readout and inline editor. `detents: false` lets drags glide through the default, the base and the middle. |
-| `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
+| `choice(value, ["a", "b"], { label?, group?, shortcut?, labels?, display?, variants? }?)` | Nonempty string choices with literal union inference. `variants: true` makes the options the preset strip's chips, with no row (see [Versions of a design](#versions-of-a-design-variants-in-the-strip)). |
 | `toggle(value, { label?, group?, shortcut?, random? }?)` | Boolean switch control. Out of Random and Mutate unless `random: true`. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
 | `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |

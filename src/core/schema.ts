@@ -127,6 +127,12 @@ export interface Choice<T extends string = string> extends FieldMeta {
    * spare and there are at most four options, and a menu otherwise, switching as the width changes.
    */
   readonly display?: "menu" | "segmented"
+  /**
+   * The options are versions of the design: each is a preset in the panel's top strip (the
+   * default option is the default preset), which is where you switch them, and the choice gets no
+   * row of its own. See `choice`.
+   */
+  readonly variants?: true
 }
 export interface Toggle extends FieldMeta {
   readonly kind: "toggle"
@@ -382,6 +388,16 @@ export const isReadout = (field: { readonly kind: string }): field is ReadoutFie
 export const hasValue = (field: Field): field is ValueField =>
   field.kind !== "action" && field.kind !== "toolbar" && !READOUT_KINDS.has(field.kind)
 export type Schema = Readonly<Record<string, Field>>
+/** The schema's variants choice (`choice(…, { variants: true })`), if it has one. */
+export function variantsOf(schema: Schema): { key: string; field: Choice } | undefined {
+  let found: { key: string; field: Choice } | undefined
+  for (const [key, field] of Object.entries(schema))
+    if (field.kind === "choice" && field.variants) {
+      if (found) throw new Error(`Only one choice can hold the variants (${found.key}, ${key}).`)
+      found = { key, field }
+    }
+  return found
+}
 export type FieldValue<F extends Field> = F extends Knob
   ? number
   : F extends Choice<infer T>
@@ -476,12 +492,20 @@ export function knob(
   const field: Knob = { ...options, kind: "knob", value, step }
   return Object.freeze({ ...field, value: normalizeField(field, value) as number })
 }
+/**
+ * `choice("glass", ["glass", "solid", "flat"])`: one of a set of options, as segments or a menu.
+ * With `variants: true` the options are versions of the design instead: each becomes a preset in
+ * the panel's top strip (the default option is the default preset, the others follow in order),
+ * the choice has no row, and Random leaves it be. The store's `presets` add values to a variant
+ * by its option (`{ Roll: { speed: 0.8 } }`).
+ */
 export function choice<const T extends readonly [string, ...string[]]>(
   value: T[number],
   options: T,
   meta?: FieldMeta & {
     readonly labels?: Readonly<Partial<Record<T[number], string>>>
     readonly display?: "menu" | "segmented"
+    readonly variants?: boolean
   },
 ): Choice<T[number]> {
   if (!options.includes(value) || new Set(options).size !== options.length)
@@ -502,8 +526,9 @@ export function choice<const T extends readonly [string, ...string[]]>(
       options: Object.freeze([...options]),
       ...(labels && Object.keys(labels).length ? { labels } : {}),
       ...(meta?.display ? { display: meta.display } : {}),
+      ...(meta?.variants ? { variants: true as const } : {}),
     },
-    meta,
+    meta?.variants ? { ...meta, random: meta.random ?? false } : meta,
   )
 }
 /**

@@ -29,6 +29,7 @@ import {
   type ValueField,
   type Values,
   valueKeys,
+  variantsOf,
 } from "./schema.js"
 import { browserStorage, storageKey, type StoragePort } from "./storage.js"
 import { isUnlocked, onUnlock, unlockedPanel } from "./unlock.js"
@@ -714,16 +715,29 @@ export function defineControls<const S extends Schema>(
   const future: Entry[] = []
   const HISTORY = 100
   const stateKey = storageKey(id, "state")
-  const buildPresets = () =>
-    Object.freeze(
+  const buildPresets = () => {
+    const own = options.presets ?? {}
+    const v = variantsOf(schema)
+    if (v && Object.hasOwn(own, v.field.value))
+      throw new Error(
+        `The default variant (${v.field.value}) is the schema's defaults; set its values there.`,
+      )
+    // A variants choice's options come first, each a preset (the default one is `default`).
+    const ids = [
+      ...(v ? v.field.options.filter((o) => o !== v.field.value) : []),
+      ...Object.keys(own).filter((id) => !v?.field.options.includes(id)),
+    ]
+    return Object.freeze(
       Object.fromEntries([
         ["default", locked],
-        ...Object.entries(options.presets ?? {}).map(([id, patch]) => {
+        ...ids.map((id) => {
           if (id === "default" || id === "custom") throw new Error(`Reserved preset id: ${id}`)
-          return [id, normalize(schema, { ...locked, ...patch })]
+          const variant = v?.field.options.includes(id) ? { [v.key]: id } : {}
+          return [id, normalize(schema, { ...locked, ...variant, ...own[id] })]
         }),
       ]),
     ) as Readonly<Record<string, Values<S>>>
+  }
   let presets = buildPresets()
   const buildGroupPresets = () =>
     Object.freeze(
@@ -1411,10 +1425,17 @@ export function defineControls<const S extends Schema>(
       options.sectionDescriptions?.[section] ?? fieldLabels().sectionText.get(section),
     groupFolded: options.groupFolded,
     sectionFolded: options.sectionFolded,
-    presetLabel: (presetId) =>
-      options.presetLabels?.[presetId] ??
-      (presetId === "default" ? options.defaultLabel : undefined) ??
-      presetId,
+    presetLabel: (presetId) => {
+      const v = variantsOf(schema)
+      const option = presetId === "default" ? v?.field.value : presetId
+      return (
+        options.presetLabels?.[presetId] ??
+        (presetId === "default" ? options.defaultLabel : undefined) ??
+        (v && option !== undefined && v.field.options.includes(option)
+          ? (v.field.labels?.[option] ?? option)
+          : presetId)
+      )
+    },
     get,
     set,
     sync,
