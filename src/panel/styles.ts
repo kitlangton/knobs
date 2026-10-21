@@ -920,6 +920,16 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-menu-item[data-separated]{margin-top:calc(var(--_k-unit) * 2 + 1px)}
 .knobs-menu-item[data-separated]::before{content:"";position:absolute;left:8px;right:8px;top:calc(var(--_k-unit) * -1 - 1px);height:1px;transform:scaleY(.5);background:var(--_k-border)}
 
+/* Text: a field beside its label, or (multiline) a box under it that grows with its lines */
+.knobs-panel .knobs-text{flex:1 1 auto;min-width:0;max-width:62%;height:var(--_k-control-h);margin:0;padding:0 8px;border:0;border-radius:var(--_k-radius-md);outline:none;background:var(--_k-segmented-track);color:var(--_k-fg);caret-color:var(--_k-accent);font:inherit;font-size:var(--_k-text-control);-webkit-user-select:text;user-select:text;cursor:text}
+.knobs-panel .knobs-text::placeholder{color:var(--_k-fg-3);opacity:1}
+.knobs-panel .knobs-text:is(:hover,:focus){background:color-mix(in srgb,var(--_k-fill-selected) 70%,var(--_k-segmented-track))}
+.knobs-panel .knobs-text::selection{background:color-mix(in srgb,var(--_k-accent) 24%,transparent);color:var(--_k-fg)}
+.knobs-panel .knobs-insp[data-multiline]{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:calc(var(--_k-unit) * 1.5);height:auto;padding-block:calc(var(--_k-unit) * 2)}
+.knobs-panel .knobs-insp[data-multiline]>span:first-child{align-self:flex-start;max-width:100%}
+.knobs-panel textarea.knobs-text{max-width:none;height:auto;min-height:calc(2lh + 12px);max-height:calc(8lh + 12px);margin:0;padding:6px 8px;resize:none;field-sizing:content;font:inherit;font-size:var(--_k-text-control);line-height:1.4}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-text{cursor:default}
+
 /* Status & Transfer Textarea */
 .knobs-panel .knobs-empty{margin:0;padding:calc(var(--_k-unit) * 2) var(--_k-inset);color:var(--_k-fg-3);font-size:var(--_k-text-control);overflow-wrap:anywhere}
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 var(--_k-inset);color:var(--_k-fg-2);font-size:var(--_k-text-meta);overflow-wrap:anywhere}
@@ -953,11 +963,11 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] .knobs-preset-chip::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
-.knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
+.knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-text,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] :is(.knobs-number,.knobs-preset-name){z-index:2147480003}
 /* A row accessory is the host's own DOM, so it sits above the canvas too (its row then can't
    contain its layout, which would trap it in a stacking context under the canvas). */
-.knobs-panel[data-gpu-active="true"] .knobs-row[data-accessory]{contain:style}
+.knobs-panel[data-gpu-active="true"] :is(.knobs-row[data-accessory],.knobs-insp[data-kind="text"]){contain:style}
 :where(.knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory){position:relative}
 .knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory{z-index:2147480003}
 

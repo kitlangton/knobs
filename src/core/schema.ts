@@ -247,6 +247,15 @@ export interface KeybindField extends FieldMeta {
   readonly kind: "keybind"
   readonly value: string
 }
+/** Words: a name, a caption, a prompt. Typed into a field; `multiline` for a box of lines. */
+export interface TextField extends FieldMeta {
+  readonly kind: "text"
+  readonly value: string
+  /** Lines (Enter starts a new one) in a box that grows with them; one line otherwise. */
+  readonly multiline?: boolean
+  /** Shown in the empty field. */
+  readonly placeholder?: string
+}
 /**
  * A toolbar button's key and where it presses the button: while the panel has focus (`"panel"`),
  * anywhere on the page but a text field (`"page"`), or nowhere (`"none"`: the chip only, for a
@@ -293,6 +302,7 @@ export type ValueField =
   | AngleField
   | SeedField
   | KeybindField
+  | TextField
   | GradientField
   | CurveField
 /** A readout's own: polled while its row shows, instead of pushed with `controls.watch`. */
@@ -422,7 +432,7 @@ export type FieldValue<F extends Field> = F extends Knob
                     ? readonly [number, number]
                     : F extends AngleField | SeedField
                       ? number
-                      : F extends KeybindField
+                      : F extends KeybindField | TextField
                         ? string
                         : F extends GradientField
                           ? readonly GradientStop[]
@@ -772,6 +782,26 @@ export function keybind(value = "", meta?: FieldMeta): KeybindField {
   return withMeta(field, { random: false, ...meta })
 }
 /**
+ * Words typed into a field: `text("Hello")`, `text("", { multiline: true, placeholder: "Notes" })`.
+ * One line unless `multiline` (a line break typed or set there becomes a space). Out of Random
+ * and Mutate.
+ */
+export function text(
+  value = "",
+  options?: FieldMeta & { multiline?: boolean; placeholder?: string },
+): TextField {
+  const { multiline, placeholder, ...meta } = options ?? {}
+  const field: TextField = {
+    kind: "text",
+    value: "",
+    ...(multiline ? { multiline: true } : {}),
+    ...(placeholder ? { placeholder } : {}),
+  }
+  return withMeta({ ...field, value: normalizeText(field, value) }, { random: false, ...meta })
+}
+const normalizeText = (field: TextField, input: string) =>
+  field.multiline ? input.replace(/\r\n?/g, "\n") : input.replace(/\r\n?|\n/g, " ")
+/**
  * Colour over a 0…1 parameter: `gradient([{ at: 0, color: "#fff4d6" }, { at: 1, color: "#20242c" }])`.
  * Colours take what `color` takes and are kept as `oklch()` strings. `space` blends in `oklab`
  * (default) or `srgb`; `presets` are named ramps offered as chips. Sample it with `sampleGradient`.
@@ -1104,6 +1134,8 @@ export function normalizeField(field: ValueField, input: unknown): Value {
         : field.value
     case "keybind":
       return typeof input === "string" ? normalizeCombo(input) : field.value
+    case "text":
+      return typeof input === "string" ? normalizeText(field, input) : field.value
     case "gradient":
       return normalizeStops(input) ?? field.value
     case "curve":

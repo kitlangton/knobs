@@ -1,6 +1,8 @@
 // The pieces OpenCode's components lab leans on: a panel in a split pane, its header buttons in
 // the pane's header, presets as a list, a toolbar of icons.
-import { describe, expect, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "vitest"
+import { defineControls, knob, text, type Values } from "../src/index.js"
+import { descriptorToField, formatSwift } from "../src/core/remote.js"
 import { toolbar } from "../src/core/schema.js"
 import { injectStyles } from "../src/panel/styles.js"
 import { injectUiStyles } from "../src/ui/look.js"
@@ -143,5 +145,51 @@ describe("a panel with no rows", () => {
     expect(empty).toContain("color:var(--kv-fg-3)")
     expect(empty).toContain("var(--kv-inset)")
     expect(empty).not.toContain("display")
+  })
+})
+
+describe("a text field", () => {
+  it("keeps one line unless it's multiline", () => {
+    expect(text("a\nb").value).toBe("a b")
+    expect(text("a\r\nb", { multiline: true })).toMatchObject({ value: "a\nb", multiline: true })
+    expect(text()).toMatchObject({ kind: "text", value: "" })
+    expect(text("", { placeholder: "Ask anything" }).placeholder).toBe("Ask anything")
+  })
+
+  it("sets and resets as a string, and stays out of Random and Mutate", () => {
+    const schema = { size: knob(1, { min: 0, max: 10, step: 1 }), name: text("Ada") }
+    const store = defineControls("lab-text", schema, { enabled: true, storage: null })
+    expectTypeOf(store.get()).toEqualTypeOf<Values<typeof schema>>()
+    const name: string = store.get().name
+    expect(name).toBe("Ada")
+    store.set({ name: "Grace\nHopper" })
+    expect(store.get().name).toBe("Grace Hopper")
+    store.randomize()
+    store.mutate()
+    expect(store.get().name).toBe("Grace Hopper")
+    store.reset()
+    expect(store.get().name).toBe("Ada")
+    // Anything but a string is its default.
+    store.set({ name: 42 as unknown as string })
+    expect(store.get().name).toBe("Ada")
+  })
+
+  it("arrives from a remote descriptor and leaves as a Swift string", () => {
+    const field = descriptorToField({
+      key: "prompt",
+      kind: "text",
+      default: "Hi",
+      multiline: true,
+      placeholder: "Ask anything",
+    })
+    expect(field).toMatchObject({
+      kind: "text",
+      value: "Hi",
+      multiline: true,
+      placeholder: "Ask anything",
+    })
+    expect(
+      formatSwift([{ key: "prompt", kind: "text", default: "Hi" }], { prompt: 'Say "hi"' }),
+    ).toContain('"Say \\"hi\\""')
   })
 })

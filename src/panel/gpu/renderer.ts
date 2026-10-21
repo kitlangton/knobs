@@ -376,6 +376,16 @@ export interface GpuKeybindRow {
   readonly wave: RowWave
   isModified(): boolean
 }
+/** A text row: the canvas draws its label; the field itself is the DOM's, above the canvas. */
+export interface GpuTextRow {
+  readonly kind: "text"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly labelEl: HTMLElement
+  readonly wave: RowWave
+  isModified(): boolean
+}
 export interface GpuToolbarRow {
   readonly kind: "toolbar"
   readonly key: string
@@ -420,6 +430,7 @@ export type GpuRowBinding =
   | GpuAngleRow
   | GpuSeedRow
   | GpuKeybindRow
+  | GpuTextRow
   | GpuToolbarRow
   | GpuSubheadRow
   | GpuActionRow
@@ -5367,6 +5378,14 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "keybind") {
           this.drawKeybind(row, rRect, cardClip, rowAlpha, hovered)
+        } else if (row.kind === "text") {
+          const top = row.row.hasAttribute("data-multiline")
+          const labelY = top
+            ? this.rectOf(row.labelEl).top + this.rectOf(row.labelEl).height / 2
+            : rowCenterY
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
+          this.drawRowLabel(row.labelEl, row.display, row.isModified(), labelY, rowAlpha)
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "toolbar") {
           this.drawToolbar(row, rRect, cardClip, rowAlpha, hinting)
         } else if (row.kind === "readout") {

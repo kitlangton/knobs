@@ -59,6 +59,7 @@ export function pick(field: ValueField, random: () => number) {
     case "seed":
       return lattice(field.min, field.max, 1, r())
     case "keybind":
+    case "text":
       return field.value
     // A ramp keeps its stop count and reads as one ramp; a curve takes a built-in shape.
     case "gradient":
@@ -181,6 +182,7 @@ export function around(field: ValueField, base: unknown, random: () => number): 
       ])
     case "seed":
     case "keybind":
+    case "text":
       return pick(field, random)
   }
 }

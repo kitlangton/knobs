@@ -9,6 +9,7 @@ import {
   type AngleField,
   type KeybindField,
   type Point,
+  type TextField,
   type RangeField,
   type SeedField,
   type ToolbarField,
@@ -32,6 +33,7 @@ import type {
   GpuKeybindRow,
   GpuRangeRow,
   GpuSeedRow,
+  GpuTextRow,
   GpuToolbarRow,
   GpuVecRow,
 } from "./gpu/renderer.js"
@@ -1342,6 +1344,69 @@ export function keybindRow(c: RowContext<KeybindField>): EditorRow {
     stops: () => [chip],
     update(next: Value, _delay: number, _instant?: boolean, isMixed = false) {
       cap.show(isMixed ? undefined : (next as string))
+    },
+    dispose() {},
+    tracks: [],
+    gpu: [gpu],
+  }
+}
+
+// ——— text ———
+
+/**
+ * Words in a field: one line beside the label, or (`multiline`) a box under it that grows with
+ * its lines. Each keystroke sets the value; one focus's typing is one undo step. Enter (⌘Enter in
+ * a box) or Esc lets go of it.
+ */
+export function textRow(c: RowContext<TextField>): EditorRow {
+  const { row, label, el } = shell(c, "text")
+  const multiline = Boolean(c.field.multiline)
+  row.toggleAttribute("data-multiline", multiline)
+  const input: HTMLInputElement | HTMLTextAreaElement = multiline
+    ? Object.assign(el("textarea", "knobs-text"), { rows: 2 })
+    : Object.assign(el("input", "knobs-text"), { type: "text" })
+  input.spellcheck = false
+  input.autocomplete = "off"
+  input.placeholder = c.field.placeholder ?? ""
+  input.setAttribute("aria-label", c.display)
+  input.value = c.get() as string
+  row.append(input)
+  // The first keystroke since focus starts an undo step; the rest fold into it.
+  let typed = false
+  input.addEventListener("focus", () => (typed = false))
+  input.addEventListener("input", () => {
+    c.set(input.value, { coalesce: typed })
+    typed = true
+  })
+  input.addEventListener("keydown", (e) => {
+    const event = e as KeyboardEvent
+    if (event.isComposing) return
+    const done =
+      event.key === "Escape" ||
+      (event.key === "Enter" && (!multiline || event.metaKey || event.ctrlKey))
+    if (!done) return
+    event.preventDefault()
+    event.stopPropagation()
+    input.blur()
+  })
+  const gpu: GpuTextRow = {
+    kind: "text",
+    key: c.key,
+    display: c.display,
+    row,
+    labelEl: label,
+    wave: c.wave,
+    isModified: c.isModified,
+  }
+  return {
+    row,
+    labelEl: label,
+    input,
+    stops: () => [input],
+    update(next: Value, _delay: number, _instant?: boolean, isMixed = false) {
+      input.placeholder = isMixed ? "—" : (c.field.placeholder ?? "")
+      const shown = isMixed ? "" : (next as string)
+      if (input.value !== shown) input.value = shown
     },
     dispose() {},
     tracks: [],

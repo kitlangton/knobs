@@ -50,6 +50,7 @@ import {
   keybindRow,
   rangeRow,
   seedRow,
+  textRow,
   toolbarRow,
   vecRow,
   type ToolbarRow,
@@ -1724,7 +1725,9 @@ function buildPanel<S extends Schema>(
                           ? angleRow(live as typeof live & { field: typeof field })
                           : field.kind === "seed"
                             ? seedRow(live as typeof live & { field: typeof field })
-                            : keybindRow(live as typeof live & { field: typeof field })
+                            : field.kind === "text"
+                              ? textRow(live as typeof live & { field: typeof field })
+                              : keybindRow(live as typeof live & { field: typeof field })
       if (field.shortcut) editor.input.setAttribute("aria-keyshortcuts", field.shortcut)
       editor.labelEl.ondblclick = resetRow
       for (const t of editor.tracks) tracks.set(t.slider.track, t)
@@ -1906,6 +1909,9 @@ function buildPanel<S extends Schema>(
       if (readOnly) input.setAttribute("aria-readonly", "true")
       else input.removeAttribute("aria-readonly")
     }
+    // A text field takes no typing either.
+    if (row.input.classList.contains("knobs-text"))
+      (row.input as HTMLInputElement).readOnly = disabled || readOnly
   }
 
   let rows: Row[] = []

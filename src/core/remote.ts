@@ -7,6 +7,7 @@ import {
   angle,
   choice,
   keybind,
+  text,
   range,
   seed,
   toolbar,
@@ -157,12 +158,13 @@ export interface ValueDescriptor extends DescriptorMeta {
     | "angle"
     | "seed"
     | "keybind"
+    | "text"
     | "gradient"
     | "curve"
   /**
    * Springs take `{ duration, bounce }`, colours a CSS string, points and vec2 `{ x, y }`, vec3
    * `{ x, y, z }`, easings `[x1, y1, x2, y2]`, ranges `[low, high]`, keybinds a combination
-   * string (`"Meta+K"`), gradients `[{ at, color }]` and curves `[{ x, y }]`.
+   * string (`"Meta+K"`), text a string, gradients `[{ at, color }]` and curves `[{ x, y }]`.
    */
   readonly default: Value
   readonly min?: number
@@ -184,6 +186,10 @@ export interface ValueDescriptor extends DescriptorMeta {
   readonly axes?: readonly string[]
   /** Angles: carry past the ends a whole turn (on for a full turn by default). */
   readonly wrap?: boolean
+  /** Text: lines in a box that grows with them (see `text`). */
+  readonly multiline?: boolean
+  /** Text: shown in the empty field. */
+  readonly placeholder?: string
   /** Gradients: blend in `oklab` (default) or `srgb`. */
   readonly space?: GradientSpace
   /** Curves: the y range, `[0, 1]` by default (`min` and `max` work too). */
@@ -402,6 +408,12 @@ export function descriptorToField(d: ControlDescriptor): Field {
       ...meta,
     })
   if (d.kind === "keybind") return keybind(typeof d.default === "string" ? d.default : "", meta)
+  if (d.kind === "text")
+    return text(typeof d.default === "string" ? d.default : "", {
+      ...(d.multiline ? { multiline: true } : {}),
+      ...(d.placeholder ? { placeholder: d.placeholder } : {}),
+      ...meta,
+    })
   if (d.kind === "gradient") {
     const fallback = [
       { at: 0, color: "#000000" },
@@ -496,7 +508,7 @@ const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
     const [a, b] = v as readonly [number, number]
     return `${decimal(a)}...${decimal(b)}`
   }
-  if (d.kind === "keybind") return JSON.stringify(v)
+  if (d.kind === "keybind" || d.kind === "text") return JSON.stringify(v)
   if (d.kind === "gradient") {
     const stops = (Array.isArray(v) ? (v as readonly GradientStop[]) : []).map((s) => {
       const [r, g, b] = oklchToRgb(parseColor(s.color) ?? { l: 0, c: 0, h: 0 }).map(decimal)
@@ -522,6 +534,7 @@ const swiftTypes = {
   range: "ClosedRange<Double>",
   seed: "Int",
   keybind: "String",
+  text: "String",
   gradient: "Gradient",
   curve: "[CGPoint]",
 } as const
