@@ -257,33 +257,48 @@ const css = `
 /* The close X's ink sits a fifth of its box in from each side, a digit's barely: nudged right, its
    ink ends where the values' digits do. */
 .knobs-panel header .knobs-close>.knobs-icon{translate:calc(var(--k-icon-size) * .1) 0}
+/* In a split pane's header (dock.ts) the buttons are the pane's: its size, ink and wash, which
+   comes on at once and eases off. Outside the panel, they bring its resets with them. */
+.knobs-head-actions[data-docked]{--k-icon-size:13px;--k-icon-btn:20px;margin-right:0}
+.knobs-head-actions[data-docked] button{all:revert;box-sizing:border-box;position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--k-icon-btn);height:var(--k-icon-btn);margin:0;padding:0;border:0;border-radius:var(--_k-round);
+  background:transparent;color:var(--_k-fg-3);font:inherit;line-height:1;cursor:default;outline:none;box-shadow:none;transition:background .12s,color .12s}
+.knobs-head-actions[data-docked] button:is(:hover:not([disabled]),:focus-visible){background:var(--_ku-wash-hi,var(--_k-fill-selected));color:var(--_k-fg);transition-duration:0s}
+.knobs-head-actions[data-docked] .knobs-icon>path{fill:currentColor}
+.knobs-head-actions[data-docked] button{--k-hover-t:120ms}
+.knobs-head-actions[data-docked] button:is(:hover,:focus-visible){--k-hover-t:0s}
 /* Undo · Redo sit apart from Reset · Copy · Random. Undo, Redo and Reset (and a group's reset)
    keep their slots while they're away and bloom in and out of them: nothing beside them moves. */
 .knobs-head-history{display:flex;flex:none;margin-right:calc(var(--_k-unit) * 1.5)}
-.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},filter 0s,visibility 0s}
-.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
+:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},filter 0s,visibility 0s}
+:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+/* Docked, a slot opens with its button rather than waiting: the pane's title keeps the room. */
+.knobs-head-actions[data-docked] button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},width ${BLOOM_IN},filter 0s,visibility 0s}
+.knobs-head-actions[data-docked] button[data-shown="false"]{width:0;
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},width ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+.knobs-head-actions[data-docked]>.knobs-head-history{transition:margin ${BLOOM_IN}}
+.knobs-head-actions[data-docked]>.knobs-head-history:not(:has(>[data-shown="true"]:not([hidden]))){margin-right:0}
 @media(prefers-reduced-motion:reduce){
-  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:opacity .15s,visibility 0s!important}
-  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
+  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:opacity .15s,visibility 0s!important}
+  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
 /* A press flash (flash.ts): from a key or a click, the button's wash brightens at once and eases
    back to its own, its ink with it. Two names, so a second press restarts it. */
 @keyframes knobs-flash-a{from{background-color:var(--k-flash-bg);color:var(--_k-fg)}}
 @keyframes knobs-flash-b{from{background-color:var(--k-flash-bg);color:var(--_k-fg)}}
-.knobs-panel :is(header,.knobs-group-head) button{--k-flash-bg:color-mix(in srgb,var(--_k-fill-selected),var(--_k-fg) 10%)}
-.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="a"]{animation:knobs-flash-a ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
-.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="b"]{animation:knobs-flash-b ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
+.knobs-panel :is(header,.knobs-group-head) button,.knobs-head-actions[data-docked] button{--k-flash-bg:color-mix(in srgb,var(--_k-fill-selected),var(--_k-fg) 10%)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="a"],.knobs-head-actions[data-docked] button[data-k-flash="a"]{animation:knobs-flash-a ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="b"],.knobs-head-actions[data-docked] button[data-k-flash="b"]{animation:knobs-flash-b ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
 /* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
-.knobs-panel header .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
+.knobs-panel header .knobs-copy,.knobs-head-actions[data-docked] .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy ${BLOOM_IN} .04s,--k-check 0s .1s,--k-check-a .1s cubic-bezier(.4,0,1,1)}
-.knobs-panel header .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--_k-fg);
+.knobs-panel header .knobs-copy[data-copied],.knobs-head-actions[data-docked] .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--_k-fg);
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .1s cubic-bezier(.4,0,1,1),--k-check .18s cubic-bezier(.2,.8,.2,1) .03s,--k-check-a .04s linear .03s}
 .knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
 .knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
 /* (Over .knobs-icon>path's fill: the check is a stroke, 16 of 256 wide like Phosphor's regular icons.) */
-.knobs-panel .knobs-icon.knobs-check>path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
+.knobs-panel .knobs-icon.knobs-check>path,.knobs-head-actions[data-docked] .knobs-icon.knobs-check>path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
 .knobs-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
 /* Shortcuts Popover */

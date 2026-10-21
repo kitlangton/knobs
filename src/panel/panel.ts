@@ -109,6 +109,7 @@ import {
 import { foldMemory, type FoldMemory } from "./folds.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
+import { dock, paneHeadOf } from "./dock.js"
 import { createPresence } from "./presence.js"
 import { toggleLayer } from "./toggle.js"
 import { createPresetStrip, type PresetStrip } from "./presets.js"
@@ -574,7 +575,7 @@ function buildPanel<S extends Schema>(
   // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
   // stays while it turns, so another press adds a turn, and leaves once it has stopped.
   const resetAll = () => {
-    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && !header.hidden) turn(resetBtn)
+    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && headerShown()) turn(resetBtn)
     cue(root, "reset")
     controls.reset()
   }
@@ -716,6 +717,20 @@ function buildPanel<S extends Schema>(
     header.append(titleEl, presetStrip.element, tools)
   } else header.append(titleEl, headActions)
   if (options.header === false && !page) header.hidden = true
+  // Without a title the header row holds only buttons: in a split's pane they join the pane's
+  // header (see dock.ts); elsewhere the row is there only while a button shows (`syncBand`).
+  const untitled = !page && !header.hidden && !titleEl.textContent
+  const paneHead = untitled && inline ? paneHeadOf(host) : undefined
+  const undock = paneHead ? dock(headActions, paneHead) : undefined
+  if (undock) header.hidden = true
+  const headerShown = () => Boolean(undock) || !header.hidden
+  const syncBand = (animate: boolean) => {
+    if (!untitled || undock) return
+    const any = headerButtons.some((b) => !b.button.hidden && b.button.dataset.shown !== "false")
+    if (!animate) header.hidden = !any
+    else if ((!header.hidden && header.dataset.leaving !== "true") !== any)
+      reveal(header, any, () => wakeGpu())
+  }
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
@@ -2597,7 +2612,7 @@ function buildPanel<S extends Schema>(
   const copy = async (value: string, inPlace = true) => {
     try {
       await doc.defaultView!.navigator.clipboard.writeText(value)
-      if (inPlace && !copyButton.hidden && !header.hidden) copied()
+      if (inPlace && !copyButton.hidden && headerShown()) copied()
       else say("Copied.")
     } catch {
       text.value = value
@@ -2870,6 +2885,7 @@ function buildPanel<S extends Schema>(
       root.toggleAttribute("data-comparing", controls.comparing)
     const undoMoved = bloom(undoButton, controls.canUndo)
     if (bloom(redoButton, controls.canRedo) || undoMoved) wakeGpu()
+    syncBand(initialized)
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     if (search) {
@@ -4718,8 +4734,9 @@ function buildPanel<S extends Schema>(
     inline,
     header,
     titleEl,
-    headerButtons,
-    headerDie: { button: randomButton, die },
+    // Buttons in a pane's header are the DOM's: the overlay draws the panel alone.
+    headerButtons: undock ? [] : headerButtons,
+    ...(undock ? {} : { headerDie: { button: randomButton, die } }),
     locks: lockIcons,
     presetStrip,
     tabs: tabStrip,
@@ -4907,6 +4924,7 @@ function buildPanel<S extends Schema>(
       untrackHas()
       unsubscribeSound()
       optionKeys.dispose()
+      undock?.()
       root.remove()
     },
   }

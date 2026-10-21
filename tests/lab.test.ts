@@ -54,3 +54,18 @@ describe("a panel on another surface", () => {
     )
   })
 })
+
+describe("header buttons in a pane's header", () => {
+  it("take the pane's button size and wash", () => {
+    const own = rule(css, ".knobs-head-actions[data-docked] button")!
+    expect(own).toContain("width:var(--k-icon-btn)")
+    expect(rule(css, ".knobs-head-actions[data-docked]")).toContain("--k-icon-btn:20px")
+    expect(own).toContain("cursor:default")
+  })
+
+  it("bloom in and out of slots that take no room while they're away", () => {
+    expect(rule(css, '.knobs-head-actions[data-docked] button[data-shown="false"]')).toMatch(
+      /^width:0;/,
+    )
+  })
+})
