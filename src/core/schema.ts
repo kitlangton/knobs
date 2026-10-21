@@ -62,6 +62,12 @@ export interface FieldMeta {
    */
   readonly tab?: string
   /**
+   * Pins the field's group to the top of a panel, under the header and above the tab strip, on
+   * every tab (the first field of a group that says wins; a field without a group pins itself).
+   * Panel presets and saved variants leave pinned fields alone. See `ControlsOptions.pinned`.
+   */
+  readonly pinned?: boolean
+  /**
    * A collapsible sub-heading inside the field's group: a flat heading with a hairline, never a
    * card inside the card. Consecutive fields that share it sit under one heading.
    */
@@ -83,6 +89,7 @@ export const META_KEYS = [
   "folded",
   "sectionFolded",
   "tab",
+  "pinned",
   "subsection",
 ] as const satisfies readonly (keyof FieldMeta)[]
 /** The meta `source` gives, without undefined keys. */
@@ -382,6 +389,20 @@ export const isReadout = (field: { readonly kind: string }): field is ReadoutFie
 export const hasValue = (field: Field): field is ValueField =>
   field.kind !== "action" && field.kind !== "toolbar" && !READOUT_KINDS.has(field.kind)
 export type Schema = Readonly<Record<string, Field>>
+/**
+ * The schema's pinned keys (values, actions and readouts alike): every key of a group in `groups`,
+ * or whose first field that gives `pinned` says `true`, and ungrouped fields that say so themselves.
+ */
+export function pinnedKeys(schema: Schema, groups: readonly string[] = []): ReadonlySet<string> {
+  const byGroup = new Map<string, boolean>(groups.map((g) => [g, true]))
+  for (const f of Object.values(schema))
+    if (f.group !== undefined && f.pinned !== undefined && !byGroup.has(f.group))
+      byGroup.set(f.group, f.pinned)
+  const out = new Set<string>()
+  for (const [key, f] of Object.entries(schema))
+    if (f.group === undefined ? f.pinned === true : byGroup.get(f.group) === true) out.add(key)
+  return out
+}
 export type FieldValue<F extends Field> = F extends Knob
   ? number
   : F extends Choice<infer T>

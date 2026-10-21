@@ -467,6 +467,8 @@ export interface GpuPanelBinding {
   readonly id: string
   readonly root: HTMLElement
   readonly body: HTMLElement
+  /** The pinned groups' cards, above the tab strip (hidden while none are pinned). */
+  readonly pinned?: HTMLElement
   readonly inline: boolean
   readonly header: HTMLElement
   readonly titleEl: HTMLElement
@@ -839,6 +841,7 @@ class GpuOverlayManager {
     })
     ro.observe(panel.root)
     ro.observe(panel.body)
+    if (panel.pinned) ro.observe(panel.pinned)
     ro.observe(panel.presetStrip.track)
     const mo = new MutationObserver(() => {
       this.styleVersion++
@@ -4325,7 +4328,10 @@ class GpuOverlayManager {
       // 3. Preset strip
       const ps = panel.presetStrip
       const hinting = panel.root.classList.contains("knobs-hinting")
+      const stripAlpha = this.curAlpha
       if (!ps.element.hidden) {
+        // It crosses a tab change with the rows it sits over.
+        this.curAlpha = stripAlpha * this.presence(ps.element)
         const psHovered = this.curPanelHovered && ps.element.matches(":hover")
         this.curSubHovered = psHovered
         const psRect = this.rectOf(ps.element)
@@ -4469,6 +4475,7 @@ class GpuOverlayManager {
             },
           )
         }
+        this.curAlpha = stripAlpha
       }
 
       // 3b. Tabs: text over a hairline, the chosen one's underline on the lead and trail springs
@@ -4638,7 +4645,9 @@ class GpuOverlayManager {
 
       // 4. Group headers
       if (bodyRevealing || pageMoving) this.curBypassRectCache = true
-      const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
+      const bodyHovered =
+        this.curPanelHovered &&
+        (panel.body.matches(":hover") || Boolean(panel.pinned?.matches(":hover")))
       this.curSubHovered = bodyHovered
       this.curPointerRow = bodyHovered && panel.root.hasAttribute("data-k-row-hover")
       const panelAlpha = this.curAlpha

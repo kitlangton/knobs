@@ -110,7 +110,7 @@ import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
 import { createPresence } from "./presence.js"
 import { toggleLayer } from "./toggle.js"
-import { createPresetStrip, type PresetStrip } from "./presets.js"
+import { createPresetStrip, presetsTouch, type PresetEntry, type PresetStrip } from "./presets.js"
 import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
@@ -673,6 +673,7 @@ function buildPanel<S extends Schema>(
     run,
     () => wakeGpu(),
     presetLabel,
+    (entries) => presetsTouchTab(entries),
   )
   // Tabs: a strip under the header once any field names one (or `tabs` lists some). A panel
   // remembers the one it showed, for the next mount and (with `session`) a reload.
@@ -721,6 +722,12 @@ function buildPanel<S extends Schema>(
   ]
   const body = el("div")
   const tabMotion = tabTransition(body, root, () => wakeGpu())
+  // Pinned groups sit above the tab strip, on every tab, and a tab change never moves them. The
+  // preset strip leads the body: it belongs to the tabs, and crosses a tab change with the rows.
+  const pinnedBody = el("div")
+  pinnedBody.className = "knobs-pinned"
+  pinnedBody.hidden = true
+  if (!page) body.append(presetStrip.element)
   // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
   // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
   interface Block {
@@ -1343,8 +1350,13 @@ function buildPanel<S extends Schema>(
         section: field.section,
       })
     }
-    return gatherSubsections(specs)
+    const planned = gatherSubsections(specs)
+    if (page || !planned.some(pinnedRow)) return planned
+    return [...planned.filter(pinnedRow), ...planned.filter((spec) => !pinnedRow(spec))]
   }
+  /** A row of a pinned group (see `ControlsOptions.pinned`); a page pins nothing. */
+  const pinnedRow = (r: { readonly id: string; readonly keys: readonly string[] }) =>
+    !page && controls.isPinned(r.keys[0] ?? r.id)
   /**
    * Within each run of a group's rows, rows without a sub-heading come first, then each
    * sub-heading's rows together (in the order the sub-headings first appear), so a heading never
@@ -2026,14 +2038,16 @@ function buildPanel<S extends Schema>(
       else layout?.pack(true)
     } else {
       // Runs of rows sharing a group make blocks; a run reuses its group's block if there is one.
-      const runs: { group: string | undefined; rows: Row[] }[] = []
+      const runs: { group: string | undefined; pinned: boolean; rows: Row[] }[] = []
       for (const r of next) {
         const last = runs.at(-1)
-        if (last && last.group === r.group) last.rows.push(r)
-        else runs.push({ group: r.group, rows: [r] })
+        const pinned = pinnedRow(r)
+        if (last && last.group === r.group && last.pinned === pinned) last.rows.push(r)
+        else runs.push({ group: r.group, pinned, rows: [r] })
       }
       const free = blocks.filter((b) => !b.leaving)
       const chosen: Block[] = []
+      const pinnedBlocks = new Set<Block>()
       const usedSubheads = new Set<string>()
       for (const run of runs) {
         const at = free.findIndex((b) => b.group === run.group)
@@ -2049,6 +2063,7 @@ function buildPanel<S extends Schema>(
           }
         }
         chosen.push(block)
+        if (run.pinned) pinnedBlocks.add(block)
         // Consecutive rows sharing a `subsection` sit under one flat sub-heading in the card.
         const nodes: HTMLElement[] = []
         let under: string | undefined
@@ -2076,10 +2091,10 @@ function buildPanel<S extends Schema>(
           if (gi >= 0) gpuRows.splice(gi, 1)
           subheads.delete(id)
         }
-      arrange(
-        body,
-        chosen.flatMap((b) => (b.head ? [b.head, b.card] : [b.card])),
-      )
+      const nodesOf = (list: Block[]) => list.flatMap((b) => (b.head ? [b.head, b.card] : [b.card]))
+      arrange(pinnedBody, nodesOf(chosen.filter((b) => pinnedBlocks.has(b))))
+      arrange(body, [presetStrip.element, ...nodesOf(chosen.filter((b) => !pinnedBlocks.has(b)))])
+      pinnedBody.hidden = pinnedBlocks.size === 0
       for (const block of free) {
         block.leaving = true
         const fold = () => {
@@ -2215,8 +2230,11 @@ function buildPanel<S extends Schema>(
       if (f.group === group && f.tab !== undefined) return f.tab
     return undefined
   }
-  /** A row's tab: its field's, else its group's; none shows on every tab. */
-  const tabOf = (r: Row) => r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined)
+  /** A row's tab: its field's, else its group's; none (or pinned) shows on every tab. */
+  const tabOf = (r: Row) =>
+    pinnedRow(r)
+      ? undefined
+      : (r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined))
   /** `tabs` in order, then the tabs fields name that it doesn't list. */
   const tabList = (): TabSpec[] => {
     if (page) return []
@@ -2226,12 +2244,24 @@ function buildPanel<S extends Schema>(
         : { id: t.id, label: t.label ?? readableTitle(t.id) },
     )
     const seen = new Set(list.map((t) => t.id))
-    for (const f of Object.values(controls.schema as Record<string, Field>))
-      if (f.tab !== undefined && !seen.has(f.tab)) {
+    for (const [key, f] of Object.entries(controls.schema as Record<string, Field>))
+      if (f.tab !== undefined && !seen.has(f.tab) && !controls.isPinned(key)) {
         seen.add(f.tab)
         list.push({ id: f.tab, label: readableTitle(f.tab) })
       }
     return list
+  }
+  /**
+   * Whether a preset or saved variant moves anything on the tab showing (presets never hold
+   * pinned keys); with no tabs, always. A tab they leave alone shows no preset strip.
+   */
+  function presetsTouchTab(entries: readonly PresetEntry<any>[]) {
+    if (page || activeTab === undefined) return true
+    const keys = rows.flatMap((r) => {
+      const tab = tabOf(r)
+      return !pinnedRow(r) && (tab === undefined || tab === activeTab) ? r.keys : []
+    })
+    return presetsTouch(entries, keys, controls.locked)
   }
   function syncTabs() {
     const list = tabList()
@@ -2312,6 +2342,7 @@ function buildPanel<S extends Schema>(
       if (b.head) want.set(b.head, any)
       want.set(b.card, any && !(b.group !== undefined && folds.get(b.group) && !finding))
     }
+    want.set(presetStrip.element, presetStrip.shows())
     return want
   }
   /** Folds `node` open or shut with the reveal motion (the GPU follows its presence). */
@@ -2343,6 +2374,8 @@ function buildPanel<S extends Schema>(
       return
     }
     if (tabMotion.running) tabMotion.finish()
+    const strip = presetStrip.element
+    if (strip.hidden === want.get(strip)) strip.hidden = !want.get(strip)
     const showing = (n: HTMLElement) => !n.hidden && n.dataset.leaving !== "true"
     const set = (node: HTMLElement, show: boolean, animate: boolean) => {
       if (showing(node) === show) return
@@ -2669,9 +2702,9 @@ function buildPanel<S extends Schema>(
   } else {
     root.append(header)
     if (showFooter) root.append(popover)
-    root.append(tabStrip.element)
+    root.append(pinnedBody, tabStrip.element)
     if (search) root.append(search.element)
-    root.append(presetStrip.element, body)
+    root.append(body)
     if (panelActions.length > 0) root.append(customActions)
     root.append(text, apply, status, live)
   }
@@ -3022,38 +3055,52 @@ function buildPanel<S extends Schema>(
     [...customActions.querySelectorAll("button")].filter((b) => visible(b) && !b.disabled)
   let lastActionButton: HTMLButtonElement | undefined
   const stops = () => {
-    const list: { contains(node: Node): boolean; focus(options?: FocusOptions): void }[] = []
+    type Stop = { contains(node: Node): boolean; focus(options?: FocusOptions): void }
+    const list: Stop[] = []
+    const strips: { at: HTMLElement; stops: Stop[] }[] = []
     if (visible(tabStrip.element))
-      list.push({
-        contains: (n) => tabStrip.element.contains(n),
-        focus: (o) => tabStrip.focus(o),
+      strips.push({
+        at: tabStrip.element,
+        stops: [{ contains: (n) => tabStrip.element.contains(n), focus: (o) => tabStrip.focus(o) }],
       })
     if (visible(presetStrip.element))
-      list.push({
-        contains: (n) => presetStrip.element.contains(n),
-        focus: (o) => presetStrip.element.focus(o),
+      strips.push({
+        at: presetStrip.element,
+        stops: [
+          {
+            contains: (n) => presetStrip.element.contains(n),
+            focus: (o) => presetStrip.element.focus(o),
+          },
+        ],
       })
     if (page) {
+      for (const strip of strips) list.push(...strip.stops)
       for (const stop of pageStops())
         list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
       return list
     }
     // Rows keep their editor's own stop order; a foldable group's header is a stop of its own,
-    // placed among them by document order, and rows in a folded card aren't stops.
-    const runs: { at: HTMLElement; stops: HTMLElement[] }[] = rows.map((r) => ({
+    // placed among them by document order, and rows in a folded card aren't stops. The strips
+    // take their place by document order too, so pinned rows come before the tabs.
+    const stopOf = (stop: HTMLElement): Stop => ({
+      contains: (n) => stop.contains(n),
+      focus: (o) => stop.focus(o),
+    })
+    const shown = (stops: HTMLElement[]) =>
+      stops.filter((s) => !s.closest('[hidden],[data-presence="out"]')).map(stopOf)
+    const runs: { at: HTMLElement; stops: Stop[] }[] = rows.map((r) => ({
       at: r.row,
-      stops: r.editor?.stops() ?? [r.input],
+      stops: shown(r.editor?.stops() ?? [r.input]),
     }))
     for (const b of blocks)
       if (b.head?.hasAttribute("data-foldable") && !b.leaving)
-        runs.push({ at: b.head, stops: [b.head] })
-    for (const sh of subheads.values()) runs.push({ at: sh.el, stops: [sh.el] })
+        runs.push({ at: b.head, stops: shown([b.head]) })
+    for (const sh of subheads.values()) runs.push({ at: sh.el, stops: shown([sh.el]) })
+    runs.push(...strips)
     runs.sort((a, b) =>
       a.at.compareDocumentPosition(b.at) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
     )
-    for (const run of runs)
-      for (const stop of run.stops.filter((s) => !s.closest('[hidden],[data-presence="out"]')))
-        list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
+    for (const run of runs) list.push(...run.stops)
     const bar = actionBarButtons()
     if (bar.length)
       list.push({
@@ -4679,6 +4726,7 @@ function buildPanel<S extends Schema>(
     id: controls.id,
     root,
     body,
+    pinned: pinnedBody,
     inline,
     header,
     titleEl,
