@@ -102,6 +102,8 @@ export interface ToolbarDescriptor extends DescriptorMeta {
     readonly global?: boolean
     readonly disabled?: boolean
   }[]
+  /** `false`: icons only (see `toolbar`). */
+  readonly labels?: boolean
   readonly default?: undefined
   readonly bind?: undefined
 }
@@ -317,7 +319,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
   if (d.kind === "toolbar")
     return toolbar(
       d.items.map(({ key, ...item }) => ({ ...item, id: key })),
-      meta,
+      d.labels !== undefined ? { ...meta, labels: d.labels } : meta,
     )
   if (d.bind) return flatSpring({}, { ...meta, id: d.key }).duration
   if (d.kind === "knob" || d.kind === "number") {

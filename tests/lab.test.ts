@@ -95,3 +95,28 @@ describe("presets as a list", () => {
     )
   })
 })
+
+describe("a toolbar of icons", () => {
+  const items = [
+    { label: "Previous", icon: "play" },
+    { label: "Next", icon: "play" },
+  ]
+
+  it("takes labels: false", () => {
+    expect(toolbar(items, { labels: false }).labels).toBe(false)
+    expect(toolbar(items).labels).toBeUndefined()
+    expect(toolbar(items, { label: "Play", labels: true })).toMatchObject({
+      labels: true,
+      label: "Play",
+    })
+  })
+
+  it("centres each icon and hides its label and shortcut", () => {
+    expect(rule(css, ".knobs-panel .knobs-toolbar[data-icons] .knobs-tool")).toContain(
+      "justify-content:center",
+    )
+    expect(
+      rule(css, ".knobs-panel .knobs-toolbar[data-icons] :is(.knobs-tool-label,.knobs-tool-key)"),
+    ).toBe("display:none")
+  })
+})

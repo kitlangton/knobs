@@ -827,6 +827,10 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-tool[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-tool .knobs-icon{flex:none;width:var(--k-icon-sm);height:var(--k-icon-sm)}
 .knobs-tool-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Icons only (labels that don't fit one row, or labels: false): one row of equal buttons, each
+   its icon centred, its label and shortcut in its tooltip. */
+.knobs-panel .knobs-toolbar[data-icons] .knobs-tool{justify-content:center;padding:0;cursor:default}
+.knobs-panel .knobs-toolbar[data-icons] :is(.knobs-tool-label,.knobs-tool-key){display:none}
 /* The shortcut sits at the button's end, so a column of buttons lines their chips up. */
 .knobs-panel .knobs-tool-key{flex:none;margin-left:auto;padding-left:4px;font:inherit;font-size:var(--_k-text-cap);font-variant-numeric:tabular-nums;color:var(--_k-fg-3);letter-spacing:.06em}
 .knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-cell,.knobs-range-track,.knobs-angle,.knobs-dial,.knobs-seed,.knobs-keys,.knobs-tool){cursor:default}

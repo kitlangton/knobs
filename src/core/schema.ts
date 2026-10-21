@@ -277,6 +277,8 @@ export interface ToolbarItem {
 export interface ToolbarField extends FieldMeta {
   readonly kind: "toolbar"
   readonly items: readonly ToolbarItem[]
+  /** `false`: icons only, each label in its tooltip (see `toolbar`). */
+  readonly labels?: boolean
 }
 export type ValueField =
   | Knob
@@ -866,13 +868,21 @@ export function toolbarShortcut(item: ToolbarItem): ResolvedShortcut | undefined
 export function actionShortcut(field: ActionField): ResolvedShortcut | undefined {
   return field.shortcut ? { key: field.shortcut, scope: field.scope ?? "panel" } : undefined
 }
-/** A wrapping row of buttons with icons and shortcut chips; holds no value. */
-export function toolbar(items: readonly ToolbarItem[], meta?: FieldMeta): ToolbarField {
+/**
+ * A wrapping row of buttons with icons and shortcut chips; holds no value. When every item has an
+ * icon and the labels don't fit on one row, it's one row of icons, each label in its tooltip;
+ * `labels: false` always shows icons only, `labels: true` always shows the labels.
+ */
+export function toolbar(
+  items: readonly ToolbarItem[],
+  meta?: FieldMeta & { readonly labels?: boolean },
+): ToolbarField {
   if (!items.length) throw new Error("A toolbar needs at least one item.")
   return withMeta(
     {
       kind: "toolbar" as const,
       items: Object.freeze(items.map((item) => Object.freeze({ ...item }))),
+      ...(meta?.labels !== undefined ? { labels: meta.labels } : {}),
     },
     meta,
   )

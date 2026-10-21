@@ -59,6 +59,7 @@ import { giveRoom, offRow, precisionRate } from "./feel.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
+import { tooltip } from "../ui/tooltip.js"
 
 function make(doc: Document) {
   return <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -1377,8 +1378,10 @@ function naturalWidth(b: HTMLElement) {
 
 /**
  * A toolbar: its buttons in equal columns, as many as fit and balanced across the rows (see
- * `toolbarColumns`), each with its icon and label at the start and its shortcut at the end.
- * `keyOf` is each item's shortcut as it is now (the store's rebinding, else its own).
+ * `toolbarColumns`), each with its icon and label at the start and its shortcut at the end. When
+ * every button has an icon and the labels don't fit on one row (or `labels: false`), it's one row
+ * of icons, each label and shortcut in its tooltip. `keyOf` is each item's shortcut as it is now
+ * (the store's rebinding, else its own).
  */
 export function toolbarRow(
   c: RowContext<ToolbarField>,
@@ -1394,15 +1397,41 @@ export function toolbarRow(
   let buttons: HTMLButtonElement[] = []
   let last = 0
   let keys = ""
+  let untips: (() => void)[] = []
   const keysNow = () => field.items.map((item) => keyOf(item)?.key ?? "").join("\u0000")
+  /** Icons only, each label (and shortcut) in its tooltip; or back to labelled buttons. */
+  const showIcons = (on: boolean) => {
+    if (row.hasAttribute("data-icons") === on && untips.length === (on ? buttons.length : 0)) return
+    row.toggleAttribute("data-icons", on)
+    for (const off of untips) off()
+    untips = on
+      ? field.items.map((item, i) => {
+          const key = keyOf(item)
+          return tooltip(buttons[i]!, item.label, key ? { shortcut: key.key } : {})
+        })
+      : []
+  }
   const layout = () => {
     const cs = getComputedStyle(row)
     const avail =
       row.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
     if (avail <= 0 || !buttons.length) return
-    const widest = Math.max(...buttons.map(naturalWidth))
+    const gap = parseFloat(cs.columnGap) || 0
+    const iconed = field.items.every((item) => item.icon)
+    let icons = iconed && field.labels === false
+    if (iconed && field.labels === undefined) {
+      // The labelled buttons' widths, read with their labels showing.
+      const was = row.hasAttribute("data-icons")
+      if (was) row.removeAttribute("data-icons")
+      const widest = Math.max(...buttons.map(naturalWidth))
+      if (was) row.setAttribute("data-icons", "")
+      icons = toolbarColumns(buttons.length, widest, avail, gap) < buttons.length
+    }
+    showIcons(icons)
     const cols = String(
-      toolbarColumns(buttons.length, widest, avail, parseFloat(cs.columnGap) || 0),
+      icons
+        ? buttons.length
+        : toolbarColumns(buttons.length, Math.max(...buttons.map(naturalWidth)), avail, gap),
     )
     if (row.style.getPropertyValue("--k-tool-cols") !== cols) {
       row.style.setProperty("--k-tool-cols", cols)
@@ -1430,6 +1459,7 @@ export function toolbarRow(
       b.tabIndex = -1
       b.disabled = Boolean(item.disabled)
       b.dataset.item = item.id ?? item.label
+      b.setAttribute("aria-label", item.label)
       let iconEl: Element | undefined
       if (item.icon) {
         iconEl = iconSvg(c.doc, item.icon)
@@ -1462,6 +1492,8 @@ export function toolbarRow(
     row.replaceChildren(...buttons)
     ;(gpu as { items: GpuToolbarRow["items"] }).items = items
     keys = keysNow()
+    for (const off of untips) off()
+    untips = []
     if (row.isConnected) layout()
   }
   build()
@@ -1527,6 +1559,7 @@ export function toolbarRow(
     },
     dispose() {
       sizes.disconnect()
+      for (const off of untips) off()
     },
     tracks: [],
     gpu: [gpu],

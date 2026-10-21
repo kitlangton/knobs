@@ -3939,10 +3939,11 @@ class GpuOverlayManager {
       }
       const lr = this.rectOf(item.label)
       const px = t.buttonFontSize ?? t.textControl
-      // A narrow column ellipsizes the label, as the DOM's does.
+      // A narrow column ellipsizes the label, as the DOM's does; icons only, it has none.
       const words = this.fit(item.label.textContent ?? "", lr.width + 1, px, t.labelWeight)
-      this.drawText(words, lr.left, cy, ink, { px, weight: t.labelWeight, ...zoom })
-      if (item.chip) {
+      if (lr.width > 0)
+        this.drawText(words, lr.left, cy, ink, { px, weight: t.labelWeight, ...zoom })
+      if (item.chip && item.chip.getClientRects().length) {
         const kr = this.rectOf(item.chip)
         this.drawText(item.chip.textContent ?? "", kr.left, cy, withAlpha(t.dim, alpha), {
           px: t.textCap,
