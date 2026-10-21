@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas · knobs/ui</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      .app { display: flex; flex-direction: column; height: 100%; background: var(--_k-bg-page); color: var(--_k-fg);
+        font: var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font); -webkit-font-smoothing: antialiased; }
+      .top { flex: none; display: flex; align-items: baseline; gap: 10px; height: 30px; padding: 9px 12px 0; user-select: none; }
+      .top b { font-weight: var(--_k-weight-title); }
+      .top .dim { color: var(--_k-fg-3); font-variant-numeric: tabular-nums; }
+      .top .fill { flex: 1; }
+      .top button { all: unset; color: var(--_k-fg-3); }
+      .top button:hover { color: var(--_k-fg); }
+      #board { flex: 1; min-height: 0; }
+      .hud { position: fixed; left: 10px; bottom: 8px; z-index: 9; padding: 6px 9px; border-radius: 6px; background: color-mix(in srgb, var(--_k-bg-page) 82%, transparent);
+        color: var(--_k-fg-2); font: 11px/1.45 var(--_k-mono); white-space: pre; pointer-events: none; }
+
+      /* The stories: small components, as a components lab shows them. */
+      .s-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .s-col { display: flex; flex-direction: column; gap: 8px; }
+      .s-btn { all: unset; height: 28px; padding: 0 12px; border-radius: 8px; background: var(--_k-fill-selected); color: var(--_k-fg); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+      .s-btn:hover { background: var(--_k-fill-hover); }
+      .s-btn[data-kind="primary"] { background: var(--_k-accent); color: var(--_k-bg); }
+      .s-btn[data-kind="ghost"] { background: transparent; box-shadow: inset 0 0 0 1px var(--_k-border); }
+      .s-btn[data-kind="danger"] { background: color-mix(in srgb, var(--_k-danger) 22%, transparent); color: var(--_k-danger); }
+      .s-input { all: unset; height: 28px; padding: 0 10px; width: 200px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--_k-border); color: var(--_k-fg); font-size: 13px; }
+      .s-input:focus { box-shadow: inset 0 0 0 1.5px var(--_k-accent); }
+      .s-chip { padding: 2px 8px; border-radius: 999px; background: var(--_k-fill); color: var(--_k-fg-2); font-size: 12px; }
+      .s-dim { color: var(--_k-fg-3); font-size: 12px; }
+      .s-h { font-size: 16px; line-height: 24px; font-weight: 500; }
+      .s-p { font-size: 13px; line-height: 20px; color: var(--_k-fg-2); max-width: 320px; margin: 0; }
+      .s-sw { width: 40px; height: 40px; border-radius: 8px; }
+      .s-toggle { all: unset; width: 34px; height: 20px; border-radius: 999px; background: var(--_k-fill-selected); position: relative; }
+      .s-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--_k-fg); transition: translate .25s cubic-bezier(.2,.8,.2,1); }
+      .s-toggle[aria-checked="true"] { background: var(--_k-accent); }
+      .s-toggle[aria-checked="true"]::after { translate: 14px 0; background: var(--_k-bg); }
+      .s-list { display: flex; flex-direction: column; width: 240px; }
+      .s-li { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; font-size: 13px; }
+      .s-li:hover { background: var(--_k-fill-hover); }
+      .s-avatar { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+      .s-bar { display: flex; align-items: flex-end; gap: 4px; height: 100%; }
+      .s-bar i { flex: 1; border-radius: 3px 3px 0 0; background: var(--_k-accent); opacity: .8; }
+      .s-code { margin: 0; font: 12px/18px var(--_k-mono); color: var(--_k-fg-2); white-space: pre; }
+      .s-kbd { display: inline-flex; min-width: 20px; height: 20px; padding: 0 5px; align-items: center; justify-content: center; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--_k-border); font: 11px var(--_k-mono); color: var(--_k-fg-2); }
+      .s-toast { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--_k-fill); font-size: 13px; width: 280px; }
+      .s-progress { width: 220px; height: 4px; border-radius: 2px; background: var(--_k-fill); overflow: hidden; }
+      .s-progress i { display: block; height: 100%; background: var(--_k-accent); }
+      .s-tabs { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--_k-fill); width: max-content; }
+      .s-tab { all: unset; height: 24px; padding: 0 10px; border-radius: 7px; font-size: 12px; color: var(--_k-fg-2); }
+      .s-tab[aria-selected="true"] { background: var(--_k-bg); color: var(--_k-fg); }
+      .s-range { width: 200px; accent-color: var(--_k-accent); }
+      .s-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
+      .s-grid i { width: 22px; height: 22px; border-radius: 5px; }
+      .s-fill { position: absolute; inset: 16px; display: grid; place-items: center; }
+    </style>
+  </head>
+  <body>
+    <div class="app knobs-root knobs-ui">
+      <header class="top">
+        <b>Components</b><span class="dim" id="count"></span>
+        <span class="fill"></span>
+        <span class="dim">drag · space-drag · pinch / ⌘-scroll · 0 fit · 1 100% · = − · double-click to focus</span>
+        <button type="button" id="theme"></button>
+      </header>
+      <div id="board"></div>
+    </div>
+    <script type="module" src="./canvas.ts"></script>
+  </body>
+</html>
