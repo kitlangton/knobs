@@ -278,7 +278,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     text.className = "knobs-tree-text"
     label.append(text)
     const detail = doc.createElement("span")
-    detail.className = "knobs-tree-detail"
+    detail.className = "knobs-tree-detail knobs-scroll-fade-x"
     const tools = doc.createElement("span")
     tools.className = "knobs-tree-tools"
     el.append(caret, icon, label, detail, tools)

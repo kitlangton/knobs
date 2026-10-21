@@ -3,17 +3,18 @@
 import { describe, expect, it } from "vitest"
 import { toolbar } from "../src/core/schema.js"
 import { injectStyles } from "../src/panel/styles.js"
+import { injectUiStyles } from "../src/ui/look.js"
 import { presetLines } from "../src/panel/presets.js"
 
-/** The panel stylesheet, as injectStyles writes it. */
-function stylesheet() {
+/** The panel stylesheet (or another), as injectStyles writes it. */
+function stylesheet(inject: (doc: Document) => void = injectStyles) {
   let text = ""
   const doc = {
     querySelector: () => null,
     createElement: () => ({ dataset: {}, textContent: "" }),
     head: { append: (style: { textContent: string }) => (text += style.textContent) },
   }
-  injectStyles(doc as unknown as Document)
+  inject(doc as unknown as Document)
   return text.replace(/\/\*[\s\S]*?\*\//g, "")
 }
 
@@ -118,5 +119,20 @@ describe("a toolbar of icons", () => {
     expect(
       rule(css, ".knobs-panel .knobs-toolbar[data-icons] :is(.knobs-tool-label,.knobs-tool-key)"),
     ).toBe("display:none")
+  })
+})
+
+describe("a tree row's detail", () => {
+  const ui = stylesheet(injectUiStyles)
+
+  // The label keeps its width (it gives way only once nothing's left to take); the detail starts
+  // from nothing and takes only the room that's left, so it's cut (and fades) first.
+  it("gives way before the label", () => {
+    expect(rule(ui, ".knobs-tree-label")).toContain("flex:0 1 auto;min-width:0")
+    expect(rule(ui, ".knobs-tree-detail")).toContain("flex:1 1 0;min-width:0;overflow:hidden")
+  })
+
+  it("keeps the tools at the row's end with or without a detail", () => {
+    expect(rule(ui, ".knobs-tree-tools")).toContain("margin-left:auto")
   })
 })
