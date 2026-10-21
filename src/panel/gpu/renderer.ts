@@ -467,7 +467,7 @@ export interface GpuPanelBinding {
   readonly id: string
   readonly root: HTMLElement
   readonly body: HTMLElement
-  /** The pinned groups' cards, above the tab strip (hidden while none are pinned). */
+  /** The pinned groups' cards, above the tab strip (empty while none are pinned). */
   readonly pinned?: HTMLElement
   readonly inline: boolean
   readonly header: HTMLElement

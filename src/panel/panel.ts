@@ -726,7 +726,6 @@ function buildPanel<S extends Schema>(
   // preset strip leads the body: it belongs to the tabs, and crosses a tab change with the rows.
   const pinnedBody = el("div")
   pinnedBody.className = "knobs-pinned"
-  pinnedBody.hidden = true
   if (!page) body.append(presetStrip.element)
   // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
   // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
@@ -2094,7 +2093,6 @@ function buildPanel<S extends Schema>(
       const nodesOf = (list: Block[]) => list.flatMap((b) => (b.head ? [b.head, b.card] : [b.card]))
       arrange(pinnedBody, nodesOf(chosen.filter((b) => pinnedBlocks.has(b))))
       arrange(body, [presetStrip.element, ...nodesOf(chosen.filter((b) => !pinnedBlocks.has(b)))])
-      pinnedBody.hidden = pinnedBlocks.size === 0
       for (const block of free) {
         block.leaving = true
         const fold = () => {

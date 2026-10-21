@@ -7,22 +7,25 @@ const values = (page: Page) =>
   page.evaluate(() => ({ ...(window as any).pinned.controls.get() })) as Promise<
     Record<string, unknown>
   >
+/** What's still moving: running animations, and nodes a tab change or a reveal is carrying. */
+const moving = (page: Page) =>
+  page.evaluate(() => [
+    ...document
+      .getAnimations()
+      // Scroll-driven ones (the header's frost) run for as long as the page does.
+      .filter(
+        (a) =>
+          a.playState === "running" &&
+          a.timeline instanceof DocumentTimeline &&
+          a.effect?.getTiming().iterations !== Infinity,
+      )
+      .map((a) => `animation ${(a as CSSAnimation).animationName ?? a.constructor.name}`),
+    ...[...document.querySelectorAll<HTMLElement>("[data-tab-opacity],[data-presence]")].map(
+      (n) => `${n.tagName.toLowerCase()}.${n.className} presence=${n.dataset.presence ?? ""}`,
+    ),
+  ])
 /** Waits out running transitions and reveals, however busy the machine. */
-const still = (page: Page) =>
-  expect
-    .poll(
-      () =>
-        page.evaluate(
-          () =>
-            document
-              .getAnimations()
-              .filter(
-                (a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity,
-              ).length + document.querySelectorAll("[data-tab-opacity],[data-presence]").length,
-        ),
-      { timeout: 10_000 },
-    )
-    .toBe(0)
+const still = (page: Page) => expect.poll(() => moving(page), { timeout: 10_000 }).toEqual([])
 
 async function open(page: Page, query = "") {
   const errors: string[] = []

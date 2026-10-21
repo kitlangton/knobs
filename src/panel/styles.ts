@@ -325,6 +325,8 @@ const css = `
 .knobs-panel:not(.knobs-page) .knobs-group-head:not(:first-child){border-top:1px solid var(--k-group-divider);padding-top:var(--k-group-divider-gap)}
 .knobs-group-head:first-child{margin-top:0}
 .knobs-panel:not(.knobs-page) .knobs-presets+.knobs-group-head{margin-top:0;border-top:0;padding-top:0}
+.knobs-pinned{margin-bottom:var(--k-group-gap)}
+.knobs-pinned:empty{display:none}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--_k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--_k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--_k-fg-2);background:transparent;border-radius:var(--_k-radius-sm);cursor:pointer}
 .knobs-group-head button:is(:hover:not([disabled]),:focus-visible){background:var(--_k-fill-selected);color:var(--_k-fg)}

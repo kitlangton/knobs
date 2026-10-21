@@ -89,7 +89,12 @@ describe("spans", () => {
   test("clipped to the axis, the cut ends marked", () => {
     expect(clipSpan(10, 20, 0, 100)).toEqual({ from: 10, to: 20, clipStart: false, clipEnd: false })
     expect(clipSpan(-5, 20, 0, 100)).toEqual({ from: 0, to: 20, clipStart: true, clipEnd: false })
-    expect(clipSpan(90, 120, 0, 100)).toEqual({ from: 90, to: 100, clipStart: false, clipEnd: true })
+    expect(clipSpan(90, 120, 0, 100)).toEqual({
+      from: 90,
+      to: 100,
+      clipStart: false,
+      clipEnd: true,
+    })
     expect(clipSpan(120, 130, 0, 100)).toBeNull()
   })
   test("a tag inside where it fits, the shorter one next, after the bar, or none", () => {
