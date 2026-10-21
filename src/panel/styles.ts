@@ -320,6 +320,15 @@ const css = `
 .knobs-panel[data-buttons] .knobs-preset-chip:hover{background:var(--k-button-hover-bg,var(--_k-fill-selected))!important;box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
 .knobs-panel .knobs-preset-chip:hover{color:var(--_k-fg)}
 .knobs-panel .knobs-preset-chip[aria-checked="true"]{color:var(--_k-fg);font-weight:var(--_k-weight-title)}
+/* A list (presetDisplay "list", or chips that would take more than two lines): rows like a
+   menu's, their names on the rows' text edge and each wash bleeding 8 px past it, the selection a
+   quiet wash that glides between them. Hover is a wash too, on at once. */
+.knobs-presets[data-display="list"]{padding:0;background:transparent}
+.knobs-presets[data-display="list"]>.knobs-presets-track{grid-template-columns:minmax(0,1fr);gap:0;margin:0 calc(var(--_k-inset) - 8px)}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip{height:var(--_k-control-h);padding:0 16px 0 8px;text-align:left;cursor:default;font-weight:var(--_k-weight-label);transition:color .12s,background .12s}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip:hover:not([aria-checked="true"]){background:var(--_k-row-hover)!important;transition-duration:0s}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip::after{top:50%;right:8px;margin-top:-2px}
+.knobs-presets[data-display="list"] .knobs-presets-pill{background:var(--_k-fill-selected);box-shadow:none}
 .knobs-panel .knobs-preset-save{flex:none;width:calc((var(--_k-inset) - var(--_k-tray-pad)) * 2 + 8px);padding:0!important;color:var(--_k-fg-3)!important;font-weight:400!important;font-size:var(--_k-text-title)!important}
 .knobs-panel .knobs-preset-save:hover{color:var(--_k-fg)!important}
 /* The active preset's modified mark: the values have drifted off it (a row's dot, in its corner). */

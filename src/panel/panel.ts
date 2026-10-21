@@ -731,6 +731,8 @@ function buildPanel<S extends Schema>(
     else if ((!header.hidden && header.dataset.leaving !== "true") !== any)
       reveal(header, any, () => wakeGpu())
   }
+  // A page's strip sits in its header bar, where it stays chips.
+  presetStrip.display(page ? "chips" : (options.presetDisplay ?? "auto"))
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),

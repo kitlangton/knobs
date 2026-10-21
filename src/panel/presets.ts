@@ -82,11 +82,26 @@ export function resolveActivePresetEntry<V extends Record<string, any>>(
   }
 }
 
+/**
+ * How many lines `count` chips take in `avail` px, at least `min` px each with `gap` between (as
+ * the strip's auto-fit grid lays them); 1 before there's room to measure.
+ */
+export function presetLines(count: number, min: number, avail: number, gap: number): number {
+  if (count <= 0 || min <= 0 || avail <= 0) return 1
+  return Math.ceil(count / Math.max(1, Math.floor((avail + gap) / (min + gap))))
+}
+
 export function nextPresetIndex(count: number, activeIndex: number, direction: number): number {
   if (count <= 0) return -1
   if (activeIndex < 0) return direction > 0 ? 0 : count - 1
   return (((activeIndex + direction) % count) + count) % count
 }
+
+/**
+ * How the strip lays out its presets: `"chips"` in a tray of equal columns, `"list"` as rows like a
+ * menu's, or `"auto"` (the default): chips while they fit on two lines, else the list.
+ */
+export type PresetDisplay = "auto" | "list" | "chips"
 
 export interface PresetStrip {
   readonly element: HTMLElement
@@ -104,6 +119,8 @@ export interface PresetStrip {
   cycle(direction: -1 | 1): void
   /** Applies the nth chip (0-based), as a click on it does. */
   select(index: number): void
+  /** Lays the presets out as chips or a list (see `PresetDisplay`). */
+  display(mode: PresetDisplay): void
   selectById(id: string): void
   /** Saves the current values as "Variant N" and opens its name to typing; returns a status message. */
   save(): string
@@ -173,6 +190,9 @@ export function createPresetStrip<S extends Schema>(
   let initializedPill = false
   /** While the pill slides to a new chip, a resize retargets it instead of snapping it there. */
   let slideUntil = 0
+  let display: PresetDisplay = "auto"
+  /** A chip column's least width (px): the longest name's (see `fitColumns`). */
+  let chipMin = 0
 
   function buildEntries(): PresetEntry<Values<S>>[] {
     const presetEntries: PresetEntry<Values<S>>[] = Object.entries(controls.presets).map(
@@ -374,7 +394,27 @@ export function createPresetStrip<S extends Schema>(
       widest = Math.max(widest, range.getBoundingClientRect().width)
     }
     // Room for the bolder selected weight plus the chip's side padding.
-    if (widest > 0) track.style.setProperty("--k-preset-min", `${Math.ceil(widest * 1.06 + 14)}px`)
+    if (widest > 0) {
+      chipMin = Math.ceil(widest * 1.06 + 14)
+      track.style.setProperty("--k-preset-min", `${chipMin}px`)
+    }
+    placeDisplay()
+  }
+
+  /** How many lines the chips take at the strip's width (as the track's auto-fit grid lays them). */
+  function chipLines() {
+    const pad = parseFloat(getComputedStyle(root).getPropertyValue("--_k-tray-pad")) || 0
+    const save = saveButton ? saveButton.offsetWidth + pad : 0
+    return presetLines(buttons.length, chipMin, root.clientWidth - pad * 2 - save, pad)
+  }
+
+  /** Chips, or a list once they'd take more than two lines; true when that changed. */
+  function placeDisplay() {
+    const list = display === "list" || (display === "auto" && chipLines() > 2)
+    const want = list ? "list" : "chips"
+    if (root.dataset.display === want) return false
+    root.dataset.display = want
+    return true
   }
 
   function save() {
@@ -601,8 +641,12 @@ export function createPresetStrip<S extends Schema>(
   })
 
   void doc.fonts?.ready.then(fitColumns)
-  const ro = new ResizeObserver(() => measurePill(performance.now() >= slideUntil))
+  // A new layout places the pill at once; a resize mid-slide retargets it.
+  const ro = new ResizeObserver(() =>
+    measurePill(placeDisplay() || performance.now() >= slideUntil),
+  )
   ro.observe(track)
+  ro.observe(root)
 
   return {
     element: root,
@@ -621,6 +665,10 @@ export function createPresetStrip<S extends Schema>(
       if (index !== activeState.activeIndex || activeState.drifted) selectAt(index)
     },
     selectById,
+    display(mode) {
+      display = mode
+      if (placeDisplay()) measurePill(true)
+    },
     save: () => {
       let message = ""
       run(() => (message = save()))

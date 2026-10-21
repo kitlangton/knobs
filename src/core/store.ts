@@ -301,6 +301,11 @@ export interface MountPanelOptions extends LabelOptions {
   readonly density?: DensityMode
   readonly renderer?: RendererMode
   readonly variants?: boolean
+  /**
+   * The presets as chips in a tray (`"chips"`) or as rows like a menu's (`"list"`). `"auto"` (the
+   * default) shows chips while they fit on two lines and the list once they'd take more.
+   */
+  readonly presetDisplay?: "auto" | "list" | "chips"
   readonly history?: boolean
   readonly footer?: boolean
   readonly actions?: readonly ControlAction<any>[]

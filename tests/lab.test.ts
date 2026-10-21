@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest"
 import { toolbar } from "../src/core/schema.js"
 import { injectStyles } from "../src/panel/styles.js"
+import { presetLines } from "../src/panel/presets.js"
 
 /** The panel stylesheet, as injectStyles writes it. */
 function stylesheet() {
@@ -66,6 +67,31 @@ describe("header buttons in a pane's header", () => {
   it("bloom in and out of slots that take no room while they're away", () => {
     expect(rule(css, '.knobs-head-actions[data-docked] button[data-shown="false"]')).toMatch(
       /^width:0;/,
+    )
+  })
+})
+
+describe("presets as a list", () => {
+  it("counts the lines the chips would take", () => {
+    // 7 chips at 150 px in a 280 px strip: one column, seven lines.
+    expect(presetLines(7, 150, 280, 2)).toBe(7)
+    // Two columns of 120 px fit in 250 px: four lines.
+    expect(presetLines(7, 120, 250, 2)).toBe(4)
+    expect(presetLines(4, 60, 280, 2)).toBe(1)
+    // Nothing to measure yet: one line, so the chips show until there is.
+    expect(presetLines(7, 0, 280, 2)).toBe(1)
+    expect(presetLines(7, 150, 0, 2)).toBe(1)
+  })
+
+  it("lays them out as left-aligned rows with a quiet selection", () => {
+    expect(rule(css, '.knobs-presets[data-display="list"]>.knobs-presets-track')).toContain(
+      "grid-template-columns:minmax(0,1fr)",
+    )
+    expect(
+      rule(css, '.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip'),
+    ).toContain("text-align:left")
+    expect(rule(css, '.knobs-presets[data-display="list"] .knobs-presets-pill')).toContain(
+      "box-shadow:none",
     )
   })
 })
