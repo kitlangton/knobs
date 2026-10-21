@@ -919,6 +919,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-menu-item[data-separated]::before{content:"";position:absolute;left:8px;right:8px;top:calc(var(--_k-unit) * -1 - 1px);height:1px;transform:scaleY(.5);background:var(--_k-border)}
 
 /* Status & Transfer Textarea */
+.knobs-panel .knobs-empty{margin:0;padding:calc(var(--_k-unit) * 2) var(--_k-inset);color:var(--_k-fg-3);font-size:var(--_k-text-control);overflow-wrap:anywhere}
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 var(--_k-inset);color:var(--_k-fg-2);font-size:var(--_k-text-meta);overflow-wrap:anywhere}
 
 .knobs-panel textarea{width:100%;min-height:84px;margin-top:6px;padding:6px var(--_k-inset);resize:vertical;font:var(--_k-text-meta)/1.4 var(--_k-mono)}

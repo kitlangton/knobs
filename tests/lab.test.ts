@@ -136,3 +136,12 @@ describe("a tree row's detail", () => {
     expect(rule(ui, ".knobs-tree-tools")).toContain("margin-left:auto")
   })
 })
+
+describe("a panel with no rows", () => {
+  it("shows its empty line quietly, inset like a row", () => {
+    const empty = rule(css, ".knobs-panel .knobs-empty")
+    expect(empty).toContain("color:var(--kv-fg-3)")
+    expect(empty).toContain("var(--kv-inset)")
+    expect(empty).not.toContain("display")
+  })
+})

@@ -2695,6 +2695,11 @@ function buildPanel<S extends Schema>(
     if (panelActions.length > 0) root.append(customActions)
     root.append(text, apply, status, live)
   }
+  // With no rows, the host's line (`empty`), in the panel's quiet style.
+  const emptyEl = el("p", options.empty)
+  emptyEl.className = "knobs-empty"
+  emptyEl.hidden = true
+  if (options.empty && !page) body.after(emptyEl)
 
   // Changes that move several rows at once (presets, reset, random, undo) ripple down the panel:
   // each changed row starts --k-cascade ms after the one above. A row already in motion retargets
@@ -2763,6 +2768,7 @@ function buildPanel<S extends Schema>(
       shape = controls.schema
       layoutRows(initialized && !landing)
     }
+    if (emptyEl.isConnected && emptyEl.hidden !== rows.length > 0) emptyEl.hidden = rows.length > 0
     const values = controls.get() as Record<string, unknown>
     const before = shown as Record<string, unknown>
     // A row with nothing shown yet (it just arrived) places its value without motion.

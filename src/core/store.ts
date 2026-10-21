@@ -306,6 +306,8 @@ export interface MountPanelOptions extends LabelOptions {
    * default) shows chips while they fit on two lines and the list once they'd take more.
    */
   readonly presetDisplay?: "auto" | "list" | "chips"
+  /** Shown in the panel's quiet style while it has no rows (`"This story has no controls"`). */
+  readonly empty?: string
   readonly history?: boolean
   readonly footer?: boolean
   readonly actions?: readonly ControlAction<any>[]
