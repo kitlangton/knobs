@@ -26,6 +26,9 @@ const panes = [
 ]
 const handles: Record<string, SplitHandle> = {}
 ;(window as unknown as { __splits: typeof handles }).__splits = handles
+/** How many trees each wrapper made: one, however its children are read. */
+const made: Record<string, number> = {}
+;(window as unknown as { __made: typeof made }).__made = made
 
 function ReactApp() {
   const [items, setItems] = useState(seed)
@@ -119,6 +122,7 @@ render(() => {
   >
     <${SolidTree}
       label="Solid outliner"
+      onReady=${(_tree: unknown) => (made.solid = (made.solid ?? 0) + 1)}
       items=${items}
       expanded=${["lights"]}
       onSelect=${(_: readonly string[], primary: string | null) => setPicked(primary ?? "none")}

@@ -554,6 +554,8 @@ test("wrappers: React (in StrictMode) and Solid put children in panes, follow ne
     await page.evaluate((w) => (window as any).__splits[w].collapse("outline", true), which)
     await expect.poll(async () => Math.round((await outline.boundingBox())!.width)).toBeLessThan(40)
   }
+  // Solid's Split makes each pane's child once.
+  expect(await page.evaluate(() => (window as any).__made.solid)).toBe(1)
   expect(errors).toEqual([])
 })
 
