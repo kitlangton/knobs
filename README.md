@@ -427,8 +427,10 @@ Three things show which, in both renderers, on floating and inline panels and on
   Cohesion`, the deepest crumb bright and its parents dim. Crumbs glide to their places as focus
   moves, and one that changes fades out as the new one fades in. For a moment after a key below
   the panel's level, a faint `esc ↑ Shape` follows it, then fades. Clicking a crumb takes focus to
-  its level; clicking the title takes it to the panel. When it doesn't fit, the first crumbs fold
-  into `…`. `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
+  its level; clicking the title takes it to the panel. The line lives in the room between the
+  title and the header's buttons: when it doesn't fit, the first crumbs drop off, and without room
+  for the deepest it stays empty, so it never runs under the buttons and the title never moves.
+  `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
 
 Tune them with tokens on the panel or any ancestor:
 

@@ -233,7 +233,7 @@ const css = `
 .knobs-crumbs{position:absolute;left:0;top:50%;height:0;pointer-events:none;white-space:nowrap;font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);line-height:1.2;letter-spacing:0;text-transform:none}
 .knobs-crumbs>*{position:absolute;left:0;top:0;translate:0 -50%;color:var(--_k-fg-3);transition:opacity .2s var(--k-ease),translate ${CRUMB_GLIDE},color .2s var(--k-ease)}
 .knobs-crumbs>[data-leaving]{transition:opacity .14s cubic-bezier(.4,0,1,1),translate .14s cubic-bezier(.4,0,1,1)}
-.knobs-crumbs>.knobs-crumb-crumb{pointer-events:auto;cursor:pointer}
+.knobs-crumbs>.knobs-crumb-crumb{pointer-events:auto;cursor:default}
 .knobs-crumbs>.knobs-crumb-crumb[data-deep]{color:var(--_k-fg)}
 .knobs-crumbs>.knobs-crumb-crumb:not([data-deep]):hover{color:var(--_k-fg-2)}
 .knobs-crumbs>.knobs-crumb-sep{color:color-mix(in srgb,var(--_k-fg-3) 70%,transparent)}
@@ -250,7 +250,7 @@ const css = `
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 /* The tools sit quiet (--k-dim) until the panel has the pointer or keyboard focus, then read as
    labels, and as text under the pointer. */
-.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--_k-fg-3);background:transparent;border-radius:var(--_k-round);cursor:pointer;font-size:12px;line-height:1;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s}
+.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--_k-fg-3);background:transparent;border-radius:var(--_k-round);cursor:default;font-size:12px;line-height:1;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s}
 .knobs-panel:is(:hover,:has(:focus-visible)) header button{color:var(--_k-fg-2)}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--_k-fill-selected);color:var(--_k-fg)}
 .knobs-panel header button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
