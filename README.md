@@ -202,10 +202,10 @@ keeps a gradient's stop count and walks its hue along a lightness ramp. On a cur
 a built-in shape and jitters it. Mutate nudges colours as it does a `color` and moves stops and
 points without letting them pass each other.
 
-### Inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars
+### Inspector fields: vectors, ranges, angles, seeds, key combinations, text and toolbars
 
 ```ts
-import { action, angle, defineControls, keybind, range, seed, toolbar, vec2, vec3 } from "knobs"
+import { action, angle, defineControls, keybind, range, seed, text, toolbar, vec2, vec3 } from "knobs"
 
 const node = defineControls("node", {
   replay: action("Replay", { run: replay, shortcut: "Shift+K", global: true, rebind: true }),
@@ -222,6 +222,8 @@ const node = defineControls("node", {
   yaw: angle(90),                                                             // degrees
   seed: seed(1234),                                                           // a whole number
   fire: keybind("Space"),                                                     // "Meta+Shift+K", "" for none
+  name: text("Lamp", { placeholder: "Untitled" }),                            // one line
+  notes: text("", { multiline: true }),                                       // lines in a box
 }, { onAction: (id) => run(id) })
 ```
 
@@ -246,7 +248,12 @@ const node = defineControls("node", {
   Esc cancels and ⌫ clears. Not rolled by Random or Mutate. Letters follow the user's layout
   (Dvorak's K records and matches as K), with ⌥ combinations read through the browser's layout
   map; `comboFromEvent`, `matchesCombo` and `letterOf` do the same for a host's own keys.
-- **`toolbar(items)`**: a row of buttons with an icon (`play`, `pause`, `frame`,
+- **`text(value?, { multiline?, placeholder? })`**: words typed into a field beside the label, or
+  with `multiline` a box under it that grows with its lines (up to eight, then it scrolls). Each
+  keystroke sets the value and one focus's typing is one undo step; Enter (`⌘Enter` in a box) or
+  Esc lets go. A one-line field turns a line break into a space. Presets, copy and remote
+  descriptors carry it like any string; Random and Mutate leave it alone.
+- **`toolbar(items, { labels? })`**: a row of buttons with an icon (`play`, `pause`, `frame`,
   `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
   and a shortcut chip. The buttons share equal columns, as many as fit, balanced across the rows
   (four that don't fit in one row wrap as two and two), each chip at its button's end. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
@@ -255,7 +262,8 @@ const node = defineControls("node", {
   `shortcut: { key, scope }` says where one works: `"panel"` (the default), `"page"` (as `global`)
   or `"none"`, a chip that only shows a key the host binds itself (a canvas's `F`), so the panel's
   own `f` and `g` still work beside it. The row holds no value; ←/→ move along it and Enter or
-  Space presses.
+  Space presses. When every button has an icon and the labels don't fit on one row, it's one row
+  of icons, each label and shortcut in its tooltip; `labels: false` always shows icons only.
 - **`action(label, { run, shortcut?, global?, rebind? })`**: a button row, whose `shortcut` (a
   combination such as `"Shift+K"`, or `{ key, scope }`) presses it under the same rules as a
   toolbar button's: while the panel has focus, or anywhere on the page with `global: true` (not
@@ -268,9 +276,9 @@ const node = defineControls("node", {
   button's too (by its id), which has no cap of its own to rebind it from.
 
 Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle" | "seed" |
-"keybind"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
-`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`; vectors take
-`axes`. Each kind takes
+"keybind" | "text"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
+`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }], labels? }`; vectors take
+`axes`, text `multiline` and `placeholder`. Each kind takes
 `disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
 
 Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve). Switches sit out of Random and Mutate unless a field says `random: true`: they usually show or hide things (a view, a scene's part), and a roll that hides the page isn't a new take on it.
@@ -743,6 +751,18 @@ mountPanel(station, column, {
   the close X): a list picks which show, not their order. A button left out takes no slot; Undo,
   Redo and Reset keep theirs while they're away (`data-shown="false"`, `disabled`, out of the
   tab order and the accessibility tree).
+- **On a surface.** An inline panel in a split's pane (or inside anything with the class
+  `knobs-surface`) is one surface with it: no card, padding or background of its own, its groups
+  plain sections on hairlines, its rows and preset chips keeping their inset so their text lines
+  up with the pane's. Without a title, its header buttons join the pane's header (left of the
+  collapse button) and it draws no header band; elsewhere an untitled header shows only while one
+  of its buttons does.
+- **Presets as a list.** `presetDisplay: "auto"` (the default) shows the preset strip's chips
+  while they fit on two lines and a list once they'd take more (many presets, or long names):
+  left-aligned rows, like a menu's, with the selection gliding between them. `"list"` and
+  `"chips"` pick one.
+- **Empty.** `empty: "This story has no controls"` shows that line, quietly, while the panel has
+  no rows. Without it an empty panel shows nothing.
 - **Height-bounded panels.** The header (title and buttons) stays pinned while the rows scroll
   under it; the preset strip, tabs and search scroll with the rows. Once rows are under it, and
   only then, it frosts and softens its foot with a short fade, scroll-driven with no script, in
@@ -1930,7 +1950,8 @@ The package has two core exports selected through the standard `development` con
 | `range([low, high], { min, max, step?, unit? })` | One slider with two thumbs. |
 | `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |
 | `seed(value, { min?, max? })` / `keybind(combo?)` | A whole number with a die; a captured key combination. Both stay out of Random and Mutate by default. |
-| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. `shortcut` is a key, or `{ key, scope: "page" \| "panel" \| "none" }`; `toolbarShortcut(item)` reads either. |
+| `text(value?, { multiline?, placeholder? })` | Words in a field, or lines in a box that grows with them. Out of Random and Mutate. |
+| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }], { labels? })` | A row of buttons with shortcut chips; presses call `onAction(id)`. `shortcut` is a key, or `{ key, scope: "page" \| "panel" \| "none" }`; `toolbarShortcut(item)` reads either. |
 | `watch` / `sparkline` / `graph` / `meter` / `table` / `log` (`{ label?, unit?, decimals?, format?, hz?, get?, … }`) | Readout rows that hold no value; push with `controls.watch(key, value)`. See [Readouts](#readouts-live-values-sparklines-graphs-meters-tables-and-logs). |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
