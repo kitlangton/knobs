@@ -645,6 +645,12 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 :where(.knobs-panel)[data-frame="flat"]{--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
 :where(.knobs-panel.knobs-inline:not(.knobs-page))[data-frame="flat"]{--k-chrome:0;--k-pad:0px}
 .knobs-panel[data-frame="flat"] .knobs-card{background:transparent;border-radius:0}
+/* One surface: an inline panel on another card (a split's pane, anything .knobs-surface, or in
+   [data-nested]) takes the flat frame by itself: no padding (its rows keep their inset, so their
+   text sits on the card's), groups as plain sections, rows on hairlines. */
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) :where(.knobs-panel.knobs-inline:not(.knobs-page)){--k-chrome:0;--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page){padding:0}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-card{background:transparent;border-radius:0}
 .knobs-panel[data-frame="flat"][data-rows] .knobs-card>*,.knobs-panel[data-frame="flat"][data-rows] .knobs-sub{background:transparent;border-radius:0}
 
 /* Disabled rows dim and take no edits (focus still reaches them, to read); read-only rows keep
