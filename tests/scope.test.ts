@@ -4,6 +4,7 @@ import {
   crumbTrail,
   digitHints,
   digitOption,
+  digitRoute,
   escapeTo,
   escTarget,
   fitCrumbs,
@@ -66,6 +67,33 @@ describe("digits on a row with options", () => {
     expect(digitHints(14, false)).toEqual(["1–9"])
     expect(digitHints(1, false)).toEqual(["1"])
     expect(digitHints(0, true)).toEqual([])
+  })
+})
+
+describe("digits in a panel", () => {
+  const at = (o: Partial<{ options: boolean; keeps: boolean; presets: number }>) => ({
+    options: false,
+    keeps: false,
+    presets: 0,
+    ...o,
+  })
+
+  it("go to a focused row's options first, even past its last", () => {
+    expect(digitRoute("2", at({ options: true, presets: 9 }))).toBe("options")
+    expect(digitRoute("9", at({ options: true }))).toBe("options")
+  })
+
+  it("pick the strip's variants from anywhere else", () => {
+    expect(digitRoute("1", at({ presets: 9 }))).toBe("presets")
+    expect(digitRoute("9", at({ presets: 9 }))).toBe("presets")
+    expect(digitRoute("4", at({ presets: 3 }))).toBeUndefined()
+    expect(digitRoute("1", at({}))).toBeUndefined()
+  })
+
+  it("leave a number row's typing and other keys alone", () => {
+    expect(digitRoute("3", at({ keeps: true, presets: 9 }))).toBeUndefined()
+    expect(digitRoute("0", at({ presets: 9 }))).toBeUndefined()
+    expect(digitRoute("r", at({ presets: 9 }))).toBeUndefined()
   })
 })
 

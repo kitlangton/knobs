@@ -102,6 +102,8 @@ export interface PresetStrip {
   getButtons(): readonly HTMLButtonElement[]
   getActiveState(): ActivePresetState
   cycle(direction: -1 | 1): void
+  /** Applies the nth chip (0-based), as a click on it does. */
+  select(index: number): void
   selectById(id: string): void
   /** Saves the current values as "Variant N" and opens its name to typing; returns a status message. */
   save(): string
@@ -614,6 +616,10 @@ export function createPresetStrip<S extends Schema>(
     getButtons: () => buttons,
     getActiveState: () => activeState,
     cycle,
+    select: (index) => {
+      // The active chip again brings its values back once they've drifted, as a click does.
+      if (index !== activeState.activeIndex || activeState.drifted) selectAt(index)
+    },
     selectById,
     save: () => {
       let message = ""

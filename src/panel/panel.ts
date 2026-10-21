@@ -68,6 +68,7 @@ import {
   commandScope,
   crumbTrail,
   digitOption,
+  digitRoute,
   escapeTo,
   escTarget,
   scopeLabel,
@@ -3730,7 +3731,9 @@ function buildPanel<S extends Schema>(
     }
     queueLens()
     if (!popover.hidden) describeScope()
-    optionKeys.show("keyboard" in root.dataset ? optionsAt(active) : undefined)
+    optionKeys.show(
+      "keyboard" in root.dataset ? (optionsAt(active) ?? stripOptionsAt(active)) : undefined,
+    )
   }
   let scopeQueued = false
   const queueScope = () => {
@@ -3774,6 +3777,25 @@ function buildPanel<S extends Schema>(
     const r = rows[rowAt(node)]
     if (!r || r.row.closest("[data-disabled],[data-readonly]")) return undefined
     return optionsOf(r)
+  }
+  /** Whether 1–9 can pick the preset strip's chips: it shows, with more than one. */
+  const stripDigits = () => visible(presetStrip.element) && presetStrip.getEntries().length > 1
+  const stripOptions: RowOptions = {
+    get count() {
+      return presetStrip.getEntries().length
+    },
+    choose: (i) => presetStrip.select(i),
+    shown: () => presetStrip.getButtons(),
+    anchor: presetStrip.element,
+  }
+  /**
+   * The strip's digits show on its chips while focus is on the strip or the panel itself (the
+   * digits pick them from most rows too, but showing them there would flicker row to row).
+   */
+  const stripOptionsAt = (node: Element | null) => {
+    if (hintCtrl.isActive || !node || !stripDigits()) return undefined
+    const at = presetStrip.element.contains(node) || focusLevel(node) === "panel"
+    return at && !presetStrip.nameField() ? stripOptions : undefined
   }
   /** 1–9 on a row with options pick the nth; the row takes the digits even past its last. */
   const pickOption = (event: KeyboardEvent) => {
@@ -4058,12 +4080,24 @@ function buildPanel<S extends Schema>(
       search.focus()
       return
     }
-    if (page && /^[1-9]$/.test(key)) {
+    if (/^[1-9]$/.test(key)) {
       // A page's digits pick the focused group's numbered preset (where it has them).
-      const group = focusedGroup(target)
-      if (group && groupChips.has(group)) {
+      const group = page ? focusedGroup(target) : undefined
+      const groupDigits = Boolean(group && groupChips.has(group))
+      if (groupDigits) {
         event.preventDefault()
-        run(() => applyGroupPreset(group, Number(key) - 1))
+        run(() => applyGroupPreset(group!, Number(key) - 1))
+        return
+      }
+      // Elsewhere they pick the strip's chips; a number row keeps them for typing.
+      const route = digitRoute(key, {
+        options: false,
+        keeps: tracks.has(target),
+        presets: stripDigits() ? presetStrip.getEntries().length : 0,
+      })
+      if (route === "presets") {
+        event.preventDefault()
+        presetStrip.select(Number(key) - 1)
         return
       }
     }

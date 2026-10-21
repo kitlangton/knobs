@@ -842,7 +842,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 
 /* A focused row's options: tiny digits in hint mode's look, once focus settles (optkeys.ts). */
 .knobs-optkeys{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5}
-.knobs-panel .knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;align-items:center;height:12px;padding:0 3px;border-radius:var(--_k-radius-sm);background:var(--_k-accent);color:var(--_k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
+.knobs-panel .knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;white-space:nowrap;align-items:center;height:12px;padding:0 3px;border-radius:var(--_k-radius-sm);background:var(--_k-accent);color:var(--_k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
   font:700 calc(var(--_k-text-cap) * .85)/1 var(--_k-mono);letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .12s var(--k-ease)}
 .knobs-panel .knobs-optkey-range{transform:translate(-100%,-50%)}
 .knobs-panel .knobs-optkey[data-shown]{opacity:.85;transition-duration:.15s}

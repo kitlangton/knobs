@@ -105,6 +105,21 @@ export function digitOption(key: string, count: number): number | undefined {
 }
 
 /**
+ * Where a digit goes in a panel: a focused row's options take 1–9 (even past the last), a number
+ * row and a page card's numbered presets keep theirs, and anywhere else 1–9 pick the preset
+ * strip's chips (the design's variants) while the strip has that many. Undefined leaves the key.
+ */
+export function digitRoute(
+  key: string,
+  at: { options: boolean; keeps: boolean; presets: number },
+): "options" | "presets" | undefined {
+  if (!/^[1-9]$/.test(key)) return undefined
+  if (at.options) return "options"
+  if (at.keeps) return undefined
+  return digitOption(key, at.presets) === undefined ? undefined : "presets"
+}
+
+/**
  * The digit hints for a row's options: one per option that shows (up to nine), or, while they
  * don't (a menu, a folded editor), one standing for them all ("1–5").
  */
