@@ -13,6 +13,7 @@ export default defineConfig(({ command, mode }) => ({
     entries: [
       "studies.html",
       "lab.html",
+      "components-lab.html",
       "lab-diff.html",
       "walkthrough.html",
       "review.html",
@@ -41,6 +42,7 @@ export default defineConfig(({ command, mode }) => ({
         main: resolve(import.meta.dirname, "index.html"),
         studies: resolve(import.meta.dirname, "studies.html"),
         lab: resolve(import.meta.dirname, "lab.html"),
+        componentsLab: resolve(import.meta.dirname, "components-lab.html"),
         labDiff: resolve(import.meta.dirname, "lab-diff.html"),
         walkthrough: resolve(import.meta.dirname, "walkthrough.html"),
         story: resolve(import.meta.dirname, "story.html"),
