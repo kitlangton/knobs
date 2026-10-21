@@ -112,8 +112,8 @@ const css = `
 .knobs-panel *:where(:not(.knobs-accessory,.knobs-accessory *,.knobs-live *)),.knobs-menu *{box-sizing:border-box;color:inherit;letter-spacing:inherit;word-spacing:inherit;line-height:inherit;text-transform:inherit;text-shadow:inherit;font-style:inherit}
 /* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
    hovered card doesn't hand its quick entrance to the rows inside it. */
-:where(.knobs-panel,.knobs-menu) *{--k-hover-t:calc(var(--_k-hover-out) * 1ms)}
-:where(.knobs-panel,.knobs-menu) :is(:hover,.knobs-active){--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
+:where(.knobs-panel,.knobs-menu,.knobs-head-actions[data-docked]) *{--k-hover-t:calc(var(--_k-hover-out) * 1ms)}
+:where(.knobs-panel,.knobs-menu,.knobs-head-actions[data-docked]) :is(:hover,.knobs-active){--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
 
 .knobs-panel,.knobs-chip{
   box-sizing:border-box;font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;
@@ -261,25 +261,23 @@ const css = `
    comes on at once and eases off. Outside the panel, they bring its resets with them. */
 .knobs-head-actions[data-docked]{--k-icon-size:13px;--k-icon-btn:20px;margin-right:0}
 .knobs-head-actions[data-docked] button{all:revert;box-sizing:border-box;position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--k-icon-btn);height:var(--k-icon-btn);margin:0;padding:0;border:0;border-radius:var(--_k-round);
-  background:transparent;color:var(--_k-fg-3);font:inherit;line-height:1;cursor:default;outline:none;box-shadow:none;transition:background .12s,color .12s}
-.knobs-head-actions[data-docked] button:is(:hover:not([disabled]),:focus-visible){background:var(--_ku-wash-hi,var(--_k-fill-selected));color:var(--_k-fg);transition-duration:0s}
+  background:transparent;color:var(--_k-fg-3);font:inherit;line-height:1;cursor:default;outline:none;box-shadow:none;transition:background var(--k-hover-t),color var(--k-hover-t)}
+.knobs-head-actions[data-docked] button:is(:hover:not([disabled]),:focus-visible){background:var(--_ku-wash-hi,var(--_k-fill-selected));color:var(--_k-fg)}
 .knobs-head-actions[data-docked] .knobs-icon>path{fill:currentColor}
-.knobs-head-actions[data-docked] button{--k-hover-t:120ms}
-.knobs-head-actions[data-docked] button:is(:hover,:focus-visible){--k-hover-t:0s}
+.knobs-head-actions[data-docked] button:focus-visible{--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
 /* Undo · Redo sit apart from Reset · Copy · Random. Undo, Redo and Reset (and a group's reset)
    keep their slots while they're away and bloom in and out of them: nothing beside them moves. */
 .knobs-head-history{display:flex;flex:none;margin-right:calc(var(--_k-unit) * 1.5)}
-:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},filter 0s,visibility 0s}
+:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},width ${BLOOM_IN}}
 :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
-  transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
-/* Docked, a slot opens with its button rather than waiting: the pane's title keeps the room. */
-.knobs-head-actions[data-docked] button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},width ${BLOOM_IN},filter 0s,visibility 0s}
-.knobs-head-actions[data-docked] button[data-shown="false"]{width:0;
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},width ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+/* Docked, a slot opens and closes with its button (the width above) rather than waiting: the
+   pane's title keeps the room. */
+.knobs-head-actions[data-docked] button[data-shown="false"]{width:0}
 .knobs-head-actions[data-docked]>.knobs-head-history{transition:margin ${BLOOM_IN}}
 .knobs-head-actions[data-docked]>.knobs-head-history:not(:has(>[data-shown="true"]:not([hidden]))){margin-right:0}
 @media(prefers-reduced-motion:reduce){
-  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:opacity .15s,visibility 0s!important}
+  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:opacity .15s!important}
   :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
 /* A press flash (flash.ts): from a key or a click, the button's wash brightens at once and eases
    back to its own, its ink with it. Two names, so a second press restarts it. */
@@ -325,8 +323,8 @@ const css = `
    quiet wash that glides between them. Hover is a wash too, on at once. */
 .knobs-presets[data-display="list"]{padding:0;background:transparent}
 .knobs-presets[data-display="list"]>.knobs-presets-track{grid-template-columns:minmax(0,1fr);gap:0;margin:0 calc(var(--_k-inset) - 8px)}
-.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip{height:var(--_k-control-h);padding:0 16px 0 8px;text-align:left;cursor:default;font-weight:var(--_k-weight-label);transition:color .12s,background .12s}
-.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip:hover:not([aria-checked="true"]){background:var(--_k-row-hover)!important;transition-duration:0s}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip{height:var(--_k-control-h);padding:0 16px 0 8px;text-align:left;cursor:default;font-weight:var(--_k-weight-label);transition:color var(--k-hover-t),background var(--k-hover-t)}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip:hover:not([aria-checked="true"]){background:var(--_k-row-hover)!important}
 .knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip::after{top:50%;right:8px;margin-top:-2px}
 .knobs-presets[data-display="list"] .knobs-presets-pill{background:var(--_k-fill-selected);box-shadow:none}
 .knobs-panel .knobs-preset-save{flex:none;width:calc((var(--_k-inset) - var(--_k-tray-pad)) * 2 + 8px);padding:0!important;color:var(--_k-fg-3)!important;font-weight:400!important;font-size:var(--_k-text-title)!important}

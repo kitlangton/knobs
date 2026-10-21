@@ -68,9 +68,11 @@ describe("header buttons in a pane's header", () => {
   })
 
   it("bloom in and out of slots that take no room while they're away", () => {
-    expect(rule(css, '.knobs-head-actions[data-docked] button[data-shown="false"]')).toMatch(
-      /^width:0;/,
-    )
+    expect(rule(css, '.knobs-head-actions[data-docked] button[data-shown="false"]')).toBe("width:0")
+    const shared =
+      ":is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked])"
+    expect(rule(css, `${shared} button[data-shown]`)).toMatch(/width \d+ms/)
+    expect(rule(css, `${shared} button[data-shown="false"]`)).toMatch(/width \d+ms/)
   })
 })
 
