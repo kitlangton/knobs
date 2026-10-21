@@ -70,28 +70,28 @@ export function escTarget(trail: readonly Crumb[], title: string): string | unde
 }
 
 /**
- * How much of a trail fits `room` px: crumbs from `from` on show (the ones before it fold into
- * one "…"), and the Esc hint shows only when it fits too. The deepest crumb always shows.
- * `widths` are the crumbs' own; `sep` a separator's (with its gaps), `more` the "…"'s.
+ * How much of a trail fits `room` px: crumbs from `from` on show, the ones before it dropped, and
+ * the Esc hint shows only when it fits too. Without room for the deepest crumb, none show
+ * (`from` is the trail's length): the line never runs past the title's room into the buttons.
+ * `widths` are the crumbs' own; `sep` a separator's (with its gaps).
  */
 export function fitCrumbs(
   widths: readonly number[],
   room: number,
   sep: number,
-  more: number,
   hint = 0,
 ): { from: number; hint: boolean } {
   const n = widths.length
-  if (!n) return { from: 0, hint: false }
-  const span = (from: number) => {
-    let w = 0
-    for (let i = from; i < n; i++) w += widths[i]! + (i > from ? sep : 0)
-    return from > 0 ? w + more + sep : w
+  let from = n
+  let used = 0
+  // Deepest first, each parent while it fits before the ones after it.
+  for (let i = n - 1; i >= 0; i--) {
+    const w = used + widths[i]! + (i < n - 1 ? sep : 0)
+    if (w > room) break
+    used = w
+    from = i
   }
-  let from = 0
-  while (from < n - 1 && span(from) > room) from++
-  const used = span(from)
-  return { from, hint: hint > 0 && used + sep + hint <= room }
+  return { from, hint: from < n && hint > 0 && used + sep + hint <= room }
 }
 
 /**

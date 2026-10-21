@@ -31,7 +31,7 @@ export interface CrumbsView {
 interface Piece {
   key: string
   text: string
-  kind: "crumb" | "sep" | "more" | "esc"
+  kind: "crumb" | "sep" | "esc"
   level?: CrumbLevel
   deep?: boolean
 }
@@ -81,15 +81,10 @@ export function createCrumbs(o: {
       trail.map((c) => width(c.label)),
       Math.max(0, right - x - sepW),
       sepW,
-      width("…"),
       escText ? width(escText) + HINT_GAP - sepW : 0,
     )
+    if (fit.from >= trail.length) return { pieces: [], xs: [] }
     const pieces: Piece[] = [{ key: "sep:lead", text: SEP, kind: "sep" }]
-    if (fit.from > 0)
-      pieces.push(
-        { key: "more", text: "…", kind: "more" },
-        { key: "sep:more", text: SEP, kind: "sep" },
-      )
     trail.forEach((c, i) => {
       if (i < fit.from) return
       if (i > fit.from) pieces.push({ key: `sep:${c.level}`, text: SEP, kind: "sep" })

@@ -91,14 +91,20 @@ describe("the scope line", () => {
     expect(escTarget(crumbTrail({ card: "Shape" }), "")).toBe("panel")
     expect(escTarget([], "Swarm")).toBeUndefined()
   })
-  it("folds the first crumbs into … when the trail doesn't fit, keeping the deepest", () => {
-    expect(fitCrumbs([40, 50], 200, 10, 8)).toEqual({ from: 0, hint: false })
-    expect(fitCrumbs([40, 50, 30], 110, 10, 8)).toEqual({ from: 1, hint: false })
-    expect(fitCrumbs([40, 50, 30], 20, 10, 8)).toEqual({ from: 2, hint: false })
-    expect(fitCrumbs([], 100, 10, 8)).toEqual({ from: 0, hint: false })
+  it("drops the first crumbs when the trail doesn't fit, keeping the deepest", () => {
+    expect(fitCrumbs([40, 50], 200, 10)).toEqual({ from: 0, hint: false })
+    expect(fitCrumbs([40, 50, 30], 100, 10)).toEqual({ from: 1, hint: false })
+    expect(fitCrumbs([40, 50, 30], 30, 10)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([], 100, 10)).toEqual({ from: 0, hint: false })
+  })
+  it("shows nothing when even the deepest crumb doesn't fit, never running past its room", () => {
+    // Kit's go-upsell header: "Desktop go upsell" left ~30 px before the buttons.
+    expect(fitCrumbs([28, 45], 30, 10)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([28, 45], 30, 10, 20)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([40], 0, 10)).toEqual({ from: 1, hint: false })
   })
   it("shows the Esc hint only when it fits too", () => {
-    expect(fitCrumbs([40], 100, 10, 8, 50)).toEqual({ from: 0, hint: true })
-    expect(fitCrumbs([40], 90, 10, 8, 50)).toEqual({ from: 0, hint: false })
+    expect(fitCrumbs([40], 100, 10, 50)).toEqual({ from: 0, hint: true })
+    expect(fitCrumbs([40], 90, 10, 50)).toEqual({ from: 0, hint: false })
   })
 })
