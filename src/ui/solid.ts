@@ -11,6 +11,7 @@ import { insert } from "solid-js/web"
 import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import { canvas, type Canvas as CanvasHandle, type CanvasOptions } from "./canvas.js"
 import {
   codeDiff,
   diffReview,
@@ -333,6 +334,28 @@ export function Bento(props: BentoProps): JSX.Element {
     },
   )
   onCleanup(() => b.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type CanvasProps = CanvasOptions & { onReady?: (canvas: CanvasHandle) => void }
+
+/**
+ * `canvas()` as a component. New `items` update it in place (items that stay keep their content
+ * and glide); `onView` always calls the latest prop.
+ */
+export function Canvas(props: CanvasProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const c = untrack(() => canvas(host, { ...props, onView: (v) => props.onView?.(v) }))
+  untrack(() => props.onReady?.(c))
+  follow(
+    () => ({ items: props.items }),
+    (ch) => {
+      if (ch.items) c.update(ch.items)
+    },
+  )
+  onCleanup(() => c.dispose())
   return host as unknown as JSX.Element
 }
 

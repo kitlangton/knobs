@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import { canvas, type Canvas as CanvasHandle, type CanvasOptions } from "./canvas.js"
 import {
   codeDiff,
   diffReview,
@@ -421,6 +422,40 @@ export function Bento(props: BentoProps) {
     if (!b) return
     if ("items" in c) b.update(c.items!)
     if (c.picks) b.pick(c.picks)
+  })
+  return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
+}
+
+export type CanvasProps = CanvasOptions & {
+  className?: string
+  style?: CSSProperties
+  onReady?: (canvas: CanvasHandle) => void
+}
+
+/**
+ * `canvas()` as a component. New `items` update it in place (items that stay keep their content
+ * and glide); `onView` always calls the latest prop. Keep `items` (and their `render`s) stable
+ * across renders, or each render redraws the cards.
+ */
+export function Canvas(props: CanvasProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handle = useRef<CanvasHandle | null>(null)
+  const latest = useRef(props)
+  latest.current = props
+  useLayoutEffect(() => {
+    const c = canvas(ref.current!, {
+      ...latest.current,
+      onView: (v) => latest.current.onView?.(v),
+    })
+    handle.current = c
+    latest.current.onReady?.(c)
+    return () => {
+      c.dispose()
+      handle.current = null
+    }
+  }, [])
+  useFollow({ items: props.items }, (c) => {
+    if (c.items) handle.current?.update(c.items)
   })
   return <div ref={ref} className={props.className} style={{ height: "100%", ...props.style }} />
 }
