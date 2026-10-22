@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — play with the panel open</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; height: 100vh; overflow: hidden; background: #0f1011; color: #e6e6e6; font: 13px/1.4 system-ui, sans-serif; }
+      /* A stand-in for a game: a canvas that keeps focus where it is when pressed, as games do. */
+      #stage { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; touch-action: none; }
+      #heard { position: fixed; left: 16px; bottom: 12px; font: 12px/16px ui-monospace, monospace; color: #8a8a8a; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="heard">WASD or arrows move the square</div>
+    <script type="module" src="./play.ts"></script>
+  </body>
+</html>

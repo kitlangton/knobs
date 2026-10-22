@@ -6,7 +6,15 @@ import { mountPanel } from "knobs/panel"
 const controls = defineControls(
   "opencode-cards",
   {
-    speed: knob(1, { min: 0.25, max: 4, step: 0.05, unit: "×", label: "Speed", group: "Global" }),
+    speed: knob(1, {
+      min: 0.25,
+      max: 4,
+      step: 0.05,
+      unit: "×",
+      label: "Speed",
+      group: "Global",
+      description: "Multiplies every animation's speed",
+    }),
     slow: toggle(false, { label: "Slow motion (0.25×)", group: "Global" }),
     sidebars: spring(
       { duration: 0.3, bounce: 0 },
