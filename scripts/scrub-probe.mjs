@@ -142,11 +142,14 @@ async function drag(kind, a, b, steps, every) {
   await page.evaluate((kind) => {
     window.__moves = []
     const piece = kind === "compare" ? window.__compares[0] : window.__players[0]
-    window.__onMove = () =>
-      window.__moves.push({
-        t: performance.now(),
-        frame: Math.floor(piece.timeline.time * 30 + 1e-4),
-      })
+    // The move's time before anything answers it (capture, first on the window), its frame once
+    // the timeline has taken it (bubble, last).
+    window.__onDown = () => window.__moves.push({ t: performance.now(), frame: null })
+    window.__onMove = () => {
+      const m = window.__moves.at(-1)
+      if (m) m.frame = Math.floor(piece.timeline.time * 30 + 1e-4)
+    }
+    window.addEventListener("pointermove", window.__onDown, true)
     window.addEventListener("pointermove", window.__onMove)
     window.__shown.length = 0
   }, kind)
@@ -163,6 +166,7 @@ async function drag(kind, a, b, steps, every) {
   return page.evaluate(
     ({ kind, upAt }) => {
       window.removeEventListener("pointermove", window.__onMove)
+      window.removeEventListener("pointermove", window.__onDown, true)
       const moves = window.__moves.slice(1)
       const sides = kind === "compare" ? [0, 1] : [0]
       const ev = window.__shown.filter((e) => e.kind === kind)
