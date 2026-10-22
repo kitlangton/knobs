@@ -80,6 +80,7 @@ import {
   type FocusLevel,
 } from "./scope.js"
 import { createLens, type LensTarget } from "./lens.js"
+import { watchActive } from "./active.js"
 import { createCrumbs } from "./crumbs.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
@@ -5032,6 +5033,22 @@ function buildPanel<S extends Schema>(
     attributeFilter: ["data-knobs-renderer", "data-theme", "data-appearance", "class", "style"],
   })
 
+  // `onActive`: the card or row under the pointer or focus, pinned cards and group strips included.
+  const onActive = options.onActive
+  const active = onActive
+    ? watchActive(
+        root,
+        (node) => {
+          if (!node || !root.contains(node)) return null
+          const r = rows.find((r) => !r.leaving && r.row.contains(node))
+          if (r) return r.group === undefined ? null : { group: r.group, key: r.key }
+          const card = node.closest<HTMLElement>("[data-group]")
+          return card && root.contains(card) ? { group: card.dataset.group! } : null
+        },
+        onActive,
+      )
+    : undefined
+
   const panel: Panel = {
     element: root,
     presetStrip,
@@ -5123,6 +5140,7 @@ function buildPanel<S extends Schema>(
       doc.removeEventListener("pointerup", onRelease, true)
       doc.removeEventListener("pointercancel", onRelease, true)
       crumbs?.dispose()
+      active?.dispose()
       clearTimeout(escTimer)
       win?.removeEventListener("blur", queueScope)
       win?.removeEventListener("focus", queueScope)

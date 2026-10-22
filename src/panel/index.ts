@@ -22,6 +22,7 @@ export {
 } from "./page-hints.js"
 export { Spring, VelocityTracker } from "./motion.js"
 export { createPanel, mountPage, mountPanel, type Panel, type PanelSearch } from "./panel.js"
+export type { PanelActive } from "../core/store.js"
 export {
   balancedRuns,
   type FoldSummaryInfo,

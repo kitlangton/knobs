@@ -214,6 +214,11 @@ export interface HeaderOptions {
    */
   readonly buttons?: readonly HeaderButton[]
 }
+/** What's active in a panel (see `MountPanelOptions.onActive`): a card, or one of its rows. */
+export interface PanelActive {
+  readonly group: string
+  readonly key?: string
+}
 export interface MountPanelOptions extends LabelOptions {
   readonly title?: string | false
   /**
@@ -318,6 +323,13 @@ export interface MountPanelOptions extends LabelOptions {
   readonly sound?: boolean | SoundOptions
   /** Called once the panel is mounted, with a handle to focus it (a host's "Tune" key). */
   readonly onReady?: (panel: PanelHandle) => void
+  /**
+   * Called when the card or row under the pointer or focus changes: `{ group }` for a card's
+   * header or body, `{ group, key }` for one of its rows, `null` for nothing (and once more when
+   * the panel goes). Whichever of pointer and focus moved last wins; at most once a frame, never
+   * the same value twice. For outlining the part of the app a card changes.
+   */
+  readonly onActive?: (at: PanelActive | null) => void
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
   /**

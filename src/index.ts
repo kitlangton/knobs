@@ -106,6 +106,7 @@ export {
   type HostHistory,
   type LabelOptions,
   type MountPanelOptions,
+  type PanelActive,
   type PanelCommand,
   type PanelHandle,
   type PanelModule,
