@@ -1217,6 +1217,162 @@ class GpuOverlayManager {
     d[b + 43] = more ? more[3] : 0
   }
 
+  /**
+   * A preset strip: its tray (`tray`: the panel's strip has one, a group card's sits on the card),
+   * the selected chip's pill on its springs, the chips' names and drift marks, and the save chip.
+   * True while anything in it moves.
+   */
+  private drawPresetStrip(
+    ps: PresetStrip,
+    tokens: PanelThemeTokens,
+    clip: Clip,
+    hinting: boolean,
+    reducedMotion: boolean,
+    dt: number,
+    tray: boolean,
+  ): boolean {
+    let moving = false
+    const psHovered = this.curPanelHovered && ps.element.matches(":hover")
+    this.curSubHovered = psHovered
+    const psRect = this.rectOf(ps.element)
+    const trackRect = this.rectOf(ps.track)
+    // Boxed buttons (see [data-buttons]) stand on their own, with no tray behind them.
+    if (tray && !tokens.boxed)
+      this.pushPrim({
+        x: psRect.left,
+        y: psRect.top,
+        w: psRect.width,
+        h: psRect.height,
+        color: tokens.segBg,
+        color2: tokens.accent,
+        radius: tokens.radius,
+        glowOrBlur: tokens.glowStrength * 8,
+        kind: 1,
+        p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
+      })
+
+    const stripClip = intersectClip(clip, [psRect.left, psRect.top, psRect.right, psRect.bottom])
+    const activeState = ps.getActiveState()
+    const chipButtons = ps.getButtons()
+    if (tokens.boxed)
+      for (const btn of chipButtons) {
+        const br = this.rectOf(btn)
+        if (br.right < stripClip[0] || br.left > stripClip[2]) continue
+        this.drawButtonBox(btn, br, this.isHovered(btn), this.missed(btn, hinting), stripClip)
+      }
+    const activeBtn =
+      activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
+    const pe = ps.pillEdges
+    const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
+    const panned = livePill(ps.track)
+    if (activeBtn && activeBtnRect && !activeState.isCustom) {
+      const left = activeBtnRect.left - trackRect.left
+      const right = left + Math.max(20, activeBtnRect.width)
+      const top = activeBtnRect.top - trackRect.top
+      this.carry(pe, activeBtn, left, right, ps.pillY, top)
+      // A pan holds the pill with the fingers, as a drag holds a slider's fill.
+      if (panned) {
+        pe.snap(panned.left, panned.right)
+        ps.pillY.snap(panned.top)
+      } else if (reducedMotion || pe.end.x - pe.start.x <= 1) {
+        pe.snap(left, right)
+        ps.pillY.snap(top)
+      } else {
+        pe.to(left, right, 0, trailScale(tokens.blurStrength))
+        ps.pillY.set(top)
+      }
+      // Off the active preset's values, its pill softens (see DRIFTED_PILL).
+      ps.pillAlpha.set(activeState.drifted ? DRIFTED_PILL : 1)
+    } else {
+      ps.pillAlpha.set(0)
+    }
+
+    for (const sp of [pe.start, pe.end, ps.pillY, ps.pillAlpha]) {
+      if (reducedMotion) sp.snap(sp.target)
+      else {
+        sp.step(dt)
+        if (!sp.resting) moving = true
+      }
+    }
+
+    const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
+    if (pillAlpha > 0.01) {
+      this.pushPrim({
+        x: trackRect.left + pe.start.x,
+        y: trackRect.top + ps.pillY.x,
+        w: Math.max(18, pe.end.x - pe.start.x),
+        h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
+        clip: stripClip,
+        color: withAlpha(tokens.pillBg, pillAlpha),
+        color2: withAlpha(tokens.pillBorder, pillAlpha),
+        strokeWidth: this.hairline(tokens),
+        aux2: withAlpha(tokens.rim, tokens.rim[3] * pillAlpha),
+        radius: tokens.buttonRadius ?? tokens.radiusMd,
+        glowOrBlur: tokens.glowStrength,
+        kind: 3,
+        blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
+      })
+    }
+
+    for (let i = 0; i < chipButtons.length; i++) {
+      const btn = chipButtons[i]!
+      const br = this.rectOf(btn)
+      if (br.right < stripClip[0] || br.left > stripClip[2]) continue
+      const isActive = i === activeState.activeIndex
+      const chipHovered = this.isHovered(btn)
+      if (chipHovered) this.curSubHovered = false
+      // The active preset's modified mark in the chip's corner, as .knobs-preset-chip::after.
+      const mark = this.ease(btn, "dot", btn.hasAttribute("data-drifted") ? 1 : 0)
+      if (mark > 0.01) {
+        const size = 4 * (0.4 + 0.6 * mark)
+        this.pushPrim({
+          x: br.right - 6 - size / 2,
+          y: br.top + 6 - size / 2,
+          w: size,
+          h: size,
+          clip: stripClip,
+          color: withAlpha(tokens.modified, 0.95 * mark),
+          glowOrBlur: 0.5,
+          kind: 7,
+        })
+      }
+      // While it's being named, its DOM field draws the name over the chip.
+      if (btn.hasAttribute("data-naming")) continue
+      this.drawText(
+        btn.textContent ?? "",
+        br.left + br.width * 0.5,
+        br.top + br.height * 0.5,
+        withAlpha(
+          this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
+          this.missed(btn, hinting),
+        ),
+        {
+          px: tokens.buttonFontSize ?? tokens.textControl,
+          weight: isActive ? tokens.titleWeight : tokens.labelWeight,
+          align: "center",
+          clip: stripClip,
+        },
+      )
+    }
+
+    if (ps.saveButton && !ps.saveButton.hidden) {
+      const sr = this.rectOf(ps.saveButton)
+      const hot = this.isHovered(ps.saveButton)
+      this.drawText(
+        "+",
+        sr.left + sr.width * 0.5,
+        sr.top + sr.height * 0.5,
+        this.hot(ps.saveButton, hot, tokens.dim),
+        {
+          px: tokens.textTitle,
+          weight: 400,
+          align: "center",
+        },
+      )
+    }
+    return moving
+  }
+
   /** --k-rim-width in CSS px, on whole device pixels (at least one), so hairlines stay crisp. */
   private hairline(tokens: PanelThemeTokens) {
     return Math.max(1, Math.round(tokens.rimWidth * this.curScale)) / this.curScale
@@ -4111,7 +4267,6 @@ class GpuOverlayManager {
         this.placeBackdrop(panel)
         continue
       }
-      const pillFill = tokens.pillBg
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
       // lying over another firms up, since the canvas can't blur what it drew below. A page has no
@@ -4344,149 +4499,8 @@ class GpuOverlayManager {
       if (!ps.element.hidden) {
         // It crosses a tab change with the rows it sits over.
         this.curAlpha = stripAlpha * this.presence(ps.element)
-        const psHovered = this.curPanelHovered && ps.element.matches(":hover")
-        this.curSubHovered = psHovered
-        const psRect = this.rectOf(ps.element)
-        const trackRect = this.rectOf(ps.track)
-        // Boxed buttons (see [data-buttons]) stand on their own, with no tray behind them.
-        if (!tokens.boxed)
-          this.pushPrim({
-            x: psRect.left,
-            y: psRect.top,
-            w: psRect.width,
-            h: psRect.height,
-            color: tokens.segBg,
-            color2: tokens.accent,
-            radius: tokens.radius,
-            glowOrBlur: tokens.glowStrength * 8,
-            kind: 1,
-            p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
-          })
-
-        const stripClip = intersectClip(bodyClip, [
-          psRect.left,
-          psRect.top,
-          psRect.right,
-          psRect.bottom,
-        ])
-        const activeState = ps.getActiveState()
-        const chipButtons = ps.getButtons()
-        if (tokens.boxed)
-          for (const btn of chipButtons) {
-            const br = this.rectOf(btn)
-            if (br.right < stripClip[0] || br.left > stripClip[2]) continue
-            this.drawButtonBox(btn, br, this.isHovered(btn), this.missed(btn, hinting), stripClip)
-          }
-        const activeBtn =
-          activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
-        const pe = ps.pillEdges
-        const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
-        const panned = livePill(ps.track)
-        if (activeBtn && activeBtnRect && !activeState.isCustom) {
-          const left = activeBtnRect.left - trackRect.left
-          const right = left + Math.max(20, activeBtnRect.width)
-          const top = activeBtnRect.top - trackRect.top
-          this.carry(pe, activeBtn, left, right, ps.pillY, top)
-          // A pan holds the pill with the fingers, as a drag holds a slider's fill.
-          if (panned) {
-            pe.snap(panned.left, panned.right)
-            ps.pillY.snap(panned.top)
-          } else if (reducedMotion || pe.end.x - pe.start.x <= 1) {
-            pe.snap(left, right)
-            ps.pillY.snap(top)
-          } else {
-            pe.to(left, right, 0, trailScale(tokens.blurStrength))
-            ps.pillY.set(top)
-          }
-          // Off the active preset's values, its pill softens (see DRIFTED_PILL).
-          ps.pillAlpha.set(activeState.drifted ? DRIFTED_PILL : 1)
-        } else {
-          ps.pillAlpha.set(0)
-        }
-
-        for (const sp of [pe.start, pe.end, ps.pillY, ps.pillAlpha]) {
-          if (reducedMotion) sp.snap(sp.target)
-          else {
-            sp.step(dt)
-            if (!sp.resting) anyMoving = true
-          }
-        }
-
-        const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
-        if (pillAlpha > 0.01) {
-          this.pushPrim({
-            x: trackRect.left + pe.start.x,
-            y: trackRect.top + ps.pillY.x,
-            w: Math.max(18, pe.end.x - pe.start.x),
-            h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
-            clip: stripClip,
-            color: withAlpha(pillFill, pillAlpha),
-            color2: withAlpha(tokens.pillBorder, pillAlpha),
-            strokeWidth: this.hairline(tokens),
-            aux2: withAlpha(tokens.rim, tokens.rim[3] * pillAlpha),
-            radius: tokens.buttonRadius ?? tokens.radiusMd,
-            glowOrBlur: tokens.glowStrength,
-            kind: 3,
-            blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
-          })
-        }
-
-        for (let i = 0; i < chipButtons.length; i++) {
-          const btn = chipButtons[i]!
-          const br = this.rectOf(btn)
-          if (br.right < stripClip[0] || br.left > stripClip[2]) continue
-          const isActive = i === activeState.activeIndex
-          const chipHovered = this.isHovered(btn)
-          if (chipHovered) this.curSubHovered = false
-          // The active preset's modified mark in the chip's corner, as .knobs-preset-chip::after.
-          const mark = this.ease(btn, "dot", btn.hasAttribute("data-drifted") ? 1 : 0)
-          if (mark > 0.01) {
-            const size = 4 * (0.4 + 0.6 * mark)
-            this.pushPrim({
-              x: br.right - 6 - size / 2,
-              y: br.top + 6 - size / 2,
-              w: size,
-              h: size,
-              clip: stripClip,
-              color: withAlpha(tokens.modified, 0.95 * mark),
-              glowOrBlur: 0.5,
-              kind: 7,
-            })
-          }
-          // While it's being named, its DOM field draws the name over the chip.
-          if (btn.hasAttribute("data-naming")) continue
-          this.drawText(
-            btn.textContent ?? "",
-            br.left + br.width * 0.5,
-            br.top + br.height * 0.5,
-            withAlpha(
-              this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
-              this.missed(btn, hinting),
-            ),
-            {
-              px: tokens.buttonFontSize ?? tokens.textControl,
-              weight: isActive ? tokens.titleWeight : tokens.labelWeight,
-              align: "center",
-              clip: stripClip,
-            },
-          )
-        }
-
-        if (ps.saveButton && !ps.saveButton.hidden) {
-          const sr = this.rectOf(ps.saveButton)
-          const hot = this.isHovered(ps.saveButton)
-          this.drawText(
-            "+",
-            sr.left + sr.width * 0.5,
-            sr.top + sr.height * 0.5,
-            this.hot(ps.saveButton, hot, tokens.dim),
-            {
-              px: tokens.textTitle,
-              weight: 400,
-              align: "center",
-            },
-          )
-        }
+        anyMoving =
+          this.drawPresetStrip(ps, tokens, bodyClip, hinting, reducedMotion, dt, true) || anyMoving
         this.curAlpha = stripAlpha
       }
 
