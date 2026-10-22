@@ -346,6 +346,9 @@ const css = `
 .knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--_k-gap);padding:0 var(--k-group-inset);color:var(--_k-group-label);font-size:var(--k-group-size);font-weight:var(--_k-weight-title);letter-spacing:var(--k-group-tracking);text-transform:var(--k-group-transform)}
 .knobs-panel:not(.knobs-page) .knobs-group-head:not(:first-child){border-top:1px solid var(--k-group-divider);padding-top:var(--k-group-divider-gap)}
 .knobs-group-head:first-child{margin-top:0}
+.knobs-panel:not(.knobs-page) .knobs-presets+.knobs-group-head{margin-top:0;border-top:0;padding-top:0}
+.knobs-pinned{margin-bottom:var(--k-group-gap)}
+.knobs-pinned:empty{display:none}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--_k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--_k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--_k-fg-2);background:transparent;border-radius:var(--_k-radius-sm);cursor:pointer}
 .knobs-group-head button:is(:hover:not([disabled]),:focus-visible){background:var(--_k-fill-selected);color:var(--_k-fg)}

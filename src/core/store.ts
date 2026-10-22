@@ -17,6 +17,7 @@ import {
   equal,
   normalize,
   normalizeField,
+  pinnedKeys,
   same,
   hasValue,
   toolbarShortcut,
@@ -418,6 +419,12 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   history?: HostHistory
   presets?: Readonly<Record<string, Partial<Values<S>>>>
   /**
+   * Groups pinned to the top of a panel, under the header and above the tab strip, on every tab
+   * (as fields' `pinned: true` pins theirs). Presets and saved variants leave them alone: applying
+   * one keeps their values, saving one keeps them out, and they're modified against their defaults.
+   */
+  pinned?: readonly string[]
+  /**
    * Numbered presets per group, shown as 1, 2, 3… on the group's card in a page. A group's
    * presets cover every key any of them names; keys a preset leaves out are at their defaults,
    * so `{ name: "Today", values: {} }` is the shipped look.
@@ -485,6 +492,8 @@ export interface Controls<S extends Schema = Schema> {
   readonly sectionFolded: SectionFolded | undefined
   /** A preset's display label (`presetLabels`, `defaultLabel`), else its id. */
   presetLabel(id: string): string
+  /** Whether `key` is pinned (its group is, see `ControlsOptions.pinned`), outside the presets. */
+  isPinned(key: string): boolean
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -722,9 +731,32 @@ export function defineControls<const S extends Schema>(
   const future: Entry[] = []
   const HISTORY = 100
   const stateKey = storageKey(id, "state")
+  let pinnedOf: { schema: S; keys: ReadonlySet<string> } | undefined
+  const pinned = () => {
+    if (pinnedOf?.schema !== schema) pinnedOf = { schema, keys: pinnedKeys(schema, options.pinned) }
+    return pinnedOf.keys
+  }
+  /** The variants choice; a pinned one is an ordinary choice (see `variantsOf`). */
+  const variantsChoice = () => variantsOf(schema, (key) => pinned().has(key))
+  /** `values` with the pinned keys at their defaults: what a preset or saved variant holds. */
+  const unpinned = (values: Values<S>): Values<S> => {
+    const keys = pinned()
+    if (keys.size === 0) return values
+    const out: Record<string, unknown> = { ...values }
+    for (const k of keys) if (Object.hasOwn(locked, k)) out[k] = locked[k]
+    return Object.freeze(out) as Values<S>
+  }
+  /** `values` without the pinned keys: what applying a preset or saved variant writes. */
+  const presetPatch = (values: Values<S>): Partial<Values<S>> => {
+    const keys = pinned()
+    if (keys.size === 0) return values
+    return Object.fromEntries(Object.entries(values).filter(([k]) => !keys.has(k))) as Partial<
+      Values<S>
+    >
+  }
   const buildPresets = () => {
     const own = options.presets ?? {}
-    const v = variantsOf(schema)
+    const v = variantsChoice()
     if (v && Object.hasOwn(own, v.field.value))
       throw new Error(
         `The default variant (${v.field.value}) is the schema's defaults; set its values there.`,
@@ -740,7 +772,7 @@ export function defineControls<const S extends Schema>(
         ...ids.map((id) => {
           if (id === "default" || id === "custom") throw new Error(`Reserved preset id: ${id}`)
           const variant = v?.field.options.includes(id) ? { [v.key]: id } : {}
-          return [id, normalize(schema, { ...locked, ...variant, ...own[id] })]
+          return [id, unpinned(normalize(schema, { ...locked, ...variant, ...own[id] }))]
         }),
       ]),
     ) as Readonly<Record<string, Values<S>>>
@@ -951,7 +983,7 @@ export function defineControls<const S extends Schema>(
     if (ref?.kind === "preset" && Object.hasOwn(presets, ref.id)) out = presets[ref.id]!
     else if (ref?.kind === "variant") {
       const found = list?.find((v) => v.id === ref.id)
-      if (found) out = normalize(schema, found.values)
+      if (found) out = unpinned(normalize(schema, found.values))
     }
     const groups = Object.entries(b.groups)
     if (groups.length) {
@@ -965,9 +997,10 @@ export function defineControls<const S extends Schema>(
   /** Whether the active presets give `key` its base (else Random rolls it freely). */
   const covered = (key: string) => {
     const b = activeBase()
-    if (b.preset) return true
     const group = (schema[key] as Field | undefined)?.group
-    return group !== undefined && Object.hasOwn(b.groups, group)
+    if (group !== undefined && Object.hasOwn(b.groups, group)) return true
+    // Presets leave pinned keys out.
+    return b.preset !== null && !pinned().has(key)
   }
   /** The declared shortcut of an action (`key`) or a toolbar's button (`key/item`), if it has one. */
   function declaredShortcut(id: string): { found: boolean; combo?: string } {
@@ -1317,10 +1350,10 @@ export function defineControls<const S extends Schema>(
     id,
     storageKey(id, "variants"),
     variantStorage,
-    get,
+    () => unpinned(get()),
     (v, variant, coalesce) =>
       write(
-        v,
+        presetPatch(v),
         { source: "variant", coalesce },
         makeBase(Object.freeze({ kind: "variant", id: variant }), {}),
       ),
@@ -1433,7 +1466,7 @@ export function defineControls<const S extends Schema>(
     groupFolded: options.groupFolded,
     sectionFolded: options.sectionFolded,
     presetLabel: (presetId) => {
-      const v = variantsOf(schema)
+      const v = variantsChoice()
       const option = presetId === "default" ? v?.field.value : presetId
       return (
         options.presetLabels?.[presetId] ??
@@ -1443,6 +1476,7 @@ export function defineControls<const S extends Schema>(
           : presetId)
       )
     },
+    isPinned: (key) => pinned().has(key),
     get,
     set,
     sync,
@@ -1713,12 +1747,15 @@ export function defineControls<const S extends Schema>(
     preset(id, presetOptions) {
       if (!Object.hasOwn(presets, id)) throw new Error(`Unknown preset: ${id}`)
       write(
-        presets[id]!,
+        presetPatch(presets[id]!),
         { source: "preset", coalesce: presetOptions?.coalesce },
         id === "default" ? NO_BASE : makeBase(Object.freeze({ kind: "preset", id }), {}),
       )
     },
-    matchingPreset: () => Object.keys(presets).find((id) => equal(get(), presets[id])) ?? "custom",
+    matchingPreset: () => {
+      const cur = unpinned(get())
+      return Object.keys(presets).find((id) => equal(cur, presets[id])) ?? "custom"
+    },
     get groupPresets() {
       return groupPresets
     },

@@ -819,7 +819,36 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   none show on every tab. The strip's underline slides to the chosen tab and the rows cross: what
   leaves folds away as what arrives unfolds, a moment behind. `⌥1`–`⌥9` pick a tab, and `[` / `]`
   cycle tabs when there's no preset strip. The tab last shown is remembered for these controls (and
-  in the session).
+  in the session). The preset strip sits under the tabs and crosses a tab change with the rows; a
+  tab that no preset or saved variant moves shows no strip at all (not even its `+`).
+- **Pinned groups.** Groups that apply to every tab (a global speed, a slow-motion switch) sit at
+  the top of the panel, under its one header and above the tab strip, and a tab change never moves
+  them. Name them on the store, `pinned: ["Global"]`, or say `pinned: true` on a field (the first
+  field of a group that says wins; a field without a group pins itself). A pinned field's `tab` is
+  ignored. Pinned groups keep their own die and reset. Presets and saved variants leave them out:
+  applying one keeps their values, saving one doesn't record them, a preset's chip doesn't drift
+  when they change, and their modified marks are against their defaults. Random rolls them freely
+  even under an active preset. The header's Random and Reset still cover everything, pinned
+  groups included, as they cover every tab; give a field `random: false` to keep it out of
+  Random. Keyboard order and search follow the panel top to bottom: pinned rows, the tabs, the
+  preset strip, then the tab's rows. `controls.isPinned(key)` says whether a key is pinned.
+  A pinned `variants: true` choice is an ordinary choice with a row: pinned wins, and its options
+  make no presets. A tab whose rows no preset moves shows no preset strip; a variants choice moves
+  every tab (or its own, if it names one).
+
+  ```ts
+  const motion = defineControls(
+    "motion",
+    {
+      speed: knob(1, { min: 0.25, max: 4, step: 0.05, unit: "×", group: "Global" }),
+      slow: toggle(false, { label: "Slow motion (0.25×)", group: "Global" }),
+      sidebars: spring({ duration: 0.3, bounce: 0 }, { group: "Sidebars", tab: "Sidebars" }),
+      hover: spring({ duration: 0.14, bounce: 0 }, { group: "Experiments", tab: "Experiments" }),
+    },
+    { pinned: ["Global"], defaultLabel: "Shipped", presets: { snappy, smooth, calm } },
+  )
+  motion.mount(el, { title: "Knobs", tabs: ["Sidebars", "Experiments"] })
+  ```
 - **Sub-headings.** Fields with the same `subsection` in a group sit under a flat heading inside the
   group's card, split off by a hairline (never a card inside a card). They're gathered: a group's
   rows without a sub-heading come first, then each sub-heading's rows together, in the order the
