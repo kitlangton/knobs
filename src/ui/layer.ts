@@ -101,7 +101,7 @@ export function presence(el: HTMLElement, o: PresenceOptions = {}): Presence {
   })
   const tune = (seconds: number, zeta: number) => {
     const reduced = reducedMotion(win)
-    spring.omega = (2 * Math.PI) / (reduced ? FADE.duration : seconds)
+    spring.omega = (2 * Math.PI) / (reduced ? Math.min(FADE.duration, seconds) : seconds)
     spring.zeta = reduced ? 1 : zeta
   }
   render()

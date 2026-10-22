@@ -39,6 +39,7 @@ export {
   type Command,
   type CommandPalette,
   type CommandPaletteOptions,
+  type PalettePresence,
 } from "./palette.js"
 export {
   contextMenu,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { fuzzy, marks, place, rank } from "../src/ui/overlay-model"
+import { palettePresence } from "../src/ui/palette"
 
 const view = { x: 0, y: 0, w: 800, h: 600 }
 
@@ -104,5 +105,39 @@ describe("rank", () => {
       { text: "se", hit: false },
       { text: "t", hit: true },
     ])
+  })
+})
+
+describe("palettePresence", () => {
+  test("fades by default, about 80 ms each way, with no travel", () => {
+    expect(palettePresence()).toEqual({
+      scale: 1,
+      blur: 0,
+      dy: 0,
+      duration: 0.08,
+      exit: 0.08,
+      bounce: 0,
+    })
+    expect(palettePresence("fade")).toEqual(palettePresence())
+  })
+  test("none or false: no motion at all", () => {
+    expect(palettePresence("none")).toBeNull()
+    expect(palettePresence(false)).toBeNull()
+  })
+  test("a spring of its own fills the rest from the full entrance, leaving shorter", () => {
+    expect(palettePresence({})).toEqual({
+      scale: 0.96,
+      blur: 8,
+      dy: -8,
+      duration: 0.34,
+      exit: 0.2,
+      bounce: 0,
+    })
+    expect(palettePresence({ duration: 0.12, blur: 0 })).toMatchObject({
+      duration: 0.12,
+      exit: 0.12,
+      blur: 0,
+      scale: 0.96,
+    })
   })
 })

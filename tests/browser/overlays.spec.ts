@@ -26,6 +26,8 @@ test("palette: ⌘K opens it over everything, searching lights up matches, Enter
   await page.mouse.move(700, 400)
   await page.keyboard.press("ControlOrMeta+k")
   await expect(palette(page)).toBeVisible()
+  // Summoned by a key, it only fades: no blur on the way in.
+  expect(await palette(page).evaluate((el) => el.style.filter)).toBe("")
   await expect(input(page)).toBeFocused()
   // Settles fully in: no blur or scale left over.
   await expect.poll(() => opacity(page, ".knobs-palette")).toBe(1)
