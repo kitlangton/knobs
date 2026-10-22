@@ -3749,6 +3749,29 @@ function buildPanel<S extends Schema>(
     to.focus(quiet)
     queueScope()
   }
+  // A press on a row's own space (its label, the gap beside its control) selects that row, as
+  // the keys do, not the card the browser would focus as the nearest focusable thing. A control
+  // inside the row (a slider's track, a segment, a menu) takes the press itself, as ever.
+  root.addEventListener(
+    "mousedown",
+    (event) => {
+      if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey) return
+      const target = event.target instanceof Element ? event.target : null
+      const r = rows[rowAt(target)]
+      if (!target || !r || r.leaving || r.row.closest("[hidden]")) return
+      const own = target.closest<HTMLElement>(
+        "button,input,select,textarea,a[href],[tabindex],[contenteditable]",
+      )
+      if (own && r.row.contains(own)) return
+      event.preventDefault()
+      r.input.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+      // It shows the row's lens, as a press on a heading shows its card's.
+      const t = lensTarget(doc.activeElement)
+      jumpedTo = t && t !== "out" ? t.el : null
+      queueScope()
+    },
+    true,
+  )
   let titleDown: [number, number] | undefined
   titleEl.addEventListener("pointerdown", (event) => {
     titleDown = [event.clientX, event.clientY]
