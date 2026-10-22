@@ -5,6 +5,20 @@
 set -euo pipefail
 cd "$1"
 box() { echo "drawbox=x=$1:y=$2:w=$3:h=$4:color=$5:t=fill"; }
+# `bash make.sh . scrub` makes only scrub-1080-{before,after}.mp4 (gitignored): the scene at
+# 1920×1080 for 20 s with a raw recording's keyframes (one in 10 s), what scripts/scrub-probe.mjs
+# measures scrubbing on.
+if [ "${2:-}" = "scrub" ]; then
+  S="scale=1920:1080:flags=neighbor"
+  for side in before after; do
+    [ -f "scrub-1080-$side.mp4" ] && continue
+    ffmpeg -y -hide_banner -loglevel error -i "long-$side.mp4" \
+      -f lavfi -i "testsrc2=s=600x220:r=30:d=20" \
+      -filter_complex "[0:v]$S[bg];[bg][1:v]overlay=x=1240:y=800,format=yuv420p" \
+      -t 20 -c:v libx264 -preset veryfast -crf 26 -g 300 -keyint_min 300 -sc_threshold 0 -movflags +faststart -an "scrub-1080-$side.mp4"
+  done
+  exit 0
+fi
 COMMON="$(box 0 0 640 44 0x22252c),$(box 0 44 140 316 0x1b1e24),$(box 16 64 108 16 0x2c3038),$(box 16 94 92 16 0x2c3038),$(box 16 124 100 16 0x2c3038),$(box 16 12 90 20 0x3a3f4a),$(box 170 70 200 120 0x262a33),$(box 186 150 120 12 0x3a3f4a)"
 X="170+190*(1-cos(PI*t/3))"
 BEFORE="$COMMON,$(box 400 70 210 120 0x262a33),$(box 540 10 84 24 0x3a3f4a),drawbox=x=$X:y=196:w=60:h=60:color=0x4d8dff:t=fill"
