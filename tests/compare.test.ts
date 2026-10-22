@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
-import { focusWindow, gridPoints, nearestKey } from "../src/ui/compare-frames"
+import { aheadOf, focusWindow, gridPoints, nearestKey, proxyStride } from "../src/ui/compare-frames"
 import { decodeRuns, demuxMp4 } from "../src/ui/compare-mp4"
 import {
   clampZoom,
@@ -275,6 +275,22 @@ describe("the frame cache", () => {
     expect(nearestKey([0, 10, 20], 15)).toBe(20)
     expect(nearestKey([0, 10, 20], 26, 5)).toBe(null)
     expect(nearestKey([], 3)).toBe(null)
+  })
+  test("scrub proxies keep every frame while they fit the budget, else every 2nd, 4th…", () => {
+    const MB = 2 ** 20
+    // 30 KB a frame: 600 frames is 18 MB, inside 48 MB.
+    expect(proxyStride(30 * 1024 * 10, 10, 600, 48 * MB)).toBe(1)
+    // 200 KB a frame: 1800 frames is 352 MB, so every 8th (44 MB).
+    expect(proxyStride(200 * 1024 * 10, 10, 1800, 48 * MB)).toBe(8)
+    expect(proxyStride(0, 0, 600, 48 * MB)).toBe(1)
+  })
+  test("the frame a moving hand is heading for", () => {
+    expect(aheadOf(40, 30, 600)).toBe(50)
+    expect(aheadOf(30, 40, 600)).toBe(20)
+    expect(aheadOf(595, 580, 600)).toBe(599)
+    expect(aheadOf(5, 20, 600)).toBe(0)
+    expect(aheadOf(40, null, 600)).toBe(null)
+    expect(aheadOf(40, 40, 600)).toBe(null)
   })
 })
 

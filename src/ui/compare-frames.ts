@@ -3,7 +3,10 @@
 // One cache per source and frame rate, shared by every viewer and strip on the page:
 // - a grid of small frames across the whole video (the strip's thumbnails, a drag's preview),
 // - full-size frames around the playhead of the viewer last used (instant steps),
-// - frames the viewer already showed exactly, and frames the strip asks for.
+// - frames the viewer already showed exactly, and frames the strip asks for,
+// - and, once those are in, every frame as a small JPEG (a scrub proxy, within a byte budget), so
+//   a drag shows the frame under the hand: the one asked for decodes in a few ms, with the next
+//   one the hand is heading for, and a handful stay decoded.
 // Frames are decoded with WebCodecs where the file demuxes (compare-mp4.ts), else by a hidden
 // <video> of its own: a fast play-through for the grid, a seek and a play for the frames around
 // the playhead. One decode runs at a time across the page, for caches whose viewer is on screen,
@@ -30,10 +33,17 @@ export interface FrameCache {
   readonly backend: "webcodecs" | "video" | "pending"
   /** Frames held now. */
   readonly size: number
-  /** The cached frame nearest `frame`, no further than `within` frames. */
-  nearest(frame: number, within?: number): CachedFrame | null
+  /**
+   * The cached frame nearest `frame`, no further than `within` frames. `decode`: a nearer scrub
+   * proxy that's stored but not decoded starts decoding (listeners hear when it's in).
+   */
+  nearest(frame: number, within?: number, decode?: boolean): CachedFrame | null
+  /** Whether a frame this close to `frame` is held, decoded or as a proxy (within its stride). */
+  covers(frame: number): boolean
   /** The playhead of the viewer being used: full-size frames around it decode first. */
   focus(frame: number): void
+  /** The playhead of a viewer being scrubbed: this cache goes first, nothing full-size is asked. */
+  follow(frame: number): void
   /** Frames a strip shows (small, with a tolerance each). */
   want(points: readonly FramePoint[]): void
   /** A frame the viewer has decoded exactly (paused on it). */
@@ -52,6 +62,23 @@ const SEEN = 12
 const WANTED = 48
 const PREVIEW = 384
 const FULL = 1280
+/** A scrub proxy's longest side, its JPEG quality, the bytes a source's proxies may hold. */
+export const PROXY = { size: 960, quality: 0.8, budget: 48 * 2 ** 20, decoded: 8 } as const
+
+/** The stride a set of proxies needs to stay in `budget`: the smallest power of two that does. */
+export function proxyStride(bytes: number, count: number, total: number, budget: number): number {
+  if (count <= 0 || total <= 0) return 1
+  const each = bytes / count
+  let stride = 1
+  while ((total / stride) * each > budget && stride < total) stride *= 2
+  return stride
+}
+
+/** Where a hand moving from `last` to `frame` is likely to be next (within 0 and `total`). */
+export const aheadOf = (frame: number, last: number | null, total: number) =>
+  last === null || last === frame
+    ? null
+    : Math.min(Math.max(0, total - 1), Math.max(0, frame + (frame - last)))
 
 /** The grid's frames: `count` evenly across `total`, as points with half a step's tolerance. */
 export function gridPoints(total: number, count = GRID): FramePoint[] {
@@ -110,8 +137,30 @@ interface Core {
 }
 
 const cores = new Map<string, Core>()
-let active: Core | null = null
+/** The caches of the viewer used last: every one it asked for in the same task (both its sides). */
+let actives = new Set<Core>()
+let round: Set<Core> | null = null
 let running = false
+
+/** `core` is in use: it and the others asked for in this task go first; the rest drop full frames. */
+function claim(core: Core) {
+  if (!round) {
+    const r = new Set<Core>()
+    round = r
+    queueMicrotask(() => {
+      for (const c of actives)
+        if (!r.has(c)) {
+          c.active = false
+          c.dropFull()
+        }
+      actives = r
+      round = null
+    })
+  }
+  round.add(core)
+  actives.add(core)
+  core.active = true
+}
 
 /** The page's one decode loop: a unit at a time, the active cache first, idle between units. */
 function pump(win: Window) {
@@ -173,6 +222,29 @@ async function toBitmap(
   }
 }
 
+/** A frame as a small JPEG: a scrub proxy. */
+async function toProxy(doc: Document, source: CanvasImageSource, w: number, h: number) {
+  const bm = await toBitmap(doc, source, w, h, PROXY.size)
+  try {
+    const Off = (doc.defaultView as { OffscreenCanvas?: typeof OffscreenCanvas } | null)
+      ?.OffscreenCanvas
+    if (Off) {
+      const c = new Off(bm.width, bm.height)
+      c.getContext("2d")!.drawImage(bm, 0, 0)
+      return await c.convertToBlob({ type: "image/jpeg", quality: PROXY.quality })
+    }
+    const c = doc.createElement("canvas")
+    c.width = bm.width
+    c.height = bm.height
+    c.getContext("2d")!.drawImage(bm, 0, 0)
+    return await new Promise<Blob>((done, fail) =>
+      c.toBlob((b) => (b ? done(b) : fail(new Error("toBlob"))), "image/jpeg", PROXY.quality),
+    )
+  } finally {
+    bm.close()
+  }
+}
+
 /** The shared cache for `src` at `fps`; `release()` it when done. */
 export function acquireFrames(doc: Document, src: string, fps: number): FrameCache {
   const key = `${fps}|${src}`
@@ -201,6 +273,70 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
   let generation = 0
   let tick = 0
   let notifyRaf = 0
+  // Scrub proxies: every `stride`th frame as a JPEG, a few of them decoded.
+  const proxies = new Map<number, Blob>()
+  let proxyBytes = 0
+  let stride = 1
+  const decoded = new Map<number, { bitmap: ImageBitmap; used: number }>()
+  const decoding = new Set<number>()
+  /** Where a scrub is (the proxies nearest it come first), and the frame asked for before. */
+  let aim: number | null = null
+  let lastAsked: number | null = null
+
+  const storeProxy = (frame: number, blob: Blob) => {
+    if (disposed || frame % stride || proxies.has(frame)) return
+    proxies.set(frame, blob)
+    proxyBytes += blob.size
+    const next = proxyStride(proxyBytes, proxies.size, total, PROXY.budget)
+    if (next <= stride) return
+    stride = next
+    for (const [f, b] of proxies)
+      if (f % stride) {
+        proxies.delete(f)
+        proxyBytes -= b.size
+      }
+  }
+  /** The stored proxy nearest `frame`, if any. */
+  const proxyNear = (frame: number) => {
+    const at = Math.round(frame / stride) * stride
+    let best: number | null = null
+    for (const f of [at, at - stride, at + stride])
+      if (proxies.has(f) && (best === null || Math.abs(f - frame) < Math.abs(best - frame)))
+        best = f
+    return best
+  }
+  const proxyTodo = () => {
+    const out: number[] = []
+    for (let f = 0; f < total; f += stride) if (!proxies.has(f)) out.push(f)
+    return out
+  }
+  /** Decodes a proxy; listeners hear at once, as a scrub waits on it. */
+  const decodeProxy = (frame: number | null) => {
+    if (frame === null || decoded.has(frame) || decoding.has(frame) || disposed) return
+    const blob = proxies.get(frame)
+    if (!blob) return
+    decoding.add(frame)
+    createImageBitmap(blob).then(
+      (bitmap) => {
+        decoding.delete(frame)
+        if (disposed) return bitmap.close()
+        decoded.set(frame, { bitmap, used: ++tick })
+        if (decoded.size > PROXY.decoded) {
+          const [oldest] = [...decoded].sort((a, b) => a[1].used - b[1].used)
+          if (oldest && oldest[0] !== frame) {
+            oldest[1].bitmap.close()
+            decoded.delete(oldest[0])
+          }
+        }
+        for (const f of listeners) f()
+      },
+      () => decoding.delete(frame),
+    )
+  }
+  const dropDecoded = () => {
+    for (const d of decoded.values()) d.bitmap.close()
+    decoded.clear()
+  }
 
   const notify = () => {
     if (notifyRaf) return
@@ -326,18 +462,64 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
     // Only a run for the focus stops when the focus moves on; the grid's carries on.
     const forFocus = todo[0]!.kind === "focus"
     const gen = generation
-    const stale = () => forFocus && gen !== generation
+    await decodeRun(t, data, run, forFocus ? () => gen !== generation : () => false, (vf, f) => {
+      const want = plan.get(f)
+      if (!want) return null
+      plan.delete(f)
+      return toBitmap(doc, vf, vf.displayWidth, vf.displayHeight, want.full ? FULL : PREVIEW).then(
+        (bm) => store(f, bm, want.full, want.kind),
+      )
+    })
+  }
+  /** Scrub proxies for one run of frames: the run nearest the scrub (or the focus) first. */
+  const proxyUnit = async () => {
+    const todo = proxyTodo()
+    if (!todo.length || !track || !buf) return
+    const runs = decodeRuns(track.samples, new Set(todo), (pts) => frameOf(pts, fps))
+    const at = aim ?? focusAt ?? 0
+    let run = runs[0]
+    let best = Number.POSITIVE_INFINITY
+    for (const r of runs) {
+      const d = Math.min(...r.frames.map((f) => Math.abs(f - at)))
+      if (d < best) {
+        best = d
+        run = r
+      }
+    }
+    if (!run) return
+    // A new focus (the hand let go) stops it: those full-size frames come first.
+    const gen = generation
+    await decodeRun(
+      track,
+      buf,
+      run,
+      () => gen !== generation,
+      (vf, f) =>
+        f % stride || proxies.has(f) || f >= total
+          ? null
+          : toProxy(doc, vf, vf.displayWidth, vf.displayHeight).then((b) => storeProxy(f, b)),
+    )
+  }
+  /**
+   * Decodes the samples of `run`, handing each frame to `take`: a promise to wait on before the
+   * frame is closed, or null to close it now. Stops early when `stale()`; on a decoder error the
+   * <video> takes over.
+   */
+  const decodeRun = async (
+    t: Mp4Track,
+    data: Uint8Array,
+    run: { readonly from: number; readonly to: number },
+    stale: () => boolean,
+    take: (vf: VideoFrame, frame: number) => Promise<unknown> | null,
+  ) => {
     let pending = 0
     let failed = false
     const decoder = new VideoDecoder({
       output: (vf) => {
-        const f = frameOf(vf.timestamp / 1e6, fps)
-        const want = plan.get(f)
-        if (!want || stale() || disposed) return vf.close()
-        plan.delete(f)
+        const work = stale() || disposed ? null : take(vf, frameOf(vf.timestamp / 1e6, fps))
+        if (!work) return vf.close()
         pending++
-        void toBitmap(doc, vf, vf.displayWidth, vf.displayHeight, want.full ? FULL : PREVIEW)
-          .then((bm) => store(f, bm, want.full, want.kind))
+        void work
           .catch(() => {})
           .finally(() => {
             vf.close()
@@ -480,6 +662,30 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       false,
     )
   }
+  /** Scrub proxies by playing through from the first one missing at or after the scrub. */
+  const videoProxyUnit = async () => {
+    const v = sampler
+    const todo = proxyTodo()
+    if (!v || !todo.length || !v.videoWidth) return
+    const at = aim ?? focusAt ?? 0
+    const first = todo.find((f) => f >= at) ?? todo[0]!
+    const grab = async (f: number) => {
+      if (f % stride || proxies.has(f) || f >= total) return
+      storeProxy(f, await toProxy(doc, v, v.videoWidth, v.videoHeight))
+    }
+    await seekTo(v, (first + 0.5) / fps)
+    await grab(frameOf(v.currentTime, fps))
+    await playThrough(
+      v,
+      1,
+      async (f) => {
+        await grab(f)
+        return proxyTodo().length > 0
+      },
+      4000,
+      true,
+    )
+  }
 
   const cache: FrameCache = {
     src,
@@ -489,23 +695,47 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
     get size() {
       return entries.size
     },
-    nearest(frame, within = Infinity) {
+    nearest(frame, within = Infinity, decode = false) {
       const k = nearestKey(entries.keys(), frame, within)
+      const kd = nearestKey(decoded.keys(), frame, within)
+      const dk = k === null ? Number.POSITIVE_INFINITY : Math.abs(k - frame)
+      const dd = kd === null ? Number.POSITIVE_INFINITY : Math.abs(kd - frame)
+      if (decode) {
+        // The proxy nearer than anything decoded, and the one the hand is heading for.
+        const p = proxyNear(frame)
+        if (p !== null && Math.abs(p - frame) < Math.min(dk, dd)) decodeProxy(p)
+        const ahead = aheadOf(frame, lastAsked, total)
+        if (ahead !== null) decodeProxy(proxyNear(ahead))
+        lastAsked = frame
+      }
+      // A decoded proxy beats a small grid frame as near, never a full-size one.
+      if (kd !== null && (dd < dk || (dd === dk && !entries.get(k!)?.full))) {
+        const d = decoded.get(kd)!
+        d.used = ++tick
+        return { frame: kd, bitmap: d.bitmap, full: false }
+      }
       if (k === null) return null
       const e = entries.get(k)!
       e.used = ++tick
       return { frame: k, bitmap: e.bitmap, full: e.full }
     },
+    covers(frame) {
+      if (entries.has(frame) || decoded.has(frame)) return true
+      const p = proxyNear(frame)
+      return p !== null && Math.abs(p - frame) <= stride / 2
+    },
     focus(frame) {
-      if (active !== core) {
-        active?.dropFull()
-        if (active) active.active = false
-        active = core
-        core.active = true
-      }
+      claim(core)
       const moved = focusAt === null || Math.abs(frame - focusAt) > FOCUS_RADIUS
       focusAt = frame
+      aim = null
       if (moved) generation++
+      void start()
+      pump(win)
+    },
+    follow(frame) {
+      claim(core)
+      aim = frame
       void start()
       pump(win)
     },
@@ -546,8 +776,9 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
     active: false,
     work() {
       if (disposed || backend === "pending") return null
-      if (!missing().length) return null
-      return backend === "webcodecs" ? decodeUnit() : videoUnit()
+      if (missing().length) return backend === "webcodecs" ? decodeUnit() : videoUnit()
+      if (proxyTodo().length) return backend === "webcodecs" ? proxyUnit() : videoProxyUnit()
+      return null
     },
     dropFull() {
       for (const [f, e] of entries)
@@ -556,6 +787,9 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
           entries.delete(f)
         }
       focusAt = null
+      aim = null
+      lastAsked = null
+      dropDecoded()
     },
     dispose() {
       disposed = true
@@ -563,6 +797,8 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       if (notifyRaf) win.cancelAnimationFrame(notifyRaf)
       for (const e of entries.values()) e.bitmap.close()
       entries.clear()
+      dropDecoded()
+      proxies.clear()
       listeners.clear()
       if (sampler) {
         sampler.removeAttribute("src")
@@ -570,7 +806,8 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       }
       buf = null
       track = null
-      if (active === core) active = null
+      actives.delete(core)
+      round?.delete(core)
       cores.delete(key)
     },
   }

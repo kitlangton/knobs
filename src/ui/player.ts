@@ -3,7 +3,12 @@
 // variant) with a segment per chapter. The button, a click on the picture or Space (focused) plays
 // and pauses; nothing flashes over the picture. Click or drag the line to seek, 1:1. The chapter and time under
 // the pointer float over the line. The timeline follows the video's own time while it plays, so
-// the two never drift.
+// the two never drift. Scrubbing shows the frame under the hand at once: once the pointer is over
+// the player its frames decode in the background (compare-frames.ts, shared with any compare of
+// the same file), and while the line is dragged the nearest one draws over the video, which seeks
+// once the hand lets go (or when nothing near is cached yet).
+import { acquireFrames, type CachedFrame, type FrameCache } from "./compare-frames.js"
+import { frameOf } from "./compare-model.js"
 import { applyLook, type UiLook } from "./look.js"
 import { timeline as makeTimeline, type Timeline } from "./timeline.js"
 
@@ -90,7 +95,10 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     track.src = options.captions
     v.append(track)
   }
-  frame.append(v)
+  const preview = el("canvas", "knobs-player-preview")
+  preview.setAttribute("aria-hidden", "true")
+  preview.hidden = true
+  frame.append(v, preview)
   const host = el("div", "knobs-player-line")
   root.append(frame, host)
   container.append(root)
@@ -121,6 +129,48 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     if (v.seeking) pending = t
     else v.currentTime = t
   }
+
+  // ——— the frame under the hand ———
+  const fps = options.fps ?? 30
+  let frames: FrameCache | null = null
+  let unlistenFrames: (() => void) | null = null
+  let scrubbing = false
+  /** The frame the preview shows, or null while the video shows. */
+  let previewing: number | null = null
+  const want = () => frameOf(tl.time, fps)
+  const emitFrame = (frame: number, source: "video" | "cache") =>
+    root.dispatchEvent(new CustomEvent("knobs-player-frame", { detail: { frame, source } }))
+  const drawPreview = (c: CachedFrame) => {
+    if (preview.width !== c.bitmap.width || preview.height !== c.bitmap.height) {
+      preview.width = c.bitmap.width
+      preview.height = c.bitmap.height
+    }
+    preview.getContext("2d")?.drawImage(c.bitmap, 0, 0)
+    preview.hidden = false
+    previewing = c.frame
+    emitFrame(c.frame, "cache")
+  }
+  const hidePreview = () => {
+    if (previewing === null) return
+    previewing = null
+    preview.hidden = true
+  }
+  /** Mid-scrub: the cached frame nearest the playhead, when it's nearer than what shows. */
+  const showNearest = () => {
+    if (!frames || !scrubbing) return
+    const w = want()
+    const c = frames.nearest(w, Number.POSITIVE_INFINITY, true)
+    if (!c || c.frame === previewing) return
+    const shown = previewing ?? frameOf(v.currentTime, fps)
+    if (Math.abs(c.frame - w) < Math.abs(shown - w)) drawPreview(c)
+  }
+  const startFrames = () => {
+    if (frames) return
+    frames = acquireFrames(doc, options.src, fps)
+    frames.visible(true)
+    unlistenFrames = frames.listen(showNearest)
+  }
+
   // A seek reports once it lands, paused, and only when it went somewhere (not a pause's settle).
   let reported = 0
   const onSeeked = () => {
@@ -130,6 +180,14 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
       v.currentTime = t
       return
     }
+    const at = frameOf(v.currentTime, fps)
+    emitFrame(at, "video")
+    // Landed: the video takes over from the preview (mid-scrub, only if it's as near).
+    if (
+      !scrubbing ||
+      (previewing !== null && Math.abs(at - want()) <= Math.abs(previewing - want()))
+    )
+      hidePreview()
     if (!v.paused || tl.playing || Math.abs(v.currentTime - reported) < 0.1) return
     reported = v.currentTime
     options.onSeek?.(reported)
@@ -150,13 +208,24 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
         if (Math.abs(v.currentTime - t) > 0.25) v.currentTime = t
         return
       }
+      if (scrubbing && frames) {
+        frames.follow(want())
+        showNearest()
+        // Over frames the cache holds, the video seeks once the hand lets go.
+        if (frames.covers(want())) return
+      }
       // A pause settling on the frame that shows needs no seek.
-      if (Math.abs(v.currentTime - t) < 1 / (options.fps ?? 30)) return
+      if (Math.abs(v.currentTime - t) < 1 / fps) {
+        if (!scrubbing) hidePreview()
+        return
+      }
       seekVideo(t)
     },
     onPlay(on) {
-      if (on) void v.play().catch(() => tl.pause())
-      else {
+      if (on) {
+        hidePreview()
+        void v.play().catch(() => tl.pause())
+      } else {
         v.pause()
         reported = tl.time
       }
@@ -164,7 +233,15 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
       options.onPlay?.(on, tl.time)
     },
     onScrub(on) {
-      if (on) v.pause()
+      scrubbing = on
+      if (on) {
+        v.pause()
+        startFrames()
+        return
+      }
+      // Let go: the exact frame, from the video.
+      if (Math.abs(v.currentTime - tl.time) < 1 / fps && !v.seeking) hidePreview()
+      else seekVideo(tl.time)
     },
   })
   // While it plays the line follows the video's own clock.
@@ -180,6 +257,8 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     tl.toggle()
   }
   frame.addEventListener("click", onClick)
+  // The pointer coming near is the hint a scrub may follow: its frames start decoding.
+  root.addEventListener("pointerenter", startFrames)
   v.src = options.src
 
   const api: Player = {
@@ -207,6 +286,13 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
       tl.dispose()
       v.pause()
       frame.removeEventListener("click", onClick)
+      root.removeEventListener("pointerenter", startFrames)
+      unlistenFrames?.()
+      if (frames) {
+        frames.visible(false)
+        frames.release()
+        frames = null
+      }
       v.removeEventListener("loadedmetadata", onMeta)
       v.removeEventListener("loadeddata", onFrame)
       v.removeEventListener("seeked", onSeeked)

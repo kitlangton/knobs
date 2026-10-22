@@ -3,7 +3,8 @@
 // difference, drawn by one WebGPU pass (two <video>s with a
 // clip-path wipe where there's no WebGPU). Both videos run from one clock: paused, scrubbed or
 // stepped, each seeks to the frame's midpoint, coalesced, and while a seek is in flight the nearest
-// decoded frame from a shared cache (compare-frames.ts) shows at once; playing, After leads,
+// decoded frame from a shared cache (compare-frames.ts) shows at once; scrubbed, the cache's proxy
+// of the frame under the hand shows and the videos seek once it lets go; playing, After leads,
 // Before's rate leans to stay on it, and a bound timeline follows After's own time, so two clocks
 // never fight. Sources load when the viewer nears the screen and are let go when it's well off,
 // so a long page can hold many; every viewer shares one GPU device.
@@ -537,7 +538,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       s.frames.keep(at, v, v.videoWidth, v.videoHeight)
       return
     }
-    const c = s.frames.nearest(want)
+    const c = s.frames.nearest(want, Number.POSITIVE_INFINITY, true)
     if (c && Math.abs(c.frame - want) < Math.abs(at - want)) showCached(s, c)
     else showVideo(s)
   }
@@ -546,7 +547,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     if (!s.loaded || !s.frames || isPlaying()) return
     const want = wantOf(s)
     if (s.shown && !s.shown.cached && s.shown.frame === want) return
-    const c = s.frames.nearest(want)
+    const c = s.frames.nearest(want, Number.POSITIVE_INFINITY, true)
     if (!c) return
     const was = s.shown ? Math.abs(s.shown.frame - want) : Number.POSITIVE_INFINITY
     if (Math.abs(c.frame - want) < was) showCached(s, c)
@@ -800,12 +801,21 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         v.playbackRate = 1
       }
       const want = Math.min(frameOf(t, fps()), lastFrame(v.duration, fps()))
-      const step = requestSeek(s.seek, frameMidpoint(want, fps(), v.duration), v.currentTime, fps())
-      s.seek = step.state
-      if (step.apply !== null) seekVideo(s, v, step.apply)
-      else if (step.settled && (s.shown?.cached || s.shown?.frame !== want)) pushFrame(s)
-      // The viewer in use: full-size frames around its playhead decode first.
-      if (used) s.frames?.focus(want)
+      // The viewer in use goes first: scrubbed, its proxies nearest the hand; at rest, full-size
+      // frames around the playhead.
+      if (used) {
+        if (scrubbing) s.frames?.follow(want)
+        else s.frames?.focus(want)
+      }
+      // Mid-scrub over frames the cache holds, the video waits for the hand to let go: its seeks
+      // would only queue behind each other and fight the proxies for the decoder.
+      if (!(scrubbing && s.frames?.covers(want))) {
+        const at = frameMidpoint(want, fps(), v.duration)
+        const step = requestSeek(s.seek, at, v.currentTime, fps())
+        s.seek = step.state
+        if (step.apply !== null) seekVideo(s, v, step.apply)
+        else if (step.settled && (s.shown?.cached || s.shown?.frame !== want)) pushFrame(s)
+      }
       refreshCached(s)
     }
     requestDraw()
