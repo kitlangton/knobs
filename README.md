@@ -369,7 +369,7 @@ The preset you apply last (a chip, `[` / `]`, a pan, `controls.preset(id)`, `var
 - **The `?` popover says so:** "Random around Storm / Back to Storm", then "Reset all to defaults" once you're there.
 - **Undo covers it:** applying a preset, each reset and each roll is one undo step, and undoing restores the active preset with the values. The active preset is kept with the values in storage.
 
-`controls.activePreset()` returns `{ kind: "preset" | "variant", id }` or null, `controls.activeGroupPreset(group)` the group's index or -1, `controls.baseValues()` what Reset returns to first, and `controls.canReset(keys?)` whether a reset would change anything. A reset back to a preset reaches `onChange` with `source: "reset"` and `base: true`; remote controls send its values with `onSet` (nulls only for a reset to the defaults), or call `onPreset` again for a group whose peer applies its own presets.
+`controls.activePreset(scope?)` returns `{ kind: "preset" | "variant", id }` or null (a tab's or group's with `scope`, see `scopedPresets` under [Tabs](#tabs-sub-headings-and-search)), `controls.activeGroupPreset(group)` the group's index or -1, `controls.baseValues()` what Reset returns to first, and `controls.canReset(keys?)` whether a reset would change anything. A reset back to a preset reaches `onChange` with `source: "reset"` and `base: true`; remote controls send its values with `onSet` (nulls only for a reset to the defaults), or call `onPreset` again for a group whose peer applies its own presets.
 
 ## Keyboard
 
@@ -834,7 +834,21 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   preset strip, then the tab's rows. `controls.isPinned(key)` says whether a key is pinned.
   A pinned `variants: true` choice is an ordinary choice with a row: pinned wins, and its options
   make no presets. A tab whose rows no preset moves shows no preset strip; a variants choice moves
-  every tab (or its own, if it names one).
+  its own tab (or every tab, if it has none).
+- **Presets of a tab's own.** `scopedPresets` gives a tab (or a group) presets that belong to it:
+  `{ Sidebars: { snappy, smooth, calm } }`. Its strip shows only on that tab, and a tab without any
+  shows none. A scoped preset moves only its tab's (or group's) keys, never pinned ones or another
+  tab's, so each tab is its own experiment: it has its own active preset (Reset's base and
+  Random's centre for its keys), its own modified mark on the chip and its own saved variants
+  (`controls.scopes.Sidebars.variants`, kept apart in storage). A preset switch is one undo step.
+  A `variants: true` choice on a tab adds its options to that tab's presets. Keys belong to their
+  tab's scope first, then their group's. Plain `presets` then cover only the keys no scope holds;
+  leave them out and only the scoped strips show. One strip shows per tab: the tab's own, else the
+  first group scope on it. In code, `controls.preset(id, { scope })`, `activePreset(scope)` and
+  `matchingPreset(scope)` take the tab or group, and `controls.scopeOf(key)` says whose presets
+  move a key (`""` for plain `presets`, undefined when pinned). An active preset saved while the
+  presets were panel-wide comes back on the scope that now has one by that id, and variants saved
+  then start out in each scope they move.
 
   ```ts
   const motion = defineControls(
@@ -845,7 +859,12 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
       sidebars: spring({ duration: 0.3, bounce: 0 }, { group: "Sidebars", tab: "Sidebars" }),
       hover: spring({ duration: 0.14, bounce: 0 }, { group: "Experiments", tab: "Experiments" }),
     },
-    { pinned: ["Global"], defaultLabel: "Shipped", presets: { snappy, smooth, calm } },
+    {
+      pinned: ["Global"],
+      defaultLabel: "Shipped",
+      // Only the Sidebars tab has a strip, and its presets set only its springs.
+      scopedPresets: { Sidebars: { snappy, smooth, calm } },
+    },
   )
   motion.mount(el, { title: "Knobs", tabs: ["Sidebars", "Experiments"] })
   ```
@@ -2035,10 +2054,11 @@ The package has two core exports selected through the standard `development` con
 - `controls.randomize(keys?)` / `controls.mutate(keys?)`: skip locked fields; one undo step each
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
-- `controls.preset(id, { coalesce? })` / `controls.matchingPreset()`
-- `controls.activePreset()` / `controls.activeGroupPreset(group)` / `controls.baseValues()`: the base Reset returns to and Random explores around
+- `controls.preset(id, { coalesce?, scope? })` / `controls.matchingPreset(scope?)`
+- `controls.activePreset(scope?)` / `controls.activeGroupPreset(group)` / `controls.baseValues()`: the base Reset returns to and Random explores around
+- `controls.scopes` / `controls.scopeOf(key)`: the tabs and groups with presets of their own (`scopedPresets`), each `{ id, keys, presets, variants }`, and whose presets move a key
 - `controls.groupPresets` / `controls.groupPreset(group, index, { coalesce? })` / `controls.matchingGroupPreset(group)` / `controls.groupPresetDisplay`
-- `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
+- `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id, scope?)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
 - `controls.groupDescription(group): string | undefined` / `controls.sectionDescription(section): string | undefined`: `groupDescriptions` / `sectionDescriptions`, else the fields' `groupDescription` / `sectionDescription`
 - `controls.groupFolded` / `controls.sectionFolded`: how groups and a page's sections start, as given to `defineControls` or `createRemoteControls` (`groupFolded?: Record<string, boolean>`, `sectionFolded?: SectionFolded`); mounts read them under their own
 - `controls.code("ts" | "json" | "jsx", values?)`
