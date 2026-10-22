@@ -107,26 +107,60 @@ test("the Motion group's presets sit at the top of its card and leave the state'
   await expect(motion).toHaveAttribute("aria-label", "Motion presets")
   // First in its card, above the rows.
   expect(await motion.evaluate((el) => el === el.parentElement!.firstElementChild)).toBe(true)
-  await expect(motion.locator(".knobs-preset-chip")).toHaveText([
+  await expect(motion.locator(".knobs-preset-label")).toHaveText([
     "Shipped",
     "Snappy",
     "Smooth",
     "Calm",
   ])
   await motion.locator(".knobs-preset-chip", { hasText: "Calm" }).click()
-  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Calm")
+  await expect(
+    motion.locator('.knobs-preset-chip[aria-checked="true"] .knobs-preset-label'),
+  ).toHaveText("Calm")
   await expect(panel.locator('[data-field="stagger"] [role="slider"]')).toHaveAttribute(
     "aria-valuenow",
     "0.1",
   )
   // The state keeps its chip: the Motion knobs belong to their own presets.
-  await expect(states.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("No activity")
+  await expect(
+    states.locator('.knobs-preset-chip[aria-checked="true"] .knobs-preset-label'),
+  ).toHaveText("No activity")
   await expect(states.locator(".knobs-preset-chip[data-drifted]")).toHaveCount(0)
   await states.locator(".knobs-preset-chip", { hasText: "Live" }).click()
-  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Calm")
+  await expect(
+    motion.locator('.knobs-preset-chip[aria-checked="true"] .knobs-preset-label'),
+  ).toHaveText("Calm")
   // Focused, ← and → pick its presets.
   await motion.focus()
   await page.keyboard.press("ArrowLeft")
-  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Smooth")
+  await expect(
+    motion.locator('.knobs-preset-chip[aria-checked="true"] .knobs-preset-label'),
+  ).toHaveText("Smooth")
+  expect(errors).toEqual([])
+})
+
+test("the strip's digits stay on its chips, quiet and in a column", async ({ page }) => {
+  const errors = errorsOf(page)
+  await page.goto("/components-lab.html")
+  const states = page.locator('[data-pane="inspector"] .knobs-presets:not(.knobs-card > *)')
+  await expect(states.locator(".knobs-preset-key")).toHaveText(["1", "2", "3", "4", "5", "6", "7"])
+  await expect(states.locator(".knobs-preset-label").first()).toHaveText("No activity")
+  const look = await states.evaluate((strip) => {
+    const keys = [...strip.querySelectorAll<HTMLElement>(".knobs-preset-key")]
+    const labels = [...strip.querySelectorAll<HTMLElement>(".knobs-preset-label")]
+    const key = getComputedStyle(keys[0]!)
+    return {
+      tabular: key.fontVariantNumeric,
+      smaller: parseFloat(key.fontSize) < parseFloat(getComputedStyle(labels[0]!).fontSize),
+      lefts: new Set(labels.map((l) => Math.round(l.getBoundingClientRect().left))).size,
+    }
+  })
+  expect(look).toEqual({ tabular: "tabular-nums", smaller: true, lefts: 1 })
+  // No hint badges over them while you use keys.
+  await states.focus()
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("ArrowUp")
+  await page.waitForTimeout(300)
+  await expect(page.locator(".knobs-optkey[data-shown]")).toHaveCount(0)
   expect(errors).toEqual([])
 })

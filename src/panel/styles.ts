@@ -333,6 +333,8 @@ const css = `
 /* The active preset's modified mark: the values have drifted off it (a row's dot, in its corner). */
 .knobs-panel .knobs-preset-chip::after{content:"";position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--_k-modified);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
 .knobs-panel .knobs-preset-chip[data-drifted]::after{opacity:.95;transform:none}
+/* Digits that stay on the chips (hints: { digits: "always" }): quiet, in a column of their own. */
+.knobs-panel .knobs-preset-key{display:inline-block;margin-right:6px;color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);font-variant-numeric:tabular-nums}
 /* A group's own presets at the top of its card: the chips sit on the card, with no tray. */
 .knobs-panel .knobs-card>.knobs-presets{margin:0;padding:max(4px,calc((var(--_k-row) - var(--k-button-h,var(--_k-control-h))) / 2)) var(--_k-inset);background:transparent;border-radius:0}
 .knobs-panel .knobs-card>.knobs-presets[data-display="list"]{padding-inline:0}
@@ -340,6 +342,7 @@ const css = `
 /* Naming a saved preset: a field over its chip that opens out from the middle to the chip's width;
    the chip's own name hides beneath it. Leaving, it fades. */
 .knobs-panel .knobs-preset-chip[data-naming]{color:transparent!important}
+.knobs-panel .knobs-preset-chip[data-naming] .knobs-preset-key{color:transparent}
 .knobs-panel .knobs-preset-name{position:absolute;z-index:2;box-sizing:border-box;min-width:0;margin:0;padding:0 6px;border:1px solid color-mix(in srgb,var(--_k-accent) 55%,transparent);border-radius:var(--k-button-radius,var(--_k-radius-md));outline:none;background:color-mix(in srgb,var(--_k-accent) 10%,transparent);color:var(--_k-fg);caret-color:var(--_k-accent);
   font-family:inherit;font-size:var(--k-button-font-size,var(--_k-text-control));font-weight:var(--_k-weight-title);letter-spacing:inherit;text-align:center;animation:knobs-name-in .25s cubic-bezier(.2,.8,.2,1);transition:opacity .11s cubic-bezier(.4,0,1,1)}
 .knobs-preset-name::selection{background:color-mix(in srgb,var(--_k-accent) 24%,transparent);color:var(--_k-fg)}
@@ -949,7 +952,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,.knobs-graph,.knobs-graph-read,
   .knobs-tabs,.knobs-tab,.knobs-subhead,.knobs-subhead-label,.knobs-match,.knobs-cell,.knobs-cell-axis,.knobs-cell-read,.knobs-link,.knobs-range-read,.knobs-angle,.knobs-angle-read,.knobs-dial,
-  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,
+  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,.knobs-preset-key,
   .knobs-section-name,.knobs-section-summary,.knobs-section-desc,.knobs-group-desc,.knobs-group-summary,.knobs-tab-count):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }

@@ -384,7 +384,7 @@ Panels and switchers are keyboard-first:
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | On a gradient strip or curve graph | Arrows move the selected stop or point; `Tab` / `⇧Tab` and `[` / `]` pick another; `n` adds one, `Delete` removes it; `Enter` edits a stop's colour (`Esc` returns) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
-| `1`–`9` | Pick the focused row's Nth option: a choice (segmented or menu) or a curve's, easing's or gradient's presets. Anywhere else in the panel, pick the preset strip's Nth chip (a design's variants). While you use keys, tiny digit hints show on the options once focus settles, and on the strip's chips while focus is on the strip or the panel. A number row keeps its digits for inline edits, and a page's card for its group presets |
+| `1`–`9` | Pick the focused row's Nth option: a choice (segmented or menu) or a curve's, easing's or gradient's presets. Anywhere else in the panel, pick the preset strip's Nth chip (a design's variants). While you use keys, tiny digit hints show on the options once focus settles, and on the strip's chips while focus is on the strip or the panel (`hints: { digits: "always" }` on the mount keeps them on the chips all the time, small and dim before each name). A number row keeps its digits for inline edits, and a page's card for its group presets |
 | `⌥1`–`⌥9` | Show tab 1–9 |
 | `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
 | `Home` / `End` | Jump slider to `min` or `max` |

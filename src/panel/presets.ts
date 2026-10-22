@@ -137,6 +137,8 @@ export interface PresetStrip {
   select(index: number): void
   /** Lays the presets out as chips or a list (see `PresetDisplay`). */
   display(mode: PresetDisplay): void
+  /** Keeps each of the first nine chips' digit on it, quietly, before its name. */
+  digits(on: boolean): void
   selectById(id: string): void
   /** Saves the current values as "Variant N" and opens its name to typing; returns a status message. */
   save(): string
@@ -217,6 +219,7 @@ export function createPresetStrip<S extends Schema>(
   /** While the pill slides to a new chip, a resize retargets it instead of snapping it there. */
   let slideUntil = 0
   let display: PresetDisplay = "auto"
+  let digits = false
   /** A chip column's least width (px): the longest name's (see `fitColumns`). */
   let chipMin = 0
 
@@ -413,14 +416,20 @@ export function createPresetStrip<S extends Schema>(
       }
       lastVariantsRef = variantsRef
       const nextEntries = buildEntries()
-      const nextSig = JSON.stringify([scope, nextEntries.map((e) => [e.id, e.label])])
+      const nextSig = JSON.stringify([scope, digits, nextEntries.map((e) => [e.id, e.label])])
       entries = nextEntries
       syncShown()
       if (nextSig !== signature) {
         signature = nextSig
         entries = nextEntries
         buttons = entries.map((entry, idx) => {
-          const b = el("button", "knobs-preset-chip", entry.label)
+          const b = el("button", "knobs-preset-chip")
+          if (digits && idx < 9) {
+            const key = el("span", "knobs-preset-key", String(idx + 1))
+            key.setAttribute("aria-hidden", "true")
+            b.append(key, el("span", "knobs-preset-label", entry.label))
+            b.setAttribute("aria-keyshortcuts", String(idx + 1))
+          } else b.textContent = entry.label
           b.type = "button"
           b.tabIndex = -1
           b.dataset.presetId = entry.id
@@ -740,6 +749,15 @@ export function createPresetStrip<S extends Schema>(
     display(mode) {
       display = mode
       if (placeDisplay()) measurePill(true)
+    },
+    digits(on) {
+      if (digits === on) return
+      digits = on
+      root.toggleAttribute("data-digits", on)
+      // Built chips are rebuilt with (or without) their digits; unbuilt ones start that way.
+      if (signature === "") return
+      signature = ""
+      update()
     },
     save: () => {
       let message = ""

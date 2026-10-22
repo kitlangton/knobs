@@ -1340,9 +1340,24 @@ class GpuOverlayManager {
       }
       // While it's being named, its DOM field draws the name over the chip.
       if (btn.hasAttribute("data-naming")) continue
+      // A digit kept on the chip (.knobs-preset-key) draws quietly where it sits, and the name
+      // where its own span is.
+      const key = btn.querySelector<HTMLElement>(".knobs-preset-key")
+      const name = key && btn.querySelector<HTMLElement>(".knobs-preset-label")
+      if (key && name) {
+        const kr = this.rectOf(key)
+        this.drawText(
+          key.textContent ?? "",
+          kr.left,
+          br.top + br.height * 0.5,
+          withAlpha(tokens.dim, this.missed(btn, hinting)),
+          { px: tokens.textMeta, weight: tokens.labelWeight, clip: stripClip },
+        )
+      }
+      const nr = name ? this.rectOf(name) : undefined
       this.drawText(
-        btn.textContent ?? "",
-        br.left + br.width * 0.5,
+        name ? (name.textContent ?? "") : (btn.textContent ?? ""),
+        nr ? nr.left : br.left + br.width * 0.5,
         br.top + br.height * 0.5,
         withAlpha(
           this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
@@ -1351,7 +1366,7 @@ class GpuOverlayManager {
         {
           px: tokens.buttonFontSize ?? tokens.textControl,
           weight: isActive ? tokens.titleWeight : tokens.labelWeight,
-          align: "center",
+          align: nr ? "left" : "center",
           clip: stripClip,
         },
       )

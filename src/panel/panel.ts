@@ -678,6 +678,10 @@ function buildPanel<S extends Schema>(
         : options.defaultLabel
       : undefined) ??
     controls.presetLabel(id, scope)
+  const hintReach =
+    (typeof options.hints === "object" ? options.hints.reach : options.hints) ?? "page"
+  /** The strips' digits stay on their chips (`hints: { digits: "always" }`). */
+  const stripDigitsShown = typeof options.hints === "object" && options.hints.digits === "always"
   const presetStrip = createPresetStrip(
     doc,
     controls,
@@ -745,6 +749,7 @@ function buildPanel<S extends Schema>(
   }
   // A page's strip sits in its header bar, where it stays chips.
   presetStrip.display(page ? "chips" : (options.presetDisplay ?? "auto"))
+  presetStrip.digits(stripDigitsShown)
   /**
    * In a panel, a group with presets of its own (`scopedPresets`) shows them at the top of its
    * card while the strip above shows another scope's: the panel's, or its tab's.
@@ -769,6 +774,7 @@ function buildPanel<S extends Schema>(
       )
       strip.element.setAttribute("aria-label", `${groupTitle(group)} presets`)
       strip.display(options.presetDisplay ?? "auto")
+      strip.digits(stripDigitsShown)
       groupStrips.set(group, strip)
     }
     return strip
@@ -3124,7 +3130,7 @@ function buildPanel<S extends Schema>(
   // Page-wide hint mode: this panel's targets join every other panel's and piece's on the page,
   // and draws its own badges (both renderers) with the codes the page chose.
   const unregisterHints =
-    (options.hints ?? "page") === "page" && bound("hint")
+    hintReach === "page" && bound("hint")
       ? pageHints(doc).register(
           root,
           () =>
@@ -3995,7 +4001,8 @@ function buildPanel<S extends Schema>(
    * digits pick them from most rows too, but showing them there would flicker row to row).
    */
   const stripOptionsAt = (node: Element | null) => {
-    if (hintCtrl.isActive || !node) return undefined
+    // Digits that stay on the chips need no hints over them.
+    if (hintCtrl.isActive || !node || stripDigitsShown) return undefined
     const own = groupStripAt(node)
     if (own)
       return visible(own.element) && own.getEntries().length > 1 && !own.nameField()

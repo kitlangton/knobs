@@ -228,9 +228,14 @@ export interface MountPanelOptions extends LabelOptions {
    * and knobs/ui piece on the page (and the host's `data-hint` elements), so pressed here or
    * anywhere outside a text field it jumps across all of them; with nothing else on the page it's
    * this panel's alone, as always. `"panel"`: `s` here labels only this panel's controls, and they
-   * don't join the page's. `keys: { hint: false }` turns hint mode off here either way.
+   * don't join the page's. `keys: { hint: false }` turns hint mode off here either way. As an
+   * object, `reach` is that choice and `digits: "always"` keeps the preset strips' digits on their
+   * chips all the time, quietly, rather than only while you use keys.
    */
-  readonly hints?: "page" | "panel"
+  readonly hints?:
+    | "page"
+    | "panel"
+    | { readonly reach?: "page" | "panel"; readonly digits?: "keys" | "always" }
   /**
    * The key that shows and hides every panel and chip on the page that listens for it, outside
    * text fields and without modifiers; remembered per store. The store's `toggleKey` by default

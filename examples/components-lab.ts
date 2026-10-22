@@ -256,6 +256,7 @@ function open(file: string) {
     header: { title: false, buttons: ["undo", "redo", "reset"] },
     variants: false,
     session: false,
+    hints: { digits: "always" },
     empty: "This story has no controls",
   })
 }
