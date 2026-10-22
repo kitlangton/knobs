@@ -122,7 +122,7 @@ import { tapTick, tick } from "./haptics.js"
 import { changed, cue, resolveSound, sound, SOUND_PREF, soundPanel } from "./sound.js"
 import { panSwitch } from "./thumb.js"
 import { createSlider, decimals, type Slider, stepValue } from "./slider.js"
-import { panelFoldSummary } from "./summary.js"
+import { baseSignature, panelFoldSummary } from "./summary.js"
 import { colorHex } from "../core/color.js"
 import { readSession, writeSession } from "./session.js"
 import {
@@ -2887,12 +2887,6 @@ function buildPanel<S extends Schema>(
   }
   /** The active presets as last shown, so a change of base alone still updates the resets. */
   let shownBase = ""
-  const baseSignature = () =>
-    JSON.stringify([
-      controls.activePreset(),
-      Object.keys(controls.scopes).map((s) => controls.activePreset(s)),
-      Object.keys(controls.groupPresets).map((g) => controls.activeGroupPreset(g)),
-    ])
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2915,6 +2909,9 @@ function buildPanel<S extends Schema>(
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
     const moving = initialized ? rows.filter(changed) : rows
+    // A new base (a preset chosen or saved that the values already match) changes what counts as
+    // changed without moving a row.
+    const rebasing = baseSignature(controls) !== shownBase
     // The preset strip first: its chip's weight moves the chips, so it reads after its own writes
     // and before the rows dirty everything else.
     updateStrips()
@@ -2929,7 +2926,7 @@ function buildPanel<S extends Schema>(
       for (const chips of groupChips.values()) primeSegPill(chips.seg, chips.buttons)
       showValues(values, moving, stagger, landing)
     })
-    if (moving.length || !initialized) refreshFolds()
+    if (moving.length || !initialized || rebasing) refreshFolds()
     shown = values as Values<S>
     initialized = true
 
@@ -2959,7 +2956,7 @@ function buildPanel<S extends Schema>(
     const fresh = (r: Row) => r.row.dataset.shown === undefined
     const now = performance.now()
     let turn = 0
-    const based = baseSignature()
+    const based = baseSignature(controls)
     const rebased = based !== shownBase
     shownBase = based
     for (const row of moving) {

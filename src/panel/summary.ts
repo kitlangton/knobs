@@ -1,3 +1,5 @@
+import type { Controls } from "../core/store.js"
+
 /** A row of a folded panel card, as its summary reads it. */
 export interface SummaryRow {
   /** Its value as text ("CSS orb", "12 px"), or "" where it has no short form. */
@@ -22,3 +24,17 @@ export function panelFoldSummary(rows: readonly SummaryRow[], preset: string | n
   const changed = rows.filter((r) => r.changed).length
   return [lead, changed ? `${changed} changed` : ""].filter(Boolean).join(" · ")
 }
+
+/**
+ * Which presets the values are measured against (the panel's, each scope's and each group's).
+ * It changes when one is chosen or saved even if no value moves, which still changes what counts
+ * as changed: marks, resets and folded summaries follow it.
+ */
+export const baseSignature = (
+  controls: Pick<Controls<any>, "activePreset" | "activeGroupPreset" | "scopes" | "groupPresets">,
+) =>
+  JSON.stringify([
+    controls.activePreset(),
+    Object.keys(controls.scopes).map((s) => controls.activePreset(s)),
+    Object.keys(controls.groupPresets).map((g) => controls.activeGroupPreset(g)),
+  ])
