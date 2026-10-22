@@ -214,6 +214,74 @@ describe("scoped presets", () => {
     expect(list[0]!.values).toMatchObject({ sidebars: s(0.7), hover: s(0.14) })
   })
 
+  it("moves an active saved variant from before the scopes into each scope it started out in", () => {
+    const storage = memoryStorage()
+    const ab = () => ({
+      a: knob(1, { min: 0, max: 10, step: 1, group: "A", tab: "A" }),
+      b: knob(1, { min: 0, max: 10, step: 1, group: "B", tab: "B" }),
+    })
+    const before = defineControls("scoped-variant", ab(), {
+      enabled: true,
+      storage,
+      presets: { three: { a: 3 } },
+    })
+    before.variants.list()
+    before.set({ a: 8 })
+    before.variants.load(before.variants.save("Eight").id)
+    expect(before.activePreset()?.kind).toBe("variant")
+    const after = defineControls("scoped-variant", ab(), {
+      enabled: true,
+      storage,
+      scopedPresets: { A: { three: { a: 3 } } },
+    })
+    const ref = after.activePreset("A")
+    expect(ref?.kind).toBe("variant")
+    expect(after.scopes.A!.variants.list().map((v) => v.id)).toContain(ref!.id)
+    expect(after.activePreset()).toBeNull()
+    expect(after.baseValues().a).toBe(8)
+    expect(after.isModified("a")).toBe(false)
+  })
+
+  it("a scoped preset or variant lets go of a group preset it takes keys from, and only that", () => {
+    const c = defineControls(
+      "scoped-groups",
+      {
+        a: knob(1, { min: 0, max: 10, step: 1, group: "G", tab: "A" }),
+        b: knob(1, { min: 0, max: 10, step: 1, group: "H", tab: "B" }),
+      },
+      {
+        enabled: true,
+        storage: null,
+        scopedPresets: { A: { nine: { a: 9 } } },
+        groupPresets: {
+          G: [{ name: "Five", values: { a: 5 } }],
+          H: [{ name: "Six", values: { b: 6 } }],
+        },
+      },
+    )
+    c.groupPreset("G", 0)
+    c.groupPreset("H", 0)
+    c.preset("nine", { scope: "A" })
+    expect(c.get()).toEqual({ a: 9, b: 6 })
+    expect(c.activeGroupPreset("G")).toBe(-1)
+    expect(c.activeGroupPreset("H")).toBe(0)
+    expect(c.baseValues()).toMatchObject({ a: 9, b: 6 })
+    c.set({ a: 7 })
+    c.resetKey("a")
+    expect(c.get().a).toBe(9)
+    // A scoped saved variant does the same.
+    c.groupPreset("G", 0)
+    const v = c.scopes.A!.variants
+    v.list()
+    c.set({ a: 2 })
+    v.load(v.save("Two").id)
+    expect(c.activeGroupPreset("G")).toBe(-1)
+    expect(c.baseValues().a).toBe(2)
+    // Undo brings the group's preset back with its value.
+    c.undo()
+    expect(c.activeGroupPreset("G")).toBe(0)
+  })
+
   it("without scopes, presets work as before", () => {
     const c = defineControls("plain", schema(), {
       enabled: true,

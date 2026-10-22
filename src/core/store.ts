@@ -1024,6 +1024,26 @@ export function defineControls<const S extends Schema>(
       Object.entries(a.groups).every(([g, i]) => b.groups[g] === i) &&
       Object.keys(a.scopes).length === Object.keys(b.scopes).length &&
       Object.entries(a.scopes).every(([s, ref]) => sameRef(ref, b.scopes[s])))
+  /**
+   * Whether the panel's own presets moved to scopes (there are scopes and no plain `presets`), so
+   * its earlier saved variants start out in them.
+   */
+  const seedsScopes = () => scopePresets.size > 0 && Object.keys(options.presets ?? {}).length === 0
+  /**
+   * `groups` without those whose numbered presets set a key of `scope`: applying one of its
+   * presets or variants takes those keys over, so it stays their only base.
+   */
+  const groupsOutside = (groups: Readonly<Record<string, number>>, scope: string) => {
+    const of = scoping().of
+    return Object.fromEntries(
+      Object.entries(groups).filter(
+        ([g]) =>
+          !(groupPresets[g] ?? []).some((p) =>
+            Object.keys(p.values).some((k) => of.get(k) === scope),
+          ),
+      ),
+    )
+  }
   /** Whether a preset ref still names something in `scope` (a saved variant is checked later). */
   const known = (ref: PresetRef, scope: string) =>
     ref.kind === "variant" ||
@@ -1074,10 +1094,22 @@ export function defineControls<const S extends Schema>(
         if (found) byScope[s] = found
       }
     // Saved before its presets moved to scopes: the panel's preset becomes each scope's that
-    // has one by that id.
+    // has one by that id, and its saved variant each scope's it started out in (see
+    // `scopeVariants`).
     if (ref?.kind === "preset" && !Object.hasOwn(presets, ref.id)) {
       for (const [s, list] of scopePresets)
         if (!byScope[s] && ref.id !== "default" && Object.hasOwn(list, ref.id)) byScope[s] = ref
+      ref = null
+    } else if (ref?.kind === "variant" && seedsScopes()) {
+      const id = ref.id
+      for (const s of scopePresets.keys())
+        if (
+          !byScope[s] &&
+          scopeVariants(s)
+            .list()
+            .some((v) => v.id === id)
+        )
+          byScope[s] = ref
       ref = null
     }
     return validBase(makeBase(ref, byGroup, byScope))
@@ -1544,7 +1576,7 @@ export function defineControls<const S extends Schema>(
           { source: "variant", coalesce },
           makeBase(
             b.preset,
-            b.groups,
+            groupsOutside(b.groups, scope),
             withScope(b.scopes, scope, Object.freeze({ kind: "variant", id: variant })),
           ),
         )
@@ -1554,7 +1586,7 @@ export function defineControls<const S extends Schema>(
       // Variants saved before the panel's presets moved to scopes start out in each scope they
       // move, until the scope saves its own.
       () =>
-        Object.keys(options.presets ?? {}).length > 0
+        !seedsScopes()
           ? []
           : variants.list().flatMap((v) => {
               const values = within(normalize(schema, v.values), scope)
@@ -1985,7 +2017,7 @@ export function defineControls<const S extends Schema>(
         { source: "preset", coalesce: presetOptions?.coalesce },
         scope === ""
           ? makeBase(ref ?? null, {}, b.scopes)
-          : makeBase(b.preset, b.groups, withScope(b.scopes, scope, ref)),
+          : makeBase(b.preset, groupsOutside(b.groups, scope), withScope(b.scopes, scope, ref)),
       )
     },
     matchingPreset: (scope = "") => {
