@@ -13,20 +13,12 @@ const root = new URL("..", import.meta.url).pathname
 const base = `http://127.0.0.1:${PORT}`
 const OUT = process.env.OUT ?? `${process.env.LEASE_OUT ?? "/tmp"}/stills`
 mkdirSync(OUT, { recursive: true })
-const vite = spawn(
-  `${root}node_modules/.bin/vite`,
-  [
-    "preview",
-    "--config",
-    "examples/vite.config.ts",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    String(PORT),
-    "--strictPort",
-  ],
-  { cwd: root, stdio: "ignore", detached: true },
-)
+const vite = spawn(`${root}node_modules/.bin/vite`, ["--config", "examples/vite.config.ts"], {
+  cwd: root,
+  env: { ...process.env, PORT: String(PORT) },
+  stdio: "ignore",
+  detached: true,
+})
 const stop = () => {
   try {
     process.kill(-vite.pid, "SIGTERM")
@@ -53,6 +45,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({
   viewport: { width: 1440, height: 1000 },
   deviceScaleFactor: 2,
+  colorScheme: "dark",
 })
 const errors = []
 page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)))
