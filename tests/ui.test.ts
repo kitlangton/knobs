@@ -407,6 +407,20 @@ describe("tree model", () => {
     expect(navigate(rows, "cones", "Home").active).toBe("lights")
     expect(navigate(rows, null, "ArrowDown").active).toBe("lights")
   })
+  it("right to left, ← opens or goes down and → closes or goes up", () => {
+    const rows = flatten(sample(), access, new Set(["props"]))
+    expect(navigate(rows, "lights", "ArrowLeft", 10, "rtl")).toEqual({
+      active: "lights",
+      toggle: { id: "lights", expanded: true },
+    })
+    expect(navigate(rows, "props", "ArrowLeft", 10, "rtl").active).toBe("cones")
+    expect(navigate(rows, "props", "ArrowRight", 10, "rtl").toggle).toEqual({
+      id: "props",
+      expanded: false,
+    })
+    expect(navigate(rows, "tank", "ArrowRight", 10, "rtl").active).toBe("props")
+    expect(navigate(rows, "lights", "ArrowDown", 10, "rtl").active).toBe("props")
+  })
   it("type-ahead finds the next label starting with what's typed", () => {
     const rows = flatten(sample(), access, new Set(["lights", "props"]))
     const label = (n: Node) => n.label

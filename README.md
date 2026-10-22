@@ -1206,7 +1206,7 @@ Scrolling pane bodies, trees and the command palette's list fade their content o
 | Key | Action |
 | --- | --- |
 | `↑` / `↓`, `Home` / `End` | Move; type letters to jump to a label (see `typeahead`) |
-| `←` / `→` | Close or go up / open or go down |
+| `←` / `→` | Close or go up / open or go down (swapped when the tree is `dir="rtl"`) |
 | `⇧` click or `⇧↑↓`, `⌘` click, `⌘A` | Extend, toggle, select all |
 | `Space` | Select the active row (`⌘Space` toggles it) |
 | `Enter` / `F2` | Rename in place (with `onRename`); otherwise `Enter` calls `onActivate` |
