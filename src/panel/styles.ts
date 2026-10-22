@@ -166,6 +166,8 @@ const css = `
   --k-backdrop:blur(calc(var(--_k-glass) * 24px)) saturate(calc(1 + var(--_k-glass) * .8)) brightness(calc(1 + (var(--_k-glass-tone) - 1) * var(--_k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
   animation:knobs-in .16s var(--k-ease);}
+/* On a phone a floating panel takes the width, less a gutter, and scrolls inside the height. */
+@media(max-width:420px){.knobs-panel:not(.knobs-inline){width:calc(100vw - 16px)}}
 .knobs-panel[data-restored]{animation:none}
 /* Opening from its chip, the panel's chrome rides a separate shape (see morph.ts) while the
    content, laid out at full size, is clipped to it and revealed top first. */
