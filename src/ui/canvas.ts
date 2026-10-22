@@ -11,9 +11,11 @@ import {
   KEY_ZOOM,
   keyAction,
   layoutCanvas,
+  pinchView,
   releaseVelocity,
   snapView,
   viewPath,
+  wheelZoom,
   zoomAround,
   type CanvasPoint,
   type CanvasRect,
@@ -75,11 +77,10 @@ export interface Canvas {
 }
 
 // Kit's motion: the hand is 1:1 and coasts on release; what the hand didn't do springs, without
-// bounce: a fit or focus on smooth, a key's zoom on default, a mouse wheel's notch on instant,
+// bounce: a fit or focus on smooth, a key's zoom on default,
 // and tiles reflowing on calm.
 const FIT = springMotion(SPRINGS.smooth)
 const KEY = springMotion(SPRINGS.default)
-const NOTCH = springMotion(SPRINGS.instant)
 const LAYOUT = springMotion(SPRINGS.calm)
 const FOCUS_MAX = 2
 /** The fastest a fling coasts (px/s). */
@@ -551,14 +552,8 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
       if (pinching) return
       const dy = e.deltaY * k
       const at = local(e)
-      // A trackpad's pinch (ctrl, small steps) follows 1:1; a mouse wheel's notch springs a step.
-      if (Math.abs(dy) >= 40) {
-        const from = target()
-        startJump(zoomAround(from, from.scale * Math.exp(-dy * 0.0025), at, minZoom, maxZoom), NOTCH)
-        return
-      }
       grab()
-      setView(zoomAround(view, view.scale * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025)), at, minZoom, maxZoom))
+      setView(zoomAround(view, view.scale * wheelZoom(dy, e.ctrlKey), at, minZoom, maxZoom))
       return
     }
     let dx = e.deltaX * k
@@ -678,8 +673,7 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
     if (pinch) {
       const s = spread()
       if (!s) return
-      let v = zoomAround(view, view.scale * (s.d / Math.max(1, pinch.d)), s.mid, minZoom, maxZoom)
-      v = { x: v.x + s.mid.x - pinch.mid.x, y: v.y + s.mid.y - pinch.mid.y, scale: v.scale }
+      const v = pinchView(view, pinch.mid, s.mid, s.d / Math.max(1, pinch.d), minZoom, maxZoom)
       pinch.d = s.d
       pinch.mid = s.mid
       pinch.samples.push({ x: s.mid.x, y: s.mid.y, t: performance.now(), s: Math.log(v.scale) })

@@ -6,12 +6,15 @@ import {
   keyAction,
   layoutCanvas,
   packRows,
+  pinchView,
   releaseVelocity,
   rowWidth,
   snapView,
   toScreen,
   toWorld,
   viewPath,
+  wheelZoom,
+  WHEEL_ZOOM_MAX,
   zoomAround,
   type CanvasRect,
 } from "../src/ui/canvas-model"
@@ -129,6 +132,52 @@ describe("zoom around a point", () => {
     const back = zoomAround(zoomAround(v, v.scale * 1.5, at), v.scale, at)
     expect(back.x).toBeCloseTo(v.x, 9)
     expect(back.y).toBeCloseTo(v.y, 9)
+  })
+})
+
+describe("the hand's zoom", () => {
+  it("a two-finger pinch keeps the world point under the old midpoint under the new one", () => {
+    const v = { x: 37, y: -120, scale: 0.8 }
+    const from = { x: 400, y: 300 }
+    const world = toWorld(v, from)
+    for (const [to, ratio] of [
+      [{ x: 460, y: 250 }, 1.3],
+      [{ x: 300, y: 380 }, 0.7],
+      [{ x: 400, y: 300 }, 2],
+      [{ x: 520, y: 310 }, 1],
+    ] as const) {
+      const p = pinchView(v, from, to, ratio)
+      expect(p.scale).toBeCloseTo(v.scale * ratio, 9)
+      const at = toScreen(p, world)
+      expect(at.x).toBeCloseTo(to.x, 9)
+      expect(at.y).toBeCloseTo(to.y, 9)
+    }
+  })
+
+  it("a pinch held at the zoom's limit still follows the midpoint", () => {
+    const v = { x: 0, y: 0, scale: 8 }
+    const p = pinchView(v, { x: 100, y: 100 }, { x: 130, y: 90 }, 1.5, 0.05, 8)
+    expect(p).toEqual({ x: 30, y: -10, scale: 8 })
+  })
+
+  it("wheel zoom applies directly, with no step at any delta, and at most 1.25x an event", () => {
+    // Continuous across the old 40px threshold, either way.
+    for (const pinch of [true, false]) {
+      expect(Math.abs(wheelZoom(39.9, pinch) - wheelZoom(40, pinch))).toBeLessThan(0.002)
+      expect(Math.abs(wheelZoom(-39.9, pinch) - wheelZoom(-40, pinch))).toBeLessThan(0.002)
+    }
+    // A trackpad pinch's small steps are untouched; a notch is clamped evenly.
+    expect(wheelZoom(-5, true)).toBeCloseTo(Math.exp(0.05), 12)
+    expect(wheelZoom(-100, true)).toBe(WHEEL_ZOOM_MAX)
+    expect(wheelZoom(100, true)).toBe(1 / WHEEL_ZOOM_MAX)
+    expect(wheelZoom(-120, false)).toBe(WHEEL_ZOOM_MAX)
+    // Monotonic: more delta never zooms less.
+    let last = Number.POSITIVE_INFINITY
+    for (let d = -200; d <= 200; d += 0.5) {
+      const f = wheelZoom(d, true)
+      expect(f).toBeLessThanOrEqual(last)
+      last = f
+    }
   })
 })
 

@@ -150,6 +150,35 @@ export function zoomAround(
   return { x: at.x - (at.x - v.x) * k, y: at.y - (at.y - v.y) * k, scale: s }
 }
 
+/**
+ * Two fingers moved: the world point under their old midpoint `from` lands under the new one
+ * `to`, with the zoom times `ratio` (zoom around `from`, then follow the midpoint).
+ */
+export function pinchView(
+  v: CanvasView,
+  from: CanvasPoint,
+  to: CanvasPoint,
+  ratio: number,
+  min = 0,
+  max = Number.POSITIVE_INFINITY,
+): CanvasView {
+  const z = zoomAround(v, v.scale * ratio, from, min, max)
+  return { x: z.x + to.x - from.x, y: z.y + to.y - from.y, scale: z.scale }
+}
+
+/** The most one wheel event zooms (a mouse wheel's notch under ⌘ or ctrl). */
+export const WHEEL_ZOOM_MAX = 1.25
+
+/**
+ * One ⌘/ctrl-wheel event's zoom factor, applied directly: a trackpad pinch (ctrl) at 1% per px,
+ * ⌘-scroll at .25%, and never more than `WHEEL_ZOOM_MAX` either way per event, so a mouse
+ * wheel's big notches step evenly without springing.
+ */
+export function wheelZoom(deltaY: number, pinch: boolean): number {
+  const f = Math.exp(-deltaY * (pinch ? 0.01 : 0.0025))
+  return clamp(f, 1 / WHEEL_ZOOM_MAX, WHEEL_ZOOM_MAX)
+}
+
 /** The view that shows `r` whole and centred in a `w` × `h` canvas, `pad` px in from its edges. */
 export function fitView(
   r: CanvasRect,
