@@ -144,6 +144,20 @@ describe("scoped presets", () => {
     expect(Object.keys(c.scopes.Experiments!.presets)).toEqual(["default", "glide"])
     expect(c.presetLabel("default", "Experiments")).toBe("today")
     expect(c.presetLabel("default", "Sidebars")).toBe("default")
+    // By scope: each strip's default chip has its own name.
+    const named = defineControls(
+      "scoped-default-labels",
+      { a: knob(1, { min: 0, max: 9 }), b: knob(1, { min: 0, max: 9, group: "Motion" }) },
+      {
+        enabled: true,
+        storage: null,
+        presets: { big: { a: 9 } },
+        scopedPresets: { Motion: { snappy: { b: 2 } } },
+        defaultLabel: { "": "Empty", Motion: "Shipped" },
+      },
+    )
+    expect(named.presetLabel("default")).toBe("Empty")
+    expect(named.presetLabel("default", "Motion")).toBe("Shipped")
     c.preset("calm", { scope: "Sidebars" })
     c.preset("glide", { scope: "Experiments" })
     expect(c.get()).toMatchObject({ look: "glide", sidebars: s(0.45) })

@@ -129,6 +129,11 @@ export interface GroupPreset<V = State> {
  * default) shows names while they fit beside the title, else the menu.
  */
 export type GroupPresetDisplay = "auto" | "names" | "numbers" | "menu"
+/** The default chip's label for `scope` (see `LabelOptions.defaultLabel`). */
+const defaultLabelOf = (
+  label: string | Readonly<Record<string, string>> | undefined,
+  scope: string,
+): string | undefined => (typeof label === "object" ? label[scope] : label)
 /** Display labels, kept apart from the ids that identify groups, sections and presets. */
 export interface LabelOptions {
   /** By group id: what its header shows (verbatim). Ids stay identity everywhere else. */
@@ -137,8 +142,11 @@ export interface LabelOptions {
   readonly sectionLabels?: Readonly<Record<string, string>>
   /** By preset id: what the preset strip shows, e.g. `{ default: "Native" }`. */
   readonly presetLabels?: Readonly<Record<string, string>>
-  /** Shorthand for `presetLabels.default`. */
-  readonly defaultLabel?: string
+  /**
+   * Shorthand for `presetLabels.default`; by scope, `{ "": "Empty", Motion: "Shipped" }` names each
+   * strip's default chip on its own (`""` is the panel's, a tab or group's id one of `scopedPresets`).
+   */
+  readonly defaultLabel?: string | Readonly<Record<string, string>>
   /** How a page card shows its group presets (see `GroupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
   /** By group id: one muted line under its card's title on a page, over fields' `groupDescription`. */
@@ -1753,7 +1761,7 @@ export function defineControls<const S extends Schema>(
       const option = presetId === "default" ? v?.field.value : presetId
       return (
         options.presetLabels?.[presetId] ??
-        (presetId === "default" ? options.defaultLabel : undefined) ??
+        (presetId === "default" ? defaultLabelOf(options.defaultLabel, scope) : undefined) ??
         (v && option !== undefined && v.field.options.includes(option)
           ? (v.field.labels?.[option] ?? option)
           : presetId)

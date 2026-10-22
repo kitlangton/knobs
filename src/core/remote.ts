@@ -231,7 +231,7 @@ export interface RemoteControlsOptions {
   readonly sectionLabels?: Readonly<Record<string, string>>
   readonly presetLabels?: Readonly<Record<string, string>>
   /** Shorthand for `presetLabels.default`, e.g. "Native". */
-  readonly defaultLabel?: string
+  readonly defaultLabel?: string | Readonly<Record<string, string>>
   /** How a page card shows its group presets (see `ControlsOptions.groupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
   /** One muted line under a group's card title or a section's heading on a page, by id. */

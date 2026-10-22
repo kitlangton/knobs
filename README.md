@@ -849,7 +849,8 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   A `variants: true` choice on a tab adds its options to that tab's presets. Keys belong to their
   tab's scope first, then their group's. Plain `presets` then cover only the keys no scope holds;
   leave them out and only the scoped strips show. One strip shows per tab: the tab's own, else the
-  first group scope on it. In code, `controls.preset(id, { scope })`, `activePreset(scope)` and
+  first group scope on it. Every strip's default chip reads `defaultLabel`; by scope,
+  `defaultLabel: { "": "Empty", Motion: "Shipped" }` names each on its own. In code, `controls.preset(id, { scope })`, `activePreset(scope)` and
   `matchingPreset(scope)` take the tab or group, and `controls.scopeOf(key)` says whose presets
   move a key (`""` for plain `presets`, undefined when pinned). An active preset saved while the
   presets were panel-wide comes back on the scope that now has one by that id, and variants saved

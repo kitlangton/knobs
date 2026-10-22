@@ -672,7 +672,11 @@ function buildPanel<S extends Schema>(
     titleEl.title = `${titleEl.textContent ? `${titleEl.textContent}\n` : ""}Press ${show("help")} for keyboard shortcuts`
   const presetLabel = (id: string, scope = "") =>
     options.presetLabels?.[id] ??
-    (id === "default" ? options.defaultLabel : undefined) ??
+    (id === "default"
+      ? typeof options.defaultLabel === "object"
+        ? options.defaultLabel[scope]
+        : options.defaultLabel
+      : undefined) ??
     controls.presetLabel(id, scope)
   const presetStrip = createPresetStrip(
     doc,
