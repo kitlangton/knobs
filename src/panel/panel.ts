@@ -1032,8 +1032,10 @@ function buildPanel<S extends Schema>(
     }
     if (page) {
       if (remember) foldsKept?.set("groups", group, next)
-    } else if (sessionKept)
+    } else if (sessionKept) {
       writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
+      if (remember) panelFolds?.set("groups", group, next)
+    }
     refreshFolds()
     positioned?.constrain()
     wakeGpu()
@@ -1214,7 +1216,9 @@ function buildPanel<S extends Schema>(
       gHead.setAttribute("role", "button")
       gHead.setAttribute("aria-label", title)
       const folded =
-        (page ? foldsKept?.get("groups", groupName) : session.groups?.[groupName]) ?? foldAt
+        (page
+          ? foldsKept?.get("groups", groupName)
+          : (session.groups?.[groupName] ?? panelFolds?.get("groups", groupName))) ?? foldAt
       folds.set(groupName, folded)
       gHead.setAttribute("aria-expanded", String(!folded))
       if (!page) gHead.toggleAttribute("data-folded", folded)
@@ -1320,6 +1324,12 @@ function buildPanel<S extends Schema>(
         : controls.storage
   const foldsKept: FoldMemory | null =
     page && foldPort ? foldMemory(controls.id, () => foldPort) : null
+  /**
+   * A panel's group and sub-heading folds outlive the tab too, in the store's storage, unless the
+   * host keeps them to itself (`session: false`) or the store persists nothing.
+   */
+  const panelFolds: FoldMemory | null =
+    !page && remember && foldPort ? foldMemory(controls.id, () => foldPort) : null
 
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()
@@ -2168,9 +2178,7 @@ function buildPanel<S extends Schema>(
           nodes.push(r.row)
         }
         const strip =
-          run.group !== undefined && !stripped.has(run.group)
-            ? groupStripFor(run.group)
-            : undefined
+          run.group !== undefined && !stripped.has(run.group) ? groupStripFor(run.group) : undefined
         if (strip) stripped.add(run.group!)
         arrange(block.card, strip ? [strip.element, ...nodes] : nodes)
         if (animate && at >= 0)
@@ -2276,7 +2284,13 @@ function buildPanel<S extends Schema>(
     const caret = caretSvg()
     node.append(label, caret)
     if (!subFolds.has(id))
-      subFolds.set(id, session.subsections?.[id] ?? options.subsectionFolded?.[name] ?? false)
+      subFolds.set(
+        id,
+        session.subsections?.[id] ??
+          panelFolds?.get("subsections", id) ??
+          options.subsectionFolded?.[name] ??
+          false,
+      )
     node.setAttribute("aria-expanded", String(!subFolds.get(id)))
     node.addEventListener("click", (event) => {
       if (event.detail < 2) foldSub(id)
@@ -2309,10 +2323,12 @@ function buildPanel<S extends Schema>(
     if (next && rows.some((r) => r.subhead === id && r.row.contains(doc.activeElement)))
       sh.el.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     applyVisibility("reveal")
-    if (remember)
+    if (remember) {
       writeSession(controls.id, {
         subsections: { ...readSession(controls.id).subsections, [id]: next },
       })
+      panelFolds?.set("subsections", id, next)
+    }
   }
 
   // ——— Tabs ———
