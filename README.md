@@ -838,8 +838,13 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
 - **Keys presets leave alone, in place.** `inPresets: false` on a field, or `inPresets: { Motion:
   false }` on the store for a whole group, keeps presets, scoped presets and saved variants off
   those keys exactly as they stay off pinned ones (and a preset's chip stays lit when they move),
-  but the rows stay where they are. A pinned key is one of these, moved to the top.
-  `controls.inPresets(key)` says whether presets move a key.
+  but the rows stay where they are. A pinned key is one of these, moved to the top. The rule, for
+  `inPresets: false` and `pinned` groups alike: presets and variants from *other* scopes (the
+  panel-wide presets, tab scopes, other groups') leave the group alone, but a scope keyed by the
+  group's own name still moves it. So `inPresets: { Motion: false }` with
+  `scopedPresets: { Motion: { Snappy } }` gives Motion its own strip that state presets never
+  touch; its chips apply, save, match and mark only Motion. A field's own `inPresets: false` stays
+  out of every scope. `controls.inPresets(key)` says whether presets from other scopes move a key.
 - **Presets of a tab's own.** `scopedPresets` gives a tab (or a group) presets that belong to it:
   `{ Sidebars: { snappy, smooth, calm } }`. Its strip shows only on that tab, and a tab without any
   shows none. A scoped preset moves only its tab's (or group's) keys, never pinned ones or another
@@ -854,7 +859,8 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   group keeps Shipped, Snappy and Calm beside its knobs. Every strip's default chip reads `defaultLabel`; by scope,
   `defaultLabel: { "": "Empty", Motion: "Shipped" }` names each on its own. In code, `controls.preset(id, { scope })`, `activePreset(scope)` and
   `matchingPreset(scope)` take the tab or group, and `controls.scopeOf(key)` says whose presets
-  move a key (`""` for plain `presets`, undefined when pinned). An active preset saved while the
+  move a key (`""` for plain `presets`, the group's id for a pinned or `inPresets: false`
+  group with a scope of its own, else undefined when pinned). An active preset saved while the
   presets were panel-wide comes back on the scope that now has one by that id, and variants saved
   then start out in each scope they move.
 

@@ -458,13 +458,15 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    * Groups pinned to the top of a panel, under the header and above the tab strip, on every tab
    * (as fields' `pinned: true` pins theirs). Presets and saved variants leave them alone: applying
    * one keeps their values, saving one keeps them out, and they're modified against their defaults.
+   * A scope keyed by the group's own name (`scopedPresets`) still moves it.
    */
   pinned?: readonly string[]
   /**
    * Groups presets leave alone, where they are: `{ Motion: false }`. As with pinned groups,
    * applying a preset or variant keeps their values, saving one leaves them out, and a preset's chip
-   * doesn't drift when they change; but their rows stay in place. A field says it alone with
-   * `inPresets: false`.
+   * doesn't drift when they change; but their rows stay in place. A scope keyed by the group's own
+   * name (`scopedPresets: { Motion: … }`) still moves it: only other scopes' presets leave it
+   * alone. A field says it alone with `inPresets: false`, and then no scope moves it.
    */
   inPresets?: Readonly<Record<string, boolean>>
   /**
@@ -511,7 +513,7 @@ export interface Controls<S extends Schema = Schema> {
   readonly scopes: Readonly<Record<string, PresetScope<Values<S>>>>
   /**
    * The scope `key`'s presets come from: a tab or group's id, `""` for `presets`, or undefined
-   * when presets leave it alone (pinned, `inPresets: false`).
+   * when presets leave it alone (pinned, `inPresets: false`, without a scope of its group's own).
    */
   scopeOf(key: string): string | undefined
   readonly actions: readonly ControlAction<Values<S>>[]
@@ -544,7 +546,10 @@ export interface Controls<S extends Schema = Schema> {
   presetLabel(id: string, scope?: string): string
   /** Whether `key` is pinned (its group is, see `ControlsOptions.pinned`), outside the presets. */
   isPinned(key: string): boolean
-  /** Whether presets move `key`: false when it's pinned or says `inPresets: false` (or its group does). */
+  /**
+   * Whether presets move `key`: false when it's pinned or says `inPresets: false` (or its group
+   * does). Its group's own scope may still move it (see `scopeOf`).
+   */
   inPresets(key: string): boolean
   readonly error: string | null
   get(): Values<S>
@@ -811,7 +816,7 @@ export function defineControls<const S extends Schema>(
   /**
    * Which scope's presets move each value key: a tab or group named in `scopedPresets` (or
    * holding the variants choice), else `""`, the panel's own `presets`. Keys presets leave alone
-   * (pinned ones, `inPresets: false`) have none.
+   * (pinned ones, `inPresets: false`) have none, unless their group has a scope of its own.
    * A key goes to its tab's scope before its group's.
    */
   let scopingOf:
@@ -836,8 +841,14 @@ export function defineControls<const S extends Schema>(
     if (variants) named.add(variants)
     const of = new Map<string, string>()
     for (const k of valueKeys(schema)) {
-      if (presetFree().has(k)) continue
       const f = fields[k]!
+      if (presetFree().has(k)) {
+        // A group that presets leave alone (pinned, `inPresets: false`) still answers to its own
+        // scope; only a field that says `inPresets: false` itself stays out of every one.
+        if (f.inPresets !== false && f.group !== undefined && named.has(f.group))
+          of.set(k, f.group)
+        continue
+      }
       const tab = tabOf(f)
       of.set(
         k,

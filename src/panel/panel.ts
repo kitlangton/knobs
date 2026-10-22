@@ -2156,7 +2156,7 @@ function buildPanel<S extends Schema>(
           nodes.push(r.row)
         }
         const strip =
-          run.group !== undefined && !run.pinned && !stripped.has(run.group)
+          run.group !== undefined && !stripped.has(run.group)
             ? groupStripFor(run.group)
             : undefined
         if (strip) stripped.add(run.group!)

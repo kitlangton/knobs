@@ -311,3 +311,103 @@ describe("scoped presets", () => {
     expect(c.get().hover).toEqual(s(0.14))
   })
 })
+
+// A group presets leave alone still answers to a scope of its own name: other scopes' presets
+// (the panel's, tabs', other groups') leave it alone, its own move it.
+describe("a group outside the presets with a scope of its own", () => {
+  const motion = () => ({
+    state: choice("A", ["A", "B"], { variants: true }),
+    height: spring({ duration: 0.4, bounce: 0 }, { group: "Motion" }),
+  })
+  const snappy = { height: s(0.3) }
+  const make = (extra: Record<string, unknown> = { inPresets: { Motion: false } }) => {
+    const changes: { patch: unknown; source: unknown }[] = []
+    const c = defineControls("own-scope", motion(), {
+      enabled: true,
+      storage: null,
+      presets: { B: {} },
+      defaultLabel: { "": "A", Motion: "Shipped" },
+      scopedPresets: { Motion: { Snappy: snappy } },
+      onChange: (patch, _values, meta) => changes.push({ patch, source: meta.source }),
+      ...extra,
+    })
+    return { c, changes }
+  }
+
+  it("its chip applies the preset and fires onChange from the preset", () => {
+    const { c, changes } = make()
+    expect(c.inPresets("height")).toBe(false)
+    expect(c.scopeOf("height")).toBe("Motion")
+    expect(c.scopes.Motion!.keys).toEqual(["height"])
+    c.preset("Snappy", { scope: "Motion" })
+    expect(c.get().height).toEqual(s(0.3))
+    expect(changes).toEqual([{ patch: { height: s(0.3) }, source: "preset" }])
+    expect(c.activePreset("Motion")).toEqual({ kind: "preset", id: "Snappy" })
+    expect(c.matchingPreset("Motion")).toBe("Snappy")
+    expect(c.isModified("height")).toBe(false)
+    c.set({ height: s(0.5) })
+    expect(c.matchingPreset("Motion")).toBe("custom")
+    expect(c.isModified("height")).toBe(true)
+    c.undo()
+    expect(c.get().height).toEqual(s(0.3))
+    c.undo()
+    expect(c.get().height).toEqual(s(0.4))
+    expect(c.activePreset("Motion")).toBe(null)
+  })
+
+  it("the panel's state presets leave Motion alone, and their chip stays lit when it moves", () => {
+    const { c } = make()
+    c.preset("Snappy", { scope: "Motion" })
+    c.preset("B")
+    expect(c.get()).toEqual({ state: "B", height: s(0.3) })
+    expect(c.matchingPreset("")).toBe("B")
+    c.set({ height: s(0.6) })
+    expect(c.matchingPreset("")).toBe("B")
+    c.preset("default")
+    expect(c.get()).toEqual({ state: "A", height: s(0.6) })
+    expect(c.matchingPreset("")).toBe("default")
+    // A variant saved on the panel's strip leaves Motion out; Motion's own keeps only Motion.
+    const saved = c.variants.save("Mine")
+    expect(c.variants.list().find((v) => v.id === saved.id)!.values.height).toEqual(s(0.4))
+    const own = c.scopes.Motion!.variants.save("Slow")
+    expect(c.scopes.Motion!.variants.list().find((v) => v.id === own.id)!.values).toEqual({
+      state: "A",
+      height: s(0.6),
+    })
+  })
+
+  it("a pinned group with a scope of its own takes its presets too", () => {
+    const { c, changes } = make({ pinned: ["Motion"] })
+    expect(c.isPinned("height")).toBe(true)
+    expect(c.scopeOf("height")).toBe("Motion")
+    c.preset("Snappy", { scope: "Motion" })
+    expect(c.get().height).toEqual(s(0.3))
+    expect(changes.at(-1)).toEqual({
+      patch: { height: s(0.3) },
+      source: "preset",
+    })
+    c.preset("B")
+    expect(c.get()).toEqual({ state: "B", height: s(0.3) })
+    expect(c.matchingPreset("Motion")).toBe("Snappy")
+  })
+
+  it("a field that says inPresets: false itself stays out of its group's scope", () => {
+    const c = defineControls(
+      "own-scope-field",
+      {
+        height: spring({ duration: 0.4, bounce: 0 }, { group: "Motion", inPresets: false }),
+        width: spring({ duration: 0.4, bounce: 0 }, { group: "Motion" }),
+      },
+      {
+        enabled: true,
+        storage: null,
+        scopedPresets: {
+          Motion: { Snappy: { height: s(0.3), width: s(0.3) } },
+        },
+      },
+    )
+    expect(c.scopeOf("height")).toBe(undefined)
+    c.preset("Snappy", { scope: "Motion" })
+    expect(c.get()).toEqual({ height: s(0.4), width: s(0.3) })
+  })
+})
