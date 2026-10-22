@@ -33,6 +33,8 @@ export interface FrameCache {
   readonly backend: "webcodecs" | "video" | "pending"
   /** Frames held now. */
   readonly size: number
+  /** Scrub proxies held now, and every how many frames they are. */
+  readonly proxies: { readonly count: number; readonly stride: number; readonly bytes: number }
   /**
    * The cached frame nearest `frame`, no further than `within` frames. `decode`: a nearer scrub
    * proxy that's stored but not decoded starts decoding (listeners hear when it's in).
@@ -62,8 +64,15 @@ const SEEN = 12
 const WANTED = 48
 const PREVIEW = 384
 const FULL = 1280
-/** A scrub proxy's longest side, its JPEG quality, the bytes a source's proxies may hold. */
-export const PROXY = { size: 960, quality: 0.8, budget: 48 * 2 ** 20, decoded: 8 } as const
+/** A scrub proxy's longest side, JPEG quality, the bytes a source's proxies may hold, how many stay decoded. */
+export const PROXY = {
+  size: 960,
+  quality: 0.8,
+  budget: 48 * 2 ** 20,
+  decoded: 8,
+  /** Proxies a unit makes before another cache takes its turn. */
+  turn: 90,
+} as const
 
 /** The stride a set of proxies needs to stay in `budget`: the smallest power of two that does. */
 export function proxyStride(bytes: number, count: number, total: number, budget: number): number {
@@ -130,6 +139,8 @@ interface Core {
   refs: number
   shown: number
   active: boolean
+  /** When it last ran a unit (the pump's turn). */
+  ran: number
   /** One unit of decoding, or null when there's nothing to do. */
   work(): Promise<void> | null
   dropFull(): void
@@ -141,6 +152,7 @@ const cores = new Map<string, Core>()
 let actives = new Set<Core>()
 let round: Set<Core> | null = null
 let running = false
+let turns = 0
 
 /** `core` is in use: it and the others asked for in this task go first; the rest drop full frames. */
 function claim(core: Core) {
@@ -169,13 +181,17 @@ function pump(win: Window) {
   void (async () => {
     try {
       for (;;) {
+        // Active caches first, taking turns (a compare's two sides fill together).
         const order = [...cores.values()]
           .filter((c) => c.shown > 0 || c.active)
-          .sort((a, b) => Number(b.active) - Number(a.active))
+          .sort((a, b) => Number(b.active) - Number(a.active) || a.ran - b.ran)
         let unit: Promise<void> | null = null
         for (const c of order) {
           unit = c.work()
-          if (unit) break
+          if (unit) {
+            c.ran = ++turns
+            break
+          }
         }
         if (!unit) break
         await unit.catch(() => {})
@@ -222,9 +238,59 @@ async function toBitmap(
   }
 }
 
+// JPEGs are encoded off the main thread where it can (a page's canvas encodes in its idle time,
+// slowly, and never while something animates): two workers made from a blob URL, shared by every
+// cache; a page whose policy forbids them encodes on the main thread.
+const ENCODER = `onmessage=async(e)=>{const{id,bitmap,quality}=e.data;try{const c=new OffscreenCanvas(bitmap.width,bitmap.height);c.getContext("2d").drawImage(bitmap,0,0);bitmap.close();postMessage({id,blob:await c.convertToBlob({type:"image/jpeg",quality})})}catch(err){postMessage({id,error:String(err)})}}`
+interface Encoders {
+  readonly workers: Worker[]
+  readonly waiting: Map<number, { done(b: Blob): void; fail(e: unknown): void }>
+  next: number
+}
+let encoders: Encoders | null | undefined
+
+function encodersOf(win: Window): Encoders | null {
+  if (encoders !== undefined) return encoders
+  encoders = null
+  const W = (win as { Worker?: typeof Worker }).Worker
+  if (!W || !("OffscreenCanvas" in win)) return null
+  try {
+    const url = URL.createObjectURL(new Blob([ENCODER], { type: "text/javascript" }))
+    const waiting: Encoders["waiting"] = new Map()
+    const workers = [new W(url), new W(url)]
+    for (const w of workers) {
+      w.onmessage = (e: MessageEvent<{ id: number; blob?: Blob; error?: string }>) => {
+        const job = waiting.get(e.data.id)
+        waiting.delete(e.data.id)
+        if (e.data.blob) job?.done(e.data.blob)
+        else job?.fail(new Error(e.data.error))
+      }
+      // Refused (a CSP without blob: workers): the main thread encodes from here on.
+      w.onerror = () => {
+        encoders = null
+        for (const j of waiting.values()) j.fail(new Error("encoder"))
+        waiting.clear()
+      }
+    }
+    encoders = { workers, waiting, next: 0 }
+  } catch {
+    encoders = null
+  }
+  return encoders
+}
+
 /** A frame as a small JPEG: a scrub proxy. */
 async function toProxy(doc: Document, source: CanvasImageSource, w: number, h: number) {
   const bm = await toBitmap(doc, source, w, h, PROXY.size)
+  const pool = encodersOf(doc.defaultView!)
+  if (pool) {
+    const id = pool.next++
+    const worker = pool.workers[id % pool.workers.length]!
+    return new Promise<Blob>((done, fail) => {
+      pool.waiting.set(id, { done, fail })
+      worker.postMessage({ id, bitmap: bm, quality: PROXY.quality }, [bm])
+    })
+  }
   try {
     const Off = (doc.defaultView as { OffscreenCanvas?: typeof OffscreenCanvas } | null)
       ?.OffscreenCanvas
@@ -487,17 +553,20 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       }
     }
     if (!run) return
-    // A new focus (the hand let go) stops it: those full-size frames come first.
+    // A new focus (the hand let go) stops it: those full-size frames come first. So does a turn's
+    // worth of frames, so another cache (a compare's other side) fills alongside.
     const gen = generation
+    let made = 0
     await decodeRun(
       track,
       buf,
       run,
-      () => gen !== generation,
-      (vf, f) =>
-        f % stride || proxies.has(f) || f >= total
-          ? null
-          : toProxy(doc, vf, vf.displayWidth, vf.displayHeight).then((b) => storeProxy(f, b)),
+      () => gen !== generation || made >= PROXY.turn,
+      (vf, f) => {
+        if (f % stride || proxies.has(f) || f >= total) return null
+        made++
+        return toProxy(doc, vf, vf.displayWidth, vf.displayHeight).then((b) => storeProxy(f, b))
+      },
     )
   }
   /**
@@ -695,6 +764,9 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
     get size() {
       return entries.size
     },
+    get proxies() {
+      return { count: proxies.size, stride, bytes: proxyBytes }
+    },
     nearest(frame, within = Infinity, decode = false) {
       const k = nearestKey(entries.keys(), frame, within)
       const kd = nearestKey(decoded.keys(), frame, within)
@@ -774,6 +846,7 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
     refs: 0,
     shown: 0,
     active: false,
+    ran: 0,
     work() {
       if (disposed || backend === "pending") return null
       if (missing().length) return backend === "webcodecs" ? decodeUnit() : videoUnit()

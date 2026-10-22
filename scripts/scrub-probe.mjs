@@ -94,6 +94,9 @@ const instrument = () => {
     const kind = v.closest(".knobs-player") ? "player" : null
     if (!kind) return
     const f = (_n, m) => {
+      // Under the player's preview, a frame the video presents isn't seen.
+      if (v.parentElement?.querySelector(".knobs-player-preview:not([hidden])"))
+        return v.requestVideoFrameCallback(f)
       window.__shown.push({
         t: performance.now(),
         kind,
@@ -206,13 +209,29 @@ const summary = (r) => ({
   exactVideoAfterReleaseMs: r.settle,
 })
 
+/** The shared frame caches of the pair (the page's own module), when the build has proxies. */
+const caches = () =>
+  page.evaluate(async (rootPath) => {
+    const m = await import(`/@fs${rootPath}src/ui/compare-frames.ts`)
+    const out = {}
+    for (const side of ["before", "after"]) {
+      const src = new URL(`./assets/compare/scrub-1080-${side}.mp4`, location.href).href
+      const c = m.acquireFrames(document, src, 30)
+      out[side] = { backend: c.backend, size: c.size, proxies: c.proxies ?? null }
+      c.release()
+    }
+    return out
+  }, root)
+out.caches = {}
 for (const kind of ["compare", "player"]) {
   const res = {}
   // Cold: a second after it loads. Fast: a frame per move across the line; slow: 50 ms a move
   // over a fifth of it.
   if (kind === "compare") await sleep(Math.max(0, 1000 - (Date.now() - loadedAt)))
+  out.caches[`${kind}-cold`] = await caches()
   res.cold = summary(await drag(kind, 0.05, 0.95, 60, 16))
   await sleep(10000)
+  out.caches[`${kind}-warm`] = await caches()
   res.fast = summary(await drag(kind, 0.95, 0.05, 60, 16))
   res.slow = summary(await drag(kind, 0.3, 0.5, 40, 50))
   out[kind] = res
