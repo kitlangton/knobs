@@ -1084,11 +1084,8 @@ function buildPanel<S extends Schema>(
     gRandom.dataset.hint = `${title} random`
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
-    // A group of readouts alone has nothing to roll.
-    const rollable = (Object.values(controls.schema) as Field[]).some(
-      (f) => f.group === groupName && hasValue(f),
-    )
-    if ((!bound("random") && !bound("mutate")) || !rollable) gRandom.hidden = true
+    // A group Random never changes (readouts, actions, switches) has no die (see `update`).
+    if (!bound("random") && !bound("mutate")) gRandom.hidden = true
     groupDice.set(groupName, { button: gRandom, die: gDie })
     // On a page, the group's presets sit in its header: their names as segments while they fit
     // beside the title, else a compact menu (or numbered chips, whose hovered name shows where
@@ -2623,6 +2620,11 @@ function buildPanel<S extends Schema>(
   const keysOf = (indices: readonly number[]) =>
     indices.flatMap((i) => rows[i]?.keys ?? []) as (keyof S & string)[]
   const groupKeys = (group: string) => rows.filter((r) => r.group === group).flatMap((r) => r.keys)
+  /** Whether Random could ever change `key`: a lock comes and goes, `random: false` stays. */
+  const mayRoll = (key: string) => {
+    const field = (controls.schema as Record<string, Field>)[key]
+    return Boolean(field && hasValue(field) && field.random !== false)
+  }
   const rerollGroup = (group: string, nudge: boolean) => {
     const roller = groupDice.get(group)?.die
     if (!roller) return
@@ -3073,11 +3075,20 @@ function buildPanel<S extends Schema>(
       row.row.classList.toggle("knobs-locked", locked)
     }
     if (randomButton.disabled !== (unlocked === 0)) randomButton.disabled = unlocked === 0
+    // A die shows only where Random could change something: one that never could (only switches,
+    // actions or `random: false`) would be a button that does nothing. Locks only disable it.
+    const rolls = (bound("random") || bound("mutate")) && shows("random")
+    const headerHidden = !rolls || !rows.some((r) => r.keys.some(mayRoll))
+    if (randomButton.hidden !== headerHidden) randomButton.hidden = headerHidden
     for (const [group, { button }] of groupDice) {
       const off =
         !options.groupRandom &&
         !groupKeys(group).some((k) => controls.canRoll(k as keyof S & string))
       if (button.disabled !== off) button.disabled = off
+      const hidden =
+        (!bound("random") && !bound("mutate")) ||
+        (!options.groupRandom && !groupKeys(group).some(mayRoll))
+      if (button.hidden !== hidden) button.hidden = hidden
     }
     if (root.hasAttribute("data-comparing") !== controls.comparing)
       root.toggleAttribute("data-comparing", controls.comparing)
