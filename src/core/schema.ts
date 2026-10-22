@@ -68,6 +68,11 @@ export interface FieldMeta {
    */
   readonly pinned?: boolean
   /**
+   * `false`: presets, scoped presets and variants leave the field alone, as they leave a pinned
+   * one, but its row stays where it is. See `ControlsOptions.inPresets` for a whole group.
+   */
+  readonly inPresets?: false
+  /**
    * A collapsible sub-heading inside the field's group: a flat heading with a hairline, never a
    * card inside the card. Consecutive fields that share it sit under one heading.
    */
@@ -90,6 +95,7 @@ export const META_KEYS = [
   "sectionFolded",
   "tab",
   "pinned",
+  "inPresets",
   "subsection",
 ] as const satisfies readonly (keyof FieldMeta)[]
 /** The meta `source` gives, without undefined keys. */
@@ -435,6 +441,20 @@ export function pinnedKeys(schema: Schema, groups: readonly string[] = []): Read
   const out = new Set<string>()
   for (const [key, f] of Object.entries(schema))
     if (f.group === undefined ? f.pinned === true : byGroup.get(f.group) === true) out.add(key)
+  return out
+}
+/**
+ * The keys presets leave alone: the pinned ones, fields that say `inPresets: false`, and every key
+ * of a group `groups` gives `false`.
+ */
+export function presetFreeKeys(
+  schema: Schema,
+  pinned: ReadonlySet<string>,
+  groups: Readonly<Record<string, boolean>> = {},
+): ReadonlySet<string> {
+  const out = new Set(pinned)
+  for (const [key, f] of Object.entries(schema))
+    if (f.inPresets === false || (f.group !== undefined && groups[f.group] === false)) out.add(key)
   return out
 }
 export type FieldValue<F extends Field> = F extends Knob

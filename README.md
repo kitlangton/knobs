@@ -835,6 +835,11 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   A pinned `variants: true` choice is an ordinary choice with a row: pinned wins, and its options
   make no presets. A tab whose rows no preset moves shows no preset strip; a variants choice moves
   its own tab (or every tab, if it has none).
+- **Keys presets leave alone, in place.** `inPresets: false` on a field, or `inPresets: { Motion:
+  false }` on the store for a whole group, keeps presets, scoped presets and saved variants off
+  those keys exactly as they stay off pinned ones (and a preset's chip stays lit when they move),
+  but the rows stay where they are. A pinned key is one of these, moved to the top.
+  `controls.inPresets(key)` says whether presets move a key.
 - **Presets of a tab's own.** `scopedPresets` gives a tab (or a group) presets that belong to it:
   `{ Sidebars: { snappy, smooth, calm } }`. Its strip shows only on that tab, and a tab without any
   shows none. A scoped preset moves only its tab's (or group's) keys, never pinned ones or another

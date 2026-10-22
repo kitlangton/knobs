@@ -1342,9 +1342,9 @@ function buildPanel<S extends Schema>(
     const specs: RowSpec[] = []
     const placed = new Set<string>()
     for (const [key, field] of entries) {
-      // A variants choice is switched from the preset strip; it has no row of its own. A pinned
-      // one is an ordinary choice (pinned wins, see `variantsOf`).
-      if (field.kind === "choice" && field.variants && !controls.isPinned(key)) continue
+      // A variants choice is switched from the preset strip; it has no row of its own. One the
+      // presets leave alone (pinned, `inPresets: false`) is an ordinary choice (see `variantsOf`).
+      if (field.kind === "choice" && field.variants && controls.inPresets(key)) continue
       const pair = field.kind === "knob" && field.spring ? halves.get(field.spring.id) : undefined
       if (pair?.duration && pair.bounce && field.kind === "knob" && field.spring) {
         if (placed.has(field.spring.id)) continue
@@ -2296,7 +2296,7 @@ function buildPanel<S extends Schema>(
         : []
     })
     // The variants choice has no row; a variant moves the tab it sits on (every tab without one).
-    const v = variantsOf(controls.schema, controls.isPinned)
+    const v = variantsOf(controls.schema, (key) => !controls.inPresets(key))
     if (v) {
       const tab = v.field.tab ?? (v.field.group !== undefined ? groupTab(v.field.group) : undefined)
       if (tab === undefined || tab === activeTab) keys.push(v.key)

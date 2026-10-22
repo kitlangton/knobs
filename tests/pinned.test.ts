@@ -195,3 +195,91 @@ describe("pinned groups with a variants choice", () => {
     expect(presetsTouch(entries, ["size", "variant"], c.locked)).toBe(true)
   })
 })
+
+describe("keys presets leave alone, in place (inPresets: false)", () => {
+  const states = () => ({
+    state: choice("Empty", ["Empty", "Loading", "Error"], { variants: true }),
+    title: text("Untitled"),
+    enter: spring({ duration: 0.3, bounce: 0 }, { group: "Motion" }),
+    stagger: knob(0.02, { min: 0, max: 0.2, step: 0.01, group: "Motion" }),
+    blur: knob(4, { min: 0, max: 8, step: 1, inPresets: false }),
+  })
+  const make = (inPresets?: Record<string, boolean>) =>
+    defineControls("in-presets", states(), {
+      enabled: true,
+      storage: null,
+      presets: {
+        Loading: { title: "Loading…", stagger: 0.1, blur: 8 },
+        Error: { title: "Failed" },
+      },
+      ...(inPresets ? { inPresets } : {}),
+    })
+
+  it("a field, or a whole group, is outside the presets but not pinned", () => {
+    const c = make({ Motion: false })
+    expect(["state", "title", "enter", "stagger", "blur"].map((k) => c.inPresets(k))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ])
+    expect(["enter", "stagger", "blur"].some((k) => c.isPinned(k))).toBe(false)
+    expect(c.scopeOf("stagger")).toBeUndefined()
+    // A pinned key is outside the presets too.
+    const p = defineControls("in-presets-pinned", states(), {
+      enabled: true,
+      storage: null,
+      pinned: ["Motion"],
+    })
+    expect(p.inPresets("enter")).toBe(false)
+  })
+
+  it("presets and variants never write them, and matching ignores them", () => {
+    const c = make({ Motion: false })
+    expect(c.presets.Loading).toMatchObject({ stagger: 0.02, blur: 4, title: "Loading…" })
+    c.set({ stagger: 0.15, blur: 2 })
+    c.preset("Loading")
+    expect(c.get()).toMatchObject({ state: "Loading", title: "Loading…", stagger: 0.15, blur: 2 })
+    expect(c.matchingPreset()).toBe("Loading")
+    const saved = c.variants.save("Mine")
+    expect(saved.values).toMatchObject({ stagger: 0.02, blur: 4 })
+    c.set({ stagger: 0.05 })
+    c.variants.load(saved.id)
+    expect(c.get().stagger).toBe(0.05)
+  })
+
+  it("moving a motion knob on the first state keeps that state's chip lit", () => {
+    // Before: the default preset is never a base, so the strip only matches, and a moved motion
+    // knob made it Custom.
+    const before = make()
+    before.set({ stagger: 0.1 })
+    expect(before.matchingPreset()).toBe("custom")
+    const after = make({ Motion: false })
+    after.set({ stagger: 0.1, enter: { duration: 0.5, bounce: 0 } })
+    expect(after.matchingPreset()).toBe("default")
+    expect(after.isModified("stagger")).toBe(true)
+  })
+
+  it("its group keeps its own reset, and Random rolls it freely under a preset", () => {
+    const c = defineControls("in-presets-roll", states(), {
+      enabled: true,
+      storage: null,
+      presets: { Loading: { stagger: 0.1 } },
+      inPresets: { Motion: false },
+      random: () => 0.999,
+    })
+    c.preset("Loading")
+    c.randomize(["stagger"])
+    expect(c.get().stagger).toBe(0.2)
+    c.resetGroup("Motion")
+    expect(c.get()).toMatchObject({ stagger: 0.02, state: "Loading" })
+  })
+
+  it("a variants choice presets leave alone is an ordinary choice", () => {
+    const s = { v: choice("A", ["A", "B"], { variants: true, inPresets: false }) }
+    expect(variantsOf(s, (k) => k === "v")).toBeUndefined()
+    const c = defineControls("in-presets-variants", s, { enabled: true, storage: null })
+    expect(Object.keys(c.presets)).toEqual(["default"])
+  })
+})

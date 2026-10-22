@@ -18,6 +18,7 @@ import {
   normalize,
   normalizeField,
   pinnedKeys,
+  presetFreeKeys,
   same,
   hasValue,
   toolbarShortcut,
@@ -447,6 +448,13 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    */
   pinned?: readonly string[]
   /**
+   * Groups presets leave alone, where they are: `{ Motion: false }`. As with pinned groups,
+   * applying a preset or variant keeps their values, saving one leaves them out, and a preset's chip
+   * doesn't drift when they change; but their rows stay in place. A field says it alone with
+   * `inPresets: false`.
+   */
+  inPresets?: Readonly<Record<string, boolean>>
+  /**
    * Numbered presets per group, shown as 1, 2, 3… on the group's card in a page. A group's
    * presets cover every key any of them names; keys a preset leaves out are at their defaults,
    * so `{ name: "Today", values: {} }` is the shipped look.
@@ -488,7 +496,10 @@ export interface Controls<S extends Schema = Schema> {
   readonly variants: Variants<Values<S>>
   /** The tabs and groups with presets of their own, by id (see `ControlsOptions.scopedPresets`). */
   readonly scopes: Readonly<Record<string, PresetScope<Values<S>>>>
-  /** The scope `key`'s presets come from: a tab or group's id, `""` for `presets`, or undefined when pinned. */
+  /**
+   * The scope `key`'s presets come from: a tab or group's id, `""` for `presets`, or undefined
+   * when presets leave it alone (pinned, `inPresets: false`).
+   */
   scopeOf(key: string): string | undefined
   readonly actions: readonly ControlAction<Values<S>>[]
   /** Its panels' theme, as given (see `ControlsOptions.theme`). */
@@ -520,6 +531,8 @@ export interface Controls<S extends Schema = Schema> {
   presetLabel(id: string, scope?: string): string
   /** Whether `key` is pinned (its group is, see `ControlsOptions.pinned`), outside the presets. */
   isPinned(key: string): boolean
+  /** Whether presets move `key`: false when it's pinned or says `inPresets: false` (or its group does). */
+  inPresets(key: string): boolean
   readonly error: string | null
   get(): Values<S>
   getServerSnapshot(): Values<S>
@@ -773,11 +786,19 @@ export function defineControls<const S extends Schema>(
     if (pinnedOf?.schema !== schema) pinnedOf = { schema, keys: pinnedKeys(schema, options.pinned) }
     return pinnedOf.keys
   }
-  /** The variants choice; a pinned one is an ordinary choice (see `variantsOf`). */
-  const variantsChoice = () => variantsOf(schema, (key) => pinned().has(key))
+  let freeOf: { schema: S; keys: ReadonlySet<string> } | undefined
+  /** The keys presets leave alone: pinned ones and those `inPresets` keeps out. */
+  const presetFree = () => {
+    if (freeOf?.schema !== schema)
+      freeOf = { schema, keys: presetFreeKeys(schema, pinned(), options.inPresets) }
+    return freeOf.keys
+  }
+  /** The variants choice; one presets leave alone is an ordinary choice (see `variantsOf`). */
+  const variantsChoice = () => variantsOf(schema, (key) => presetFree().has(key))
   /**
    * Which scope's presets move each value key: a tab or group named in `scopedPresets` (or
-   * holding the variants choice), else `""`, the panel's own `presets`. Pinned keys have none.
+   * holding the variants choice), else `""`, the panel's own `presets`. Keys presets leave alone
+   * (pinned ones, `inPresets: false`) have none.
    * A key goes to its tab's scope before its group's.
    */
   let scopingOf:
@@ -802,7 +823,7 @@ export function defineControls<const S extends Schema>(
     if (variants) named.add(variants)
     const of = new Map<string, string>()
     for (const k of valueKeys(schema)) {
-      if (pinned().has(k)) continue
+      if (presetFree().has(k)) continue
       const f = fields[k]!
       const tab = tabOf(f)
       of.set(
@@ -828,7 +849,7 @@ export function defineControls<const S extends Schema>(
       }
     return out ? (Object.freeze(out) as Values<S>) : values
   }
-  /** `values` with the pinned keys (and those of other scopes) at their defaults. */
+  /** `values` with the keys presets leave alone (and those of other scopes) at their defaults. */
   const unpinned = (values: Values<S>): Values<S> => within(values, "")
   /** Only `scope`'s keys of `values`: what applying one of its presets or variants writes. */
   const patchIn = (values: Values<S>, scope: string): Partial<Values<S>> => {
@@ -1194,7 +1215,7 @@ export function defineControls<const S extends Schema>(
     const b = activeBase()
     const group = (schema[key] as Field | undefined)?.group
     if (group !== undefined && Object.hasOwn(b.groups, group)) return true
-    // Presets leave pinned keys out.
+    // Presets leave pinned keys (and `inPresets: false` ones) out.
     const scope = scoping().of.get(key)
     if (scope === undefined) return false
     return scope === "" ? b.preset !== null : Object.hasOwn(b.scopes, scope)
@@ -1739,6 +1760,7 @@ export function defineControls<const S extends Schema>(
       )
     },
     isPinned: (key) => pinned().has(key),
+    inPresets: (key) => !presetFree().has(key),
     get,
     set,
     sync,
