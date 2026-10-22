@@ -1,4 +1,12 @@
-import { choice, defineControls, knob, spring, toggle, type PanelActive } from "knobs"
+import {
+  choice,
+  defineControls,
+  knob,
+  memoryStorage,
+  spring,
+  toggle,
+  type PanelActive,
+} from "knobs"
 import { mountPanel } from "knobs/panel"
 
 // OpenCode Desktop's Motion workspace with a card per experiment: each says where to look in the
@@ -109,4 +117,7 @@ const panel = mountPanel(controls, container, {
 // A couple of experiments already moved, so their folded cards have something to say.
 controls.set({ spinner: "css", hoverStyle: "glide", hover: { duration: 0.2, bounce: 0 } })
 
-Object.assign(window, { cards: { controls, panel, heard, mountPanel } })
+// The specs build their own stores and panels beside this one (tests/browser/folds.spec.ts).
+Object.assign(window, {
+  cards: { controls, panel, heard, mountPanel, defineControls, knob, toggle, memoryStorage },
+})

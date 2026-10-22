@@ -284,8 +284,16 @@ export interface MountPanelOptions extends LabelOptions {
   readonly session?: boolean
   /** Groups folded (`true`) or open (`false`) at first, over their fields' `folded`. */
   readonly groupFolded?: Readonly<Record<string, boolean>>
-  /** Sub-headings (fields' `subsection`) that start folded (`true`), by name. */
-  readonly subsectionFolded?: Readonly<Record<string, boolean>>
+  /** Sub-headings (fields' `subsection`) that start folded (`true`), by name; `true` folds them all. */
+  readonly subsectionFolded?: boolean | Readonly<Record<string, boolean>>
+  /**
+   * Where a panel remembers its folded groups and sub-headings across reloads (folds only, under
+   * `knobs:<id>:folds:v1`), whatever `session` says. Without it they're kept in the store's own
+   * storage (off with `session: false` or `persist: "none"`); `null` keeps them to the tab's
+   * session. What the user last chose wins over `groupFolded`, fields' `folded` and
+   * `subsectionFolded`. Pages have their own `foldStorage`.
+   */
+  readonly foldStorage?: StoragePort | null
   /**
    * The tab strip's order and labels: tab ids, or `{ id, label }`. Tabs the fields name that
    * aren't listed follow in the order they first appear.

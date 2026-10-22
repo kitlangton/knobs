@@ -151,6 +151,11 @@ export interface Panel {
   updateAccessories(): void
   /** Folds (`true`) or opens a foldable group's card; toggles without `folded`. */
   fold(group: string, folded?: boolean): void
+  /**
+   * Opens the folded group and sub-heading a field sits in, pinned groups too, and shows its tab,
+   * so its row shows (search still decides on its own). What's remembered stays as the user left it.
+   */
+  unfold(key: string): void
   /** Shows tab `id` (when given) and returns the tab shown, if the panel has tabs. */
   tab(id?: string): string | undefined
   /**
@@ -1034,9 +1039,11 @@ function buildPanel<S extends Schema>(
     }
     if (page) {
       if (remember) foldsKept?.set("groups", group, next)
-    } else if (sessionKept) {
-      writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
+    } else if (foldsOwn) {
       if (remember) panelFolds?.set("groups", group, next)
+    } else if (sessionKept && remember) {
+      writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
+      panelFolds?.set("groups", group, next)
     }
     refreshFolds()
     positioned?.constrain()
@@ -1217,7 +1224,9 @@ function buildPanel<S extends Schema>(
       const folded =
         (page
           ? foldsKept?.get("groups", groupName)
-          : (session.groups?.[groupName] ?? panelFolds?.get("groups", groupName))) ?? foldAt
+          : foldsOwn
+            ? panelFolds?.get("groups", groupName)
+            : (session.groups?.[groupName] ?? panelFolds?.get("groups", groupName))) ?? foldAt
       folds.set(groupName, folded)
       gHead.setAttribute("aria-expanded", String(!folded))
       if (!page) gHead.toggleAttribute("data-folded", folded)
@@ -1311,24 +1320,30 @@ function buildPanel<S extends Schema>(
   const remember = options.session ?? controls.storage !== null
   const sessionKept = remember
   const session = remember ? readSession(controls.id) : {}
+  /** The store's own storage, unless it persists nothing. */
+  const storePort = controls.persist === "none" ? null : controls.storage
   /**
    * A page's section and group folds: in `foldStorage` when given (folds only, whatever the store
-   * keeps), else in the store's storage unless it persists nothing.
+   * keeps), else in the store's storage.
    */
-  const foldPort =
-    page?.foldStorage !== undefined
-      ? page.foldStorage
-      : controls.persist === "none"
-        ? null
-        : controls.storage
+  const foldPort = page?.foldStorage !== undefined ? page.foldStorage : storePort
   const foldsKept: FoldMemory | null =
     page && foldPort ? foldMemory(controls.id, () => foldPort) : null
   /**
-   * A panel's group and sub-heading folds outlive the tab too, in the store's storage, unless the
-   * host keeps them to itself (`session: false`) or the store persists nothing.
+   * A panel's own `foldStorage` (folds only, whatever `session` says); `null` keeps them to the tab.
    */
-  const panelFolds: FoldMemory | null =
-    !page && remember && foldPort ? foldMemory(controls.id, () => foldPort) : null
+  const foldsOwn = !page && options.foldStorage != null
+  /**
+   * A panel's group and sub-heading folds outlive the tab: in its `foldStorage` when given, else in
+   * the store's storage, unless the host keeps them to itself (`session: false`) or the store
+   * persists nothing.
+   */
+  const panelPort = foldsOwn
+    ? options.foldStorage!
+    : !page && remember && options.foldStorage === undefined
+      ? storePort
+      : null
+  const panelFolds: FoldMemory | null = panelPort ? foldMemory(controls.id, () => panelPort) : null
 
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()
@@ -2321,14 +2336,16 @@ function buildPanel<S extends Schema>(
     label.className = "knobs-subhead-label"
     const caret = caretSvg()
     node.append(label, caret)
-    if (!subFolds.has(id))
+    if (!subFolds.has(id)) {
+      const given = options.subsectionFolded
+      const start = typeof given === "boolean" ? given : (given?.[name] ?? false)
       subFolds.set(
         id,
-        session.subsections?.[id] ??
-          panelFolds?.get("subsections", id) ??
-          options.subsectionFolded?.[name] ??
-          false,
+        (foldsOwn
+          ? panelFolds?.get("subsections", id)
+          : (session.subsections?.[id] ?? panelFolds?.get("subsections", id))) ?? start,
       )
+    }
     node.setAttribute("aria-expanded", String(!subFolds.get(id)))
     node.addEventListener("click", (event) => {
       if (event.detail < 2) foldSub(id)
@@ -2345,15 +2362,26 @@ function buildPanel<S extends Schema>(
         labelEl: label,
         caret,
         wave: { at: 0 },
-        isModified: () => false,
+        isModified: () => subModified(id),
       },
     }
     subheads.set(id, sh)
     gpuRows.push(sh.gpu)
     return sh
   }
+  /** Whether anything under a sub-heading is marked modified. */
+  function subModified(id: string) {
+    return anyMarked((r) => r.subhead === id)
+  }
+  /**
+   * Whether a row among these carries its modified mark (see `markRow`): it differs from the
+   * active preset or its scope's, else the defaults.
+   */
+  function anyMarked(inside: (r: Row) => boolean) {
+    return rows.some((r) => inside(r) && r.row.classList.contains("knobs-modified"))
+  }
   /** Folds or opens a sub-heading's rows (toggles without `next`). */
-  function foldSub(id: string, next = !subFolds.get(id)) {
+  function foldSub(id: string, next = !subFolds.get(id), keep = true) {
     const sh = subheads.get(id)
     if (!sh) return
     subFolds.set(id, next)
@@ -2361,7 +2389,9 @@ function buildPanel<S extends Schema>(
     if (next && rows.some((r) => r.subhead === id && r.row.contains(doc.activeElement)))
       sh.el.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     applyVisibility("reveal")
-    if (remember) {
+    if (!keep) return
+    if (foldsOwn) panelFolds?.set("subsections", id, next)
+    else if (remember) {
       writeSession(controls.id, {
         subsections: { ...readSession(controls.id).subsections, [id]: next },
       })
@@ -2949,6 +2979,20 @@ function buildPanel<S extends Schema>(
       // A group's reset is a coarse reset, so it follows `resetAll`.
       if (bloom(gReset, (marks && groupMod && bound("resetAll")) || spinning(gReset)))
         changed = true
+      // The header's dot: something inside is marked, which a folded card hides.
+      const head = gReset.closest(".knobs-group-head")
+      const mod = anyMarked((r) => r.group === groupName)
+      if (head && head.hasAttribute("data-modified") !== mod) {
+        head.toggleAttribute("data-modified", mod)
+        changed = true
+      }
+    }
+    for (const sh of subheads.values()) {
+      const mod = subModified(sh.id)
+      if (sh.el.hasAttribute("data-modified") !== mod) {
+        sh.el.toggleAttribute("data-modified", mod)
+        changed = true
+      }
     }
     if (bloom(resetBtn, controls.canReset() || spinning(resetBtn))) changed = true
     if (changed) wakeGpu()
@@ -5204,6 +5248,14 @@ function buildPanel<S extends Schema>(
     },
     updateAccessories() {
       for (const r of rows) fillAccessory(r)
+    },
+    unfold(key) {
+      const r = rows.find((row) => row.key === key || row.keys.includes(key))
+      if (!r) return
+      const tab = tabOf(r)
+      if (tab !== undefined && activeTab !== undefined && tab !== activeTab) selectTab(tab)
+      if (r.group !== undefined && folds.get(r.group)) fold(r.group, false, true, false)
+      if (r.subhead !== undefined && subFolds.get(r.subhead)) foldSub(r.subhead, false, false)
     },
     fold(group, folded) {
       fold(group, folded ?? !folds.get(group))

@@ -4,6 +4,7 @@ import { LEAD, springEasing, TRAIL } from "./motion.js"
 import { FLASH_MS } from "./flash.js"
 import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
 import { CRUMB_GLIDE } from "./crumbs.js"
+import { HEAD_DOT } from "./head-dot.js"
 import { injectTokens } from "../core/root.js"
 import { aliased, TOKEN_TRANSITIONS } from "../core/glide.js"
 import { SPRINGS, springLinear } from "../core/motion.js"
@@ -418,8 +419,14 @@ ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{op
 .knobs-panel .knobs-slider{height:var(--_k-row);contain:layout style}
 .knobs-panel .knobs-row:where(:not(.knobs-slider,.knobs-x,.knobs-spring)){display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--_k-row);padding:0 var(--_k-inset);contain:layout style}
 .knobs-panel .knobs-row>span:first-child{color:var(--_k-fg-2);font-weight:var(--_k-weight-label);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--_k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
-.knobs-modified.knobs-row>span:first-child::after{opacity:.95;transform:none}
+/* Rows, and group and sub-heading labels with something changed inside, carry the modified dot. */
+:is(.knobs-row>span:first-child,.knobs-group-label,.knobs-subhead-label)::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--_k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
+:is(.knobs-modified.knobs-row>span:first-child,:is(.knobs-group-head,.knobs-subhead)[data-modified] :is(.knobs-group-label,.knobs-subhead-label))::after{opacity:.95;transform:none}
+/* A header's dot keeps its room at the label's end, so a long title (or a folded card's summary
+   beside it) ellipsizes the text, never the dot. */
+:is(.knobs-group-label,.knobs-subhead-label){position:relative;padding-right:${HEAD_DOT}px}
+:is(.knobs-group-label,.knobs-subhead-label)::after{position:absolute;top:50%;right:0;margin:-2px 0 0}
+.knobs-group-title>.knobs-group-label{justify-self:start;max-width:100%}
 /* A locked row's lock sits just left of its readout (or its control), where the eye reads the value.
    Its room opens at once (it's right-aligned, so nothing beside it moves); the icon fades and
    scales in place. */
@@ -978,6 +985,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :is(.knobs-card:not(.knobs-live *),.knobs-tile:not(.knobs-live))::after,
 .knobs-panel[data-gpu-active="true"] .knobs-optkey,
 .knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-group-head:not(.knobs-live *)>.knobs-group-label,.knobs-group-head:not(.knobs-live *)>.knobs-group-title>.knobs-group-label,.knobs-subhead-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-preset-chip::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */

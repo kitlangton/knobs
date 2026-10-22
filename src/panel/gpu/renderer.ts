@@ -30,6 +30,7 @@ import { liveThumb } from "../thumb.js"
 import { giveOf } from "../give.js"
 import { roundOf, stretchAt, stretchOf, thinOf } from "../feel.js"
 import { rangeSmear } from "../smear.js"
+import { HEAD_DOT } from "../head-dot.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
   cssMix,
@@ -1633,6 +1634,25 @@ class GpuOverlayManager {
     return ms <= 1 ? SNAP_OMEGA : 4500 / ms
   }
 
+  /**
+   * A group or sub-heading header's modified dot, at the end of its label's box (the room it keeps
+   * there, see `HEAD_DOT`), as the label's ::after.
+   */
+  private drawHeadDot(labelEl: HTMLElement, modified: boolean, centerY: number, alpha: number) {
+    const dot = this.ease(labelEl, "dot", modified ? 1 : 0)
+    if (dot <= 0.01) return
+    const size = 4 * (0.4 + 0.6 * dot)
+    const lr = this.rectOf(labelEl)
+    this.pushPrim({
+      x: lr.right - 2 - size / 2,
+      y: centerY - size / 2,
+      w: size,
+      h: size,
+      color: withAlpha(this.curTokens.modified, alpha * dot),
+      glowOrBlur: 0.5,
+      kind: 7,
+    })
+  }
   private drawRowLabel(
     labelEl: HTMLElement,
     text: string,
@@ -4767,7 +4787,7 @@ class GpuOverlayManager {
           const cy = lr.top + lr.height * 0.5
           if (peek < 0.995)
             this.drawText(
-              this.fit(g.labelEl.textContent ?? "", lr.width, px, tokens.titleWeight),
+              this.fit(g.labelEl.textContent ?? "", lr.width - HEAD_DOT, px, tokens.titleWeight),
               lr.left,
               cy,
               withAlpha(tokens.text, 1 - peek),
@@ -4781,6 +4801,7 @@ class GpuOverlayManager {
               withAlpha(tokens.text, peek),
               { px, weight: tokens.titleWeight, track: -0.01 },
             )
+          this.drawHeadDot(g.labelEl, g.element.hasAttribute("data-modified"), cy, 1 - peek)
         } else {
           const label = tokens.groupUpper
             ? (g.labelEl.textContent ?? "").toUpperCase()
@@ -4791,7 +4812,7 @@ class GpuOverlayManager {
             this.domClipped(g.labelEl, label, lr.width)
               ? this.fit(
                   label,
-                  lr.width,
+                  lr.width - HEAD_DOT,
                   px,
                   tokens.titleWeight,
                   undefined,
@@ -4803,6 +4824,12 @@ class GpuOverlayManager {
             lr.top + lr.height * 0.5,
             tokens.groupColor,
             { px, weight: tokens.titleWeight, track: tokens.groupTracking },
+          )
+          this.drawHeadDot(
+            g.labelEl,
+            g.element.hasAttribute("data-modified"),
+            lr.top + lr.height * 0.5,
+            1,
           )
         }
         // --k-group-divider: a hairline over every group but the first.
@@ -5445,12 +5472,13 @@ class GpuOverlayManager {
           this.drawRowHover(row.row, rRect, hovered)
           const lr = this.rectOf(row.labelEl)
           this.drawText(
-            this.fit(row.display, lr.width + 1, tokens.textMeta, tokens.titleWeight),
+            this.fit(row.display, lr.width - HEAD_DOT + 1, tokens.textMeta, tokens.titleWeight),
             lr.left,
             rowCenterY,
             withAlpha(tokens.label, rowAlpha),
             { px: tokens.textMeta, weight: tokens.titleWeight },
           )
+          this.drawHeadDot(row.labelEl, row.isModified(), rowCenterY, rowAlpha)
           this.drawCaret(
             row.caret,
             row.row.getAttribute("aria-expanded") === "true",

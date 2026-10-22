@@ -786,7 +786,13 @@ mountPanel(station, column, {
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
   stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. Group
   and sub-heading folds the user chose come back on the next visit, in the store's storage (with
-  `session: false` or `persist: "none"`, they don't), over `folded` and `groupFolded`. On a
+  `session: false` or `persist: "none"`, they don't), over `folded`, `groupFolded` and
+  `subsectionFolded`. `foldStorage` on the mount keeps them somewhere else instead, folds only
+  (under `knobs:<id>:folds:v1`), whatever `session` says; `null` keeps them to the tab.
+  `panel.unfold(key)` opens the folded group and sub-heading a field sits in (pinned groups too)
+  and shows its tab, without changing what's remembered. A group's or sub-heading's header carries
+  the rows' modified dot, after its title, while a row inside differs from its base (the active
+  preset or its scope's, else the defaults), so a folded card still says so. On a
   [full page](#full-page) the group's tile folds to its header, the cards below follow, and the
   filter opens it while it runs. Folded, the header sums the card up on its right, quietly and
   live: a one-row card's value ("CSS orb"), otherwise its matching group preset (or "Custom"),
@@ -836,10 +842,12 @@ const panel = mountPanel(node, column, {
   tabs: [{ id: "transform", label: "Transform" }, "emitter"], // order and labels
   tab: "transform",                 // first shown (else the last one shown, else the first)
   onTab: (id) => save(id),
-  subsectionFolded: { Forces: true },
+  subsectionFolded: true,           // every sub-heading starts folded ({ Forces: true }: by name)
+  foldStorage: localStorage,        // folds kept here (default: the store's storage)
   search: { placeholder: "Search", chips: ["modified"] },
 })
 panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
+panel.unfold("drag") // shows the emitter tab and opens "Forces", so the Drag row shows
 ```
 
 - **Tabs.** A row shows on its field's `tab`, or else the first `tab` its group names; rows with
@@ -913,8 +921,9 @@ panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
   group's card, split off by a hairline (never a card inside a card). They're gathered: a group's
   rows without a sub-heading come first, then each sub-heading's rows together, in the order the
   sub-headings first appear, wherever their fields sit in the schema. The heading is a ↑↓ stop: a
-  click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded; the
-  session remembers the rest.
+  click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded, by
+  name (`{ Forces: true }`), or every one with `true`; what the user folds or opens is remembered
+  as a group's folds are, and wins.
 - **Search.** `search: true` (or `{ placeholder, chips }`) puts a field under the header. Typing
   filters rows by label, key, group or sub-heading across every tab, opening folded groups and
   sub-headings while it runs; matches show in the accent colour. Chips narrow it further:
@@ -2071,7 +2080,7 @@ The package has two core exports selected through the standard `development` con
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor (the first field of a group or section that gives one wins): a muted line under the card's title (in a panel or a page) or a page section's heading; `sectionFolded` makes a page section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`true` adds the scope line), `session`, `groupFolded`, `groupSummary`, `onActive`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`true` adds the scope line), `session`, `groupFolded`, `groupSummary`, `onActive`, `subsectionFolded`, `foldStorage`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.unfold(key)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null` (a panel's option too), `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
