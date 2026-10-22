@@ -34,7 +34,7 @@ import {
 } from "./schema.js"
 import { browserStorage, storageKey, type StoragePort } from "./storage.js"
 import { isUnlocked, onUnlock, unlockedPanel } from "./unlock.js"
-import { createVariants, type Variants } from "./variants.js"
+import { createVariants, type Variant, type Variants } from "./variants.js"
 
 declare const __KNOBS_DEV__: boolean
 /** knobs' development build, or its source under a dev server (Vite's `import.meta.env.DEV`). */
@@ -96,6 +96,19 @@ export interface ChangeMeta {
 export interface PresetRef {
   readonly kind: "preset" | "variant"
   readonly id: string
+}
+/**
+ * A preset strip that belongs to one tab or group (see `ControlsOptions.scopedPresets`): its
+ * presets and saved variants move only its own keys, and it keeps its own active preset.
+ */
+export interface PresetScope<V = State> {
+  /** The tab or group it's named for. */
+  readonly id: string
+  /** The keys it moves: the tab's or group's, pinned ones aside. */
+  readonly keys: readonly string[]
+  /** By id, `default` first; keys outside the scope sit at their defaults. */
+  readonly presets: Readonly<Record<string, V>>
+  readonly variants: Variants<V>
 }
 export interface ControlAction<V = State> {
   readonly id?: string
@@ -419,6 +432,14 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   history?: HostHistory
   presets?: Readonly<Record<string, Partial<Values<S>>>>
   /**
+   * Presets that belong to one tab or group, keyed by its id: `{ Sidebars: { snappy: {…} } }`.
+   * Each shows its own strip on that tab (a tab without any shows none), moves only that tab's
+   * or group's keys, and has its own active preset, modified mark and saved variants. A variants
+   * choice on a tab adds its options to that tab's. `presets` then covers only the keys no scope
+   * holds; leave it out and only the scoped strips show.
+   */
+  scopedPresets?: Readonly<Record<string, Readonly<Record<string, Partial<Values<S>>>>>>
+  /**
    * Groups pinned to the top of a panel, under the header and above the tab strip, on every tab
    * (as fields' `pinned: true` pins theirs). Presets and saved variants leave them alone: applying
    * one keeps their values, saving one keeps them out, and they're modified against their defaults.
@@ -464,6 +485,10 @@ export interface Controls<S extends Schema = Schema> {
   readonly persist: PersistMode
   readonly presets: Readonly<Record<string, Values<S>>>
   readonly variants: Variants<Values<S>>
+  /** The tabs and groups with presets of their own, by id (see `ControlsOptions.scopedPresets`). */
+  readonly scopes: Readonly<Record<string, PresetScope<Values<S>>>>
+  /** The scope `key`'s presets come from: a tab or group's id, `""` for `presets`, or undefined when pinned. */
+  scopeOf(key: string): string | undefined
   readonly actions: readonly ControlAction<Values<S>>[]
   /** Its panels' theme, as given (see `ControlsOptions.theme`). */
   readonly theme: Theme | ThemeMode | undefined
@@ -490,8 +515,8 @@ export interface Controls<S extends Schema = Schema> {
   readonly groupFolded: Readonly<Record<string, boolean>> | undefined
   /** How a page's sections start (`sectionFolded`), as given. */
   readonly sectionFolded: SectionFolded | undefined
-  /** A preset's display label (`presetLabels`, `defaultLabel`), else its id. */
-  presetLabel(id: string): string
+  /** A preset's display label (`presetLabels`, `defaultLabel`), else its id; `scope` as in `preset`. */
+  presetLabel(id: string, scope?: string): string
   /** Whether `key` is pinned (its group is, see `ControlsOptions.pinned`), outside the presets. */
   isPinned(key: string): boolean
   readonly error: string | null
@@ -606,15 +631,18 @@ export interface Controls<S extends Schema = Schema> {
   readonly comparing: boolean
   /**
    * Applies a preset and makes it the active one (`"default"` clears it); one undo step, or
-   * folded into the last with `coalesce` (a pan across the strip).
+   * folded into the last with `coalesce` (a pan across the strip). With `scope`, one of that tab
+   * or group's presets, which moves only its keys.
    */
-  preset(id: string, options?: { coalesce?: boolean }): void
-  matchingPreset(): string
+  preset(id: string, options?: { coalesce?: boolean; scope?: string }): void
+  /** The preset the current values match (in `scope`, over its keys), else `"custom"`. */
+  matchingPreset(scope?: string): string
   /**
    * The preset (or saved variant) last applied, which Reset returns to and Random explores
-   * around, or null. Kept with the values; forgotten by a reset to the defaults.
+   * around, or null. Kept with the values; forgotten by a reset to the defaults. With `scope`,
+   * that tab or group's.
    */
-  activePreset(): PresetRef | null
+  activePreset(scope?: string): PresetRef | null
   /** The group preset last applied to `group` (0-based), or -1. */
   activeGroupPreset(group: string): number
   /** The values Reset returns to first: the active presets over the defaults. */
@@ -715,12 +743,20 @@ export function defineControls<const S extends Schema>(
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now())
   const isHeld = (key: string) =>
     grabbed.has(key) || (echo > 0 && now() - (changedAt.get(key) ?? -Infinity) < echo)
-  /** The active presets: the panel's (a preset or saved variant) and each group's. */
+  /**
+   * The active presets: the panel's (a preset or saved variant), each scope's (see
+   * `scopedPresets`) and each group's numbered one.
+   */
   interface Base {
     readonly preset: PresetRef | null
     readonly groups: Readonly<Record<string, number>>
+    readonly scopes: Readonly<Record<string, PresetRef>>
   }
-  const NO_BASE: Base = Object.freeze({ preset: null, groups: Object.freeze({}) })
+  const NO_BASE: Base = Object.freeze({
+    preset: null,
+    groups: Object.freeze({}),
+    scopes: Object.freeze({}),
+  })
   let base: Base = NO_BASE
   /** An undo step: the values and the active presets with them. */
   interface Entry {
@@ -738,25 +774,71 @@ export function defineControls<const S extends Schema>(
   }
   /** The variants choice; a pinned one is an ordinary choice (see `variantsOf`). */
   const variantsChoice = () => variantsOf(schema, (key) => pinned().has(key))
-  /** `values` with the pinned keys at their defaults: what a preset or saved variant holds. */
-  const unpinned = (values: Values<S>): Values<S> => {
-    const keys = pinned()
-    if (keys.size === 0) return values
-    const out: Record<string, unknown> = { ...values }
-    for (const k of keys) if (Object.hasOwn(locked, k)) out[k] = locked[k]
-    return Object.freeze(out) as Values<S>
-  }
-  /** `values` without the pinned keys: what applying a preset or saved variant writes. */
-  const presetPatch = (values: Values<S>): Partial<Values<S>> => {
-    const keys = pinned()
-    if (keys.size === 0) return values
-    return Object.fromEntries(Object.entries(values).filter(([k]) => !keys.has(k))) as Partial<
-      Values<S>
-    >
-  }
-  const buildPresets = () => {
-    const own = options.presets ?? {}
+  /**
+   * Which scope's presets move each value key: a tab or group named in `scopedPresets` (or
+   * holding the variants choice), else `""`, the panel's own `presets`. Pinned keys have none.
+   * A key goes to its tab's scope before its group's.
+   */
+  let scopingOf:
+    | { schema: S; of: ReadonlyMap<string, string>; named: readonly string[]; variants?: string }
+    | undefined
+  const scoping = () => {
+    if (scopingOf?.schema === schema) return scopingOf
+    const fields = schema as Record<string, Field>
+    const groupTab = new Map<string, string>()
+    for (const f of Object.values(fields))
+      if (f.group !== undefined && f.tab !== undefined && !groupTab.has(f.group))
+        groupTab.set(f.group, f.tab)
+    const tabOf = (f: Field) => f.tab ?? (f.group !== undefined ? groupTab.get(f.group) : undefined)
+    const named = new Set(Object.keys(options.scopedPresets ?? {}))
+    if (named.has("")) throw new Error("A scope needs a nonempty tab or group id.")
+    // A variants choice on a tab (or in a named group) is that scope's; elsewhere, the panel's.
     const v = variantsChoice()
+    const group = v?.field.group
+    const variants = v
+      ? (tabOf(v.field) ?? (group !== undefined && named.has(group) ? group : ""))
+      : undefined
+    if (variants) named.add(variants)
+    const of = new Map<string, string>()
+    for (const k of valueKeys(schema)) {
+      if (pinned().has(k)) continue
+      const f = fields[k]!
+      const tab = tabOf(f)
+      of.set(
+        k,
+        tab !== undefined && named.has(tab)
+          ? tab
+          : f.group !== undefined && named.has(f.group)
+            ? f.group
+            : "",
+      )
+    }
+    scopingOf = { schema, of, named: [...named], variants }
+    return scopingOf
+  }
+  /** `values` with every key outside `scope` at its default: what its presets and variants hold. */
+  const within = (values: Values<S>, scope: string): Values<S> => {
+    const of = scoping().of
+    let out: Record<string, unknown> | undefined
+    for (const k of Object.keys(locked))
+      if (of.get(k) !== scope && !same(values[k], locked[k])) {
+        out ??= { ...values }
+        out[k] = locked[k]
+      }
+    return out ? (Object.freeze(out) as Values<S>) : values
+  }
+  /** `values` with the pinned keys (and those of other scopes) at their defaults. */
+  const unpinned = (values: Values<S>): Values<S> => within(values, "")
+  /** Only `scope`'s keys of `values`: what applying one of its presets or variants writes. */
+  const patchIn = (values: Values<S>, scope: string): Partial<Values<S>> => {
+    const of = scoping().of
+    return Object.fromEntries(
+      Object.entries(values).filter(([k]) => of.get(k) === scope),
+    ) as Partial<Values<S>>
+  }
+  const buildPresets = (scope: string) => {
+    const own = (scope === "" ? options.presets : options.scopedPresets?.[scope]) ?? {}
+    const v = scoping().variants === scope ? variantsChoice() : undefined
     if (v && Object.hasOwn(own, v.field.value))
       throw new Error(
         `The default variant (${v.field.value}) is the schema's defaults; set its values there.`,
@@ -772,12 +854,22 @@ export function defineControls<const S extends Schema>(
         ...ids.map((id) => {
           if (id === "default" || id === "custom") throw new Error(`Reserved preset id: ${id}`)
           const variant = v?.field.options.includes(id) ? { [v.key]: id } : {}
-          return [id, unpinned(normalize(schema, { ...locked, ...variant, ...own[id] }))]
+          return [id, within(normalize(schema, { ...locked, ...variant, ...own[id] }), scope)]
         }),
       ]),
     ) as Readonly<Record<string, Values<S>>>
   }
-  let presets = buildPresets()
+  const buildScopePresets = () =>
+    new Map(scoping().named.map((scope) => [scope, buildPresets(scope)] as const))
+  let presets = buildPresets("")
+  let scopePresets = buildScopePresets()
+  /** A scope's presets (`""`, the panel's own); throws on a scope that has none. */
+  const presetsIn = (scope: string) => {
+    if (scope === "") return presets
+    const found = scopePresets.get(scope)
+    if (!found) throw new Error(`Unknown preset scope: ${scope}`)
+    return found
+  }
   const buildGroupPresets = () =>
     Object.freeze(
       Object.fromEntries(
@@ -901,16 +993,40 @@ export function defineControls<const S extends Schema>(
     persist()
     notify()
   }
-  const makeBase = (preset: PresetRef | null, groups: Readonly<Record<string, number>>): Base =>
-    preset === null && Object.keys(groups).length === 0
+  const makeBase = (
+    preset: PresetRef | null,
+    groups: Readonly<Record<string, number>>,
+    scopes: Readonly<Record<string, PresetRef>> = {},
+  ): Base =>
+    preset === null && Object.keys(groups).length === 0 && Object.keys(scopes).length === 0
       ? NO_BASE
-      : Object.freeze({ preset, groups: Object.freeze({ ...groups }) })
+      : Object.freeze({
+          preset,
+          groups: Object.freeze({ ...groups }),
+          scopes: Object.freeze({ ...scopes }),
+        })
+  /** `scopes` with `scope`'s active preset set to `ref` (or forgotten). */
+  const withScope = (
+    scopes: Readonly<Record<string, PresetRef>>,
+    scope: string,
+    ref: PresetRef | undefined,
+  ) => {
+    const { [scope]: _, ...others } = scopes
+    return ref ? { ...others, [scope]: ref } : others
+  }
+  const sameRef = (a: PresetRef | null | undefined, b: PresetRef | null | undefined) =>
+    a?.kind === b?.kind && a?.id === b?.id
   const sameBase = (a: Base, b: Base) =>
     a === b ||
-    (a.preset?.kind === b.preset?.kind &&
-      a.preset?.id === b.preset?.id &&
+    (sameRef(a.preset, b.preset) &&
       Object.keys(a.groups).length === Object.keys(b.groups).length &&
-      Object.entries(a.groups).every(([g, i]) => b.groups[g] === i))
+      Object.entries(a.groups).every(([g, i]) => b.groups[g] === i) &&
+      Object.keys(a.scopes).length === Object.keys(b.scopes).length &&
+      Object.entries(a.scopes).every(([s, ref]) => sameRef(ref, b.scopes[s])))
+  /** Whether a preset ref still names something in `scope` (a saved variant is checked later). */
+  const known = (ref: PresetRef, scope: string) =>
+    ref.kind === "variant" ||
+    (ref.id !== "default" && Object.hasOwn(scopePresets.get(scope) ?? {}, ref.id))
   /** Drops what no longer exists: a preset the schema lost, a group preset out of range. */
   function validBase(b: Base): Base {
     const preset =
@@ -921,19 +1037,27 @@ export function defineControls<const S extends Schema>(
     const groups = Object.fromEntries(
       Object.entries(b.groups).filter(([g, i]) => groupPresets[g]?.[i] !== undefined),
     )
-    const next = makeBase(preset, groups)
+    const scopes = Object.fromEntries(
+      Object.entries(b.scopes).filter(([s, ref]) => scopePresets.has(s) && known(ref, s)),
+    )
+    const next = makeBase(preset, groups, scopes)
     return sameBase(next, b) ? b : next
   }
+  const readRef = (raw: unknown): PresetRef | null =>
+    raw &&
+    typeof raw === "object" &&
+    ((raw as PresetRef).kind === "preset" || (raw as PresetRef).kind === "variant") &&
+    typeof (raw as PresetRef).id === "string"
+      ? Object.freeze({ kind: (raw as PresetRef).kind, id: (raw as PresetRef).id })
+      : null
   function readBase(raw: unknown): Base {
     if (!raw || typeof raw !== "object") return NO_BASE
-    const { preset, groups } = raw as { preset?: unknown; groups?: unknown }
-    const ref =
-      preset &&
-      typeof preset === "object" &&
-      ((preset as PresetRef).kind === "preset" || (preset as PresetRef).kind === "variant") &&
-      typeof (preset as PresetRef).id === "string"
-        ? Object.freeze({ kind: (preset as PresetRef).kind, id: (preset as PresetRef).id })
-        : null
+    const { preset, groups, scopes } = raw as {
+      preset?: unknown
+      groups?: unknown
+      scopes?: unknown
+    }
+    let ref = readRef(preset)
     const byGroup =
       groups && typeof groups === "object"
         ? Object.fromEntries(
@@ -942,14 +1066,32 @@ export function defineControls<const S extends Schema>(
             ),
           )
         : {}
-    return validBase(makeBase(ref, byGroup))
+    const byScope: Record<string, PresetRef> = {}
+    if (scopes && typeof scopes === "object")
+      for (const [s, r] of Object.entries(scopes as Record<string, unknown>)) {
+        const found = readRef(r)
+        if (found) byScope[s] = found
+      }
+    // Saved before its presets moved to scopes: the panel's preset becomes each scope's that
+    // has one by that id.
+    if (ref?.kind === "preset" && !Object.hasOwn(presets, ref.id)) {
+      for (const [s, list] of scopePresets)
+        if (!byScope[s] && ref.id !== "default" && Object.hasOwn(list, ref.id)) byScope[s] = ref
+      ref = null
+    }
+    return validBase(makeBase(ref, byGroup, byScope))
   }
-  /** The active presets, after letting go of a saved variant that's since been deleted. */
+  /** The active presets, after letting go of saved variants that have since been deleted. */
   function activeBase(): Base {
     load()
-    const ref = base.preset
-    if (ref?.kind === "variant" && !variants.list().some((v) => v.id === ref.id))
-      base = makeBase(null, base.groups)
+    const gone = (ref: PresetRef | null | undefined, list: () => readonly { id: string }[]) =>
+      ref?.kind === "variant" && !list().some((v) => v.id === ref.id)
+    const preset = gone(base.preset, () => variants.list()) ? null : base.preset
+    let scopes = base.scopes
+    for (const [s, ref] of Object.entries(base.scopes))
+      if (gone(ref, () => scopeVariants(s).list())) scopes = withScope(scopes, s, undefined)
+    if (preset !== base.preset || scopes !== base.scopes)
+      base = makeBase(preset, base.groups, scopes)
     return base
   }
   const hasBase = () => activeBase() !== NO_BASE
@@ -958,8 +1100,9 @@ export function defineControls<const S extends Schema>(
         base: Base
         schema: S
         presets: unknown
+        scopePresets: unknown
         groupPresets: unknown
-        variants: unknown
+        variants: readonly unknown[]
         values: Values<S>
       }
     | undefined
@@ -967,23 +1110,42 @@ export function defineControls<const S extends Schema>(
     if (!enabled()) return locked
     const b = activeBase()
     if (b === NO_BASE) return locked
-    const list = b.preset?.kind === "variant" ? variants.list() : null
+    const lists = [
+      b.preset?.kind === "variant" ? variants.list() : null,
+      ...Object.entries(b.scopes).map(([s, ref]) =>
+        ref.kind === "variant" ? scopeVariants(s).list() : null,
+      ),
+    ]
     const c = baseCache
     if (
       c &&
       c.base === b &&
       c.schema === schema &&
       c.presets === presets &&
+      c.scopePresets === scopePresets &&
       c.groupPresets === groupPresets &&
-      c.variants === list
+      c.variants.length === lists.length &&
+      c.variants.every((l, i) => l === lists[i])
     )
       return c.values
-    let out: Record<string, unknown> = locked
-    const ref = b.preset
-    if (ref?.kind === "preset" && Object.hasOwn(presets, ref.id)) out = presets[ref.id]!
-    else if (ref?.kind === "variant") {
+    /** The values a preset ref gives its scope's keys (the defaults elsewhere), if it still exists. */
+    const valuesOf = (
+      ref: PresetRef,
+      scope: string,
+      list: readonly Variant<Values<S>>[] | null,
+    ) => {
+      if (ref.kind === "preset") return presetsIn(scope)[ref.id]
       const found = list?.find((v) => v.id === ref.id)
-      if (found) out = unpinned(normalize(schema, found.values))
+      return found ? within(normalize(schema, found.values), scope) : undefined
+    }
+    let out: Record<string, unknown> = locked
+    if (b.preset) out = valuesOf(b.preset, "", lists[0]!) ?? locked
+    const scoped = Object.entries(b.scopes)
+    if (scoped.length) {
+      out = { ...out }
+      scoped.forEach(([s, ref], i) =>
+        Object.assign(out, patchIn(valuesOf(ref, s, lists[i + 1]!) ?? locked, s)),
+      )
     }
     const groups = Object.entries(b.groups)
     if (groups.length) {
@@ -991,7 +1153,7 @@ export function defineControls<const S extends Schema>(
       for (const [g, i] of groups) Object.assign(out, groupPresets[g]?.[i]?.values)
     }
     const values = Object.freeze(out) as Values<S>
-    baseCache = { base: b, schema, presets, groupPresets, variants: list, values }
+    baseCache = { base: b, schema, presets, scopePresets, groupPresets, variants: lists, values }
     return values
   }
   /** Whether the active presets give `key` its base (else Random rolls it freely). */
@@ -1000,7 +1162,9 @@ export function defineControls<const S extends Schema>(
     const group = (schema[key] as Field | undefined)?.group
     if (group !== undefined && Object.hasOwn(b.groups, group)) return true
     // Presets leave pinned keys out.
-    return b.preset !== null && !pinned().has(key)
+    const scope = scoping().of.get(key)
+    if (scope === undefined) return false
+    return scope === "" ? b.preset !== null : Object.hasOwn(b.scopes, scope)
   }
   /** The declared shortcut of an action (`key`) or a toolbar's button (`key/item`), if it has one. */
   function declaredShortcut(id: string): { found: boolean; combo?: string } {
@@ -1298,7 +1462,8 @@ export function defineControls<const S extends Schema>(
       const previous = load() as Record<string, unknown>
       schema = Object.freeze({ ...next }) as S
       locked = normalize(schema, {})
-      presets = buildPresets()
+      presets = buildPresets("")
+      scopePresets = buildScopePresets()
       groupPresets = buildGroupPresets()
       base = validBase(base)
       for (const k of [...locks]) if (!valueField(k)) locks.delete(k)
@@ -1353,13 +1518,73 @@ export function defineControls<const S extends Schema>(
     () => unpinned(get()),
     (v, variant, coalesce) =>
       write(
-        presetPatch(v),
+        patchIn(v, ""),
         { source: "variant", coalesce },
-        makeBase(Object.freeze({ kind: "variant", id: variant }), {}),
+        makeBase(Object.freeze({ kind: "variant", id: variant }), {}, activeBase().scopes),
       ),
     notify,
     enabled,
   )
+  /** Each scope's saved variants, kept apart from the panel's (made on first use). */
+  const scopeVariantsMade = new Map<string, Variants<Values<S>>>()
+  function scopeVariants(scope: string): Variants<Values<S>> {
+    let made = scopeVariantsMade.get(scope)
+    if (made) return made
+    made = createVariants(
+      () => schema,
+      id,
+      storageKey(id, `variants:${scope}`),
+      variantStorage,
+      () => within(get(), scope),
+      (v, variant, coalesce) => {
+        const b = activeBase()
+        write(
+          patchIn(v, scope),
+          { source: "variant", coalesce },
+          makeBase(
+            b.preset,
+            b.groups,
+            withScope(b.scopes, scope, Object.freeze({ kind: "variant", id: variant })),
+          ),
+        )
+      },
+      notify,
+      enabled,
+      // Variants saved before the panel's presets moved to scopes start out in each scope they
+      // move, until the scope saves its own.
+      () =>
+        Object.keys(options.presets ?? {}).length > 0
+          ? []
+          : variants.list().flatMap((v) => {
+              const values = within(normalize(schema, v.values), scope)
+              return equal(values, locked) ? [] : [{ ...v, values }]
+            }),
+    )
+    scopeVariantsMade.set(scope, made)
+    return made
+  }
+  let scopesOf:
+    | { presets: unknown; value: Readonly<Record<string, PresetScope<Values<S>>>> }
+    | undefined
+  const scopes = () => {
+    if (scopesOf?.presets === scopePresets) return scopesOf.value
+    const of = scoping().of
+    const value = Object.freeze(
+      Object.fromEntries(
+        [...scopePresets].map(([scope, list]) => [
+          scope,
+          Object.freeze({
+            id: scope,
+            keys: Object.freeze([...of].flatMap(([k, s]) => (s === scope ? [k] : []))),
+            presets: list,
+            variants: scopeVariants(scope),
+          }),
+        ]),
+      ),
+    )
+    scopesOf = { presets: scopePresets, value }
+    return value
+  }
   /** The keys a coarse reset may move: those with a value that aren't disabled or read-only. */
   const resettable = (keys?: readonly string[]) =>
     (keys ?? fieldKeys()).filter((k) => valueField(k) && !blocked(k))
@@ -1442,6 +1667,10 @@ export function defineControls<const S extends Schema>(
     get presets() {
       return presets
     },
+    get scopes() {
+      return scopes()
+    },
+    scopeOf: (key) => scoping().of.get(key),
     actions,
     theme,
     appearance,
@@ -1465,8 +1694,8 @@ export function defineControls<const S extends Schema>(
       options.sectionDescriptions?.[section] ?? fieldLabels().sectionText.get(section),
     groupFolded: options.groupFolded,
     sectionFolded: options.sectionFolded,
-    presetLabel: (presetId) => {
-      const v = variantsChoice()
+    presetLabel: (presetId, scope = "") => {
+      const v = scoping().variants === scope ? variantsChoice() : undefined
       const option = presetId === "default" ? v?.field.value : presetId
       return (
         options.presetLabels?.[presetId] ??
@@ -1609,7 +1838,7 @@ export function defineControls<const S extends Schema>(
         return
       }
       const { [group]: _, ...others } = b.groups
-      const forget = index === undefined ? undefined : makeBase(b.preset, others)
+      const forget = index === undefined ? undefined : makeBase(b.preset, others, b.scopes)
       if (open.length < keys.length) return toDefaults(open, forget)
       const patch: Record<string, unknown> = {}
       for (const k of keys) patch[k] = locked[k]
@@ -1745,16 +1974,23 @@ export function defineControls<const S extends Schema>(
       notify()
     },
     preset(id, presetOptions) {
-      if (!Object.hasOwn(presets, id)) throw new Error(`Unknown preset: ${id}`)
+      const scope = presetOptions?.scope ?? ""
+      const list = presetsIn(scope)
+      if (!Object.hasOwn(list, id)) throw new Error(`Unknown preset: ${id}`)
+      const b = activeBase()
+      const ref = id === "default" ? undefined : Object.freeze({ kind: "preset" as const, id })
       write(
-        presetPatch(presets[id]!),
+        patchIn(list[id]!, scope),
         { source: "preset", coalesce: presetOptions?.coalesce },
-        id === "default" ? NO_BASE : makeBase(Object.freeze({ kind: "preset", id }), {}),
+        scope === ""
+          ? makeBase(ref ?? null, {}, b.scopes)
+          : makeBase(b.preset, b.groups, withScope(b.scopes, scope, ref)),
       )
     },
-    matchingPreset: () => {
-      const cur = unpinned(get())
-      return Object.keys(presets).find((id) => equal(cur, presets[id])) ?? "custom"
+    matchingPreset: (scope = "") => {
+      const list = presetsIn(scope)
+      const cur = within(get(), scope)
+      return Object.keys(list).find((id) => equal(cur, list[id])) ?? "custom"
     },
     get groupPresets() {
       return groupPresets
@@ -1767,13 +2003,14 @@ export function defineControls<const S extends Schema>(
       write(
         preset.values,
         { source: "preset", group, coalesce: presetOptions?.coalesce },
-        makeBase(b.preset, { ...b.groups, [group]: index }),
+        makeBase(b.preset, { ...b.groups, [group]: index }, b.scopes),
       )
       options.onPreset?.({ group, index, name: preset.name })
     },
-    activePreset() {
+    activePreset(scope) {
       if (!enabled()) return null
-      return activeBase().preset
+      const b = activeBase()
+      return scope ? (b.scopes[scope] ?? null) : b.preset
     },
     activeGroupPreset(group) {
       if (!enabled()) return -1

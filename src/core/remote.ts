@@ -218,6 +218,8 @@ export interface RemoteControlsOptions {
   readonly nullDefaults?: boolean
   readonly values?: State
   readonly presets?: Readonly<Record<string, State>>
+  /** Presets that belong to one tab or group (see `ControlsOptions.scopedPresets`). */
+  readonly scopedPresets?: Readonly<Record<string, Readonly<Record<string, State>>>>
   /** Groups pinned above the tab strip, outside the presets (see `ControlsOptions.pinned`). */
   readonly pinned?: readonly string[]
   /** Numbered presets per group, e.g. the phone's preset sets (see `ControlsOptions.groupPresets`). */
@@ -657,6 +659,7 @@ export function createRemoteControls(
     tunable: options.tunable,
     history: options.history,
     presets: options.presets,
+    scopedPresets: options.scopedPresets,
     pinned: options.pinned,
     groupPresets: options.groupPresets,
     onPreset: options.onPreset,
