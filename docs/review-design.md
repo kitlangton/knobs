@@ -72,6 +72,10 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
 - **No box in a box.** A frame or well is the only bounded thing; what's inside uses hairlines and
   space. A box is a fill or a ring, never both (a test holds it). *Why: nested borders are noise.*
 - **Rows part on the subtle hairline**; only a table's head takes the firmer one.
+- **A label over media is one line, the same for every kind**: small, faint, sentence case as
+  written, with nothing between it and its media: no rule, no border. Code and terminal take a
+  picture's frame (a quiet fill); a diff's own header starts it. *Why: a line under one label and
+  not the next reads as a heading for one and a caption for the other.*
 - **Over a picture, a quiet scrim**: black at 50%, blurred, white type, no ring, in either
   appearance (compare's labels, zoom and grip, the video line's tag, annotation labels). *Why: a
   picture is no lighter in light mode, and a ringed chip on a frame reads as another box.*

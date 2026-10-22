@@ -473,6 +473,7 @@ const doc: WalkthroughDoc = {
         ask: "none",
         media: {
           kind: "compare",
+          label: "Provider list",
           before: { src: asset("compare/before.png"), label: "Before" },
           after: { src: asset("compare/after.png"), label: "After" },
           aspect: "640/360",
@@ -501,6 +502,7 @@ const doc: WalkthroughDoc = {
         ask: "none",
         media: {
           kind: "video",
+          label: "First launch",
           src: asset("compare/long-after.mp4"),
           aspect: "640/360",
           chapters: [

@@ -587,8 +587,6 @@ const fmt = (v: number | string, unit = "") => `${v}${unit}`
 function mountMetric(host: HTMLElement, m: Extract<WalkMedia, { kind: "metric" }>): Mounted {
   const doc = host.ownerDocument
   const box = div(doc, "knobs-wt-metric")
-  const label = div(doc, "knobs-wt-mlabel")
-  label.textContent = m.label
   const value = div(doc, "knobs-wt-mvalue")
   const span = (cls: string, text: string) => {
     const s = doc.createElement("span")
@@ -610,7 +608,7 @@ function mountMetric(host: HTMLElement, m: Extract<WalkMedia, { kind: "metric" }
     delta.dataset.tone = d > 0 === (better === "up") ? "good" : "bad"
     value.append(delta)
   }
-  box.append(label, value)
+  box.append(value)
   const total = num(m.of)
   if (Number.isFinite(total) && total > 0 && Number.isFinite(a) && Number.isFinite(b)) {
     const track = div(doc, "knobs-wt-mtrack")
@@ -680,8 +678,12 @@ function mountDecision(
 const HEAVY = new Set(["compare", "video", "diff", "mount"])
 const RELEASES = new Set(["compare", "video"])
 
+/**
+ * The line over a slot, the same for every kind: a `label` (a metric's is its name), or facts'
+ * `title`. A history's `label` is its accessible name only.
+ */
 const labelOf = (m: WalkMedia) =>
-  m.kind === "facts" ? m.title : "label" in m && m.kind !== "metric" ? m.label : undefined
+  m.kind === "facts" ? m.title : "label" in m && m.kind !== "history" ? m.label : undefined
 
 export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): MediaSlot {
   const doc = container.ownerDocument
@@ -696,14 +698,7 @@ export function mediaSlot(container: HTMLElement, given: MediaSlotOptions): Medi
   root.dataset.kind = m.kind
   applyLook(root, options)
   const label = labelOf(m)
-  if (
-    label &&
-    (m.kind === "video" ||
-      m.kind === "image" ||
-      m.kind === "code" ||
-      m.kind === "terminal" ||
-      m.kind === "facts")
-  ) {
+  if (label) {
     const l = doc.createElement("span")
     l.className = "knobs-wt-slot-label"
     l.textContent = label
