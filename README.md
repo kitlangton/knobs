@@ -458,7 +458,7 @@ Tune them with tokens on the panel or any ancestor:
 
 With more than one thing on the page to label (two panels, a panel beside a `knobs/ui` tree,
 timeline or split, or the host's own `data-hint` buttons), `s` reaches all of them: pressed in a
-panel or anywhere outside a text field, every visible control in every panel (rows, tabs, toolbar
+panel or a piece, every visible control in every panel (rows, tabs, toolbar
 buttons, header buttons), each tree row on screen, a timeline's Play, markers and playhead, the
 splits' header actions, collapse buttons and rails, and the host's elements gets a code. Typing one
 focuses its control (a row) or presses it (a button, a marker, a tree row); `Backspace` takes a
@@ -470,7 +470,9 @@ then the pieces, then the host's; down each column, left to right; home row firs
 a second letter, home row first, so `a` then `s` is the first panel's second control. A group of
 one is just its letter; spare letters split a big group so its second letters stay on the home row.
 With only one panel on the page, nothing changes: `s` works while focus is in it, with codes from
-its labels.
+its labels. On the page itself (focus on its body, a game's canvas, your content in a split's
+pane) `s` stays the page's, so a game's WASD keeps its S. It starts hint mode there only when the
+host asks: it registers targets of its own (`hints.register`) or marks elements `data-hint`.
 
 ```ts
 import { hints } from "knobs/panel" // or "knobs/ui"
@@ -641,9 +643,12 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   the row. They switch both ways as the width changes; `display: "menu" | "segmented"` fixes one.
   On a menu row, ←/→ step through the options, and Enter or Space opens the menu (↑↓, a letter,
   Enter, Esc).
-- **Keys stay scoped.** An inline panel hears keys only while focus is inside it. Keys it handles
-  are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
-  focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
+- **Keys stay scoped.** A panel, inline or floating, hears keys only while focus is inside it. Keys
+  it handles are claimed (`preventDefault`) and stopped there, and everything else reaches the page.
+  A press on the page outside it hands focus back to the page and leaves the panel open, even where
+  the page cancels its presses so focus can't move (a game's canvas): play with the panel open, and
+  click back into it to tune. Esc hands focus back (a floating panel's Esc at its own level closes
+  it), and the page's toggle key (`` ` ``) shows and hides it from anywhere. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
   command that's off loses its header button too, and the `?` popover and row menu list only what's
   on (see **Header** for picking buttons). `vim: false` drops j/k, `edit: false` leaves digits
   and Enter to the page, `bigStep` sets ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
@@ -748,7 +753,10 @@ mountPanel(station, column, {
   `"help"` to keep it (`buttons: ["random", "reset", "copy", "undo", "redo", "help", "close"]`); a
   `buttons` list that already names `"help"`, as the Lab's does, behaves as before.
   The buttons sit in fixed slots, left to right Undo · Redo, Reset, Copy, Random (then `?` and
-  the close X): a list picks which show, not their order. A button left out takes no slot; Undo,
+  the close X): a list picks which show, not their order. A die (the header's, or a group's) shows
+  only where Random could change something; a store or group of switches, actions and
+  `random: false` fields has none, and locks only disable it. Copy falls back to the browser's copy
+  command where the clipboard API isn't there (a page served over plain http). A button left out takes no slot; Undo,
   Redo and Reset keep theirs while they're away (`data-shown="false"`, `disabled`, out of the
   tab order and the accessibility tree).
 - **On a surface.** An inline panel in a split's pane (or inside anything with the class
@@ -775,7 +783,9 @@ mountPanel(station, column, {
   always did. Where scroll-driven animations aren't supported, the header doesn't pin.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
-  stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
+  stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. Group
+  and sub-heading folds the user chose come back on the next visit, in the store's storage (with
+  `session: false` or `persist: "none"`, they don't), over `folded` and `groupFolded`. On a
   [full page](#full-page) the group's tile folds to its header, the cards below follow, and the
   filter opens it while it runs. Folded, the header sums the card up on its right, quietly and
   live: a one-row card's value ("CSS orb"), otherwise its matching group preset (or "Custom"),
@@ -785,6 +795,10 @@ mountPanel(station, column, {
 - **Card descriptions.** A group's `groupDescription` (on any of its fields; the first wins) or the
   store's `groupDescriptions` puts one muted line under its card's title, wrapping under the whole
   header. Search matches it.
+- **Row descriptions.** A field's `description` (`knob(260, { description: "How fast the square
+  moves" })`, or on a descriptor) is a tooltip over its row: it shows after the tooltips' usual
+  pause over the row, or at once on keyboard focus, and goes with a press. Screen readers hear it
+  as the control's description (`aria-describedby`), and search matches it.
 - **What's active.** `onActive: (at) => …` hears which card or row the pointer or keyboard focus is
   on: `{ group }` for a card's header or body, `{ group, key }` for a row, `null` for nothing
   (pinned cards and group preset strips count). Whichever moved last wins; it's called at most once
@@ -979,6 +993,7 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-font`, `--k-mono`, `--k-font-size` | system, mono, `12px` by density | Faces and size; `--k-value-font: var(--k-mono)` puts readouts in mono |
 | `--k-font-weight`, `--k-label-weight`, `--k-title-weight` | `400`, `500`, `600` | Body, row labels, and titles, group headings and the chosen chip |
 | `--k-radius`, `--k-panel-radius` | `8px` by density, radius + `4px` | Corners. `0` squares everything, the pill shapes (switches, handles, dots) included |
+| `--k-radius-frame` | radius + padding + border | A panel's own outer corners, concentric with the cards, preset strip and lens inside it |
 | `--k-thumb` | `#fff` | Switch thumbs and strip handles |
 | `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
 | `--k-shadow-strength` | `.48` (light: `.16`) | How dark the WebGPU renderer draws the panel's drop shadow. Set it beside `--k-shadow` when you change that, so both renderers match (a host blending a dark look into a light one moves both together) |
@@ -1643,6 +1658,8 @@ The panel's motion dials are tokens too: `--k-blur` (readout blur and pill stret
 Changing a token glides: colours, lengths, weights, glass and glow move on the panel spring (`--k-fill-ease` over `--k-fill-ms`), so a theme switch or a preset of tokens animates in both renderers. While a control is dragged they follow it step for step.
 
 A floating panel opens out of its chip like liquid glass. The press squeezes the cog (to 0.94, easing in over 60 ms); then each edge of the glass rides its own spring from the chip to the panel. The edges facing the way it travels lead on a stiff spring (as stiff as their axis carries the travel) and the others trail on a softer one, so the glass stretches toward the panel, overshoots a little and settles in under 300 ms, its corners going from the cog's circle to the panel's radius. The content follows a beat behind: blurred 8 px, faded and at 97%, revealed top first, landing exactly crisp. Closing runs it backwards and faster: the content blurs out first, then the glass pulls into the cog with its far edges trailing (about 200 ms). Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is, keeping its velocity. The WebGPU overlay blurs, fades and scales the content in its shader, so both renderers match. A reload brings an open panel back in place, with no morph.
+
+**Moving it.** Drag a floating panel by its header (the title or the empty space beside the buttons): it follows the pointer 1:1, shows the closed hand only while it's carried, and stays where it's let go. The spot is kept with the store's values (`persist: "all"`), by the nearer side: a panel left on the right half keeps its distance from the right edge as the window changes width. It always shows inside the window, and on a phone (420px wide or less) it takes the width less an 8px gutter and scrolls inside the height. An inline panel (`mount`, `mountPanel`) belongs to its host's layout and doesn't move: lifting it out would leave its container's clipping, stacking and token overrides behind. For a panel you can move, open a floating one: `controls.attach(el)` puts a chip on `el`, and `createPanel(controls, anchor, close)` from `knobs/panel` opens one beside `anchor` from your own button (a debug bar's, say), with the same drag and kept spot.
 
 Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot, the editors' height reveals and the chip's squeeze, and panels simply fade in and out, with no stretch or blur.
 
