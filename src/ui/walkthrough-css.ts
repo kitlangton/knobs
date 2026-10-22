@@ -404,6 +404,9 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-callout[data-tone="bad"]{--kw-tone:var(--_k-danger)}
 .knobs-wt-text{max-width:var(--kw-measure);color:var(--_k-fg-2)}
 .knobs-wt-hold{border-radius:var(--kw-frame-r);background:var(--_k-fill)}
+/* A diff holds its room with its own well's edge, no fill: the diff reads the colour behind it
+   as it mounts, and a loading fill there would stay under its code. */
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-hold{background:transparent}
 .knobs-wt-failed{display:flex;align-items:center;justify-content:center;min-height:80px;color:var(--_k-fg-3);font-size:var(--_k-type-small)}
 
 /* Annotations: a calm ring round a box, a dot or an arrow at a point, a small label beside it;

@@ -1,7 +1,8 @@
-// Stills of the review catalog's pieces from the built examples (run `bun run build` and
-// `bun run example:build` first), and a check that the page's keys still work: J and K step, F
-// takes a step full-window (a diff's too). Serves examples/dist with `vite preview` on PORT
-// (5393), drives Brave or Chrome headless, writes PNGs and keys.json to OUT ($LEASE_OUT/stills).
+// Stills of the review catalog's pieces, dark, and a check that the page's keys still work: J and
+// K step, F takes a step full-window (a diff's too) and Escape brings it back. Serves the examples
+// with Vite on PORT (5393; the catalog's media are read from examples/assets, which a build
+// doesn't copy), drives Brave or Chrome headless, writes PNGs and keys.json to OUT
+// ($LEASE_OUT/stills).
 //   node scripts/review-stills.mjs
 import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
@@ -37,7 +38,7 @@ for (let i = 0; ; i++) {
   try {
     if ((await fetch(`${base}/review.html`)).ok) break
   } catch {}
-  if (i > 120) throw new Error("vite preview didn't start")
+  if (i > 160) throw new Error("vite didn't start")
   await sleep(250)
 }
 const exe = [
@@ -105,7 +106,10 @@ await factsStep.screenshot({ path: `${OUT}/facts.png` })
 const keys = {}
 const current = () =>
   page.evaluate(
-    () => document.querySelector(".knobs-wt-step[data-current]")?.textContent?.slice(0, 40) ?? null,
+    () =>
+      [...document.querySelectorAll(".knobs-wt-step[data-current]")]
+        .find((el) => !el.closest(".knobs-wt-slot"))
+        ?.getAttribute("aria-label") ?? null,
   )
 await step("Diff").click({ position: { x: 4, y: 4 } })
 await sleep(400)
@@ -121,7 +125,7 @@ await sleep(700)
 keys.full = await page.evaluate(() => Boolean(document.querySelector(".knobs-wt-step[data-full]")))
 await page.screenshot({ path: `${OUT}/diff-full.png` })
 await page.keyboard.press("Escape")
-await sleep(700)
+await sleep(2000)
 keys.fullAfterEscape = await page.evaluate(() =>
   Boolean(document.querySelector(".knobs-wt-step[data-full]")),
 )

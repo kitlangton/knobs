@@ -96,6 +96,10 @@ Josh Puckett's Interface Craft, and Kit's motion rules.
   crosses rows.* A test fails on a hand cursor or a hover that fades in.
 - **Clicking a video or a compare plays and pauses it**, as Space does. No glyph flashes over the
   picture. The play button stays.
+- **Scrubbing shows the frame under the hand**, in a compare and a player: a small JPEG of every
+  frame is cached in the background (within a budget), the one under the pointer decodes in a
+  few ms, and the video seeks exactly once the hand lets go. *Why: a raw recording has one
+  keyframe in 8–18 s, so a seek per move lands late and shows stale frames.*
 - **Focus is a 1–2 px ring**, inset on rows. *Why: visible, and never shifts layout.*
 
 ## Motion

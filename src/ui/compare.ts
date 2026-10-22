@@ -1445,7 +1445,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         if (!e.repeat) holdLoupe(true)
         return
       case "l":
-        if (e.altKey || e.shiftKey) return
+        if (e.altKey || e.shiftKey || loopBtn.hidden) return
         claim()
         return api.setLoop(!loopNow())
       case "0":
@@ -1466,6 +1466,10 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     }
   }
 
+  /** Two stills have no time to loop. */
+  const syncLoopButton = () => {
+    loopBtn.hidden = !sides.some((s) => s.kind === "video")
+  }
   const replace = (index: 0 | 1, source: CompareSource) => {
     const old = sides[index]
     old.stop()
@@ -1474,6 +1478,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     old.el.replaceWith(s.el)
     old.preview.replaceWith(s.preview)
     sides[index] = s
+    syncLoopButton()
     note.textContent = ""
     setLabel(index, labelOf(index))
     if (near) loadSide(s)
@@ -1490,6 +1495,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   stage.insertBefore(sides[0].preview, labels[0])
   setLabel(0, labelOf(0))
   setLabel(1, labelOf(1))
+  syncLoopButton()
   loupeBtn.setAttribute("aria-pressed", String(loupeOn))
   loopBtn.setAttribute("aria-pressed", String(loopNow() !== null))
   const modePill =
@@ -1579,7 +1585,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
                   activate: () => setMode(m),
                 }))
               : []),
-            { el: loopBtn, label: "Loop", activate: () => api.setLoop(!loopNow()) },
+            ...(loopBtn.hidden
+              ? []
+              : [{ el: loopBtn, label: "Loop", activate: () => api.setLoop(!loopNow()) }]),
             ...(loupeBtn.hidden
               ? []
               : [{ el: loupeBtn, label: "Loupe", activate: () => setLoupe(!loupeOn) }]),
