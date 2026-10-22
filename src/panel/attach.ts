@@ -129,7 +129,7 @@ export function attach<S extends Schema>(
   const open = async (restored = false) => {
     if (panel) {
       unpress()
-      panel.focus()
+      focusPanel(panel)
       return
     }
     if (leaving?.reopen()) {
@@ -139,7 +139,7 @@ export function attach<S extends Schema>(
       if (remember) writeSession(controls.id, { open: true })
       chip.setAttribute("aria-expanded", "true")
       update()
-      panel.focus()
+      focusPanel(panel)
       return
     }
     leaving = undefined
@@ -152,7 +152,7 @@ export function attach<S extends Schema>(
       if (remember) writeSession(controls.id, { open: true })
       chip.setAttribute("aria-expanded", "true")
       update()
-      if (!restored) panel.focus()
+      if (!restored) focusPanel(panel)
     } catch (cause) {
       chip.title = String(cause)
       renderFace("Retry knobs")
@@ -214,6 +214,12 @@ export function attach<S extends Schema>(
       element.removeAttribute("tabindex")
   }
 }
+
+/**
+ * An opened panel takes focus at its own level, not on a row: Esc closes it at once, ↓ goes in to
+ * the rows, and its keys (R, the digits, [ ]) act on the whole panel.
+ */
+const focusPanel = (panel: Panel) => panel.element.focus({ preventScroll: true })
 
 const MODE_KEY = "knobs:mode"
 const MODE_EVENT = "knobs-mode"

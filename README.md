@@ -647,7 +647,8 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   it handles are claimed (`preventDefault`) and stopped there, and everything else reaches the page.
   A press on the page outside it hands focus back to the page and leaves the panel open, even where
   the page cancels its presses so focus can't move (a game's canvas): play with the panel open, and
-  click back into it to tune. Esc hands focus back (a floating panel's Esc at its own level closes
+  click back into it to tune. A floating panel opens with focus at its own level, so one Esc closes
+  it and ↓ goes in to the rows. Esc hands focus back (a floating panel's Esc at its own level closes
   it), and the page's toggle key (`` ` ``) shows and hides it from anywhere. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
   command that's off loses its header button too, and the `?` popover and row menu list only what's
   on (see **Header** for picking buttons). `vim: false` drops j/k, `edit: false` leaves digits
