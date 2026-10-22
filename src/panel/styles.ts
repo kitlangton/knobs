@@ -373,6 +373,9 @@ const css = `
 .knobs-group-head[data-described]>.knobs-group-name{display:contents}
 .knobs-group-head[data-described]>.knobs-group-name>.knobs-group-label{grid-area:1/1}
 .knobs-group-head[data-described]>span:last-child{grid-area:1/3}
+/* Folded, a panel card's header sums it up between its title and its buttons, and gives way first. */
+.knobs-group-head>.knobs-group-summary{grid-area:1/2;margin-left:auto;flex:0 1000 auto;font-size:var(--_k-text-meta);text-transform:none}
+.knobs-group-head[data-folded]>.knobs-group-summary:not(:empty){display:block}
 
 /* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--_k-radius);background:var(--_k-fill);overflow:hidden}
@@ -1078,7 +1081,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-group-summary{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--_k-fg-3);font-size:var(--_k-text-control);font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums}
 .knobs-tile[data-folded]>.knobs-group-head .knobs-group-summary:not(:empty){display:block}
 .knobs-tile[data-folded]>.knobs-group-head .knobs-group-ctl{display:none}
-.knobs-tile[data-fold-motion]>.knobs-group-head :is(.knobs-group-summary,.knobs-group-ctl){animation:knobs-fade .2s var(--k-ease) both}
+.knobs-tile[data-fold-motion]>.knobs-group-head :is(.knobs-group-summary,.knobs-group-ctl),.knobs-group-head[data-fold-motion]>.knobs-group-summary{animation:knobs-fade .2s var(--k-ease) both}
 /* A highlight (page.highlight): the rest dims under a veil of the page's colour (--k-page-dim at
    full), and what's highlighted on its own gets a dot in the gutter by its title. The veil and
    dot are written each frame on the panel spring (see page.ts). */

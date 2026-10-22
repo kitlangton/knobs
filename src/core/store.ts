@@ -219,6 +219,15 @@ export interface PanelActive {
   readonly group: string
   readonly key?: string
 }
+/** What a folded card's or section's summary is made of (see `MountPanelOptions.groupSummary`). */
+export interface FoldSummaryInfo {
+  /** The group preset its values match (its name), "Custom" when none does; null without any. */
+  readonly preset: string | null
+  /** How many of its rows differ from their defaults (a spring's two keys count once). */
+  readonly changed: number
+  /** Its value keys. */
+  readonly keys: readonly string[]
+}
 export interface MountPanelOptions extends LabelOptions {
   readonly title?: string | false
   /**
@@ -330,6 +339,13 @@ export interface MountPanelOptions extends LabelOptions {
    * the same value twice. For outlining the part of the app a card changes.
    */
   readonly onActive?: (at: PanelActive | null) => void
+  /**
+   * What a folded group card's header says on its right. In a panel, by default, a one-row card's
+   * value ("CSS orb"); otherwise its matching group preset, else its first changed value, else
+   * its first choice, then "· N changed". On a page, "<matching preset, or Custom> · N changed".
+   * Each part shows only where it applies; `null` shows nothing.
+   */
+  readonly groupSummary?: (group: string, info: FoldSummaryInfo) => string | Node | null
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
   /**

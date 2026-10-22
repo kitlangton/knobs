@@ -98,6 +98,7 @@ export {
   type Controls,
   type ControlsOptions,
   type DensityMode,
+  type FoldSummaryInfo,
   type GroupPreset,
   type GroupPresetDisplay,
   type PresetRef,

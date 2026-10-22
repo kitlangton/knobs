@@ -459,9 +459,9 @@ export interface GpuGroupBinding {
   readonly peek?: HTMLElement
   /** On a page: the header's controls (presets, reset, die), hidden while the card is folded. */
   readonly controls?: HTMLElement
-  /** On a page: what a folded card's header says in place of its controls. */
+  /** What a folded card's header says (on a page, in place of its controls). */
   readonly summary?: HTMLElement
-  /** On a page: the muted line under the card's title. */
+  /** The muted line under the card's title. */
   readonly desc?: HTMLElement
   /** On a page: the group's presets, as named or numbered segments, or a compact menu. */
   readonly presets?: {
@@ -4833,8 +4833,8 @@ class GpuOverlayManager {
               { px: tokens.textMeta, weight: tokens.labelWeight },
             )
         }
-        // Folded, a page card's header shows its summary in place of its controls; each fades in
-        // as it arrives (the DOM's animation, read back).
+        // Folded, a card's header shows its summary (a page's in place of its controls); each fades
+        // in as it arrives (the DOM's animation, read back).
         const fadeIn = (node: HTMLElement) =>
           node.parentElement?.closest("[data-fold-motion]")
             ? Number(getComputedStyle(node).opacity) || 0
@@ -4842,12 +4842,14 @@ class GpuOverlayManager {
         if (g.summary && g.summary.getClientRects().length) {
           const r = this.rectOf(g.summary)
           const a = fadeIn(g.summary)
+          // A page card's at its controls' size; a panel card's at its small title's.
+          const px = g.title ? tokens.textControl : tokens.textMeta
           this.drawText(
-            this.fit(g.summary.textContent ?? "", r.width + 0.5, tokens.textControl, 500),
+            this.fit(g.summary.textContent ?? "", r.width + 0.5, px, 500),
             r.left,
             r.top + r.height * 0.5,
             withAlpha(tokens.dim, a),
-            { px: tokens.textControl, weight: 500 },
+            { px, weight: 500 },
           )
         }
         const ctlShown = !g.controls || g.controls.getClientRects().length > 0

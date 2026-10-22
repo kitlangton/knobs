@@ -121,7 +121,9 @@ import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { changed, cue, resolveSound, sound, SOUND_PREF, soundPanel } from "./sound.js"
 import { panSwitch } from "./thumb.js"
-import { createSlider, type Slider, stepValue } from "./slider.js"
+import { createSlider, decimals, type Slider, stepValue } from "./slider.js"
+import { panelFoldSummary } from "./summary.js"
+import { colorHex } from "../core/color.js"
 import { readSession, writeSession } from "./session.js"
 import {
   arrowOf,
@@ -1019,22 +1021,24 @@ function buildPanel<S extends Schema>(
     // A page's tile folds to its header; the cards below in its column follow.
     if (page) foldTile(card, next && !filterEl.value.trim(), animate)
     else applyVisibility(animate ? "reveal" : "instant")
-    if (page) {
-      const tile = card.parentElement!
-      tile.toggleAttribute("data-folded", next)
-      // The header's controls and its summary trade places with a fade (see styles).
+    // The summary fades in (on a page, trading places with the header's controls; see styles).
+    const marked = page ? card.parentElement! : head
+    if (marked) {
+      marked.toggleAttribute("data-folded", next)
       if (animate) {
-        tile.setAttribute("data-fold-motion", "")
-        clearTimeout(foldMotions.get(tile))
+        marked.setAttribute("data-fold-motion", "")
+        clearTimeout(foldMotions.get(marked))
         foldMotions.set(
-          tile,
-          setTimeout(() => tile.removeAttribute("data-fold-motion"), 400),
+          marked,
+          setTimeout(() => marked.removeAttribute("data-fold-motion"), 400),
         )
       }
+    }
+    if (page) {
       if (remember) foldsKept?.set("groups", group, next)
-      refreshFolds()
     } else if (sessionKept)
       writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
+    refreshFolds()
     positioned?.constrain()
     wakeGpu()
   }
@@ -1188,7 +1192,7 @@ function buildPanel<S extends Schema>(
     // A panel's group folds when it says how it starts (`folded`, `groupFolded`).
     const foldAt = foldDefault(groupName)
     let caret: SVGSVGElement | undefined
-    // On a page, a folded card's header trades its controls for a summary of the card.
+    // A folded card's header shows a summary of the card.
     let ctl: HTMLElement | undefined
     let summary: HTMLElement | undefined
     if (page) {
@@ -1202,12 +1206,11 @@ function buildPanel<S extends Schema>(
       describeGroup(groupName)
     }
     if (foldAt !== undefined) {
-      if (page) {
-        summary = el("span")
-        summary.className = "knobs-group-summary"
-        gRight.append(summary)
-        groupSummaries.set(groupName, summary)
-      }
+      // On a page it trades places with the controls; in a panel it sits between them and the title.
+      summary = el("span")
+      summary.className = "knobs-group-summary"
+      if (page) gRight.append(summary)
+      groupSummaries.set(groupName, summary)
       caret = caretSvg()
       gRight.append(caret)
       gHead.dataset.foldable = ""
@@ -1218,6 +1221,7 @@ function buildPanel<S extends Schema>(
         (page ? foldsKept?.get("groups", groupName) : session.groups?.[groupName]) ?? foldAt
       folds.set(groupName, folded)
       gHead.setAttribute("aria-expanded", String(!folded))
+      if (!page) gHead.toggleAttribute("data-folded", folded)
       // Anywhere on the header but its buttons, once (a double click's second click is ignored).
       gHead.addEventListener("click", (event) => {
         if (event.detail > 1 || (event.target as Element).closest("button")) return
@@ -1237,7 +1241,7 @@ function buildPanel<S extends Schema>(
       desc.className = "knobs-group-desc"
       gName.append(gLabel, desc)
       groupDescs.set(groupName, desc)
-      gHead.append(gName, gRight)
+      gHead.append(gName, ...(summary ? [summary] : []), gRight)
       describeGroup(groupName)
     }
     gpuGroups.push({
@@ -2233,7 +2237,7 @@ function buildPanel<S extends Schema>(
       motion.forEach((m, i) => present(m.node, m.show, i * stagger, m.after))
     }
     applyVisibility(animate ? "reveal" : "instant")
-    if (page) refreshFolds()
+    refreshFolds()
     if (focused && root.contains(focused) && doc.activeElement !== focused && focused.isConnected)
       focused.focus({ preventScroll: true })
     // Focus on a row that left goes to the nearest row that's still here, not the page.
@@ -3341,19 +3345,53 @@ function buildPanel<S extends Schema>(
     keys: rows.filter((r) => r.section === section).flatMap((r) => r.keys),
   })
   const changedText = (n: number) => (n && marks ? `${n} changed` : "")
+  /** What a row's value reads as in a folded card's summary ("" where it has no short form). */
+  const valueText = (r: Row, values: Record<string, unknown>): string => {
+    const f = r.field
+    const v = r.value(values)
+    const num = (n: number) => String(Number(n.toFixed(2)))
+    switch (f.kind) {
+      case "choice":
+        return f.labels?.[v as string] ?? String(v)
+      case "toggle":
+        return v ? "On" : "Off"
+      case "knob":
+        return `${(v as number).toFixed(f.decimals ?? decimals(f.step))}${f.unit ? ` ${f.unit}` : ""}`
+      case "spring": {
+        const { duration, bounce } = v as SpringValue
+        return `${num(duration)} s${bounce ? `, bounce ${num(bounce)}` : ""}`
+      }
+      case "color":
+        return colorHex(v as string)
+      case "text":
+        return String(v)
+      default:
+        return ""
+    }
+  }
+  /** A folded group card's summary: `groupSummary`'s, else the page's or the panel's default. */
+  const groupSummary = (group: string): string | Node | null => {
+    const info = groupInfo(group)
+    if (options.groupSummary) return options.groupSummary(group, info)
+    if (page) return [info.preset, changedText(info.changed)].filter(Boolean).join(" · ") || null
+    const values = controls.get() as Record<string, unknown>
+    const own = rows.filter((r) => r.group === group && !r.leaving && r.keys.length)
+    return (
+      panelFoldSummary(
+        own.map((r) => ({
+          value: valueText(r, values),
+          changed: marks && r.keys.some((k) => controls.isModified(k as keyof S & string)),
+          choice: r.field.kind === "choice",
+        })),
+        info.preset,
+      ) || null
+    )
+  }
   /** Brings folded cards' and sections' summaries, and the jump strip's counts, up to date. */
   function refreshFolds() {
+    for (const [group, node] of groupSummaries)
+      if (folds.get(group)) putSummary(node, groupSummary(group))
     if (!layout || !page) return
-    for (const [group, node] of groupSummaries) {
-      if (!folds.get(group)) continue
-      const info = groupInfo(group)
-      putSummary(
-        node,
-        page.groupSummary
-          ? page.groupSummary(group, info)
-          : [info.preset, changedText(info.changed)].filter(Boolean).join(" · ") || null,
-      )
-    }
     for (const s of layout.sectionList()) {
       const node = s.label?.querySelector<HTMLElement>(":scope > .knobs-section-summary")
       if (!node || !s.folded) continue
