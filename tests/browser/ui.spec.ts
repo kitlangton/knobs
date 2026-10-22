@@ -612,6 +612,17 @@ test("the Lab opens in knobs' own look, and its switch re-themes everything live
   expect(errors).toEqual([])
 })
 
+test("Solid's Split makes each pane's child once, while a reactive child in another pane comes and goes", async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  await page.goto("/solid-split.html")
+  const result = await page.evaluate(() => (window as any).__check())
+  expect(result).toEqual({ made: 1, shown: 1, after: 0, counted: 1 })
+  expect(errors).toEqual([])
+})
+
 test("wrappers: React and Solid timelines report seeks and follow their time prop", async ({
   page,
 }) => {

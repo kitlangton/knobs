@@ -92,9 +92,12 @@ export function Split(props: SplitProps): JSX.Element {
   const s = untrack(() =>
     split(host, { ...options, onLayout: (layout) => props.onLayout?.(layout) }),
   )
-  // One entry per pane, each its child's nodes (a fragment or <For> stays in its own pane).
+  // The children, made once (again only if the expression itself changes); then one entry per
+  // pane, each its child's nodes (a fragment or <For> stays in its own pane), re-read when a
+  // reactive child (a <Show>) changes without making its siblings again.
+  const made = createMemo(() => props.children as unknown)
   const kids = createMemo(() => {
-    const list = props.children as unknown
+    const list = made()
     return (Array.isArray(list) ? list : [list]).map(nodes)
   })
   createEffect(() => {
