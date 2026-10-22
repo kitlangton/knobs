@@ -939,10 +939,6 @@ function buildPanel<S extends Schema>(
       node.title = text
     }
     if (node.hidden !== !text) node.hidden = !text
-    // In a panel it sits in the header, which then lines its buttons up with the title.
-    const head = node.closest<HTMLElement>(".knobs-group-head")
-    if (head && head.hasAttribute("data-described") !== Boolean(text))
-      head.toggleAttribute("data-described", Boolean(text))
   }
   /**
    * A group's title: its label, verbatim; else on a page its id without the section's name
@@ -1234,15 +1230,12 @@ function buildPanel<S extends Schema>(
       gTitle.append(gLabel, gPeek)
       gHead.append(gTitle, gRight)
     } else {
-      // A panel card's name: its title, and under it the group's description (hidden without one).
-      const gName = el("span")
-      gName.className = "knobs-group-name"
+      // In a panel, the group's description (hidden without one) wraps onto a line of its own.
       const desc = el("span")
       desc.className = "knobs-group-desc"
-      gName.append(gLabel, desc)
       groupDescs.set(groupName, desc)
-      gHead.append(gName, ...(summary ? [summary] : []), gRight)
       describeGroup(groupName)
+      gHead.append(gLabel, desc, ...(summary ? [summary] : []), gRight)
     }
     gpuGroups.push({
       element: gHead,

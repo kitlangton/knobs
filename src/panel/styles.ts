@@ -365,16 +365,12 @@ const css = `
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--_k-round);color:var(--_k-fg-3)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background var(--k-hover-t),color var(--k-hover-t),opacity .2s,transform .12s}
-/* A panel card's name: its title, then its description on a line of its own across the header. */
-.knobs-group-name{display:flex;flex-direction:column;flex:0 1 auto;min-width:0}
-.knobs-group-name>.knobs-group-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.knobs-group-name>.knobs-group-desc{grid-area:2/1/3/-1;padding:0;line-height:16px;white-space:normal;overflow:visible;text-wrap:pretty}
-.knobs-group-head[data-described]{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr) auto;row-gap:0}
-.knobs-group-head[data-described]>.knobs-group-name{display:contents}
-.knobs-group-head[data-described]>.knobs-group-name>.knobs-group-label{grid-area:1/1}
-.knobs-group-head[data-described]>span:last-child{grid-area:1/3}
-/* Folded, a panel card's header sums it up between its title and its buttons, and gives way first. */
-.knobs-group-head>.knobs-group-summary{grid-area:1/2;margin-left:auto;flex:0 1000 auto;font-size:var(--_k-text-meta);text-transform:none}
+/* A panel card's header: its title, a folded card's summary and its buttons on one line, and its
+   description on the next. The title takes its room first; the summary gets what's left. */
+.knobs-panel:not(.knobs-page) .knobs-group-head{flex-wrap:wrap;row-gap:0}
+.knobs-panel:not(.knobs-page) .knobs-group-head>.knobs-group-label{flex:1000 1 0;max-width:max-content;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-group-head>.knobs-group-desc{order:1;flex:0 0 100%;padding:0;line-height:16px;white-space:normal;overflow:visible;text-wrap:pretty}
+.knobs-group-head>.knobs-group-summary{flex:1 1 0;max-width:max-content;margin-left:auto;font-size:var(--_k-text-meta);text-transform:none}
 .knobs-group-head[data-folded]>.knobs-group-summary:not(:empty){display:block}
 
 /* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
