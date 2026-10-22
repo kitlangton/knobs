@@ -201,7 +201,6 @@ async function mountCompare(
 ): Promise<Mounted> {
   const doc = host.ownerDocument
   const fit = div(doc, "knobs-wt-fit")
-  if (m.strip) fit.dataset.strip = ""
   const { before, after } = m
   const known = parseAspect(m.aspect)
   fit.style.setProperty("--kw-aspect", String(known ?? DEFAULT_ASPECT))
@@ -227,7 +226,6 @@ async function mountCompare(
     timeline: mediaKind(before.src) === "video" || mediaKind(after.src) === "video",
     lazy: false,
     ...(aspect ? { aspect } : {}),
-    ...(m.strip ? { strip: true } : {}),
     onMode: (next) => {
       onEvent?.({ what: "mode", detail: next })
       // The sides glide to their new places; the marks wait out the move, then come back there.

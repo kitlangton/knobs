@@ -153,8 +153,6 @@ export type WalkthroughMedia =
       readonly mode?: CompareMode
       /** Width over height (`16 / 9`, or `"1100/900"`); read from the video when left out. */
       readonly aspect?: number | string
-      /** The frame strip over the timeline. */
-      readonly strip?: boolean
       /** Pills under it that seek, and markers on its timeline. */
       readonly chapters?: readonly WalkthroughChapter[]
       /** Marks on the pictures, on both sides (and under a zoom). */

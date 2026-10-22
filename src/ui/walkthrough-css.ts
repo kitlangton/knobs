@@ -363,9 +363,8 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-slot .knobs-cmp-stage{border-radius:var(--kw-frame-r)}
 /* A compare is as tall as its two pictures side by side at this width, in every mode (Wipe fuses
    them at one side's size, so nothing grows or re-measures), plus its mode bar, the line and gaps
-   (92 px), and the frame strip with its gap (158 px). */
+   (92 px). */
 .knobs-wt-fit{width:100%;height:calc(100cqw / 2 / var(--kw-aspect,1.7778) + var(--kw-chrome,92px))}
-.knobs-wt-fit[data-strip]{--kw-chrome:158px}
 .knobs-wt-fit[data-settled]{transition:height var(--k-wt-calm-ms,${calm.duration}ms) ${calm.easing}}
 .knobs-wt-frame{position:relative;width:100%;overflow:hidden;border-radius:var(--kw-frame-r);background:var(--_k-fill);aspect-ratio:var(--kw-aspect,16/9)}
 .knobs-wt-frame>:is(video,img){position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;margin:0;border:0}

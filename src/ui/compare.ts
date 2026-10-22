@@ -50,7 +50,6 @@ import {
   zoomedRect,
   type ZoomRegion,
 } from "./compare-model.js"
-import { compareStrip, type CompareStrip } from "./compare-strip.js"
 import { icon } from "./icons.js"
 import { applyLook, frameLoop, isTypingTarget, reducedMotion, tune, type UiLook } from "./look.js"
 import { tokenColor } from "./rgba.js"
@@ -113,8 +112,6 @@ export interface CompareOptions extends UiLook {
    * `play` and keys still work.
    */
   readonly timeline?: Timeline | boolean
-  /** The frame strip over the timeline (off; one timeline is made if there's none). */
-  readonly strip?: boolean
   /**
    * The sources' width over height before they load (16/9). In a container without a height of
    * its own, the viewer takes the height its sides need: a split screen with no margins.
@@ -149,7 +146,6 @@ export interface Compare {
   readonly renderer: "gpu" | "dom"
   /** The bound timeline, or the one it made. */
   readonly timeline: Timeline | null
-  readonly strip: CompareStrip | null
   /** The part of each side in view (`{ u: 0, v: 0, w: 1, h: 1 }` is all of it). */
   readonly zoom: ZoomRegion
   /** The timeline's loop, or null. */
@@ -370,15 +366,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   root.append(bar, stage)
 
   // ——— the clock: a bound timeline, one of its own, or none (its own time) ———
-  const wantsStrip = options.strip === true
   let tl: Timeline | null = bound
   let ownTimeline = false
-  let stripHost: HTMLElement | null = null
-  if (wantsStrip) {
-    stripHost = el("div", "knobs-cmp-strip-host")
-    root.append(stripHost)
-  }
-  if (!tl && (options.timeline === true || wantsStrip)) {
+  if (!tl && options.timeline === true) {
     const host = el("div", "knobs-cmp-timeline-host")
     root.append(host)
     tl = makeTimeline(host, {
@@ -1609,18 +1599,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
           { listen: false, rank: 1 },
         )
 
-  const strip =
-    wantsStrip && stripHost && tl
-      ? compareStrip(stripHost, {
-          ...look,
-          before: options.before,
-          after: options.after,
-          timeline: tl,
-          ...(fpsOpt ? { fps: fpsOpt } : {}),
-          threshold,
-        })
-      : null
-
   const api: Compare = {
     element: root,
     get mode() {
@@ -1646,7 +1624,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       return renderer
     },
     timeline: tl,
-    strip,
     get zoom() {
       return clampZoom(zoomNow())
     },
@@ -1663,8 +1640,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       else if (next.before) setLabel(0, next.before.label ?? "Before")
       if (after) replace(1, after)
       else if (next.after) setLabel(1, next.after.label ?? "After")
-      if (before || after)
-        strip?.update({ ...(before ? { before } : {}), ...(after ? { after } : {}) })
       if (next.before || next.after) readColors()
       if (next.mode !== undefined) setMode(next.mode, false)
       if (next.wipe !== undefined) setWipe(next.wipe, false)
@@ -1722,7 +1697,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         tl.drive(null)
         if (ownTimeline) tl.dispose()
       }
-      strip?.dispose()
       for (const s of sides) {
         s.stop()
         unloadSide(s)
