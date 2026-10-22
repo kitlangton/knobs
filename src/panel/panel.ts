@@ -4358,7 +4358,7 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("save", event) && showVariants) {
       event.preventDefault()
-      presetStrip.save()
+      ;(groupStripAt(target) ?? presetStrip).save()
       return
     }
     const index = rowAt(target)
