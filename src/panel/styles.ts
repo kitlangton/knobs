@@ -129,7 +129,7 @@ const css = `
 
 /* The chip: a round cog button, or a capsule with a label beside the cog. */
 .knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--_k-bg);border:1px solid transparent;
-  color:var(--_k-fg-2);font-size:var(--_k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--_k-border-subtle);box-shadow:0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1))),inset 0 var(--k-rim-width) 0 var(--_k-rim);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
+  color:var(--_k-fg-2);font-size:var(--_k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--_k-border-subtle);box-shadow:0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
 .knobs-chip[data-label]{width:auto;padding:0 10px 0 7px}
 .knobs-chip .knobs-icon{display:block;flex:none;width:15px;height:15px}
 .knobs-chip:hover{color:var(--_k-fg);--k-chip-edge:var(--_k-border-strong)}
@@ -156,9 +156,10 @@ const css = `
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
    contrast. Its edge is a hairline (--k-edge, --k-rim-width wide) and a hairline of light (--k-rim)
-   catches its top. */
+   catches its top. The light rides on the edge (a shadow raised by its width, so only its top
+   shows), not inside the card's 1px border, where it read as a second edge. */
 .knobs-panel{-webkit-user-select:none;user-select:none;transition:${TOKEN_TRANSITIONS},--k-armed ${ARMED_T};position:fixed;z-index:2147480001;width:var(--_k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--_k-pad);
-  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-panel);box-shadow:var(--_k-shadow-overlay),0 0 0 var(--k-rim-width) var(--ka-edge),inset 0 var(--k-rim-width) 0 var(--_k-rim),var(--ka-glow);scrollbar-width:thin;
+  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-panel);box-shadow:var(--_k-shadow-overlay),0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--ka-edge),var(--ka-glow);scrollbar-width:thin;
   /* Armed (focus inside: keys come here), the edge takes the accent and a faint glow lifts it. */
   --ka-edge:color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-edge) * 100%),var(--_k-border-subtle));
   --ka-glow:0 0 calc(var(--k-armed-glow) * 1px) color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-glow-a) * var(--k-chrome,1) * 100%),transparent);
@@ -171,7 +172,7 @@ const css = `
 .knobs-panel[data-morphing]{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none}
 .knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;--spec:0;
   background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20% * var(--p)),transparent);border:1px solid transparent;
-  box-shadow:0 0 0 var(--k-rim-width) var(--_k-border-subtle),inset 0 0 0 var(--k-rim-width) rgb(255 255 255/var(--spec)),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--_k-rim) calc(var(--p) * 100%),transparent);
+  box-shadow:0 calc(var(--k-rim-width) * -1) 0 color-mix(in srgb,var(--_k-rim) calc(var(--p) * 100%),transparent),0 0 0 var(--k-rim-width) var(--_k-border-subtle),inset 0 0 0 var(--k-rim-width) rgb(255 255 255/var(--spec));
   --k-backdrop:blur(calc(var(--_k-glass) * 24px)) saturate(calc(1 + var(--_k-glass) * .8)) brightness(calc(1 + (var(--_k-glass-tone) - 1) * var(--_k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
 .knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}
@@ -179,7 +180,7 @@ const css = `
 .knobs-morph::after{box-shadow:var(--_k-shadow-overlay);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
-.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:0 0 0 var(--k-rim-width) color-mix(in srgb,var(--ka-edge) calc(var(--k-chrome) * 100%),transparent),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--_k-rim) calc(var(--k-chrome) * 100%),transparent),var(--ka-glow);animation:none;
+.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:0 calc(var(--k-rim-width) * -1) 0 color-mix(in srgb,var(--_k-rim) calc(var(--k-chrome) * 100%),transparent),0 0 0 var(--k-rim-width) color-mix(in srgb,var(--ka-edge) calc(var(--k-chrome) * 100%),transparent),var(--ka-glow);animation:none;
   /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column,
      border width too, so its rows line up with the column's edges. */
   border-width:calc(var(--k-chrome) * 1px);
