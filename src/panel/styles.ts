@@ -199,8 +199,9 @@ const css = `
 :is(.knobs-panel,.knobs-menu) :is(:focus,:focus-visible):where(:not(.knobs-accessory *)){outline:none}
 
 /* Header */
-.knobs-panel header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;touch-action:none;padding:0 var(--_k-inset) var(--k-section-gap);min-height:var(--k-icon-btn)}
-.knobs-panel.knobs-inline header,.knobs-panel.knobs-inline header:active{cursor:default}
+/* A floating panel's header carries it; the hand shows only while it's carrying (data-dragging). */
+.knobs-panel header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;touch-action:none;padding:0 var(--_k-inset) var(--k-section-gap);min-height:var(--k-icon-btn)}
+.knobs-panel[data-dragging]>header,.knobs-panel[data-dragging]>header *{cursor:grabbing}
 /* The title row stays pinned while the rows scroll under it, in the panel (it scrolls once it's
    bounded) or, with .knobs-pin-ancestor (which also makes the panel overflow:visible), in the
    nearest scroller around it. Once rows are under it, and only then, it frosts (backdrop blur over
@@ -225,7 +226,6 @@ const css = `
   .knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header{background:transparent!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
   .knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header::after{display:none}
 }
-.knobs-panel header:active{cursor:grabbing}
 .knobs-panel header strong{flex:1;min-width:0;font-weight:var(--_k-weight-title);font-size:var(--_k-text-title);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s var(--k-ease),color ${ARMED_T};
   color:color-mix(in srgb,var(--_k-fg) calc(var(--k-title-rest) * 100%),var(--_k-fg-2))}
 /* At rest a panel's title is a little quiet; armed (keys come here) it's at full strength. */
