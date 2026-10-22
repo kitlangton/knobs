@@ -3695,8 +3695,9 @@ function buildPanel<S extends Schema>(
       editor: t.level === "editor" ? partName(t.el, active) : undefined,
     })
   }
+  // The scope line is opt-in (`crumbs: true`): by default the header is the title and its buttons.
   const crumbs =
-    options.crumbs === false || header.hidden || !titleEl.isConnected
+    options.crumbs !== true || header.hidden || !titleEl.isConnected
       ? undefined
       : createCrumbs({
           header,

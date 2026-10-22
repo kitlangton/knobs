@@ -244,8 +244,9 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly header?: boolean | HeaderOptions
   /**
-   * `false` drops the scope line beside the title (`Shape › Cohesion`, where keys go, and a faint
-   * `esc ↑ Shape` for where Esc goes). The focus lens and the armed frame stay.
+   * `true` shows a scope line beside the title (`Shape › Cohesion`, where keys go, and a faint
+   * `esc ↑ Shape` for where Esc goes). Off by default; the focus lens and the armed frame show
+   * either way.
    */
   readonly crumbs?: boolean
   /**

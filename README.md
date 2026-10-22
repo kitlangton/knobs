@@ -431,14 +431,14 @@ Three things show which, in both renderers, on floating and inline panels and on
   its hairline edge brightens a touch toward the accent and its title is at full strength. At rest
   the title is a little quieter, so on a page with several panels the one listening is plain.
   Focus leaving (or `Esc` out of the panel, or the window going to the background) disarms it.
-- **The scope line.** Beside the title, a quiet trail says where keys go: `Swarm › Shape ›
-  Cohesion`, the deepest crumb bright and its parents dim. Crumbs glide to their places as focus
-  moves, and one that changes fades out as the new one fades in. For a moment after a key below
+- **The scope line** (opt-in: `crumbs: true` on the mount). Beside the title, a quiet trail says
+  where keys go: `Swarm › Shape › Cohesion`, the deepest crumb bright and its parents dim. Crumbs
+  glide to their places as focus moves, and one that changes fades out as the new one fades in. For a moment after a key below
   the panel's level, a faint `esc ↑ Shape` follows it, then fades. Clicking a crumb takes focus to
   its level; clicking the title takes it to the panel. The line lives in the room between the
   title and the header's buttons: when it doesn't fit, the first crumbs drop off, and without room
   for the deepest it stays empty, so it never runs under the buttons and the title never moves.
-  `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
+  Without it the header is the title and its buttons; the lens and the armed frame show either way.
 
 Tune them with tokens on the panel or any ancestor:
 
@@ -2007,7 +2007,7 @@ The package has two core exports selected through the standard `development` con
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
 | Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`false` drops the scope line), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`true` adds the scope line), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
