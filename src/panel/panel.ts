@@ -486,14 +486,18 @@ function buildPanel<S extends Schema>(
             ? (selectionKeys() ?? [])
             : undefined
     const index = group === undefined ? -1 : controls.activeGroupPreset(group)
-    const ref = controls.activePreset()
+    // A row's keys answer to their own scope's preset; anything wider to the strip's.
+    const where = (keys?.length ? controls.scopeOf(keys[0]!) : stripScope()) ?? null
+    const ref = where === null ? null : controls.activePreset(where)
     const name =
       index >= 0
         ? controls.groupPresets[group!]?.[index]?.name
         : ref?.kind === "preset"
-          ? presetLabel(ref.id)
+          ? presetLabel(ref.id, where!)
           : ref
-            ? presetStrip.getEntries().find((e) => e.id === `v:${ref.id}`)?.label
+            ? (where === "" ? controls.variants : controls.scopes[where!]?.variants)
+                ?.list()
+                .find((v) => v.id === ref.id)?.name
             : undefined
     if (!name) return null
     const off = keys
@@ -666,10 +670,10 @@ function buildPanel<S extends Schema>(
   // Without the ? button, the title's tooltip keeps the shortcuts discoverable.
   if (helpButton?.hidden)
     titleEl.title = `${titleEl.textContent ? `${titleEl.textContent}\n` : ""}Press ${show("help")} for keyboard shortcuts`
-  const presetLabel = (id: string) =>
+  const presetLabel = (id: string, scope = "") =>
     options.presetLabels?.[id] ??
     (id === "default" ? options.defaultLabel : undefined) ??
-    controls.presetLabel(id)
+    controls.presetLabel(id, scope)
   const presetStrip = createPresetStrip(
     doc,
     controls,
@@ -678,6 +682,7 @@ function buildPanel<S extends Schema>(
     () => wakeGpu(),
     presetLabel,
     (entries) => presetsTouchTab(entries),
+    () => stripScope(),
   )
   // Tabs: a strip under the header once any field names one (or `tabs` lists some). A panel
   // remembers the one it showed, for the next mount and (with `session`) a reload.
@@ -2282,10 +2287,13 @@ function buildPanel<S extends Schema>(
    * pinned keys); with no tabs, always. A tab they leave alone shows no preset strip.
    */
   function presetsTouchTab(entries: readonly PresetEntry<any>[]) {
-    if (page || activeTab === undefined) return true
+    // A tab or group's own strip shows wherever it's chosen to (see `stripScope`).
+    if (page || activeTab === undefined || stripScope() !== "") return true
     const keys = rows.flatMap((r) => {
       const tab = tabOf(r)
-      return !pinnedRow(r) && (tab === undefined || tab === activeTab) ? r.keys : []
+      return !pinnedRow(r) && (tab === undefined || tab === activeTab)
+        ? r.keys.filter((k) => controls.scopeOf(k) === "")
+        : []
     })
     // The variants choice has no row; a variant moves the tab it sits on (every tab without one).
     const v = variantsOf(controls.schema, controls.isPinned)
@@ -2294,6 +2302,24 @@ function buildPanel<S extends Schema>(
       if (tab === undefined || tab === activeTab) keys.push(v.key)
     }
     return presetsTouch(entries, keys, controls.locked)
+  }
+  /**
+   * Whose presets the strip shows (see `ControlsOptions.scopedPresets`): the tab's own, else a
+   * group's on it, else the panel's (`""`) while it has some; null for no strip. One per tab.
+   */
+  function stripScope(): string | null {
+    const named = Object.keys(controls.scopes)
+    const panelWide = named.length === 0 || Object.keys(controls.presets).length > 1
+    if (page) return panelWide ? "" : null
+    if (activeTab === undefined) return panelWide ? "" : (named[0] ?? null)
+    if (named.includes(activeTab)) return activeTab
+    const group = named.find((id) => rows.some((r) => r.group === id && tabOf(r) === activeTab))
+    return group ?? (panelWide ? "" : null)
+  }
+  /** The saved variants the strip shows (the panel's when it shows none). */
+  const stripVariants = () => {
+    const scope = stripScope()
+    return (scope ? controls.scopes[scope]?.variants : undefined) ?? controls.variants
   }
   function syncTabs() {
     const list = tabList()
@@ -2309,6 +2335,8 @@ function buildPanel<S extends Schema>(
     if (remember) writeSession(controls.id, { tab: id })
     tabStrip.select(id, animate)
     const focused = doc.activeElement as HTMLElement | null
+    // The strip takes the new tab's presets before it's shown or hidden with the rows.
+    presetStrip.update()
     applyVisibility(animate ? "tab" : "instant")
     // Focus on a row that left stays with the tabs.
     if (focused && root.contains(focused) && focused.closest("[hidden],[data-leaving]"))
@@ -2645,7 +2673,7 @@ function buildPanel<S extends Schema>(
   text.setAttribute("aria-label", "Import or copy text")
 
   const apply = button("Apply import", () => {
-    controls.variants.import(text.value)
+    stripVariants().import(text.value)
     say("Presets imported.")
     reveal(text, false)
     reveal(apply, false)
@@ -2693,7 +2721,7 @@ function buildPanel<S extends Schema>(
     const transfer = el("div")
     transfer.className = "knobs-transfer"
     transfer.append(
-      button("Export presets", () => void copy(controls.variants.export(), false)),
+      button("Export presets", () => void copy(stripVariants().export(), false)),
       button("Import presets", () => {
         reveal(text, true)
         reveal(apply, true)
@@ -2800,6 +2828,7 @@ function buildPanel<S extends Schema>(
   const baseSignature = () =>
     JSON.stringify([
       controls.activePreset(),
+      Object.keys(controls.scopes).map((s) => controls.activePreset(s)),
       Object.keys(controls.groupPresets).map((g) => controls.activeGroupPreset(g)),
     ])
   function update() {
