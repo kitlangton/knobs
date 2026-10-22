@@ -745,6 +745,38 @@ function buildPanel<S extends Schema>(
   }
   // A page's strip sits in its header bar, where it stays chips.
   presetStrip.display(page ? "chips" : (options.presetDisplay ?? "auto"))
+  /**
+   * In a panel, a group with presets of its own (`scopedPresets`) shows them at the top of its
+   * card while the strip above shows another scope's: the panel's, or its tab's.
+   */
+  const groupStrips = new Map<string, PresetStrip>()
+  const tabNamed = (id: string) =>
+    (options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
+    Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id)
+  const groupStripFor = (group: string): PresetStrip | undefined => {
+    if (page || !Object.hasOwn(controls.scopes, group) || tabNamed(group)) return undefined
+    let strip = groupStrips.get(group)
+    if (!strip) {
+      strip = createPresetStrip(
+        doc,
+        controls,
+        showVariants,
+        run,
+        () => wakeGpu(),
+        presetLabel,
+        undefined,
+        () => (stripScope() === group ? null : group),
+      )
+      strip.element.setAttribute("aria-label", `${groupTitle(group)} presets`)
+      strip.display(options.presetDisplay ?? "auto")
+      groupStrips.set(group, strip)
+    }
+    return strip
+  }
+  const updateStrips = () => {
+    presetStrip.update()
+    for (const strip of groupStrips.values()) strip.update()
+  }
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
@@ -2085,6 +2117,7 @@ function buildPanel<S extends Schema>(
       const chosen: Block[] = []
       const pinnedBlocks = new Set<Block>()
       const usedSubheads = new Set<string>()
+      const stripped = new Set<string>()
       for (const run of runs) {
         const at = free.findIndex((b) => b.group === run.group)
         const block = at >= 0 ? free.splice(at, 1)[0]! : newBlock(run.group)
@@ -2116,7 +2149,12 @@ function buildPanel<S extends Schema>(
           under = name
           nodes.push(r.row)
         }
-        arrange(block.card, nodes)
+        const strip =
+          run.group !== undefined && !run.pinned && !stripped.has(run.group)
+            ? groupStripFor(run.group)
+            : undefined
+        if (strip) stripped.add(run.group!)
+        arrange(block.card, strip ? [strip.element, ...nodes] : nodes)
         if (animate && at >= 0)
           for (const r of run.rows) if (entering.has(r)) motion.push({ node: r.row, show: true })
       }
@@ -2340,7 +2378,7 @@ function buildPanel<S extends Schema>(
     tabStrip.select(id, animate)
     const focused = doc.activeElement as HTMLElement | null
     // The strip takes the new tab's presets before it's shown or hidden with the rows.
-    presetStrip.update()
+    updateStrips()
     applyVisibility(animate ? "tab" : "instant")
     // Focus on a row that left stays with the tabs.
     if (focused && root.contains(focused) && focused.closest("[hidden],[data-leaving]"))
@@ -2859,7 +2897,7 @@ function buildPanel<S extends Schema>(
     const moving = initialized ? rows.filter(changed) : rows
     // The preset strip first: its chip's weight moves the chips, so it reads after its own writes
     // and before the rows dirty everything else.
-    presetStrip.update()
+    updateStrips()
     // Reads before writes: every row about to move reads its tokens, and every segmented pill its
     // options, before any row writes (see measure.ts).
     batchMeasures(() => {
@@ -3040,14 +3078,15 @@ function buildPanel<S extends Schema>(
             () => s.label!.focus(),
             s.label.firstElementChild as HTMLElement,
           )
-    presetStrip.getEntries().forEach((entry, i) => {
-      const chip = presetStrip.getButtons()[i]
-      if (chip)
-        add(chip, entry.label, () => {
-          presetStrip.selectById(entry.id)
-          presetStrip.element.focus({ preventScroll: true })
-        })
-    })
+    for (const strip of [presetStrip, ...groupStrips.values()])
+      strip.getEntries().forEach((entry, i) => {
+        const chip = strip.getButtons()[i]
+        if (chip)
+          add(chip, entry.label, () => {
+            strip.selectById(entry.id)
+            strip.element.focus({ preventScroll: true })
+          })
+      })
     // A page's group dice, resets and numbered presets have keys (g, ⌫, 1–9) instead.
     for (const b of root.querySelectorAll<HTMLButtonElement>(
       page
@@ -3168,6 +3207,8 @@ function buildPanel<S extends Schema>(
       if (b.head?.hasAttribute("data-foldable") && !b.leaving)
         runs.push({ at: b.head, stops: shown([b.head]) })
     for (const sh of subheads.values()) runs.push({ at: sh.el, stops: shown([sh.el]) })
+    for (const gs of groupStrips.values())
+      if (visible(gs.element)) runs.push({ at: gs.element, stops: shown([gs.element]) })
     runs.push(...strips)
     runs.sort((a, b) =>
       a.at.compareDocumentPosition(b.at) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
@@ -3710,6 +3751,8 @@ function buildPanel<S extends Schema>(
       if (sub && r.row.contains(sub)) return { el: sub, level: "row" }
       return { el: r.row.closest<HTMLElement>(".knobs-card > *") ?? r.row, level: "row" }
     }
+    const strip = active.closest<HTMLElement>(".knobs-card > .knobs-presets")
+    if (strip) return { el: strip, level: "row" }
     const card = cardOf(active)
     return card ? { el: card, level: "card" } : null
   }
@@ -3918,6 +3961,25 @@ function buildPanel<S extends Schema>(
     if (!r || r.row.closest("[data-disabled],[data-readonly]")) return undefined
     return optionsOf(r)
   }
+  /** The group's own preset strip `node` is in, if any. */
+  const groupStripAt = (node: Node | null) =>
+    node ? [...groupStrips.values()].find((s) => s.element.contains(node)) : undefined
+  const groupStripOptions = new Map<PresetStrip, RowOptions>()
+  const optionsOfStrip = (strip: PresetStrip) => {
+    let o = groupStripOptions.get(strip)
+    if (!o) {
+      o = {
+        get count() {
+          return strip.getEntries().length
+        },
+        choose: (i) => strip.select(i),
+        shown: () => strip.getButtons(),
+        anchor: strip.element,
+      }
+      groupStripOptions.set(strip, o)
+    }
+    return o
+  }
   /** Whether 1–9 can pick the preset strip's chips: it shows, with more than one. */
   const stripDigits = () => visible(presetStrip.element) && presetStrip.getEntries().length > 1
   const stripOptions: RowOptions = {
@@ -3933,7 +3995,13 @@ function buildPanel<S extends Schema>(
    * digits pick them from most rows too, but showing them there would flicker row to row).
    */
   const stripOptionsAt = (node: Element | null) => {
-    if (hintCtrl.isActive || !node || !stripDigits()) return undefined
+    if (hintCtrl.isActive || !node) return undefined
+    const own = groupStripAt(node)
+    if (own)
+      return visible(own.element) && own.getEntries().length > 1 && !own.nameField()
+        ? optionsOfStrip(own)
+        : undefined
+    if (!stripDigits()) return undefined
     const at = presetStrip.element.contains(node) || focusLevel(node) === "panel"
     return at && !presetStrip.nameField() ? stripOptions : undefined
   }
@@ -4187,8 +4255,10 @@ function buildPanel<S extends Schema>(
     if (pressed("presets", event)) {
       // [ and ] cycle the presets while there are some to cycle; otherwise the tabs.
       const direction = key === keys.presets[0] ? -1 : 1
-      const presetsShown = visible(presetStrip.element) && presetStrip.getEntries().length > 1
-      if (presetsShown) presetStrip.cycle(direction)
+      // In a group's own strip, its presets.
+      const strip = groupStripAt(target) ?? presetStrip
+      const presetsShown = visible(strip.element) && strip.getEntries().length > 1
+      if (presetsShown) strip.cycle(direction)
       else if (!cycleTab(direction)) return
       event.preventDefault()
       event.stopPropagation()
@@ -4220,6 +4290,8 @@ function buildPanel<S extends Schema>(
       search.focus()
       return
     }
+    // A group's own strip took the digits it has; the rest are its, not the panel strip's.
+    if (/^[1-9]$/.test(key) && groupStripAt(target)) return
     if (/^[1-9]$/.test(key)) {
       // A page's digits pick the focused group's numbered preset (where it has them).
       const group = page ? focusedGroup(target) : undefined
@@ -4864,6 +4936,7 @@ function buildPanel<S extends Schema>(
     ...(undock ? {} : { headerDie: { button: randomButton, die } }),
     locks: lockIcons,
     presetStrip,
+    groupStrips: () => groupStrips.values(),
     tabs: tabStrip,
     groups: gpuGroups,
     cards,
@@ -4999,6 +5072,7 @@ function buildPanel<S extends Schema>(
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
       for (const c of groupChips.values()) c.dispose()
       presetStrip.dispose()
+      for (const strip of groupStrips.values()) strip.dispose()
       tabStrip.dispose()
       tabMotion.finish()
       doc.removeEventListener("keydown", onGlobalKey)

@@ -333,6 +333,10 @@ const css = `
 /* The active preset's modified mark: the values have drifted off it (a row's dot, in its corner). */
 .knobs-panel .knobs-preset-chip::after{content:"";position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--_k-modified);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
 .knobs-panel .knobs-preset-chip[data-drifted]::after{opacity:.95;transform:none}
+/* A group's own presets at the top of its card: the chips sit on the card, with no tray. */
+.knobs-panel .knobs-card>.knobs-presets{margin:0;padding:max(4px,calc((var(--_k-row) - var(--k-button-h,var(--_k-control-h))) / 2)) var(--_k-inset);background:transparent;border-radius:0}
+.knobs-panel .knobs-card>.knobs-presets[data-display="list"]{padding-inline:0}
+.knobs-card>.knobs-presets:hover{background:transparent}
 /* Naming a saved preset: a field over its chip that opens out from the middle to the chip's width;
    the chip's own name hides beneath it. Leaving, it fades. */
 .knobs-panel .knobs-preset-chip[data-naming]{color:transparent!important}

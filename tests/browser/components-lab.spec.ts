@@ -41,7 +41,7 @@ test("the controls pane is one surface: no card, no header band, buttons in the 
   await expect(head.locator(".knobs-head-actions[data-docked]")).toHaveCount(1)
   // The presets begin right under the pane's header.
   const headBottom = (await head.boundingBox())!.y + (await head.boundingBox())!.height
-  const presetsTop = (await panel.locator(".knobs-presets").boundingBox())!.y
+  const presetsTop = (await panel.locator(".knobs-presets").first().boundingBox())!.y
   expect(presetsTop - headBottom).toBeLessThan(12)
   expect(errors).toEqual([])
 })
@@ -50,8 +50,9 @@ test("seven states at 300px are a list, and the toolbar is one row of icons", as
   const errors = errorsOf(page)
   await page.goto("/components-lab.html")
   const panel = page.locator('[data-pane="inspector"] .knobs-panel')
-  await expect(panel.locator(".knobs-presets")).toHaveAttribute("data-display", "list")
-  const chips = panel.locator(".knobs-preset-chip")
+  const states = panel.locator(".knobs-presets").first()
+  await expect(states).toHaveAttribute("data-display", "list")
+  const chips = states.locator(".knobs-preset-chip")
   await expect(chips).toHaveCount(7)
   const lefts = await chips.evaluateAll((els) =>
     els.map((el) => Math.round(el.getBoundingClientRect().left)),
@@ -91,5 +92,41 @@ test("a text field types into its story, one undo step a focus", async ({ page }
   await page.keyboard.press("Escape")
   await page.locator('[data-pane="inspector"] .knobs-pane-head button[aria-label="Undo"]').click()
   await expect(field).toHaveValue("")
+  expect(errors).toEqual([])
+})
+
+test("the Motion group's presets sit at the top of its card and leave the state's chip lit", async ({
+  page,
+}) => {
+  const errors = errorsOf(page)
+  await page.goto("/components-lab.html")
+  const panel = page.locator('[data-pane="inspector"] .knobs-panel')
+  const states = panel.locator(".knobs-presets:not(.knobs-card > *)")
+  const motion = panel.locator('.knobs-card[data-group="Motion"] > .knobs-presets')
+  await expect(motion).toBeVisible()
+  await expect(motion).toHaveAttribute("aria-label", "Motion presets")
+  // First in its card, above the rows.
+  expect(await motion.evaluate((el) => el === el.parentElement!.firstElementChild)).toBe(true)
+  await expect(motion.locator(".knobs-preset-chip")).toHaveText([
+    "Shipped",
+    "Snappy",
+    "Smooth",
+    "Calm",
+  ])
+  await motion.locator(".knobs-preset-chip", { hasText: "Calm" }).click()
+  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Calm")
+  await expect(panel.locator('[data-field="stagger"] [role="slider"]')).toHaveAttribute(
+    "aria-valuenow",
+    "0.1",
+  )
+  // The state keeps its chip: the Motion knobs belong to their own presets.
+  await expect(states.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("No activity")
+  await expect(states.locator(".knobs-preset-chip[data-drifted]")).toHaveCount(0)
+  await states.locator(".knobs-preset-chip", { hasText: "Live" }).click()
+  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Calm")
+  // Focused, ← and → pick its presets.
+  await motion.focus()
+  await page.keyboard.press("ArrowLeft")
+  await expect(motion.locator('.knobs-preset-chip[aria-checked="true"]')).toHaveText("Smooth")
   expect(errors).toEqual([])
 })

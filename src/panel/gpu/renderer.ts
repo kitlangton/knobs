@@ -489,6 +489,8 @@ export interface GpuPanelBinding {
   /** Each locked-capable row's lock icon, by its label element; `data-on` says it's locked. */
   readonly locks?: ReadonlyMap<HTMLElement, HTMLElement>
   readonly presetStrip: PresetStrip
+  /** Groups' own preset strips, each at the top of its card (see `scopedPresets`). */
+  readonly groupStrips?: () => Iterable<PresetStrip>
   /** The tab strip under the header (hidden while the panel has no tabs). */
   readonly tabs?: TabStrip
   readonly groups: readonly GpuGroupBinding[]
@@ -4884,6 +4886,20 @@ class GpuOverlayManager {
           })
           if (bar === card) this.drawScope(card, cr, tokens.radius, 1)
         }
+      }
+      // A group's own preset strip sits on its card, with no tray of its own.
+      for (const gs of panel.groupStrips?.() ?? []) {
+        const card = gs.element.parentElement
+        if (!card || gs.element.closest("[hidden]")) continue
+        const cr = cardRects.get(card) ?? this.rectOf(card)
+        this.curClip = clipToTile(
+          card,
+          intersectClip(bodyClip, [cr.left, cr.top, cr.right, cr.bottom]),
+        )
+        this.curAlpha = panelAlpha * this.presence(card) * fadeOf(card)
+        anyMoving =
+          this.drawPresetStrip(gs, tokens, this.curClip, hinting, reducedMotion, dt, false) ||
+          anyMoving
       }
       this.curClip = bodyClip
       this.curAlpha = panelAlpha

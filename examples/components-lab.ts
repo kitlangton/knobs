@@ -1,8 +1,9 @@
 // OpenCode Desktop's components lab in miniature (used by tests/browser/components-lab.spec.ts):
 // a three-pane split with a tree of stories (two share a title, told apart by their `detail`), the
 // story in the middle, and its controls in the right pane: one preset per state, a toolbar that
-// steps and plays through them, and the story's args as knobs. A story without args says so.
-import { defineControls, knob, text, toolbar, type Field } from "knobs"
+// steps and plays through them, and the story's args as knobs. A story's motion knobs have presets
+// of their own at the top of their card. A story without args says so.
+import { defineControls, knob, spring, text, toolbar, type Field, type Value } from "knobs"
 import { split, tree } from "knobs/ui"
 
 interface Row {
@@ -16,6 +17,8 @@ interface Story {
   title: string
   states: { name: string; args: Record<string, number | string> }[]
   fields: Record<string, Field>
+  /** Presets for the story's Motion group, beside the shipped values. */
+  motion?: Record<string, Record<string, Value>>
   render(stage: HTMLElement, args: Record<string, unknown>): void
 }
 
@@ -34,6 +37,13 @@ const activity: Story = {
     subagents: knob(0, { min: 0, max: 8, step: 1 }),
     shells: knob(0, { min: 0, max: 4, step: 1 }),
     caption: text("", { placeholder: "No caption" }),
+    enter: spring({ duration: 0.3, bounce: 0 }, { group: "Motion" }),
+    stagger: knob(0.04, { min: 0, max: 0.2, step: 0.01, unit: "s", group: "Motion" }),
+  },
+  motion: {
+    Snappy: { enter: { duration: 0.2, bounce: 0 }, stagger: 0.02 },
+    Smooth: { enter: { duration: 0.45, bounce: 0 }, stagger: 0.06 },
+    Calm: { enter: { duration: 0.6, bounce: 0 }, stagger: 0.1 },
   },
   render(stage, args) {
     const chips = document.createElement("div")
@@ -234,8 +244,9 @@ function open(file: string) {
       enabled: true,
       storage: null,
       persist: "none",
-      defaultLabel: first,
+      defaultLabel: { "": first ?? "default", Motion: "Shipped" },
       presets: Object.fromEntries(story.states.slice(1).map((s) => [s.name, s.args])),
+      ...(story.motion ? { scopedPresets: { Motion: story.motion } } : {}),
       onChange: (_patch, values) => story.render(stage, values),
     },
   )
