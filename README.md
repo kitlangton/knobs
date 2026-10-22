@@ -1418,6 +1418,23 @@ Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one cont
 
 The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
 
+### Infinite canvas
+
+```ts
+import { canvas } from "knobs/ui"
+
+const board = canvas(container, {
+  items: stories.map((s) => ({ id: s.id, title: s.name, render: (el) => s.mount(el) })),
+})
+board.focus("button-primary")
+```
+
+**`canvas(container, options)`** puts items on a dotted page that pans and zooms freely, as a components lab's grid. Items take `id`, `render(el)` (return a cleanup), `title` (shown above the card), `w`/`h` (the card's size; without them it takes its content's) and `x`/`y` (a place; items without one pack into rows under the placed ones, in order, the rows as wide as makes the set about the canvas's shape, or `width`). Each item is one hairline card; the dots scale with the zoom and fade out at the extremes; the edges fade over 16px (`--k-ui-canvas-fade`).
+
+Dragging the page, two-finger scrolling, or holding Space or the middle button and dragging anywhere pans; a pinch or `⌘`/`Ctrl`-scroll zooms around the pointer. Both follow the hand 1:1 and a fling coasts. What the hand didn't do springs (no bounce): `0` fits, `1` is 100%, `=`/`-` step 1.5×, and a double-click on an item focuses it (again, or on the page, fits). A mouse wheel's notch under `⌘` zooms directly too, at most 1.25× an event. Each jump zooms around the one point both views share, so everything on screen travels in a straight line. Items stay live: clicks and keys reach them, and a dragged Space still presses a focused button if nothing moved. Nothing moves on load: the first fit is instant, and until someone touches the view a change in size or content fits again. The world is one transformed layer; at rest its translate snaps to device pixels and, after a zoom, it's drawn again at the new scale so text is crisp.
+
+The handle has `fit()`, `focus(id)` (at most 200%), `zoomTo(scale, at?)`, `update(items)` (items that stay keep their content and glide to new places; new ones come in, gone ones soften out), `view`, `rects`, `moving`, `stats()` and `dispose()`; `onView` reports the view, `minZoom`/`maxZoom` (.05–8) bound it, `gap` (48) parts packed items, `padding` (48) frames a fit and `readout: false` drops the zoom pill. `layoutCanvas`, `packRows`, `fitView`, `zoomAround`, `viewPath` and `dotGrid` are the math on its own. `Canvas` in `knobs/ui/react` and `knobs/ui/solid` follows `items`. The demo is `examples/canvas.html` (`?n=200`, `?perf`).
+
 ### Review pieces (`knobs/review`)
 
 The walkthrough and what it shows (compare, player, code diff, history, facts, decision, taste test, `mediaSlot`) are their own subsystem: `knobs/review` (and `knobs/review/react`, `knobs/review/solid`). They have their own quiet look, `themes.review` (true black, flat, hairlines held to an APCA target, the platform's own face), one type scale and a short set of rules: [docs/review-design.md](docs/review-design.md), with every piece alone in `examples/review.html`. `knobs/ui` still exports them. `reviewFont(document, { href, sans: "Inter" })` gives the review look in a webfont.
@@ -2053,6 +2070,7 @@ The package has two core exports selected through the standard `development` con
 | `optionPicker(container, { options, selected?, chosen?, onSelect?, onChoose?, body?, digits? })` | Options 1–n on a gliding card, the selected one's parameters (a panel) open under it. |
 | `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
 | `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
+| `canvas(container, { items, gap?, padding?, width?, minZoom?, maxZoom?, readout?, onView? })` | An infinite canvas: items as cards on a dotted page that pans and zooms freely; `fit`, `focus(id)`, `zoomTo`. |
 | `walkthrough(container, { doc, onFeedback?, storage?, keys?, rail?, advance? })` / `mediaSlot(container, { media, steps? })` | The review page an agent writes (sections, steps, media from compares to histories, stacks and tables, notes and picks handed back); one step's media on its own. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
 | `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
