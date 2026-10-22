@@ -154,6 +154,15 @@ function fakePage() {
   return { doc, press, el, pressed, listeners }
 }
 
+/** A key's target in a knobs/ui piece (a tree row): what `closest` finds is the piece. */
+const inPiece = {
+  closest: () => ({ classList: { contains: (c: string) => c === "knobs-ui" } }),
+}
+/** A key's target in the host's content inside a split's pane. */
+const inPane = {
+  closest: () => ({ classList: { contains: (c: string) => c === "knobs-pane-body" } }),
+}
+
 function painter() {
   const log: { shown: string[]; query: string; cleared: number } = {
     shown: [],
@@ -210,8 +219,8 @@ describe("page hint registry", () => {
     expect(claimsHintKey(doc, "s")).toBe(true)
     expect(claimsHintKey(doc, "f")).toBe(false)
 
-    // `s` anywhere on the page starts it; the left column takes the first letter.
-    expect(press("s").defaultPrevented).toBe(true)
+    // `s` in a knobs piece starts it; the left column takes the first letter.
+    expect(press("s", inPiece).defaultPrevented).toBe(true)
     expect(pageHints(doc).active).toBe(true)
     expect(details.log.shown).toEqual(["aa", "as"])
     expect(station.log.shown).toEqual(["sa", "ss"])
@@ -224,6 +233,32 @@ describe("page hint registry", () => {
     expect(pageHints(doc).active).toBe(false)
     expect(station.log.cleared).toBe(1)
     expect(details.log.cleared).toBe(1)
+  })
+
+  it("leaves `s` on the page to the page with only panels and pieces, unless the host asks", () => {
+    const { doc, el, press } = fakePage()
+    const offA = pageHints(doc).register(el("a"), () => [el("One")], {
+      rank: 0,
+      paint: painter().paint,
+    })
+    const offB = pageHints(doc).register(el("b"), () => [el("Two", 0, 600)], {
+      rank: 0,
+      paint: painter().paint,
+    })
+    // A game's S (focus on the body, or the host's content in a pane) stays the game's.
+    expect(press("s").defaultPrevented).toBe(false)
+    expect(press("s", inPane).defaultPrevented).toBe(false)
+    expect(pageHints(doc).active).toBe(false)
+    // A host that registers targets of its own asks for it everywhere.
+    const offHost = pageHints(doc).register(el("host"), () => [el("Three", 400)], {
+      paint: painter().paint,
+    })
+    expect(press("s").defaultPrevented).toBe(true)
+    expect(pageHints(doc).active).toBe(true)
+    press("Escape")
+    offHost()
+    offA()
+    offB()
   })
 
   it("cancels on Escape and ignores `s` typed into a field", () => {
