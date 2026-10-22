@@ -3938,7 +3938,22 @@ function buildPanel<S extends Schema>(
       queueScope()
     })
   }
+  /**
+   * A press on the page outside the panel hands the keys back to the page, even where the page
+   * keeps focus from moving (a game's canvas that cancels its pointerdown): the panel stays open,
+   * and its keys (digits, R, S, arrows) stop applying until focus comes back.
+   */
+  const onPressOutside = (event: PointerEvent) => {
+    const target = event.target as Element | null
+    if (page || !target || root.contains(target)) return
+    if (target.closest?.(".knobs-root,.knobs-layers")) return
+    setTimeout(() => {
+      const active = doc.activeElement as HTMLElement | null
+      if (active && root.contains(active)) active.blur()
+    })
+  }
   doc.addEventListener("pointerdown", onPress, true)
+  doc.addEventListener("pointerdown", onPressOutside, true)
   doc.addEventListener("pointerup", onRelease, true)
   doc.addEventListener("pointercancel", onRelease, true)
   root.addEventListener(
@@ -5165,6 +5180,7 @@ function buildPanel<S extends Schema>(
       lens.dispose()
       win?.cancelAnimationFrame(lensFrame)
       doc.removeEventListener("pointerdown", onPress, true)
+      doc.removeEventListener("pointerdown", onPressOutside, true)
       doc.removeEventListener("pointerup", onRelease, true)
       doc.removeEventListener("pointercancel", onRelease, true)
       crumbs?.dispose()
