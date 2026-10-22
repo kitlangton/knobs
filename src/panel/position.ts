@@ -93,22 +93,30 @@ export function positionPanel(
     panel.style.left = `${shown.x}px`
     panel.style.top = `${shown.y}px`
   }
-  // The header carries the panel 1:1 with the pointer, and it stays where it's let go.
+  // The header carries the panel 1:1 with the pointer, and it stays where it's let go. A press
+  // that doesn't move is a click: the pointer is captured only once it moves, so the click still
+  // reaches the title (which takes focus to the panel).
   let drag: { id: number; x: number; y: number; left: number; top: number } | undefined
   header.onpointerdown = (event) => {
     if (event.button !== 0 || (event.target as Element).closest("button,select,input")) return
     event.preventDefault()
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: shown.x, top: shown.y }
-    header.setPointerCapture(event.pointerId)
   }
   header.onpointermove = (event) => {
     if (!drag || event.pointerId !== drag.id) return
+    if (!("dragging" in panel.dataset)) {
+      // Let go somewhere the header didn't hear: that press is over.
+      if (!(event.buttons & 1)) return void (drag = undefined)
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) <= 2) return
+      panel.dataset.dragging = ""
+      header.setPointerCapture(event.pointerId)
+    }
     x = drag.left + event.clientX - drag.x
     y = drag.top + event.clientY - drag.y
-    // A press that hasn't moved is still a click (on the title, it takes focus to the panel).
-    if (!("dragging" in panel.dataset) && Math.hypot(x - drag.left, y - drag.top) > 2)
-      panel.dataset.dragging = ""
     constrain()
+  }
+  header.onpointerup = header.onpointercancel = () => {
+    if (drag && !("dragging" in panel.dataset)) drag = undefined
   }
   header.onlostpointercapture = () => {
     if (!drag) return
