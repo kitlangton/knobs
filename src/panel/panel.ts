@@ -62,6 +62,7 @@ import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
 import { toast } from "../ui/toast.js"
+import { tooltip } from "../ui/tooltip.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { tabTransition } from "./tab-transition.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
@@ -1426,6 +1427,7 @@ function buildPanel<S extends Schema>(
             ...(duration.group !== undefined ? { group: duration.group } : {}),
             ...(duration.section !== undefined ? { section: duration.section } : {}),
             ...(duration.shortcut !== undefined ? { shortcut: duration.shortcut } : {}),
+            ...(duration.description !== undefined ? { description: duration.description } : {}),
           },
           parts: { duration, bounce },
           group: duration.group,
@@ -1963,6 +1965,41 @@ function buildPanel<S extends Schema>(
     if (node ? slot.childNodes.length === 1 && slot.firstChild === node : !slot.firstChild) return
     slot.replaceChildren(...(node ? [node] : []))
   }
+  /** Rows' descriptions, for screen readers (`aria-describedby`); never shown. */
+  const descriptions = el("div")
+  descriptions.hidden = true
+  root.append(descriptions)
+  const described = new Map<Row, { text: string; node: HTMLElement; untip: () => void }>()
+  let descriptionIds = 0
+  /**
+   * A field's `description`: a tooltip over its row (after the tooltips' pause, or on keyboard
+   * focus) and its controls' accessible description.
+   */
+  function describe(row: Row) {
+    const text = row.field.description?.trim() ?? ""
+    const had = described.get(row)
+    if ((had?.text ?? "") === text) return
+    const inputs = row.choice ? [row.choice.seg, row.choice.menu] : [row.input]
+    if (had) {
+      had.untip()
+      had.node.remove()
+      described.delete(row)
+      for (const input of inputs) input.removeAttribute("aria-describedby")
+    }
+    if (!text) return
+    const node = el("span", text)
+    node.id = `knobs-desc-${controls.id}-${++descriptionIds}`
+    descriptions.append(node)
+    for (const input of inputs) input.setAttribute("aria-describedby", node.id)
+    described.set(row, { text, node, untip: tooltip(row.row, text) })
+  }
+  const undescribe = (row: Row) => {
+    const had = described.get(row)
+    if (!had) return
+    had.untip()
+    had.node.remove()
+    described.delete(row)
+  }
   /** A field's `disabled` or `readOnly`, static or from the values (for rows without keys). */
   const fieldFlag = (field: Field, name: "disabled" | "readOnly") => {
     const v = field[name]
@@ -2021,6 +2058,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
   const dropGpu = (row: Row) => {
+    undescribe(row)
     row.dispose?.()
     row.slider?.dispose()
     row.editor?.dispose()
@@ -2079,11 +2117,13 @@ function buildPanel<S extends Schema>(
       if (existing && existing.shape === shapeOf(spec)) {
         kept.delete(spec.id)
         existing.retune(spec)
+        describe(existing)
         next.push(existing)
         continue
       }
       const row = buildRow(spec)
       decorate(row)
+      describe(row)
       gpuRows.push(...row.gpu)
       entering.add(row)
       next.push(row)
@@ -2445,6 +2485,7 @@ function buildPanel<S extends Schema>(
         r.group && groupTitle(r.group),
         r.group && groupDescription(r.group),
         r.field.subsection,
+        r.field.description,
       )
     )
       return false
@@ -3292,6 +3333,7 @@ function buildPanel<S extends Schema>(
             r.section,
             r.section && sectionTitle(r.section),
             r.section && sectionDescription(r.section),
+            r.field.description,
           )
         if (r.row.hidden === show) r.row.hidden = !show
       }

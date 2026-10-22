@@ -16,6 +16,11 @@ import type { SpringValue } from "./spring.js"
 
 export interface FieldMeta {
   readonly label?: string
+  /**
+   * What the knob does, in a sentence: a tooltip over its row (after a pause, or on keyboard
+   * focus) and its control's accessible description. Search matches it.
+   */
+  readonly description?: string
   readonly group?: string
   /**
    * What the group's header shows when it isn't the `group` id itself (the first field that
@@ -84,6 +89,7 @@ export interface FieldMeta {
 /** Meta keys copied from a field's options or a descriptor onto the field. */
 export const META_KEYS = [
   "label",
+  "description",
   "group",
   "groupLabel",
   "section",
