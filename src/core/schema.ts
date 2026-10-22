@@ -26,7 +26,10 @@ export interface FieldMeta {
   readonly section?: string
   /** What the section's heading shows (the first field that gives one wins); `section` by default. */
   readonly sectionLabel?: string
-  /** One muted line under the group's card title on a page (the first field that gives one wins). */
+  /**
+   * One muted line under the group's card title, in a panel or a page (the first field that gives
+   * one wins).
+   */
   readonly groupDescription?: string
   /** One muted line under the section's heading on a page (the first field that gives one wins). */
   readonly sectionDescription?: string

@@ -918,12 +918,12 @@ function buildPanel<S extends Schema>(
   /** A section's heading: its label, else its id. */
   const sectionTitle = (section: string) =>
     options.sectionLabels?.[section] ?? controls.sectionLabel(section) ?? section
-  /** The muted line under a page card's title, if it has one. */
+  /** The muted line under a card's title, if it has one. */
   const groupDescription = (group: string) =>
     options.groupDescriptions?.[group] ?? controls.groupDescription(group)
   const sectionDescription = (section: string) =>
     options.sectionDescriptions?.[section] ?? controls.sectionDescription(section)
-  /** Each page card's description line (hidden while it has none). */
+  /** Each card's description line (hidden while it has none). */
   const groupDescs = new Map<string, HTMLElement>()
   /** Each foldable page card's summary, shown in its header while it's folded. */
   const groupSummaries = new Map<string, HTMLElement>()
@@ -936,6 +936,10 @@ function buildPanel<S extends Schema>(
       node.title = text
     }
     if (node.hidden !== !text) node.hidden = !text
+    // In a panel it sits in the header, which then lines its buttons up with the title.
+    const head = node.closest<HTMLElement>(".knobs-group-head")
+    if (head && head.hasAttribute("data-described") !== Boolean(text))
+      head.toggleAttribute("data-described", Boolean(text))
   }
   /**
    * A group's title: its label, verbatim; else on a page its id without the section's name
@@ -1224,7 +1228,17 @@ function buildPanel<S extends Schema>(
       gTitle.className = "knobs-group-title"
       gTitle.append(gLabel, gPeek)
       gHead.append(gTitle, gRight)
-    } else gHead.append(gLabel, gRight)
+    } else {
+      // A panel card's name: its title, and under it the group's description (hidden without one).
+      const gName = el("span")
+      gName.className = "knobs-group-name"
+      const desc = el("span")
+      desc.className = "knobs-group-desc"
+      gName.append(gLabel, desc)
+      groupDescs.set(groupName, desc)
+      gHead.append(gName, gRight)
+      describeGroup(groupName)
+    }
     gpuGroups.push({
       element: gHead,
       labelEl: gLabel,
@@ -2164,6 +2178,7 @@ function buildPanel<S extends Schema>(
         if (animate && at >= 0)
           for (const r of run.rows) if (entering.has(r)) motion.push({ node: r.row, show: true })
       }
+      for (const group of groupDescs.keys()) describeGroup(group)
       for (const [id, sh] of subheads)
         if (!usedSubheads.has(id)) {
           sh.el.remove()
@@ -2414,6 +2429,7 @@ function buildPanel<S extends Schema>(
         r.key,
         r.group,
         r.group && groupTitle(r.group),
+        r.group && groupDescription(r.group),
         r.field.subsection,
       )
     )

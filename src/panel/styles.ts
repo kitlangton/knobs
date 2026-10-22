@@ -365,6 +365,14 @@ const css = `
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--_k-round);color:var(--_k-fg-3)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background var(--k-hover-t),color var(--k-hover-t),opacity .2s,transform .12s}
+/* A panel card's name: its title, then its description on a line of its own across the header. */
+.knobs-group-name{display:flex;flex-direction:column;flex:0 1 auto;min-width:0}
+.knobs-group-name>.knobs-group-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-group-name>.knobs-group-desc{grid-area:2/1/3/-1;padding:0;line-height:16px;white-space:normal;overflow:visible;text-wrap:pretty}
+.knobs-group-head[data-described]{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr) auto;row-gap:0}
+.knobs-group-head[data-described]>.knobs-group-name{display:contents}
+.knobs-group-head[data-described]>.knobs-group-name>.knobs-group-label{grid-area:1/1}
+.knobs-group-head[data-described]>span:last-child{grid-area:1/3}
 
 /* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--_k-radius);background:var(--_k-fill);overflow:hidden}

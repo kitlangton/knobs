@@ -149,7 +149,7 @@ export interface LabelOptions {
   readonly defaultLabel?: string | Readonly<Record<string, string>>
   /** How a page card shows its group presets (see `GroupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
-  /** By group id: one muted line under its card's title on a page, over fields' `groupDescription`. */
+  /** By group id: one muted line under its card's title, over fields' `groupDescription`. */
   readonly groupDescriptions?: Readonly<Record<string, string>>
   /** By section id: one muted line under its heading on a page, over fields' `sectionDescription`. */
   readonly sectionDescriptions?: Readonly<Record<string, string>>

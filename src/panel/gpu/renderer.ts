@@ -2386,6 +2386,51 @@ class GpuOverlayManager {
     return clipped
   }
 
+  private lineCache = new WeakMap<
+    HTMLElement,
+    { text: string; width: number; lines: { text: string; y: number }[] }
+  >()
+  /**
+   * The lines the DOM wraps `el`'s text into, each with its middle's offset from `el`'s top, read
+   * back word by word (kept until the text or the width changes).
+   */
+  private linesOf(el: HTMLElement, width: number) {
+    const text = el.textContent ?? ""
+    const hit = this.lineCache.get(el)
+    if (hit && hit.text === text && hit.width === width) return hit.lines
+    const lines: { text: string; y: number }[] = []
+    const node = el.firstChild
+    if (node?.nodeType === Node.TEXT_NODE) {
+      const top = el.getBoundingClientRect().top
+      const range = el.ownerDocument.createRange()
+      let line: { from: number; to: number; top: number; bottom: number } | undefined
+      const flush = () => {
+        if (line)
+          lines.push({
+            text: text.slice(line.from, line.to),
+            y: (line.top + line.bottom) / 2 - top,
+          })
+      }
+      for (const word of text.matchAll(/\S+/g)) {
+        const from = word.index
+        const to = from + word[0].length
+        range.setStart(node, from)
+        range.setEnd(node, to)
+        const r = range.getBoundingClientRect()
+        if (line && Math.abs(r.top - line.top) < 1) {
+          line.to = to
+          line.bottom = Math.max(line.bottom, r.bottom)
+        } else {
+          flush()
+          line = { from, to, top: r.top, bottom: r.bottom }
+        }
+      }
+      flush()
+    }
+    this.lineCache.set(el, { text, width, lines })
+    return lines
+  }
+
   private curReduced = false
   private curLocks: ReadonlyMap<HTMLElement, HTMLElement> | undefined
   /** The current row's selection wash (0…1), which its hover wash gives way to. */
@@ -4736,20 +4781,30 @@ class GpuOverlayManager {
               withAlpha(tokens.text, peek),
               { px, weight: tokens.titleWeight, track: -0.01 },
             )
-        } else
+        } else {
+          const label = tokens.groupUpper
+            ? (g.labelEl.textContent ?? "").toUpperCase()
+            : (g.labelEl.textContent ?? "")
+          const px = Math.max(9, tokens.groupSize)
+          // A title too long for its header ends in "…", as the DOM's does.
           this.drawText(
-            tokens.groupUpper
-              ? (g.labelEl.textContent ?? "").toUpperCase()
-              : (g.labelEl.textContent ?? ""),
+            this.domClipped(g.labelEl, label, lr.width)
+              ? this.fit(
+                  label,
+                  lr.width,
+                  px,
+                  tokens.titleWeight,
+                  undefined,
+                  tokens.groupTracking,
+                  true,
+                )
+              : label,
             lr.left,
             lr.top + lr.height * 0.5,
             tokens.groupColor,
-            {
-              px: Math.max(9, tokens.groupSize),
-              weight: tokens.titleWeight,
-              track: tokens.groupTracking,
-            },
+            { px, weight: tokens.titleWeight, track: tokens.groupTracking },
           )
+        }
         // --k-group-divider: a hairline over every group but the first.
         if (!g.title && tokens.groupDivider[3] > 0 && g.element.previousElementSibling)
           this.pushPrim({
@@ -4760,19 +4815,23 @@ class GpuOverlayManager {
             color: tokens.groupDivider,
             kind: 1,
           })
-        // A page card's description, under its title.
+        // A card's description, under its title: one truncated line on a page, wrapped in a panel.
         if (g.desc && !g.desc.hidden) {
           const r = this.rectOf(g.desc)
           const cs = getComputedStyle(g.desc)
           const left = r.left + (parseFloat(cs.paddingLeft) || 0)
           const w = r.width - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
-          this.drawText(
-            this.fit(g.desc.textContent ?? "", w + 0.5, tokens.textMeta, tokens.labelWeight),
-            left,
-            r.top + r.height * 0.5,
-            tokens.dim,
-            { px: tokens.textMeta, weight: tokens.labelWeight },
-          )
+          const lines = cs.whiteSpace.includes("nowrap")
+            ? [{ text: g.desc.textContent ?? "", y: r.height * 0.5 }]
+            : this.linesOf(g.desc, r.width)
+          for (const line of lines)
+            this.drawText(
+              this.fit(line.text, w + 0.5, tokens.textMeta, tokens.labelWeight),
+              left,
+              r.top + line.y,
+              tokens.dim,
+              { px: tokens.textMeta, weight: tokens.labelWeight },
+            )
         }
         // Folded, a page card's header shows its summary in place of its controls; each fades in
         // as it arrives (the DOM's animation, read back).
