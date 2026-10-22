@@ -25,7 +25,16 @@ const COLOR_TOKENS = [
   "border-subtle",
   "bg-page",
 ]
-const LENGTH_TOKENS = ["pad", "inset", "row", "gap", "radius", "radius-panel", "font-size"]
+const LENGTH_TOKENS = [
+  "pad",
+  "inset",
+  "row",
+  "gap",
+  "radius",
+  "radius-panel",
+  "radius-frame",
+  "font-size",
+]
 const NUMBER_TOKENS = ["weight-label", "blur", "glow", "glass", "glass-tone"]
 const ANIMATED = [...COLOR_TOKENS, ...LENGTH_TOKENS, ...NUMBER_TOKENS, "width"]
 /** The transitions that glide every driver, for a root that also transitions its own properties. */

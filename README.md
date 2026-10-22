@@ -1694,6 +1694,7 @@ The page roles (**Space**: `--k-space-inside` 4 · `sibling` 8 · `title` 12 · 
 |---|---|---|---|---|
 | `--k-radius` | input | `8px` | `8px` | Control corner radius. 0 squares everything, including capsules. Scales with density. |
 | `--k-radius-panel` | semantic | `calc(var(--k-radius) + var(--k-unit))` | `calc(var(--k-radius) + var(--k-unit))` | Panel and card radius, concentric with controls. Derived: `calc(var(--k-radius) + var(--k-unit))`. |
+| `--k-radius-frame` | semantic | `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))` | `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))` | A tuning panel's outer corners: its cards' radius plus its padding and border, so the cards, the preset strip and the focus lens inside run concentric. Squares when --k-radius is 0. Derived: `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))`. |
 | `--k-round` | semantic | `calc(var(--k-radius) * 999)` | `calc(var(--k-radius) * 999)` | Capsule radius that squares when --k-radius is 0. Use instead of 999px. Derived: `calc(var(--k-radius) * 999)`. |
 
 ### Size

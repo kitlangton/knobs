@@ -4316,7 +4316,7 @@ class GpuOverlayManager {
       const morph = panel.morph?.(this.frameNow)
       const shown = morph ? clamp(morph.progress, 0, 1) : 1
       const card = morph ? new DOMRect(morph.x, morph.y, morph.w, morph.h) : pRect
-      const cardRadius = morph ? morph.radius : tokens.panelRadius
+      const cardRadius = morph ? morph.radius : tokens.frameRadius
       if (morph) anyMoving = true
       // The mask clips the content to the shape after blurring and scaling it, as the DOM's
       // clip-path does; only without a mask slot does the clip take the shape's box.

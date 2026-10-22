@@ -159,7 +159,7 @@ const css = `
    catches its top. The light rides on the edge (a shadow raised by its width, so only its top
    shows), not inside the card's 1px border, where it read as a second edge. */
 .knobs-panel{-webkit-user-select:none;user-select:none;transition:${TOKEN_TRANSITIONS},--k-armed ${ARMED_T};position:fixed;z-index:2147480001;width:var(--_k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--_k-pad);
-  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-panel);box-shadow:var(--_k-shadow-overlay),0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--ka-edge),var(--ka-glow);scrollbar-width:thin;
+  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-frame);box-shadow:var(--_k-shadow-overlay),0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--ka-edge),var(--ka-glow);scrollbar-width:thin;
   /* Armed (focus inside: keys come here), the edge takes the accent and a faint glow lifts it. */
   --ka-edge:color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-edge) * 100%),var(--_k-border-subtle));
   --ka-glow:0 0 calc(var(--k-armed-glow) * 1px) color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-glow-a) * var(--k-chrome,1) * 100%),transparent);
@@ -218,7 +218,7 @@ const css = `
 @supports (animation-timeline:scroll()){
   .knobs-panel:not(.knobs-page){scroll-timeline:--knobs-self block}
   .knobs-panel.knobs-pin-ancestor:not(.knobs-page){overflow:visible;view-timeline:--knobs-view block}
-  .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-panel) - 1px)) max(0px,calc(var(--_k-radius-panel) - 1px)) 0 0;
+  .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-frame) - 1px)) max(0px,calc(var(--_k-radius-frame) - 1px)) 0 0;
     --k-head-on:max(var(--k-head-s),var(--k-head-v));--k-head-bg:color-mix(in srgb,var(--_k-bg) 88%,transparent);
     background:color-mix(in srgb,var(--k-head-bg) calc(var(--k-head-on) * 100%),transparent);
     animation:knobs-head-s linear both;animation-timeline:--knobs-self;animation-range:0px 24px}
