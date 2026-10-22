@@ -2806,19 +2806,27 @@ function buildPanel<S extends Schema>(
 
   /** Copies `value`; the header's Copy turns into a check (`inPlace`, while it shows) or says so. */
   const copy = async (value: string, inPlace = true) => {
-    try {
-      await doc.defaultView!.navigator.clipboard.writeText(value)
+    const done = () => {
       if (inPlace && !copyButton.hidden && headerShown()) copied()
       else say("Copied.")
+    }
+    try {
+      await doc.defaultView!.navigator.clipboard.writeText(value)
+      done()
     } catch {
-      text.value = value
-      if (page) togglePopover(true)
-      reveal(text, true)
-      apply.hidden = true
-      positioned?.constrain()
-      text.focus()
-      text.select()
-      say("Clipboard unavailable. Copy the selected text.", 6000)
+      // Without the async clipboard (a page served over plain http, a refused permission), the
+      // older copy command usually still works from the press.
+      if (copyByCommand(doc, value)) done()
+      else {
+        text.value = value
+        if (page) togglePopover(true)
+        reveal(text, true)
+        apply.hidden = true
+        positioned?.constrain()
+        text.focus()
+        text.select()
+        say("Clipboard unavailable. Copy the selected text.", 6000)
+      }
     }
     wakeGpu()
   }
@@ -5473,6 +5481,26 @@ function buildPanel<S extends Schema>(
       win.addEventListener("scrollend", () => revealHighlight(first, tries + 1), { once: true })
   }
   return pageApi
+}
+
+/** Copies `value` with the document's copy command, focus going back where it was. */
+function copyByCommand(doc: Document, value: string): boolean {
+  const was = doc.activeElement as HTMLElement | null
+  const area = doc.createElement("textarea")
+  area.value = value
+  area.setAttribute("readonly", "")
+  area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none"
+  doc.body.append(area)
+  area.select()
+  let ok = false
+  try {
+    ok = doc.execCommand("copy")
+  } catch {
+    ok = false
+  }
+  area.remove()
+  was?.focus({ preventScroll: true })
+  return ok
 }
 
 export function createPanel<S extends Schema>(
