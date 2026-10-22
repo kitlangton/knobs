@@ -377,7 +377,7 @@ export const walkthroughCss = `${foundationCss}
 /* The diff inside it: its header row 28 high on the container's padding, a hairline under it, and
    no line of its own under the code (the container's ring closes it). */
 .knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"]){--kd-head:28px;--kd-x:0px}
-.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"])::after{display:none}
+.knobs-wt-slot[data-kind="diff"] :is(.knobs-ui.knobs-diff:not([data-on="pane"]),.knobs-diff-review)::after{display:none}
 .knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--kw-frame-r);background:var(--_k-fill);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
 .knobs-surface .knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:0;border-radius:0;background:transparent;box-shadow:inset 0 -1px 0 var(--_k-border-subtle)}
