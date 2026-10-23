@@ -1,0 +1,143 @@
+import { describe, expect, it } from "vitest"
+import { createRemoteControls, formatRust, type ControlDescriptor } from "../src/index.js"
+
+describe("Rust copy-as-code", () => {
+  it("emits Rune springs, including paired flat descriptors, once with their defaults", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "open", kind: "spring", default: { duration: 0.4, bounce: 0.2 } },
+      { key: "close.duration", kind: "number", default: 0.5 },
+      { key: "close.bounce", kind: "number", default: 0 },
+    ]
+    expect(
+      formatRust(descriptors, {
+        open: { duration: 1, bounce: 0.3 },
+        "close.duration": 0.8,
+        "close.bounce": 0.1,
+      }),
+    ).toBe(
+      [
+        'rune::tune!("open", rune::Spring::new(1.0_f32, 0.3_f32))  // was rune::Spring::new(0.4_f32, 0.2_f32)',
+        'rune::tune!("close", rune::Spring::new(0.8_f32, 0.1_f32))  // was duration: 0.5_f32, bounce: 0.0_f32',
+      ].join("\n"),
+    )
+    expect(formatRust(descriptors, { "close.bounce": 0.2 })).toContain(
+      'rune::tune!("close", rune::Spring::new(0.5_f32, 0.2_f32))',
+    )
+  })
+
+  it("keeps floats floating even when whole, and emits integer descriptors as integers", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "size", kind: "number", default: 0.5 },
+      { key: "count", kind: "number", default: 2, swiftType: "Int" },
+      { key: "steps", kind: "number", default: 3, min: 0, max: 10, step: 1 },
+      { key: "fractional", kind: "number", default: 1.5, min: 0.5, max: 10, step: 1 },
+      { key: "seed", kind: "seed", default: 1 },
+    ]
+    expect(
+      formatRust(descriptors, { size: 1, count: 4, steps: 5, fractional: 2.5, seed: 42 }),
+    ).toBe(
+      [
+        'rune::tune!("size", 1.0_f32)  // was 0.5_f32',
+        'rune::tune!("count", 4)  // was 2',
+        'rune::tune!("steps", 5)  // was 3',
+        'rune::tune!("fractional", 2.5_f32)  // was 1.5_f32',
+        'rune::tune!("seed", 42)  // was 1',
+      ].join("\n"),
+    )
+  })
+
+  it.each([
+    ["#3d8bff", "#3d8bff"],
+    ["#3D8BFF80", "#3d8bff80"],
+    ["#3d8bffff", "#3d8bff"],
+    ["#f008", "#ff000088"],
+    ["oklch(1 0 0)", "#ffffff"],
+  ])("emits sRGB hex including alpha: %s", (value, hex) => {
+    expect(formatRust([{ key: "tint", kind: "color", default: "#000" }], { tint: value })).toBe(
+      `rune::tune!("tint", rune::color::hex("${hex}").unwrap())  // was rune::color::hex("#000000").unwrap()`,
+    )
+  })
+
+  it("quotes and escapes keys, text and choices using Rust escapes", () => {
+    const key = 'say "hi"\\\n'
+    expect(
+      formatRust(
+        [
+          { key, kind: "text", default: "Hi" },
+          { key: "mode", kind: "choice", default: "one", choices: ["one", "two\\three"] },
+          { key: "on", kind: "bool", default: false },
+        ],
+        { [key]: '"Hello"\\\n\r\t\b\f\0🎛', mode: "two\\three", on: true },
+      ),
+    ).toBe(
+      [
+        'rune::tune!("say \\"hi\\"\\\\\\n", "\\"Hello\\"\\\\\\n\\r\\t\\u{8}\\u{c}\\u{0}🎛")  // was "Hi"',
+        'rune::tune!("mode", "two\\\\three")  // was "one"',
+        'rune::tune!("on", true)  // was false',
+      ].join("\n"),
+    )
+  })
+
+  it("only emits modified values, filters by group and skips non-value descriptors", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "a", kind: "number", default: 0, group: "one" },
+      { key: "b", kind: "number", default: 0, group: "two" },
+      { key: "same", kind: "number", default: 1 },
+      { key: "missing", kind: "number", default: 2 },
+      { key: "go", kind: "action" },
+      { key: "read", kind: "watch" },
+      { key: "tools", kind: "toolbar", items: [] },
+      { key: "bound", kind: "spring", bind: { duration: "d", bounce: "b" } },
+    ]
+    expect(formatRust(descriptors, { a: 1, b: 2, same: 1, go: true, read: 2, tools: true })).toBe(
+      [
+        'rune::tune!("a", 1.0_f32)  // was 0.0_f32',
+        'rune::tune!("b", 2.0_f32)  // was 0.0_f32',
+      ].join("\n"),
+    )
+    expect(formatRust(descriptors, { a: 1, b: 2 }, "two")).toBe(
+      'rune::tune!("b", 2.0_f32)  // was 0.0_f32',
+    )
+    expect(formatRust(descriptors, {})).toBe("")
+  })
+
+  it("comments unsupported structured kinds rather than inventing Rune types", () => {
+    expect(
+      formatRust(
+        [
+          { key: "position", kind: "vec2", default: { x: 0, y: 0 } },
+          {
+            key: "curve",
+            kind: "curve",
+            default: [
+              { x: 0, y: 0 },
+              { x: 1, y: 1 },
+            ],
+          },
+        ],
+        {
+          position: { x: 1, y: 2 },
+          curve: [
+            { x: 0, y: 1 },
+            { x: 1, y: 0 },
+          ],
+        },
+      ),
+    ).toBe('// unsupported: "position" (vec2)\n// unsupported: "curve" (curve)')
+  })
+
+  it("exports current remote values and follows descriptor updates", () => {
+    const remote = createRemoteControls(
+      "rust",
+      [
+        { key: "a", kind: "number", default: 0, min: 0, max: 10, group: "one" },
+        { key: "b", kind: "bool", default: false, group: "two" },
+      ],
+      { values: { a: 1, b: true } },
+    )
+    expect(remote.rust("two")).toBe('rune::tune!("b", true)  // was false')
+    expect(remote.rust()).toContain('rune::tune!("a", 1.0_f32)')
+    remote.update([{ key: "c", kind: "text", default: "old" }], { c: "new" }, { land: true })
+    expect(remote.rust()).toBe('rune::tune!("c", "new")  // was "old"')
+  })
+})

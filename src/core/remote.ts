@@ -301,6 +301,7 @@ export interface RemoteControls extends Controls<Schema> {
     options?: { land?: boolean; mixed?: readonly string[] },
   ): void
   swift(group?: string): string
+  rust(group?: string): string
 }
 
 const readoutDescriptor = (d: ControlDescriptor): d is ReadoutDescriptor => isReadout(d)
@@ -601,6 +602,96 @@ export function formatSwift(
   return lines.join("\n")
 }
 
+/** Quoted Rust strings, including escapes JSON spells differently (e.g. `\u0008`). */
+const rustString = (value: string): string =>
+  `"${value.replace(/["\\\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]/gu, (c) => {
+    if (c === '"' || c === "\\") return `\\${c}`
+    if (c === "\n") return "\\n"
+    if (c === "\r") return "\\r"
+    if (c === "\t") return "\\t"
+    const code = c.codePointAt(0)!
+    return `\\u{${(code >= 0xd800 && code <= 0xdfff ? 0xfffd : code).toString(16)}}`
+  })}"`
+
+const rustFloat = (value: number): string => {
+  if (!Number.isFinite(value))
+    return Number.isNaN(value) ? "f32::NAN" : value < 0 ? "f32::NEG_INFINITY" : "f32::INFINITY"
+  const [mantissa, exponent] = decimal(value).split("e")
+  return `${mantissa!.includes(".") ? mantissa : `${mantissa}.0`}${exponent === undefined ? "" : `e${exponent}`}_f32`
+}
+
+const rustLiteral = (d: ValueDescriptor, value: Value): string | undefined => {
+  if (d.kind === "spring") {
+    const v = value as SpringValue
+    return `rune::Spring::new(${rustFloat(v.duration)}, ${rustFloat(v.bounce)})`
+  }
+  if (d.kind === "color") {
+    const hex = typeof value === "string" ? value.trim().toLowerCase() : ""
+    const rgba = /^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/.test(hex)
+      ? hex.length === 5
+        ? `#${[...hex.slice(1)].map((c) => c + c).join("")}`
+        : hex
+      : undefined
+    const color = rgba
+      ? rgba.endsWith("ff")
+        ? rgba.slice(0, 7)
+        : rgba
+      : parseColor(value)
+        ? colorHex(value as string)
+        : undefined
+    return color ? `rune::color::hex(${rustString(color)}).unwrap()` : undefined
+  }
+  if (typeof value === "number") {
+    const integer =
+      d.kind === "seed" ||
+      d.swiftType === "Int" ||
+      (d.step === 1 && Number.isInteger(d.min) && Number.isInteger(d.max))
+    return integer ? String(Math.round(value)) : rustFloat(value)
+  }
+  if (typeof value === "boolean") return String(value)
+  if (typeof value === "string") return rustString(value)
+  return undefined
+}
+
+/** Modified values as Rune `tune!` calls; kinds without a Rune literal become comments. */
+export function formatRust(
+  descriptors: readonly ControlDescriptor[],
+  values: State,
+  group?: string,
+): string {
+  const byKey = new Map(descriptors.map((d) => [d.key, d]))
+  const done = new Set<string>()
+  const lines: string[] = []
+  for (const d of descriptors as readonly ValueDescriptor[]) {
+    if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
+    if (readoutDescriptor(d)) continue
+    const changed = d.key in values && !same(values[d.key], d.default)
+    if (!changed || done.has(d.key) || (group && d.group !== group)) continue
+    const base = d.key.replace(/\.(duration|bounce)$/, "")
+    const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
+    const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
+    if (base !== d.key && duration && bounce) {
+      done.add(duration.key).add(bounce.key)
+      const dv = (values[duration.key] ?? duration.default) as number
+      const bv = (values[bounce.key] ?? bounce.default) as number
+      lines.push(
+        `rune::tune!(${rustString(base)}, rune::Spring::new(${rustFloat(dv)}, ${rustFloat(bv)}))` +
+          `  // was duration: ${rustFloat(duration.default as number)}, bounce: ${rustFloat(bounce.default as number)}`,
+      )
+      continue
+    }
+    done.add(d.key)
+    const value = rustLiteral(d, values[d.key])
+    const was = rustLiteral(d, d.default)
+    lines.push(
+      value !== undefined && was !== undefined
+        ? `rune::tune!(${rustString(d.key)}, ${value})  // was ${was}`
+        : `// unsupported: ${rustString(d.key)} (${d.kind})`,
+    )
+  }
+  return lines.join("\n")
+}
+
 /** How long a local change outranks the peer's state for that key. */
 /**
  * The longest echo hold; a key is released early once the remote reports its new value. Raise it
@@ -724,6 +815,7 @@ export function createRemoteControls(
     },
     sync: (values: State, syncOptions?: SyncOptions) => controls.sync(values, syncOptions),
     swift: (group?: string) => formatSwift(frozenDescriptors, controls.modified() as State, group),
+    rust: (group?: string) => formatRust(frozenDescriptors, controls.modified() as State, group),
   })
 }
 
