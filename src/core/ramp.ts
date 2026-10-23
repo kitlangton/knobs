@@ -399,7 +399,7 @@ export function mutateStops(
     const h = (c.h + signed(random) * between(hue[0], hue[1], random()) + 360) % 360
     const l = clamp(c.l + signed(random) * between(lightness[0], lightness[1], random()), 0, 1)
     const r = clamp(rel + signed(random) * between(0.04, 0.1, random()), 0, 1)
-    s.color = formatColor(fitColor({ l, c: r * maxChroma(l, h), h }))
+    s.color = formatColor(fitColor({ l, c: r * maxChroma(l, h), h, alpha: c.alpha }))
     const lo = i > 0 ? out[i - 1]!.at : 0
     const hi = i < out.length - 1 ? stops[i + 1]!.at : 1
     s.at = round4(clamp(s.at + signed(random) * between(0.02, 0.05, random()), lo, hi))

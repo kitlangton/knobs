@@ -94,7 +94,7 @@ function shift(field: ValueField, value: Value, random: () => number): unknown {
           c.l + signed(random) * between(MUTATE.lightness[0], MUTATE.lightness[1], random()),
         ),
       )
-      return { l, c: nudge(rel0, 0, 1, 0.01, random) * maxChroma(l, h), h }
+      return { l, c: nudge(rel0, 0, 1, 0.01, random) * maxChroma(l, h), h, alpha: c.alpha }
     }
     case "easing":
       return (value as readonly number[]).map((v, i) => {

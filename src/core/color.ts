@@ -1,8 +1,10 @@
-/** An OKLCH colour: lightness 0…1, chroma 0…0.37, hue in degrees. */
+/** An OKLCH colour: lightness 0…1, chroma 0…0.37, hue in degrees, and an optional alpha 0…1. */
 export interface Oklch {
   readonly l: number
   readonly c: number
   readonly h: number
+  /** Opacity 0…1; absent means opaque. */
+  readonly alpha?: number
 }
 
 export const CHROMA_MAX = 0.37
@@ -67,56 +69,90 @@ export function rgbToOklch(r: number, g: number, b: number): Oklch {
   return { l: L, c, h }
 }
 
-/** Reads `oklch(L C H)` (L as 0…1 or a percentage), `#rgb` / `#rrggbb`, or `{ l, c, h }`. */
+const withAlpha = (color: Oklch, alpha: number | undefined): Oklch =>
+  alpha === undefined || alpha >= 1 ? color : { ...color, alpha: clamp01(alpha) }
+
+/**
+ * Reads `oklch(L C H)` or `oklch(L C H / A)` (L and A as 0…1 or a percentage), `#rgb`, `#rgba`,
+ * `#rrggbb`, `#rrggbbaa`, or `{ l, c, h, alpha? }`. Opaque colours carry no `alpha`.
+ */
 export function parseColor(input: unknown): Oklch | undefined {
   if (typeof input === "object" && input !== null) {
-    const { l, c, h } = input as Record<string, unknown>
-    return [l, c, h].every((n) => typeof n === "number" && Number.isFinite(n))
-      ? { l: l as number, c: c as number, h: h as number }
-      : undefined
+    const { l, c, h, alpha } = input as Record<string, unknown>
+    if (![l, c, h].every((n) => typeof n === "number" && Number.isFinite(n))) return undefined
+    if (alpha !== undefined && !(typeof alpha === "number" && Number.isFinite(alpha)))
+      return undefined
+    return withAlpha({ l: l as number, c: c as number, h: h as number }, alpha)
   }
   if (typeof input !== "string") return undefined
   const s = input.trim().toLowerCase()
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(s)?.[1]
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(s)?.[1]
   if (hex) {
-    const full = hex.length === 3 ? [...hex].map((d) => d + d).join("") : hex
-    const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255)
-    return rgbToOklch(r!, g!, b!)
+    const full = hex.length <= 4 ? [...hex].map((d) => d + d).join("") : hex
+    const [r, g, b, a] = [0, 2, 4, 6].map((i) => parseInt(full.slice(i, i + 2), 16) / 255)
+    return withAlpha(rgbToOklch(r!, g!, b!), full.length === 8 ? a : undefined)
   }
-  const m = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*\)$/.exec(s)
+  const m =
+    /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/.exec(s)
   if (!m) return undefined
   const l = Number(m[1]) / (m[2] ? 100 : 1)
-  const parts = [l, Number(m[3]), Number(m[4])]
-  return parts.every(Number.isFinite) ? { l: parts[0]!, c: parts[1]!, h: parts[2]! } : undefined
+  const alpha = m[5] === undefined ? undefined : Number(m[5]) / (m[6] ? 100 : 1)
+  const parts = [l, Number(m[3]), Number(m[4]), alpha ?? 1]
+  return parts.every(Number.isFinite)
+    ? withAlpha({ l: parts[0]!, c: parts[1]!, h: parts[2]! }, alpha)
+    : undefined
 }
 
 /**
  * Clamps into range and into sRGB (by chroma), rounded to what the string keeps: five places for
  * lightness and chroma and three for hue, enough for every hex to come back exactly.
  */
-export function fitColor({ l, c, h }: Oklch): Oklch {
+export function fitColor({ l, c, h, alpha }: Oklch): Oklch {
   const L = round(clamp01(l), 5)
   const H = round(((h % 360) + 360) % 360, 3) % 360
   const C0 = round(Math.min(CHROMA_MAX, Math.max(0, c)), 5)
+  // Four places keep every 8-bit alpha exact.
+  const A = alpha === undefined ? undefined : round(clamp01(alpha), 4)
   // Colours already inside sRGB (like any hex) keep their chroma, as rounded.
-  if (inGamut(oklchToLinear({ l: L, c: C0, h: H }))) return { l: L, c: C0, h: H }
+  if (inGamut(oklchToLinear({ l: L, c: C0, h: H }))) return withAlpha({ l: L, c: C0, h: H }, A)
   const max = Math.min(CHROMA_MAX, maxChroma(L, H))
-  return { l: L, c: Math.min(C0, Math.floor(max * 1e5) / 1e5), h: H }
+  return withAlpha({ l: L, c: Math.min(C0, Math.floor(max * 1e5) / 1e5), h: H }, A)
 }
 
-export function formatColor({ l, c, h }: Oklch): string {
-  return `oklch(${round(l, 5)} ${round(c, 5)} ${round(h, 3)})`
+/** `oklch(L C H)`, or `oklch(L C H / A)` when translucent. */
+export function formatColor({ l, c, h, alpha }: Oklch): string {
+  const a = alpha === undefined || alpha >= 1 ? "" : ` / ${round(clamp01(alpha), 4)}`
+  return `oklch(${round(l, 5)} ${round(c, 5)} ${round(h, 3)}${a})`
 }
 
-/** A colour field's value as `#rrggbb` (sRGB). */
-export function colorHex(value: string | Oklch): string {
+const byte = (v: number) => Math.round(clamp01(v) * 255)
+const hex2 = (n: number) => n.toString(16).padStart(2, "0")
+
+/** Gamut-mapped sRGB and alpha as 8-bit channels, or undefined when `value` isn't a colour. */
+export function colorBytes(value: unknown): [number, number, number, number] | undefined {
   const color = parseColor(value)
-  if (!color) return "#000000"
-  return `#${oklchToRgb(color)
-    .map((v) =>
-      Math.round(v * 255)
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`
+  if (!color) return undefined
+  const [r, g, b] = oklchToRgb(color).map(byte)
+  return [r!, g!, b!, byte(color.alpha ?? 1)]
+}
+
+/** A colour field's value as `#rrggbb` (sRGB), ignoring alpha. */
+export function colorHex(value: string | Oklch): string {
+  const bytes = colorBytes(value)
+  return bytes ? `#${bytes.slice(0, 3).map(hex2).join("")}` : "#000000"
+}
+
+/** `#rrggbb`, or `#rrggbbaa` when the colour is translucent; undefined when it isn't a colour. */
+export function colorHexAlpha(value: unknown): string | undefined {
+  const bytes = colorBytes(value)
+  if (!bytes) return undefined
+  return `#${(bytes[3] === 255 ? bytes.slice(0, 3) : bytes).map(hex2).join("")}`
+}
+
+/** Whether two colours, in any syntax, land on the same 8-bit sRGB and alpha. */
+export function sameColor(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  const x = colorBytes(a)
+  const y = colorBytes(b)
+  return x !== undefined && y !== undefined && x.every((v, i) => v === y[i])
 }
