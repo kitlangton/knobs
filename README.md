@@ -600,11 +600,13 @@ rune::tune!("drawer.scale", 1.0_f32)  // was 0.9_f32
 rune::tune!("drawer.tint", rune::color::hex("#3d8bff").unwrap())  // was rune::color::hex("#0084ff").unwrap()
 ```
 
-Numbers use `_f32` literals with a decimal point. Seeds, `swiftType: "Int"`, and descriptors with `step: 1` and integer `min`/`max` use integer literals. Booleans and strings become Rust literals; keys are escaped strings too. Paired `*.duration` / `*.bounce` descriptors fold into one `Spring::new` call. Points, vectors, ranges, easings, curves and gradients emit `// unsupported:` comments.
+Numbers use `_f32` literals with a decimal point, even when `step` is 1. Only seeds and `swiftType: "Int"` use integer literals; non-finite integers and values outside i32 emit `// unsupported:` comments. Floats beyond f32's range use `f32::MAX` or `f32::MIN`. Booleans and strings become Rust literals; keys are escaped strings too. Paired `*.duration` / `*.bounce` descriptors fold into one `Spring::new` call. Points, vectors, ranges, easings, curves and gradients emit `// unsupported:` comments.
 
-For raw descriptor values, `formatRust(descriptors, values, group?)` is also exported from `knobs`. Colours accept the usual hex and OKLCH strings, plus `#rgba` and `#rrggbbaa`; non-opaque alpha stays in the output hex. The panel's colour fields currently accept opaque colours only.
+For raw descriptor values, `formatRust(descriptors, values, group?)` is also exported from `knobs`. Colours accept the usual hex and OKLCH strings, plus `#rgba`, `#rrggbbaa` and OKLCH slash-alpha (`oklch(1 0 0 / 50%)`); non-opaque alpha stays in the output hex. Other colour syntaxes emit `// unsupported:` comments. The panel's colour fields currently accept opaque colours only.
 
 Both `mountPage` and `mountPanel` accept `copyAs: "ts" | "swift" | "rust"`. Swift and Rust require `createRemoteControls`. The option applies to the header, row selection and group-menu Copy actions. For another language, pass `copyAs: (keys, group) => string`: `keys` is undefined for the header, and group-menu copy supplies both its keys and group id. `copyAs` takes precedence over the existing header-only `copy: () => string` callback. Without either option, Copy uses TypeScript.
+
+Swift and Rust selection/group copy emits modified values first. If none changed, it copies the selected values at their defaults instead of an empty string. Header copy remains modified-only. Both standalone formatters accept a fourth argument, `{ includeDefaults: true }`, to include unchanged values explicitly.
 
 **Migrating an app's Tune page:** the Swift side needs `Tunable` to support `Color`, `CGPoint` and `UnitCurve` (decoding the socket's `"oklch(L C H)"`/hex string, `{ x, y }` and `[x1, y1, x2, y2]`), and a `TunableSpring` that reads `{ duration, bounce }` from one key rather than two. Until then, keep sending a spring as paired `.duration`/`.bounce` number descriptors; the panel and codegen handle both. Nothing in other repositories changes until you opt in.
 

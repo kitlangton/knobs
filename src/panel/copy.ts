@@ -24,7 +24,11 @@ export function copyFormatter<S extends Schema>(controls: Controls<S>, options: 
       const descriptors = selected
         ? remote.descriptors!.filter((d) => selected.includes(d.key))
         : remote.descriptors!
-      return (format === "rust" ? formatRust : formatSwift)(descriptors, values, group)
+      const formatter = format === "rust" ? formatRust : formatSwift
+      const code = formatter(descriptors, values, group)
+      return !code && selected
+        ? formatter(descriptors, values, group, { includeDefaults: true })
+        : code
     }
     return controls.code("ts", selected ? values : undefined)
   }

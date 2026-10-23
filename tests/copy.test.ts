@@ -16,7 +16,7 @@ describe("page and panel copy formats", () => {
     expect(copy()).toBe(controls.rust())
     expect(copy(["size", "gap"], "layout")).toBe(controls.rust("layout"))
     expect(copy(["on"])).toBe('rune::tune!("on", true)  // was false')
-    expect(copy(["gap"])).toBe("")
+    expect(copy(["gap"])).toBe('rune::tune!("gap", 1.0_f32)  // was 1.0_f32')
     controls.update([{ key: "label", kind: "text", default: "a" }], { label: "b" }, { land: true })
     expect(copy()).toBe('rune::tune!("label", "b")  // was "a"')
   })
@@ -27,7 +27,23 @@ describe("page and panel copy formats", () => {
     expect(copy()).toBe(controls.swift())
     expect(copy(["size", "gap"], "layout")).toBe(controls.swift("layout"))
     expect(copy(["on"])).toBe(controls.swift("other"))
+    expect(copy(["gap"])).toContain("default: 1, in: 0...10)  // was 1")
   })
+
+  it.each(["rust", "swift"] as const)(
+    "copies an unchanged group as %s but keeps header export modified-only",
+    (format) => {
+      const controls = remote()
+      controls.reset()
+      const copy = copyFormatter(controls, { copyAs: format })
+      expect(copy()).toBe("")
+      const code = copy(["size", "gap"], "layout")
+      expect(code).toContain('"size"')
+      expect(code).toContain('"gap"')
+      expect(code).not.toContain('"on"')
+      expect(code.split("\n")).toHaveLength(2)
+    },
+  )
 
   it("passes keys and the group to a custom formatter for every copy scope", () => {
     const callback = vi.fn(() => "custom")

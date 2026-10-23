@@ -39,10 +39,49 @@ describe("Rust copy-as-code", () => {
       [
         'rune::tune!("size", 1.0_f32)  // was 0.5_f32',
         'rune::tune!("count", 4)  // was 2',
-        'rune::tune!("steps", 5)  // was 3',
+        'rune::tune!("steps", 5.0_f32)  // was 3.0_f32',
         'rune::tune!("fractional", 2.5_f32)  // was 1.5_f32',
         'rune::tune!("seed", 42)  // was 1',
       ].join("\n"),
+    )
+  })
+
+  it.each([NaN, Infinity, -Infinity, 2147483648, -2147483649, 1e21])(
+    "comments integer values outside i32: %s",
+    (value) => {
+      for (const descriptor of [
+        { key: "count", kind: "number", default: 0, swiftType: "Int" },
+        { key: "count", kind: "seed", default: 0 },
+      ] satisfies ControlDescriptor[]) {
+        expect(formatRust([descriptor], { count: value })).toBe(
+          `// unsupported: "count" (${descriptor.kind})`,
+        )
+        expect(formatRust([{ ...descriptor, default: value }], { count: 1 })).toBe(
+          `// unsupported: "count" (${descriptor.kind})`,
+        )
+      }
+    },
+  )
+
+  it.each([-2147483648, 2147483647])("keeps i32 boundary literals: %s", (value) => {
+    expect(
+      formatRust([{ key: "count", kind: "number", default: 0, swiftType: "Int" }], {
+        count: value,
+      }),
+    ).toBe(`rune::tune!("count", ${value})  // was 0`)
+  })
+
+  it.each([
+    [Number.MAX_VALUE, "f32::MAX"],
+    [-Number.MAX_VALUE, "f32::MIN"],
+    [3.4028234663852886e38, "f32::MAX"],
+    [-3.4028234663852886e38, "f32::MIN"],
+    [Infinity, "f32::MAX"],
+    [-Infinity, "f32::MIN"],
+    [NaN, "f32::NAN"],
+  ])("bounds floats before decimal conversion: %s", (value, literal) => {
+    expect(formatRust([{ key: "size", kind: "number", default: 0 }], { size: value })).toBe(
+      `rune::tune!("size", ${literal})  // was 0.0_f32`,
     )
   })
 
@@ -52,10 +91,22 @@ describe("Rust copy-as-code", () => {
     ["#3d8bffff", "#3d8bff"],
     ["#f008", "#ff000088"],
     ["oklch(1 0 0)", "#ffffff"],
+    ["oklch(1 0 0 / 0.5)", "#ffffff80"],
+    ["oklch(1 0 0 / 50%)", "#ffffff80"],
+    ["oklch(1 0 0 / 0)", "#ffffff00"],
+    ["oklch(1 0 0 / 100%)", "#ffffff"],
   ])("emits sRGB hex including alpha: %s", (value, hex) => {
     expect(formatRust([{ key: "tint", kind: "color", default: "#000" }], { tint: value })).toBe(
       `rune::tune!("tint", rune::color::hex("${hex}").unwrap())  // was rune::color::hex("#000000").unwrap()`,
     )
+  })
+
+  it("comments unrecognized colour syntax instead of exporting an opaque fallback", () => {
+    expect(
+      formatRust([{ key: "tint", kind: "color", default: "#000" }], {
+        tint: "rgba(255, 255, 255, 0.5)",
+      }),
+    ).toBe('// unsupported: "tint" (color)')
   })
 
   it("quotes and escapes keys, text and choices using Rust escapes", () => {

@@ -550,6 +550,7 @@ export function formatSwift(
   descriptors: readonly ControlDescriptor[],
   values: State,
   group?: string,
+  options: { readonly includeDefaults?: boolean } = {},
 ): string {
   const byKey = new Map(descriptors.map((d) => [d.key, d]))
   const done = new Set<string>()
@@ -557,8 +558,8 @@ export function formatSwift(
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
     if (readoutDescriptor(d)) continue
-    const changed = d.key in values && !same(values[d.key], d.default)
-    if (!changed || done.has(d.key) || (group && d.group !== group)) continue
+    const included = d.key in values && (options.includeDefaults || !same(values[d.key], d.default))
+    if (!included || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
     const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
@@ -613,9 +614,11 @@ const rustString = (value: string): string =>
     return `\\u{${(code >= 0xd800 && code <= 0xdfff ? 0xfffd : code).toString(16)}}`
   })}"`
 
+const F32_MAX = 3.4028234663852886e38
 const rustFloat = (value: number): string => {
-  if (!Number.isFinite(value))
-    return Number.isNaN(value) ? "f32::NAN" : value < 0 ? "f32::NEG_INFINITY" : "f32::INFINITY"
+  if (Number.isNaN(value)) return "f32::NAN"
+  if (value >= F32_MAX) return "f32::MAX"
+  if (value <= -F32_MAX) return "f32::MIN"
   const [mantissa, exponent] = decimal(value).split("e")
   return `${mantissa!.includes(".") ? mantissa : `${mantissa}.0`}${exponent === undefined ? "" : `e${exponent}`}_f32`
 }
@@ -632,21 +635,30 @@ const rustLiteral = (d: ValueDescriptor, value: Value): string | undefined => {
         ? `#${[...hex.slice(1)].map((c) => c + c).join("")}`
         : hex
       : undefined
+    // The shared colour parser reads opaque OKLCH only. Keep CSS slash-alpha here rather
+    // than stripping it and silently exporting an opaque colour.
+    const alpha = /^(oklch\([^/]+)\/\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))(%?)\s*\)$/.exec(hex)
+    const parsed = parseColor(alpha ? `${alpha[1]})` : value)
+    const opacity = alpha ? Math.min(1, Math.max(0, Number(alpha[2]) / (alpha[3] ? 100 : 1))) : 1
+    const suffix =
+      opacity < 1
+        ? Math.round(opacity * 255)
+            .toString(16)
+            .padStart(2, "0")
+        : ""
     const color = rgba
       ? rgba.endsWith("ff")
         ? rgba.slice(0, 7)
         : rgba
-      : parseColor(value)
-        ? colorHex(value as string)
+      : parsed
+        ? `${colorHex(parsed)}${suffix}`
         : undefined
     return color ? `rune::color::hex(${rustString(color)}).unwrap()` : undefined
   }
   if (typeof value === "number") {
-    const integer =
-      d.kind === "seed" ||
-      d.swiftType === "Int" ||
-      (d.step === 1 && Number.isInteger(d.min) && Number.isInteger(d.max))
-    return integer ? String(Math.round(value)) : rustFloat(value)
+    if (d.kind !== "seed" && d.swiftType !== "Int") return rustFloat(value)
+    if (!Number.isFinite(value) || value < -2147483648 || value > 2147483647) return undefined
+    return String(Math.round(value))
   }
   if (typeof value === "boolean") return String(value)
   if (typeof value === "string") return rustString(value)
@@ -658,6 +670,7 @@ export function formatRust(
   descriptors: readonly ControlDescriptor[],
   values: State,
   group?: string,
+  options: { readonly includeDefaults?: boolean } = {},
 ): string {
   const byKey = new Map(descriptors.map((d) => [d.key, d]))
   const done = new Set<string>()
@@ -665,8 +678,8 @@ export function formatRust(
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
     if (readoutDescriptor(d)) continue
-    const changed = d.key in values && !same(values[d.key], d.default)
-    if (!changed || done.has(d.key) || (group && d.group !== group)) continue
+    const included = d.key in values && (options.includeDefaults || !same(values[d.key], d.default))
+    if (!included || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
     const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
