@@ -50,6 +50,7 @@ const page = await browser.newPage({
 const errors = []
 page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)))
 page.on("console", (m) => m.type() === "error" && errors.push(m.text().slice(0, 200)))
+page.on("response", (r) => r.status() >= 400 && errors.push(`${r.status()} ${r.url()}`))
 await page.goto(`${base}/review.html`)
 await page.waitForSelector(".knobs-wt-step")
 
@@ -121,6 +122,12 @@ await page.keyboard.press("Escape")
 await sleep(2000)
 keys.fullAfterEscape = await page.evaluate(() =>
   Boolean(document.querySelector(".knobs-wt-step[data-full]")),
+)
+// Any piece that couldn't load its media says so in words.
+keys.failed = await page.evaluate(() =>
+  [...document.querySelectorAll(".knobs-cmp-note, .knobs-wt-failed")]
+    .map((n) => n.textContent)
+    .filter(Boolean),
 )
 keys.errors = errors
 writeFileSync(`${OUT}/keys.json`, JSON.stringify(keys, null, 2))

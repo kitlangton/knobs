@@ -19,7 +19,13 @@ import {
 } from "knobs/review"
 import { apca } from "../src/tokens/index"
 
-const asset = (name: string) => new URL(`./assets/${name}`, import.meta.url).href
+// Listed, not `new URL(`./assets/${name}`)`: Vite reads that as `./assets/*`, one level deep, and
+// every file under compare/ and ideas/ came out as `undefined`.
+const assets = import.meta.glob(
+  ["./assets/compare/{before,after,long-after}.{mp4,png}", "./assets/ideas/*-wide-640.jpg"],
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>
+const asset = (name: string) => assets[`./assets/${name}`]!
 const pr = (n: number) => `https://github.com/anomalyco/opencode/pull/${n}`
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
