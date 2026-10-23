@@ -583,6 +583,29 @@ Tunable<UnitCurve>("drawer.fade", "Fade curve", default: .bezier(startControlPoi
 
 Colours leave as sRGB components (the OKLCH value is already inside sRGB). Points are `CGPoint`s and easings SwiftUI `UnitCurve.bezier` values. Gradients become `Gradient(stops: [.init(color: Color(…), location: …)])` and curves `[CGPoint]`. Paired `*.duration` / `*.bounce` number descriptors still fold into one `TunableSpring`.
 
+### Copy remote values as Rust
+
+`remote.rust(group?)` emits modified values as Rune `tune!` calls, with the defaults in `was` comments. Like `remote.swift(group?)`, it skips actions and readouts and can filter by group id.
+
+```ts
+import { mountPage } from "knobs/panel"
+
+mountPage(remote, document.querySelector("#app")!, { copyAs: "rust" })
+const code = remote.rust("drawer")
+```
+
+```rust
+rune::tune!("drawer.spring", rune::Spring::new(0.45_f32, 0.25_f32))  // was rune::Spring::new(0.4_f32, 0.25_f32)
+rune::tune!("drawer.scale", 1.0_f32)  // was 0.9_f32
+rune::tune!("drawer.tint", rune::color::hex("#3d8bff").unwrap())  // was rune::color::hex("#0084ff").unwrap()
+```
+
+Numbers use `_f32` literals with a decimal point. Seeds, `swiftType: "Int"`, and descriptors with `step: 1` and integer `min`/`max` use integer literals. Booleans and strings become Rust literals; keys are escaped strings too. Paired `*.duration` / `*.bounce` descriptors fold into one `Spring::new` call. Points, vectors, ranges, easings, curves and gradients emit `// unsupported:` comments.
+
+For raw descriptor values, `formatRust(descriptors, values, group?)` is also exported from `knobs`. Colours accept the usual hex and OKLCH strings, plus `#rgba` and `#rrggbbaa`; non-opaque alpha stays in the output hex. The panel's colour fields currently accept opaque colours only.
+
+Both `mountPage` and `mountPanel` accept `copyAs: "ts" | "swift" | "rust"`. Swift and Rust require `createRemoteControls`. The option applies to the header, row selection and group-menu Copy actions. For another language, pass `copyAs: (keys, group) => string`: `keys` is undefined for the header, and group-menu copy supplies both its keys and group id. `copyAs` takes precedence over the existing header-only `copy: () => string` callback. Without either option, Copy uses TypeScript.
+
 **Migrating an app's Tune page:** the Swift side needs `Tunable` to support `Color`, `CGPoint` and `UnitCurve` (decoding the socket's `"oklch(L C H)"`/hex string, `{ x, y }` and `[x1, y1, x2, y2]`), and a `TunableSpring` that reads `{ duration, bounce }` from one key rather than two. Until then, keep sending a spring as paired `.duration`/`.bounce` number descriptors; the panel and codegen handle both. Nothing in other repositories changes until you opt in.
 
 See [`docs/migration.md`](./docs/migration.md) for the OpenCode iOS Tune Page and the Problems rewrite, and [Embedding in an app](#embedding-in-an-app) below.
@@ -2074,7 +2097,7 @@ The package has two core exports selected through the standard `development` con
 | `watch` / `sparkline` / `graph` / `meter` / `table` / `log` (`{ label?, unit?, decimals?, format?, hz?, get?, … }`) | Readout rows that hold no value; push with `controls.watch(key, value)`. See [Readouts](#readouts-live-values-sparklines-graphs-meters-tables-and-logs). |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
-| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
+| `createRemoteControls(id, descriptors, options)` | Creates a remote-synced `Controls` store with `.swift(group?)` / `.rust(group?)` codegen and `.update(descriptors, values, { land })`; incoming values skip keys in hand or changed here in the last 600 ms, and the newest lands when the hold ends. |
 | `fromSettings(groups, home?)` | A hosted prototype's settings sections as descriptors and values. |
 | `unlock({ panel, sequence?, query?, corner?, persist? })` / `KONAMI` | Lets a production deploy be unlocked by a typed secret, `?knobs` or three corner taps; returns `{ unlocked, unlock(), lock(), dispose() }`. See [Show, hide and unlock](#show-hide-and-unlock). |
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
