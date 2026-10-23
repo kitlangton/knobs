@@ -34,6 +34,7 @@ test("a Rust page copies Rune code from the header, a group and a row", async ({
   await root.locator('.knobs-group-head[data-group="layout"]').click({ button: "right" })
   await page.getByRole("menuitem", { name: /^Copy/ }).click()
   await expect.poll(clipboard).toBe([size, gap].join("\n"))
+  await expect(page.getByRole("menu")).toHaveCount(0)
 
   // Clear the group selection before asking for one row.
   await root.locator('[data-field="on"]').click({ button: "right" })
