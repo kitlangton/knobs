@@ -1,10 +1,11 @@
-// Tooltips: one per document, shown after a pause over (or keyboard focus on) a target, and
+// Tooltips: one per document, shown after a pause over a target or at once on keyboard focus, and
 // handed straight to a neighbour while one is up or just went. A shortcut shows as key chips.
 // `tooltip(el, text)` registers a target; any element with `data-tip` works too.
 import { comboParts } from "../core/keys.js"
 import type { UiLook } from "./look.js"
 import { anchorBox, layerElement, presence, viewBox } from "./layer.js"
 import { type Placement, place } from "./overlay-model.js"
+import { tipSchedule } from "./tooltip-model.js"
 
 export interface TooltipOptions {
   /** A key or combination (`"Mod+K"`, `"Space"`): shown as chips after the text. */
@@ -26,7 +27,6 @@ interface Tip {
   readonly opts: TooltipOptions
 }
 const tips = new WeakMap<Element, Tip>()
-const HANDOFF_MS = 400
 
 interface Controller {
   hide(now?: boolean): void
@@ -65,9 +65,6 @@ function controllerOf(doc: Document): Controller {
   let text: HTMLElement
   let keys: HTMLElement
   let target: HTMLElement | null = null
-  let pending: { el: HTMLElement; tip: Tip } | null = null
-  let timer = 0
-  let hiddenAt = -Infinity
   /** Pressed: no tip until the pointer leaves it. */
   let quiet: HTMLElement | null = null
   let keyboard = false
@@ -112,33 +109,31 @@ function controllerOf(doc: Document): Controller {
     if (instant) motion!.snap(1)
     else motion!.show()
   }
-  const hide = (now = false) => {
-    win.clearTimeout(timer)
-    pending = null
-    if (!target) return
-    target.removeAttribute("aria-describedby")
-    target = null
-    hiddenAt = performance.now()
-    if (now) motion?.snap(0)
-    else void motion?.hide()
-  }
-  const want = (found: { el: HTMLElement; tip: Tip } | null) => {
+  const schedule = tipSchedule<{ el: HTMLElement; tip: Tip }>(
+    {
+      set: (run, ms) => win.setTimeout(run, ms),
+      clear: (handle) => win.clearTimeout(handle as number),
+      now: () => performance.now(),
+    },
+    {
+      show: ({ el, tip }, snap) => show(el, tip, snap),
+      hide: (now) => {
+        target?.removeAttribute("aria-describedby")
+        target = null
+        if (now) motion?.snap(0)
+        else void motion?.hide()
+      },
+      connected: ({ el }) => el.isConnected,
+    },
+  )
+  const hide = (now = false) => schedule.hide(now)
+  const want = (found: { el: HTMLElement; tip: Tip } | null, now = false) => {
     if (!found) return hide()
-    if (found.el === target || found.el === pending?.el) return
     if (found.el === quiet) return
-    win.clearTimeout(timer)
-    const handoff = target !== null || performance.now() - hiddenAt < HANDOFF_MS
-    if (handoff) {
-      pending = null
-      show(found.el, found.tip, true)
-      return
-    }
-    if (target) hide()
-    pending = found
-    timer = win.setTimeout(() => {
-      pending = null
-      if (found.el.isConnected) show(found.el, found.tip, false)
-    }, found.tip.opts.delay ?? 500)
+    schedule.want(found, {
+      now,
+      ...(found.tip.opts.delay !== undefined ? { delay: found.tip.opts.delay } : {}),
+    })
   }
   doc.addEventListener("pointerover", (e) => {
     if ((e as PointerEvent).pointerType === "touch") return
@@ -174,10 +169,11 @@ function controllerOf(doc: Document): Controller {
   doc.addEventListener("focusin", (e) => {
     const found = tipOf(e.target)
     // Keyboard focus only: a click's focus doesn't pop a tip.
-    if (found && keyboard && (e.target as HTMLElement).matches(":focus-visible")) want(found)
+    if (found && keyboard && (e.target as HTMLElement).matches(":focus-visible")) want(found, true)
   })
+  // Focus leaving a target takes its tip, shown or still waiting.
   doc.addEventListener("focusout", (e) => {
-    if (target && target.contains(e.target as Node)) hide()
+    schedule.leave(({ el }) => el.contains(e.target as Node))
   })
   doc.addEventListener("scroll", () => target && hide(true), true)
   const c: Controller = { hide }
@@ -185,7 +181,7 @@ function controllerOf(doc: Document): Controller {
   return c
 }
 
-/** Shows `content` over `el` after a pause (or on keyboard focus). Returns the remover. */
+/** Shows `content` over `el` after a pause, or at once on keyboard focus. Returns the remover. */
 export function tooltip(
   el: HTMLElement,
   content: TooltipContent,
