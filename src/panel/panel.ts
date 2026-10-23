@@ -56,6 +56,7 @@ import {
   vecRow,
   type ToolbarRow,
 } from "./inspector.js"
+import { descriptionIds } from "./description-ids.js"
 import { flash } from "./flash.js"
 import { spin, spinning } from "./spin.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
@@ -1967,10 +1968,10 @@ function buildPanel<S extends Schema>(
   descriptions.hidden = true
   root.append(descriptions)
   const described = new Map<Row, { text: string; node: HTMLElement; untip: () => void }>()
-  let descriptionIds = 0
+  const descriptionId = descriptionIds(controls.id)
   /**
-   * A field's `description`: a tooltip over its row (after the tooltips' pause, or on keyboard
-   * focus) and its controls' accessible description.
+   * A field's `description`: a tooltip over its row (after the tooltips' pause, or at once on
+   * keyboard focus) and its controls' accessible description.
    */
   function describe(row: Row) {
     const text = row.field.description?.trim() ?? ""
@@ -1985,7 +1986,7 @@ function buildPanel<S extends Schema>(
     }
     if (!text) return
     const node = el("span", text)
-    node.id = `knobs-desc-${controls.id}-${++descriptionIds}`
+    node.id = descriptionId()
     descriptions.append(node)
     for (const input of inputs) input.setAttribute("aria-describedby", node.id)
     described.set(row, { text, node, untip: tooltip(row.row, text) })
