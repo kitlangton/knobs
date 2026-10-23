@@ -357,6 +357,12 @@ export interface MountPanelOptions extends LabelOptions {
   /** What Copy (and ⇧C) puts on the clipboard; `controls.code()` by default. */
   readonly copy?: () => string
   /**
+   * Format for every Copy action (header, rows and groups). Swift and Rust require remote
+   * controls. A callback receives selected keys (undefined for all), then the group id when
+   * copying a group. Takes precedence over `copy`; TypeScript is the default.
+   */
+  readonly copyAs?: "ts" | "swift" | "rust" | ((keys?: readonly string[], group?: string) => string)
+  /**
    * A theme from `defineTheme` (`themes.knobs`, `themes.void`); the store's by default. The old
    * `"dark" | "light" | "auto"` still sets the appearance.
    */

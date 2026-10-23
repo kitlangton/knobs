@@ -16,6 +16,7 @@ import {
   type Values,
 } from "../core/schema.js"
 import { REFRESHES } from "../core/internal.js"
+import { copyFormatter } from "./copy.js"
 import { comboLabel, isTypingTarget, letterOf, matchesCombo } from "../core/keys.js"
 import type { SpringValue } from "../core/spring.js"
 import type {
@@ -214,6 +215,7 @@ function buildPanel<S extends Schema>(
   options: InternalPanelOptions,
 ): Panel {
   if (!controls.enabled) throw new Error("Controls are disabled.")
+  const copyText = copyFormatter(controls, options)
   const doc = host.ownerDocument
   injectStyles(doc)
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => {
@@ -551,7 +553,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
 
-  const copyValues = () => void copy(options.copy ? options.copy() : controls.code())
+  const copyValues = () => void copy(copyText())
   // Random, Reset and Copy are reachable from hint mode; history, help and close have keys.
   const command = (icon: IconName, label: string, shortcut: string, action: () => unknown) => {
     const node = headButton(icon, label, shortcut, action)
@@ -2715,10 +2717,7 @@ function buildPanel<S extends Schema>(
         keys.some((k) => !controls.isLocked(k)),
       )
   }
-  const copyKeys = (keys: readonly string[]) => {
-    const values = controls.get() as Record<string, unknown>
-    void copy(controls.code("ts", Object.fromEntries(keys.map((k) => [k, values[k]])) as Values<S>))
-  }
+  const copyKeys = (keys: readonly string[], group?: string) => void copy(copyText(keys, group))
   const focusRow = (i: number) =>
     rows[i]?.input.focus({ preventScroll: Boolean(page), focusVisible: false } as FocusOptions)
 
@@ -2796,7 +2795,7 @@ function buildPanel<S extends Schema>(
                 label: "Copy",
                 shortcut: show("copy"),
                 separated: true,
-                run: () => copyKeys(chosen),
+                run: () => copyKeys(chosen, group),
               },
             ]
           : []),
