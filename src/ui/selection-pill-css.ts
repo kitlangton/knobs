@@ -6,4 +6,4 @@ export const selectionPillCss = `
 .knobs-pick-copy{overflow:hidden;will-change:transform}
 .knobs-pick-copy-rows{position:absolute;left:0;top:0;width:0;height:0}
 :is(.knobs-pick-pill,.knobs-pick-copy)[data-off]{opacity:0}
-`;
+`

@@ -14,7 +14,10 @@ import {
 } from "knobs/review"
 
 const asset = (name: string) => new URL(`./assets/story/${name}`, import.meta.url).href
-const gh = (n: number) => ({ label: `#${n}`, href: `https://github.com/anomalyco/opencode/pull/${n}` })
+const gh = (n: number) => ({
+  label: `#${n}`,
+  href: `https://github.com/anomalyco/opencode/pull/${n}`,
+})
 const commit = (sha: string) => ({ label: sha })
 
 // ——— the history: real dates from the story's ledger, counted to Oct 20, 2026 ———
@@ -79,7 +82,8 @@ const HISTORY: HistoryData = {
           to: "2026-09-11",
           state: "next",
           title: "v2 went out on @next",
-          detail: "The v2 TUI rewrite shipped on the `@next` tag without the limit handling; `@latest` stayed on v1.",
+          detail:
+            "The v2 TUI rewrite shipped on the `@next` tag without the limit handling; `@latest` stayed on v1.",
           provenance: "verified",
           source: "git",
           evidence: [commit("e6f660fecf")],
@@ -89,7 +93,8 @@ const HISTORY: HistoryData = {
           from: "2026-09-11",
           state: "broken",
           title: "v2.0.0 became @latest",
-          detail: "Publishing v2.0.0 as stable moved `@latest` and auto-update to v2 for every npm user.",
+          detail:
+            "Publishing v2.0.0 as stable moved `@latest` and auto-update to v2 for every npm user.",
           provenance: "verified",
           source: "git",
           evidence: [gh(48546), commit("654f411a5b")],
@@ -278,8 +283,7 @@ interface Pair {
 
 async function compare(p: Pair): Promise<WalkthroughMedia> {
   const [a, b] = await Promise.all([present(asset(p.before)), present(asset(p.after))])
-  if (!a || !b)
-    return placeholder([...(a ? [] : [p.before]), ...(b ? [] : [p.after])], p.aspect)
+  if (!a || !b) return placeholder([...(a ? [] : [p.before]), ...(b ? [] : [p.after])], p.aspect)
   return {
     kind: "compare",
     before: { src: asset(p.before), label: p.beforeLabel },
@@ -343,7 +347,8 @@ async function buildDoc(): Promise<WalkthroughDoc> {
     {
       id: "problem",
       title: "New users hit the broken flow today",
-      summary: "Someone with no API keys on a fresh Mac runs into four failures in their first ten minutes.",
+      summary:
+        "Someone with no API keys on a fresh Mac runs into four failures in their first ten minutes.",
       more: "Half the free models are missing until a restart. The free limit wipes the prompt and shows raw error text. Connecting OpenCode Go asks for a pasted API key. On a fresh Mac the installer can't put `opencode` on PATH because there's no `~/.zshrc`.",
       steps: [
         {
@@ -413,7 +418,8 @@ async function buildDoc(): Promise<WalkthroughDoc> {
     {
       id: "timeline",
       title: "It's been broken since August",
-      summary: "v1 built the flow in April and May, v2 deleted it from June, and users started getting v2 on August 11.",
+      summary:
+        "v1 built the flow in April and May, v2 deleted it from June, and users started getting v2 on August 11.",
       steps: [
         {
           id: "timeline-chart",
@@ -448,7 +454,7 @@ async function buildDoc(): Promise<WalkthroughDoc> {
               { what: "OpenCode Go", team: "Signed in", fresh: "Asked for an API key" },
             ],
           },
-          more: "Desktop's limit dialog was copied into v2 on Aug 21 and listened for `status.reason === \"free_tier_limit\"`. Nothing in v2 had sent that string since Jul 20, when deleting `packages/opencode` removed `retry.ts` and its 440-line test. The check compiled because `reason` was typed as `string | undefined`.",
+          more: 'Desktop\'s limit dialog was copied into v2 on Aug 21 and listened for `status.reason === "free_tier_limit"`. Nothing in v2 had sent that string since Jul 20, when deleting `packages/opencode` removed `retry.ts` and its 440-line test. The check compiled because `reason` was typed as `string | undefined`.',
         },
       ],
     },
@@ -466,15 +472,84 @@ async function buildDoc(): Promise<WalkthroughDoc> {
             kind: "stack",
             base: "dev",
             items: [
-              { pr: 57148, stepId: "fix-57148", title: "Send catalog refreshes to every session", branch: "models-dev-refresh → dev", delta: { add: 47, del: 1 }, status: "Merged", tone: "good" },
-              { pr: 57151, stepId: "fix-57148", title: "Open /models on the current model", branch: "tui-models-order → dev", delta: { add: 49, del: 35 }, status: "Merged", tone: "good" },
-              { pr: 57158, title: "Serve v2 at /install", branch: "install-v2-url → dev", delta: { add: 17, del: 7 }, status: "Draft", tone: "warn" },
-              { pr: 57348, title: "Create ~/.zshrc when it's missing", branch: "install-create-zshrc → dev", delta: { add: 12, del: 0 }, status: "Draft", tone: "good" },
-              { pr: 57155, stepId: "fix-57155", title: "Sign in to OpenCode Go with your account", branch: "opencode-go-oauth → dev", delta: { add: 1394, del: 44 }, status: "Draft", tone: "good" },
-              { pr: 57146, title: "Typed free-limit error with a reset time", branch: "free-limit-card → dev", delta: { add: 193, del: 8 }, status: "Draft", tone: "good" },
-              { pr: 57466, stepId: "fix-57466", title: "Restore the Desktop limit dialog", branch: "free-limit-desktop → free-limit-card", delta: { add: 446, del: 47 }, status: "Draft", tone: "good" },
-              { pr: 57467, stepId: "fix-57467", title: "Calm TUI notice, prompt kept", branch: "free-limit-tui-notice → free-limit-card", delta: { add: 283, del: 5 }, status: "Draft", tone: "good" },
-              { pr: 57471, stepId: "fix-57467", title: "Restore the animated Go modal", branch: "free-limit-tui-modal → free-limit-tui-notice", delta: { add: 926, del: 21 }, status: "Draft", tone: "good" },
+              {
+                pr: 57148,
+                stepId: "fix-57148",
+                title: "Send catalog refreshes to every session",
+                branch: "models-dev-refresh → dev",
+                delta: { add: 47, del: 1 },
+                status: "Merged",
+                tone: "good",
+              },
+              {
+                pr: 57151,
+                stepId: "fix-57148",
+                title: "Open /models on the current model",
+                branch: "tui-models-order → dev",
+                delta: { add: 49, del: 35 },
+                status: "Merged",
+                tone: "good",
+              },
+              {
+                pr: 57158,
+                title: "Serve v2 at /install",
+                branch: "install-v2-url → dev",
+                delta: { add: 17, del: 7 },
+                status: "Draft",
+                tone: "warn",
+              },
+              {
+                pr: 57348,
+                title: "Create ~/.zshrc when it's missing",
+                branch: "install-create-zshrc → dev",
+                delta: { add: 12, del: 0 },
+                status: "Draft",
+                tone: "good",
+              },
+              {
+                pr: 57155,
+                stepId: "fix-57155",
+                title: "Sign in to OpenCode Go with your account",
+                branch: "opencode-go-oauth → dev",
+                delta: { add: 1394, del: 44 },
+                status: "Draft",
+                tone: "good",
+              },
+              {
+                pr: 57146,
+                title: "Typed free-limit error with a reset time",
+                branch: "free-limit-card → dev",
+                delta: { add: 193, del: 8 },
+                status: "Draft",
+                tone: "good",
+              },
+              {
+                pr: 57466,
+                stepId: "fix-57466",
+                title: "Restore the Desktop limit dialog",
+                branch: "free-limit-desktop → free-limit-card",
+                delta: { add: 446, del: 47 },
+                status: "Draft",
+                tone: "good",
+              },
+              {
+                pr: 57467,
+                stepId: "fix-57467",
+                title: "Calm TUI notice, prompt kept",
+                branch: "free-limit-tui-notice → free-limit-card",
+                delta: { add: 283, del: 5 },
+                status: "Draft",
+                tone: "good",
+              },
+              {
+                pr: 57471,
+                stepId: "fix-57467",
+                title: "Restore the animated Go modal",
+                branch: "free-limit-tui-modal → free-limit-tui-notice",
+                delta: { add: 926, del: 21 },
+                status: "Draft",
+                tone: "good",
+              },
             ],
           },
           more: "`#57158` needs the Cloudflare `/install` redirect removed when it merges. `#57348` creates `~/.zshrc` on a fresh Mac before the installer appends to PATH. `#57146` turns Zen's free-usage 429 into a typed `provider.free-limit` error with a reset time capped at 7 days, which the next three build on.",
@@ -529,10 +604,26 @@ async function buildDoc(): Promise<WalkthroughDoc> {
               { key: "where", label: "Where", align: "right" },
             ],
             rows: [
-              { gap: "Nobody ran it as a new user", check: "Fresh-user test with an empty HOME", where: { text: "Every PR", badge: "good" } },
-              { gap: "A string check with no sender", check: "Typed SDK errors and a contract test", where: { text: "CI", badge: "good" } },
-              { gap: "A test deleted with its package", check: "Port tests before deleting a package", where: { text: "Checklist", badge: "info" } },
-              { gap: "/install drifted from git", check: "Curl each public install URL", where: { text: "Release", badge: "good" } },
+              {
+                gap: "Nobody ran it as a new user",
+                check: "Fresh-user test with an empty HOME",
+                where: { text: "Every PR", badge: "good" },
+              },
+              {
+                gap: "A string check with no sender",
+                check: "Typed SDK errors and a contract test",
+                where: { text: "CI", badge: "good" },
+              },
+              {
+                gap: "A test deleted with its package",
+                check: "Port tests before deleting a package",
+                where: { text: "Checklist", badge: "info" },
+              },
+              {
+                gap: "/install drifted from git",
+                check: "Curl each public install URL",
+                where: { text: "Release", badge: "good" },
+              },
             ],
           },
           more: "The fresh-user test runs in under 15 seconds. It starts OpenCode with no `auth.json`, `models.json` or `~/.zshrc` against a mock Zen server, retires a model with a 410, fails the next request with a free-limit 429, and checks that the prompt comes back and the limit dialog opens.",

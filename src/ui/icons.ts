@@ -54,21 +54,18 @@ const PATHS = {
   sidebar:
     "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z",
   x: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
-} as const;
+} as const
 
-export type IconName = keyof typeof PATHS;
+export type IconName = keyof typeof PATHS
 
 /** Every glyph's name. */
-export const ICON_NAMES = Object.keys(PATHS) as readonly IconName[];
+export const ICON_NAMES = Object.keys(PATHS) as readonly IconName[]
 
 /**
  * A Phosphor regular glyph as SVG markup, in `currentColor`: 16 px for controls, 12 px (`small`)
  * inline. Decorative (`aria-hidden`); label the control it sits in.
  */
-export function icon(
-  name: IconName,
-  options: { readonly small?: boolean } = {},
-): string {
-  const size = options.small ? 12 : 16;
-  return `<svg class="knobs-icon" viewBox="0 0 256 256" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false"><path d="${PATHS[name]}"/></svg>`;
+export function icon(name: IconName, options: { readonly small?: boolean } = {}): string {
+  const size = options.small ? 12 : 16
+  return `<svg class="knobs-icon" viewBox="0 0 256 256" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false"><path d="${PATHS[name]}"/></svg>`
 }

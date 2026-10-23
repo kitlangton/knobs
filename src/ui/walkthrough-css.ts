@@ -19,7 +19,8 @@ const quick = springCss(FADE)
 // each step is one .knobs-surface and nothing inside draws a fill and a ring of its own). Rhythm
 // and type come from the page tokens (--k-space-*, --k-pad-*, --k-type-*, --k-leading-*);
 // spacing lives on parents.
-const fade = "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)"
+const fade =
+  "-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)"
 export const walkthroughCss = `${foundationCss}
 :where(.knobs-walkthrough,.knobs-walkthrough *,.knobs-wt-slot,.knobs-wt-slot *){box-sizing:border-box}
 .knobs-ui:is(.knobs-walkthrough,.knobs-wt-slot){--k-glass:0;--k-glow:0;--kw-quick:${quick.easing};--kw-quick-ms:${quick.duration}ms}

@@ -166,7 +166,10 @@
 /* ── Everything that follows the knob ── */
 /* Panels and knobs/ui pieces take the tokens the loop writes on the root (a preset's keep its own). */
 :root[data-site-look]
-:is(.knobs-panel, .knobs-chip, .knobs-notice, .knobs-menu, .knobs-ui):not([data-preset], [data-knobs-theme]) {
+:is(.knobs-panel, .knobs-chip, .knobs-notice, .knobs-menu, .knobs-ui):not(
+  [data-preset],
+  [data-knobs-theme]
+) {
   --k-bg: inherit;
   --k-bg-page: inherit;
   --k-fill: inherit;
