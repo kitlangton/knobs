@@ -100,7 +100,6 @@ export function rowLink(row: HTMLElement, ref: string | undefined, steps: StepLi
   })
 }
 
-
 // ——— history ———
 
 /** A history through `history()`: lanes of spans over a date axis, or the older groups of events. */
@@ -667,7 +666,7 @@ const WHOLE_REF = /^(issue:)?#(\d{1,7})$/i
 export type FindPR = (n: string, kind: "pr" | "issue") => PRInfo | null
 
 /** Where refs stay as written: links, buttons, code blocks, chips, and media other than tables. */
-const KEEP = "a,pre,button,.knobs-wt-pr,.knobs-wt-slot:not([data-kind=\"table\"]),.knobs-wt-stack"
+const KEEP = 'a,pre,button,.knobs-wt-pr,.knobs-wt-slot:not([data-kind="table"]),.knobs-wt-stack'
 
 /**
  * Turns every pull request and issue ref in some rendered prose into a capsule: links to one
@@ -678,7 +677,11 @@ const KEEP = "a,pre,button,.knobs-wt-pr,.knobs-wt-slot:not([data-kind=\"table\"]
 export function linkPRs(root: HTMLElement, find: FindPR): void {
   const doc = root.ownerDocument
   const chip = (n: string, kind: "pr" | "issue", href?: string) =>
-    prChip(doc, n, { ...(kind === "issue" ? { kind } : {}), ...find(n, kind), ...(href ? { href } : {}) })
+    prChip(doc, n, {
+      ...(kind === "issue" ? { kind } : {}),
+      ...find(n, kind),
+      ...(href ? { href } : {}),
+    })
   for (const a of Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
     if (a.classList.contains("knobs-wt-pr") || a.parentElement?.closest(KEEP)) continue
     const url = a.getAttribute("href") ?? ""

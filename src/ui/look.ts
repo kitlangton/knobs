@@ -355,8 +355,7 @@ export const uiCss = () =>
       compareCss +
       playerCss +
       selectionPillCss,
-  ) +
-  rollingCss
+  ) + rollingCss
 
 /** Adds the pieces' stylesheet once per document. */
 export function injectUiStyles(doc: Document) {

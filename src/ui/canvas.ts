@@ -21,7 +21,15 @@ import {
   type CanvasRect,
   type CanvasView,
 } from "./canvas-model.js"
-import { applyLook, frameLoop, isTypingTarget, reducedMotion, svg, tune, type UiLook } from "./look.js"
+import {
+  applyLook,
+  frameLoop,
+  isTypingTarget,
+  reducedMotion,
+  svg,
+  tune,
+  type UiLook,
+} from "./look.js"
 
 export interface CanvasItem {
   readonly id: string
@@ -90,7 +98,9 @@ const SETTLE_MS = 200
 const INTERACTIVE =
   "a,button,input,select,textarea,label,summary,[contenteditable],[role=button],[role=slider],[role=switch],[role=checkbox],[role=tab],[role=option],[role=textbox]"
 
-const ICON_FIT = svg('<path d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10"/>')
+const ICON_FIT = svg(
+  '<path d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10"/>',
+)
 
 interface Tile {
   id: string
@@ -482,7 +492,8 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
         y: view.y + coast.vy * travel,
         scale: view.scale,
       }
-      if (coast.vs) v = zoomAround(v, v.scale * Math.exp(coast.vs * travel), coast.at, minZoom, maxZoom)
+      if (coast.vs)
+        v = zoomAround(v, v.scale * Math.exp(coast.vs * travel), coast.at, minZoom, maxZoom)
       view = v
       coast.vx *= decay
       coast.vy *= decay
@@ -591,7 +602,11 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
   type Drag = { id: number; last: CanvasPoint; samples: { x: number; y: number; t: number }[] }
   let drag: Drag | null = null
   const touches = new Map<number, CanvasPoint>()
-  let pinch: { d: number; mid: CanvasPoint; samples: { x: number; y: number; t: number; s: number }[] } | null = null
+  let pinch: {
+    d: number
+    mid: CanvasPoint
+    samples: { x: number; y: number; t: number; s: number }[]
+  } | null = null
   let space = false
   let spaceDragged = false
   let hovering = false
@@ -634,7 +649,9 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
   }
   const spread = () => {
     const [a, b] = [...touches.values()]
-    return a && b ? { d: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } } : null
+    return a && b
+      ? { d: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } }
+      : null
   }
 
   const onPointerDown = (e: PointerEvent) => {
@@ -716,7 +733,9 @@ export function canvas(container: HTMLElement, options: CanvasOptions): Canvas {
 
   const onDblClick = (e: MouseEvent) => {
     if (space) return
-    const el = (e.target === root && pressed && root.contains(pressed) ? pressed : e.target) as Element
+    const el = (
+      e.target === root && pressed && root.contains(pressed) ? pressed : e.target
+    ) as Element
     const tileEl = el.closest?.<HTMLElement>(".knobs-canvas-tile")
     if (tileEl) {
       const card = el.closest(".knobs-canvas-card")

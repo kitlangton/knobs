@@ -106,7 +106,9 @@ export function layoutCanvas(
   })
   let i = 0
   const rects = items.map((it) =>
-    it.x !== undefined && it.y !== undefined ? { x: it.x, y: it.y, w: it.w, h: it.h } : packed[i++]!,
+    it.x !== undefined && it.y !== undefined
+      ? { x: it.x, y: it.y, w: it.w, h: it.h }
+      : packed[i++]!,
   )
   return { rects, width }
 }

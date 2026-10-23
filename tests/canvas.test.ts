@@ -69,7 +69,14 @@ describe("layout", () => {
   })
 
   it("lands on whole pixels", () => {
-    const rs = packRows([{ w: 10.5, h: 3.3 }, { w: 7.25, h: 2 }, { w: 9, h: 9 }], { gap: 3.4, width: 20 })
+    const rs = packRows(
+      [
+        { w: 10.5, h: 3.3 },
+        { w: 7.25, h: 2 },
+        { w: 9, h: 9 },
+      ],
+      { gap: 3.4, width: 20 },
+    )
     for (const r of rs) {
       expect(Number.isInteger(r.x)).toBe(true)
       expect(Number.isInteger(r.y)).toBe(true)
@@ -238,7 +245,9 @@ describe("a jump between views", () => {
         // On the segment a → b: collinear, and progress never goes back.
         const cross = (b.x - a.x) * (s.y - a.y) - (b.y - a.y) * (s.x - a.x)
         expect(Math.abs(cross) / Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThan(1e-6)
-        const t = ((s.x - a.x) * (b.x - a.x) + (s.y - a.y) * (b.y - a.y)) / ((b.x - a.x) ** 2 + (b.y - a.y) ** 2)
+        const t =
+          ((s.x - a.x) * (b.x - a.x) + (s.y - a.y) * (b.y - a.y)) /
+          ((b.x - a.x) ** 2 + (b.y - a.y) ** 2)
         expect(t).toBeGreaterThanOrEqual(lastT)
         lastT = t
       }

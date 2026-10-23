@@ -162,7 +162,8 @@ export interface HistoryModel {
 const MS_DAY = 86_400_000
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-export const dayOf = (y: number, m: number, d: number): Day => Math.floor(Date.UTC(y, m, d) / MS_DAY)
+export const dayOf = (y: number, m: number, d: number): Day =>
+  Math.floor(Date.UTC(y, m, d) / MS_DAY)
 const parts = (day: Day) => {
   const t = new Date(day * MS_DAY)
   return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() }
@@ -172,13 +173,17 @@ export const todayDay = (now = Date.now()): Day => {
   return dayOf(t.getFullYear(), t.getMonth(), t.getDate())
 }
 
-const monthIndex = (name: string) => MONTHS.findIndex((m) => m.toLowerCase() === name.slice(0, 3).toLowerCase())
+const monthIndex = (name: string) =>
+  MONTHS.findIndex((m) => m.toLowerCase() === name.slice(0, 3).toLowerCase())
 
 /**
  * A date as written, as whole days: ISO (`2026-04-09`, a time after it ignored), or `"Apr 9, 2026"`,
  * `"Oct 14–16, 2026"`, `"Jun 26 – Jul 2, 2026"`; with no year, `year`. Null when it's neither.
  */
-export function parseDay(text: string, year?: number): { from: Day; to: Day; year?: number } | null {
+export function parseDay(
+  text: string,
+  year?: number,
+): { from: Day; to: Day; year?: number } | null {
   const s = text.trim()
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
   if (iso) {
@@ -320,7 +325,10 @@ export function normalizeHistory(data: HistoryData, now: Day = todayDay()): Hist
     return l
   }
   // The code lane goes first when events need it and no lane is called that.
-  if (rawEvents.some((e) => !e.lane || e.lane === "code") && !data.lanes?.some((l) => l.id === "code"))
+  if (
+    rawEvents.some((e) => !e.lane || e.lane === "code") &&
+    !data.lanes?.some((l) => l.id === "code")
+  )
     lane("code")
 
   let inferred = false
@@ -416,9 +424,7 @@ export function normalizeHistory(data: HistoryData, now: Day = todayDay()): Hist
   const to = day(data.axis?.to)?.to ?? hi + Math.max(6, Math.round((hi - from) * 0.05))
 
   const laneIndex = (id: string) => laneOrder.indexOf(id)
-  const order = eventOrder(
-    events.map((e) => ({ ...e, laneIndex: laneIndex(e.item.lane) })),
-  )
+  const order = eventOrder(events.map((e) => ({ ...e, laneIndex: laneIndex(e.item.lane) })))
   for (const l of lanes.values()) l.events.sort((a, b) => a.from - b.from)
 
   return {
@@ -443,7 +449,10 @@ export const DEFAULT_MARKS: readonly string[] = ["release", "deletion"]
  * The events held back until asked for: those with a type that isn't in `marks`. Untyped events
  * always show, and where holding back would leave no mark at all, none are.
  */
-export function quietEvents(events: readonly HyItem[], marks: readonly string[] | "all"): Set<string> {
+export function quietEvents(
+  events: readonly HyItem[],
+  marks: readonly string[] | "all",
+): Set<string> {
   if (marks === "all") return new Set()
   const quiet = events.filter((e) => e.type && !marks.includes(e.type))
   return quiet.length === events.length ? new Set() : new Set(quiet.map((e) => e.id))
@@ -460,9 +469,12 @@ const PLURALS: Record<string, string> = {
 /** What the toggle shows: `"commits"`, `"commits and findings"`. */
 export function quietLabel(events: readonly HyItem[], quiet: ReadonlySet<string>): string {
   const types: string[] = []
-  for (const e of events) if (quiet.has(e.id) && e.type && !types.includes(e.type)) types.push(e.type)
+  for (const e of events)
+    if (quiet.has(e.id) && e.type && !types.includes(e.type)) types.push(e.type)
   const names = types.map((t) => PLURALS[t] ?? `${t}s`)
-  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "")
+  return names.length > 1
+    ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+    : (names[0] ?? "")
 }
 
 /** The order ←/→ walk: by date, then lane (top first), then as written. */
@@ -488,7 +500,8 @@ export function stepEvent(
   if (!order.length) return null
   const i = current === null ? -1 : order.findIndex((e) => e.id === current)
   if (i < 0 && at !== undefined) {
-    const next = dir > 0 ? order.find((e) => e.from >= at) : [...order].reverse().find((e) => e.from <= at)
+    const next =
+      dir > 0 ? order.find((e) => e.from >= at) : [...order].reverse().find((e) => e.from <= at)
     return next ?? (dir > 0 ? order[order.length - 1]! : order[0]!)
   }
   if (i < 0) return dir > 0 ? order[0]! : order[order.length - 1]!
@@ -533,8 +546,7 @@ export function monthTicks(from: Day, to: Day, width: number, minGap = 44): Mont
   }
   while (d <= to) {
     const p = parts(d)
-    if (p.m % step === 0)
-      ticks.push({ day: d, label: p.m === 0 ? String(p.y) : MONTHS[p.m]! })
+    if (p.m % step === 0) ticks.push({ day: d, label: p.m === 0 ? String(p.y) : MONTHS[p.m]! })
     m++
     d = dayOf(y, m, 1)
   }
@@ -625,7 +637,10 @@ export function nearestEvent(
 /** The first sentence of a detail: a tooltip's one line. */
 export function firstSentence(text: string | undefined): string {
   if (!text) return ""
-  const plain = text.replace(/`([^`]*)`/g, "$1").replace(/\*\*?([^*]+)\*\*?/g, "$1").trim()
+  const plain = text
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/\*\*?([^*]+)\*\*?/g, "$1")
+    .trim()
   const m = /^.*?[.!?](?=\s|$)/.exec(plain)
   return (m ? m[0] : plain).trim()
 }

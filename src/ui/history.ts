@@ -551,14 +551,20 @@ export function history(container: HTMLElement, options: HistoryOptions): Histor
     if (key !== tipKey) {
       tipKey = key
       tipTitle.textContent = it ? it.title : formatDay(Math.round(scale.day(x)))
-      tipDate.textContent = it ? [when(it), it.type ? typeName(it.type) : ""].filter(Boolean).join(" · ") : ""
+      tipDate.textContent = it
+        ? [when(it), it.type ? typeName(it.type) : ""].filter(Boolean).join(" · ")
+        : ""
       tipDate.hidden = !it
       tipLine.textContent = it ? firstSentence(it.detail) : ""
     }
     // Over the lane it's on (under it where there's no room above), centred on the line.
     const rr = root.getBoundingClientRect()
     const or = over.getBoundingClientRect()
-    const laneId = it?.lane ?? (e.target instanceof Element ? e.target.closest<HTMLElement>(".knobs-hy-track")?.dataset.lane : undefined)
+    const laneId =
+      it?.lane ??
+      (e.target instanceof Element
+        ? e.target.closest<HTMLElement>(".knobs-hy-track")?.dataset.lane
+        : undefined)
     const lr = (laneId && tracks.get(laneId)?.getBoundingClientRect()) || or
     const tw = tip.offsetWidth
     const th = tip.offsetHeight
