@@ -44,11 +44,67 @@ describe("Rust copy-as-code", () => {
       [
         'rune::tune!("size", 1.0_f32)  // was 0.5_f32',
         'rune::tune!("count", 4)  // was 2',
-        'rune::tune!("steps", 5.0_f32)  // was 3.0_f32',
-        'rune::tune!("fractional", 2.5_f32)  // was 1.5_f32',
+        'rune::tune!("steps", 5.0_f32, 0.0_f32, 10.0_f32, 1.0_f32)  // was 3.0_f32',
+        'rune::tune!("fractional", 2.5_f32, 0.5_f32, 10.0_f32, 1.0_f32)  // was 1.5_f32',
         'rune::tune!("seed", 42)  // was 1',
       ].join("\n"),
     )
+  })
+
+  it("emits bounded numbers in the five-argument form, bounds typed like the value", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "radius", kind: "number", default: 4, min: 0, max: 24, step: 0.5 },
+      { key: "blur", kind: "number", default: 0.2, min: 0, max: 2 },
+      { key: "count", kind: "number", default: 2, min: 1, max: 9, swiftType: "Int" },
+      { key: "taps", kind: "number", default: 2, min: 0, max: 8, step: 2, swiftType: "Int" },
+      { key: "flat", kind: "number", default: 3, min: 3, max: 3 },
+      { key: "free", kind: "number", default: 1, min: 0 },
+      { key: "seed", kind: "seed", default: 1, min: 0, max: 100 },
+      { key: "on", kind: "toggle", default: false },
+    ]
+    expect(
+      formatRust(
+        descriptors,
+        {
+          radius: 8,
+          blur: 0.5,
+          count: 3,
+          taps: 4,
+          flat: 3,
+          free: 2,
+          seed: 7,
+          on: true,
+        },
+        undefined,
+        { includeDefaults: true },
+      ),
+    ).toBe(
+      [
+        // The default step mirrors the panel's: a hundredth of the range, 1 for Ints and empty ranges.
+        'rune::tune!("radius", 8.0_f32, 0.0_f32, 24.0_f32, 0.5_f32)  // was 4.0_f32',
+        'rune::tune!("blur", 0.5_f32, 0.0_f32, 2.0_f32, 0.02_f32)  // was 0.2_f32',
+        'rune::tune!("count", 3, 1, 9, 1)  // was 2',
+        'rune::tune!("taps", 4, 0, 8, 2)  // was 2',
+        'rune::tune!("flat", 3.0_f32, 3.0_f32, 3.0_f32, 1.0_f32)  // was 3.0_f32',
+        'rune::tune!("free", 2.0_f32)  // was 1.0_f32',
+        'rune::tune!("seed", 7)  // was 1',
+        'rune::tune!("on", true)  // was false',
+      ].join("\n"),
+    )
+  })
+
+  it("hardens bounds like values: f32 clamps, and Ints outside i32 drop the bounds", () => {
+    expect(
+      formatRust([{ key: "x", kind: "number", default: 0, min: -1e300, max: 1e300, step: 1 }], {
+        x: 1,
+      }),
+    ).toBe('rune::tune!("x", 1.0_f32, f32::MIN, f32::MAX, 1.0_f32)  // was 0.0_f32')
+    expect(
+      formatRust(
+        [{ key: "n", kind: "number", default: 0, min: 0, max: 2 ** 40, swiftType: "Int" }],
+        { n: 1 },
+      ),
+    ).toBe('rune::tune!("n", 1)  // was 0')
   })
 
   it.each([NaN, Infinity, -Infinity, 2147483648, -2147483649, 1e21])(
@@ -192,7 +248,7 @@ describe("Rust copy-as-code", () => {
       { values: { a: 1, b: true } },
     )
     expect(remote.rust("two")).toBe('rune::tune!("b", true)  // was false')
-    expect(remote.rust()).toContain('rune::tune!("a", 1.0_f32)')
+    expect(remote.rust()).toContain('rune::tune!("a", 1.0_f32, 0.0_f32, 10.0_f32, 0.1_f32)')
     remote.update([{ key: "c", kind: "text", default: "old" }], { c: "new" }, { land: true })
     expect(remote.rust()).toBe('rune::tune!("c", "new")  // was "old"')
   })

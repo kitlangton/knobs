@@ -16,7 +16,9 @@ describe("page and panel copy formats", () => {
     expect(copy()).toBe(controls.rust())
     expect(copy(["size", "gap"], "layout")).toBe(controls.rust("layout"))
     expect(copy(["on"])).toBe('rune::tune!("on", true)  // was false')
-    expect(copy(["gap"])).toBe('rune::tune!("gap", 1.0_f32)  // was 1.0_f32')
+    expect(copy(["gap"])).toBe(
+      'rune::tune!("gap", 1.0_f32, 0.0_f32, 10.0_f32, 0.1_f32)  // was 1.0_f32',
+    )
     controls.update([{ key: "label", kind: "text", default: "a" }], { label: "b" }, { land: true })
     expect(copy()).toBe('rune::tune!("label", "b")  // was "a"')
   })

@@ -339,7 +339,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
     const def = typeof d.default === "number" && Number.isFinite(d.default) ? d.default : 0
     const min = d.min ?? Math.min(0, def * 2)
     const max = d.max ?? Math.max(1, def * 2)
-    const step = d.step ?? (d.swiftType === "Int" ? 1 : (max - min) / 100 || 1)
+    const step = numberStep(d, min, max)
     return knob(def, {
       min,
       max,
@@ -490,6 +490,10 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
   }
   return Object.freeze(Object.fromEntries(entries))
 }
+
+/** A number descriptor's step: its own, else 1 for Ints and a hundredth of the range otherwise. */
+const numberStep = (d: ValueDescriptor, min: number, max: number): number =>
+  d.step ?? (d.swiftType === "Int" ? 1 : (max - min) / 100 || 1)
 
 const decimal = (n: number) => String(Math.round(n * 10000) / 10000)
 /** Whether a value equals its descriptor's default; colours compare as 8-bit sRGB and alpha. */
@@ -647,6 +651,17 @@ const rustLiteral = (d: ValueDescriptor, value: Value): string | undefined => {
   return undefined
 }
 
+/**
+ * `, min, max, step` for a bounded number, so a pasted line keeps its slider's range: the same
+ * literal type as the value (Rune takes them as one array). Empty when unbounded or unrepresentable.
+ */
+const rustBounds = (d: ValueDescriptor): string => {
+  if ((d.kind !== "knob" && d.kind !== "number") || d.min === undefined || d.max === undefined)
+    return ""
+  const bounds = [d.min, d.max, numberStep(d, d.min, d.max)].map((n) => rustLiteral(d, n))
+  return bounds.every((b) => b !== undefined) ? `, ${bounds.join(", ")}` : ""
+}
+
 /** Modified values as Rune `tune!` calls; kinds without a Rune literal become comments. */
 export function formatRust(
   descriptors: readonly ControlDescriptor[],
@@ -680,7 +695,7 @@ export function formatRust(
     const was = rustLiteral(d, d.default)
     lines.push(
       value !== undefined && was !== undefined
-        ? `rune::tune!(${rustString(d.key)}, ${value})  // was ${was}`
+        ? `rune::tune!(${rustString(d.key)}, ${value}${rustBounds(d)})  // was ${was}`
         : `// unsupported: ${rustString(d.key)} (${d.kind})`,
     )
   }

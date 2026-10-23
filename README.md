@@ -596,13 +596,14 @@ const code = remote.rust("drawer")
 
 ```rust
 rune::tune!("drawer.spring", rune::Spring::new(0.45_f32, 0.25_f32))  // was rune::Spring::new(0.4_f32, 0.25_f32)
-rune::tune!("drawer.scale", 1.0_f32)  // was 0.9_f32
+rune::tune!("drawer.scale", 1.0_f32, 0.5_f32, 1.5_f32, 0.01_f32)  // was 0.9_f32
+rune::tune!("drawer.items", 6, 1, 12, 1)  // was 4
 rune::tune!("drawer.tint", rune::color::hex("#3d8bff").unwrap())  // was rune::color::hex("#0084ff").unwrap()
 ```
 
-Numbers use `_f32` literals with a decimal point, even when `step` is 1. Only seeds and `swiftType: "Int"` use integer literals; non-finite integers and values outside i32 emit `// unsupported:` comments. Floats beyond f32's range use `f32::MAX` or `f32::MIN`. Booleans and strings become Rust literals; keys are escaped strings too. Paired `*.duration` / `*.bounce` descriptors fold into one `Spring::new` call. Points, vectors, ranges, easings, curves and gradients emit `// unsupported:` comments.
+Numbers use `_f32` literals with a decimal point, even when `step` is 1. Only seeds and `swiftType: "Int"` use integer literals; non-finite integers and values outside i32 emit `// unsupported:` comments. A number descriptor with both `min` and `max` uses `tune!`'s five-argument form, `rune::tune!(key, value, min, max, step)`, so a pasted line keeps its slider's range. The bounds use the value's literal type. A missing `step` is the same one the panel uses: 1 for `swiftType: "Int"`, otherwise a hundredth of the range (1 if the range is empty). Int bounds outside i32 fall back to the two-argument form. Numbers without both bounds, seeds and every other kind use the two-argument form, and `was` shows only the old default. Floats beyond f32's range use `f32::MAX` or `f32::MIN`. Booleans and strings become Rust literals; keys are escaped strings too. Paired `*.duration` / `*.bounce` descriptors fold into one `Spring::new` call. Points, vectors, ranges, easings, curves and gradients emit `// unsupported:` comments.
 
-For raw descriptor values, `formatRust(descriptors, values, group?)` is also exported from `knobs`. Colours accept the usual hex and OKLCH strings, plus `#rgba`, `#rrggbbaa` and OKLCH slash-alpha (`oklch(1 0 0 / 50%)`); non-opaque alpha stays in the output hex. Other colour syntaxes emit `// unsupported:` comments. The panel's colour fields currently accept opaque colours only.
+For raw descriptor values, `formatRust(descriptors, values, group?)` is also exported from `knobs`. Colours accept the usual hex and OKLCH strings, plus `#rgba`, `#rrggbbaa` and OKLCH slash-alpha (`oklch(1 0 0 / 50%)`); non-opaque alpha stays in the output hex. Other colour syntaxes emit `// unsupported:` comments. The panel's colour fields keep alpha in their values, but edit only hue, chroma and lightness.
 
 Both `mountPage` and `mountPanel` accept `copyAs: "ts" | "swift" | "rust"`. Swift and Rust require `createRemoteControls`. The option applies to the header, row selection and group-menu Copy actions. For another language, pass `copyAs: (keys, group) => string`: `keys` is undefined for the header, and group-menu copy supplies both its keys and group id. `copyAs` takes precedence over the existing header-only `copy: () => string` callback. Without either option, Copy uses TypeScript.
 
