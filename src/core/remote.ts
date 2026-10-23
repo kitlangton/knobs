@@ -1,4 +1,4 @@
-import { colorHex, oklchToRgb, parseColor } from "./color.js"
+import { colorHex, colorHexAlpha, oklchToRgb, parseColor, sameColor } from "./color.js"
 import type { Bezier } from "./easing.js"
 import type { CurveInterp, CurvePoint, GradientSpace, GradientStop } from "./ramp.js"
 import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
@@ -492,10 +492,15 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
 }
 
 const decimal = (n: number) => String(Math.round(n * 10000) / 10000)
+/** Whether a value equals its descriptor's default; colours compare as 8-bit sRGB and alpha. */
+const atDefault = (d: ValueDescriptor, value: Value): boolean =>
+  d.kind === "color" ? sameColor(value, d.default) : same(value, d.default)
 const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
   if (d.kind === "color") {
-    const [r, g, b] = oklchToRgb(parseColor(v) ?? { l: 0, c: 0, h: 0 }).map(decimal)
-    return `Color(red: ${r}, green: ${g}, blue: ${b})`
+    const parsed = parseColor(v) ?? { l: 0, c: 0, h: 0 }
+    const [r, g, b] = oklchToRgb(parsed).map(decimal)
+    const opacity = parsed.alpha === undefined ? "" : `, opacity: ${decimal(parsed.alpha)}`
+    return `Color(red: ${r}, green: ${g}, blue: ${b}${opacity})`
   }
   if (d.kind === "point") {
     const p = v as Point
@@ -558,7 +563,7 @@ export function formatSwift(
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
     if (readoutDescriptor(d)) continue
-    const included = d.key in values && (options.includeDefaults || !same(values[d.key], d.default))
+    const included = d.key in values && (options.includeDefaults || !atDefault(d, values[d.key]))
     if (!included || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
@@ -629,30 +634,7 @@ const rustLiteral = (d: ValueDescriptor, value: Value): string | undefined => {
     return `rune::Spring::new(${rustFloat(v.duration)}, ${rustFloat(v.bounce)})`
   }
   if (d.kind === "color") {
-    const hex = typeof value === "string" ? value.trim().toLowerCase() : ""
-    const rgba = /^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/.test(hex)
-      ? hex.length === 5
-        ? `#${[...hex.slice(1)].map((c) => c + c).join("")}`
-        : hex
-      : undefined
-    // The shared colour parser reads opaque OKLCH only. Keep CSS slash-alpha here rather
-    // than stripping it and silently exporting an opaque colour.
-    const alpha = /^(oklch\([^/]+)\/\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))(%?)\s*\)$/.exec(hex)
-    const parsed = parseColor(alpha ? `${alpha[1]})` : value)
-    const opacity = alpha ? Math.min(1, Math.max(0, Number(alpha[2]) / (alpha[3] ? 100 : 1))) : 1
-    const suffix =
-      opacity < 1
-        ? Math.round(opacity * 255)
-            .toString(16)
-            .padStart(2, "0")
-        : ""
-    const color = rgba
-      ? rgba.endsWith("ff")
-        ? rgba.slice(0, 7)
-        : rgba
-      : parsed
-        ? `${colorHex(parsed)}${suffix}`
-        : undefined
+    const color = colorHexAlpha(value)
     return color ? `rune::color::hex(${rustString(color)}).unwrap()` : undefined
   }
   if (typeof value === "number") {
@@ -678,7 +660,7 @@ export function formatRust(
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
     if (readoutDescriptor(d)) continue
-    const included = d.key in values && (options.includeDefaults || !same(values[d.key], d.default))
+    const included = d.key in values && (options.includeDefaults || !atDefault(d, values[d.key]))
     if (!included || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined

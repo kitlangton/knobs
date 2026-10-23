@@ -677,10 +677,16 @@ export function spring(value: Partial<SpringValue> = {}, meta?: FieldMeta): Spri
   const field = { kind: "spring" as const, value: { duration: 0.5, bounce: 0 } }
   return withMeta({ ...field, value: normalizeField(field, value) as SpringValue }, meta)
 }
-/** `color("#4f8cff")`, `color("oklch(0.7 0.15 250)")` or `color({ l, c, h })`. */
+/**
+ * `color("#4f8cff")`, `color("#4f8cff80")`, `color("oklch(0.7 0.15 250 / 0.5)")` or
+ * `color({ l, c, h, alpha })`. The panel edits hue, chroma and lightness; alpha is kept as given.
+ */
 export function color(value: string | Oklch, meta?: FieldMeta): ColorField {
   const parsed = parseColor(value)
-  if (!parsed) throw new Error("A color needs #rgb, #rrggbb, oklch(L C H) or { l, c, h }.")
+  if (!parsed)
+    throw new Error(
+      "A color needs #rgb, #rrggbb (with optional alpha), oklch(L C H [/ A]) or { l, c, h }.",
+    )
   return withMeta({ kind: "color" as const, value: formatColor(fitColor(parsed)) }, meta)
 }
 type Axis = number | Point

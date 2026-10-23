@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { createRemoteControls, formatRust, type ControlDescriptor } from "../src/index.js"
+import {
+  createRemoteControls,
+  formatRust,
+  formatSwift,
+  type ControlDescriptor,
+} from "../src/index.js"
 
 describe("Rust copy-as-code", () => {
   it("emits Rune springs, including paired flat descriptors, once with their defaults", () => {
@@ -190,5 +195,40 @@ describe("Rust copy-as-code", () => {
     expect(remote.rust()).toContain('rune::tune!("a", 1.0_f32)')
     remote.update([{ key: "c", kind: "text", default: "old" }], { c: "new" }, { land: true })
     expect(remote.rust()).toBe('rune::tune!("c", "new")  // was "old"')
+  })
+
+  it("skips colours whose control value equals a hex default in another syntax", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "tint", kind: "color", default: "#3d8bff" },
+      { key: "glass", kind: "color", default: "#3d8bff80" },
+    ]
+    const remote = createRemoteControls("rust-colour-defaults", descriptors, { storage: null })
+    // The control holds OKLCH strings; the descriptors hold hex.
+    const values = { tint: remote.get().tint, glass: remote.get().glass }
+    expect(values.tint).toMatch(/^oklch\(/)
+    expect(values.glass).toMatch(/^oklch\(.* \/ 0\.502\)$/)
+    expect(formatRust(descriptors, values)).toBe("")
+    expect(formatSwift(descriptors, values)).toBe("")
+    expect(remote.rust()).toBe("")
+    expect(remote.swift()).toBe("")
+  })
+
+  it("lists a changed colour, including one that only changed alpha", () => {
+    const descriptors: ControlDescriptor[] = [
+      { key: "tint", kind: "color", default: "#3d8bff" },
+      { key: "glass", kind: "color", default: "#3d8bff80" },
+    ]
+    expect(formatRust(descriptors, { tint: "oklch(0.7 0.1 30)", glass: "#3d8bff" })).toBe(
+      [
+        'rune::tune!("tint", rune::color::hex("#d58679").unwrap())  // was rune::color::hex("#3d8bff").unwrap()',
+        'rune::tune!("glass", rune::color::hex("#3d8bff").unwrap())  // was rune::color::hex("#3d8bff80").unwrap()',
+      ].join("\n"),
+    )
+    expect(formatSwift(descriptors, { tint: "oklch(0.7 0.1 30)" })).toContain(
+      'Tunable<Color>("tint"',
+    )
+    expect(formatSwift(descriptors, { glass: "oklch(0.7 0.1 30 / 0.5)" })).toContain(
+      "opacity: 0.5)",
+    )
   })
 })
