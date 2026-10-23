@@ -11,6 +11,9 @@ export const playerCss = `
 .knobs-player-media{position:absolute;inset:0;display:block;width:100%;height:100%;margin:0;padding:0;border:0;object-fit:contain;
   opacity:0;filter:blur(4px);transition:opacity calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default),filter calc(var(--_k-motion-default-ms) * 1ms) var(--_k-motion-default)}
 .knobs-player[data-ready] .knobs-player-media{opacity:1;filter:none}
+/* Mid-scrub, the cached frame under the hand, over the video until it lands. */
+.knobs-player-preview{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;pointer-events:none}
+.knobs-player-preview[hidden]{display:none}
 .knobs-player-line{flex:none;min-height:0}
 /* The timeline's own stylesheet is look.ts's; what the player's row and every timeline share
    about the hand is set here, after it. No hand cursor anywhere (the arrow, or a resize where it

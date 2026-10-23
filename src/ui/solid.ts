@@ -268,7 +268,7 @@ export function Timeline(props: TimelineProps): JSX.Element {
 export type CompareProps = CompareOptions & { onReady?: (compare: CompareHandle) => void }
 
 /**
- * `compare()` as a component, made once (with the `timeline`, `strip` and `renderer` it starts
+ * `compare()` as a component, made once (with the `timeline` and `renderer` it starts
  * with). `before`, `after` (by `src`), `mode`, `wipe`, `loupe`, `threshold` and `fps` follow
  * their props; callbacks always call the latest props.
  */
