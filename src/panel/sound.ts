@@ -409,6 +409,8 @@ export function changeCue(
     const dir = options.indexOf(after) - options.indexOf(before)
     return { cue: "select", detail: { direction: dir }, detents: 1, at: 1, was: 0 }
   }
+  // Typing makes its own sound.
+  if (field.kind === "text") return null
   if (field.kind === "keybind")
     return after
       ? { cue: "capture", detail: {}, detents: 1, at: 1, was: 0 }

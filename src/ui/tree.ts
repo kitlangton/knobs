@@ -278,7 +278,7 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
     text.className = "knobs-tree-text"
     label.append(text)
     const detail = doc.createElement("span")
-    detail.className = "knobs-tree-detail"
+    detail.className = "knobs-tree-detail knobs-scroll-fade-x"
     const tools = doc.createElement("span")
     tools.className = "knobs-tree-tools"
     el.append(caret, icon, label, detail, tools)
@@ -861,7 +861,8 @@ export function tree<T>(container: HTMLElement, options: TreeOptions<T>): Tree<T
       if (move && options.canDrop?.(move) !== false) options.onMove!(move)
     } else if (nav.includes(e.key) && !e.metaKey && !e.ctrlKey) {
       const page = Math.max(1, Math.floor(viewport() / h) - 1)
-      const r = navigate(rows, active, e.key as NavKey, page)
+      const dir = win.getComputedStyle(root).direction === "rtl" ? "rtl" : "ltr"
+      const r = navigate(rows, active, e.key as NavKey, page, dir)
       if (r.toggle) toggle(r.toggle.id, r.toggle.expanded)
       else if (r.active) {
         if (

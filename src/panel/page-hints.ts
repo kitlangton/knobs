@@ -132,8 +132,9 @@ export interface PageHints {
   stop(): void
   readonly active: boolean
   /**
-   * Whether `s` anywhere on the page starts hint mode: a panel or host has registered, and there's
-   * something else on the page to label too.
+   * Whether `s` in a knobs/ui piece starts hint mode: a panel or host has registered, and there's
+   * something else on the page to label too. On the page itself it does only when the host asked
+   * (targets of its own, or `[data-hint]` elements).
    */
   readonly listening: boolean
 }
@@ -220,17 +221,27 @@ function createRegistry(doc: Document): PageHints {
   const onDocKey = (e: KeyboardEvent) => {
     if (session || e.defaultPrevented || e.repeat || e.isComposing) return
     if (e.metaKey || e.ctrlKey || e.altKey || e.key !== PAGE_HINT_KEY) return
-    if (isTyping(e.target) || !wide()) return
+    if (isTyping(e.target) || !wide(e.target)) return
     if (registry.start()) e.preventDefault()
   }
+  /** The host's own `[data-hint]` elements (panels label theirs). */
+  const hostHints = () =>
+    [...doc.querySelectorAll("[data-hint]")].some((el) => !el.closest(".knobs-panel"))
   /**
-   * Whether `s` outside a panel starts hint mode: something that listens has registered, and
-   * there's more than it to label (a lone panel keeps its key to itself, as it always has).
+   * Whether `s` outside a panel starts hint mode: something that listens has registered, there's
+   * more than it to label (a lone panel keeps its key to itself), and the key isn't the page's own.
+   * Focus in a knobs/ui piece (a tree row, a split's button) is the pieces'; elsewhere (the page's
+   * body, a game's canvas, the host's content in a pane) `s` stays the page's unless the host asked
+   * for hint mode there, with targets of its own or `[data-hint]` elements.
    */
-  const wide = () =>
-    listening &&
-    (sources.length > 1 ||
-      [...doc.querySelectorAll("[data-hint]")].some((el) => !el.closest(".knobs-panel")))
+  const wide = (target?: EventTarget | null) => {
+    if (!listening) return false
+    if (sources.some((s) => s.listen && s.rank >= 2) || hostHints()) return true
+    if (sources.length < 2) return false
+    if (target === undefined) return true
+    const piece = (target as Element | null)?.closest?.(".knobs-ui,.knobs-pane-body")
+    return Boolean(piece?.classList.contains("knobs-ui"))
+  }
   const relisten = () => {
     const next = sources.some((s) => s.listen)
     if (next === listening) return

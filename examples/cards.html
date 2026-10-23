@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — a card per experiment</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; background: #141414; color: #e6e6e6; font: 13px/1.4 system-ui, sans-serif; }
+      /* A stand-in for the app: the part a card changes is outlined while the card is active. */
+      #app { position: fixed; inset: 24px 356px 40px 24px; display: grid; grid-template-columns: 220px 1fr; gap: 12px; }
+      .area { position: relative; border-radius: 10px; background: #1b1b1b; padding: 12px; color: #8a8a8a; outline: 2px solid transparent; outline-offset: 2px; transition: outline-color .12s; }
+      .area[data-active] { outline-color: #4c8dff; color: #e6e6e6; }
+      .area b { display: block; font-weight: 500; margin-bottom: 6px; }
+      #readout { position: fixed; left: 24px; bottom: 12px; font: 12px/16px ui-monospace, monospace; color: #8a8a8a; }
+      /* OpenCode Desktop's Motion container: fixed above the debug bar, 320 wide, scrolling. */
+      #panel { position: fixed; bottom: 40px; right: 12px; z-index: 50; width: 320px; max-height: calc(100vh - 6rem); overflow: auto; padding: 2px; box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="area" data-area="sidebar"><b>Sidebar</b>Projects and sessions</div>
+      <div class="area" data-area="timeline"><b>Timeline</b>Messages</div>
+    </div>
+    <div id="readout">onActive: null</div>
+    <div id="panel"></div>
+    <script type="module" src="./cards.ts"></script>
+  </body>
+</html>

@@ -363,9 +363,8 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-slot .knobs-cmp-stage{border-radius:var(--kw-frame-r)}
 /* A compare is as tall as its two pictures side by side at this width, in every mode (Wipe fuses
    them at one side's size, so nothing grows or re-measures), plus its mode bar, the line and gaps
-   (92 px), and the frame strip with its gap (158 px). */
+   (92 px). */
 .knobs-wt-fit{width:100%;height:calc(100cqw / 2 / var(--kw-aspect,1.7778) + var(--kw-chrome,92px))}
-.knobs-wt-fit[data-strip]{--kw-chrome:158px}
 .knobs-wt-fit[data-settled]{transition:height var(--k-wt-calm-ms,${calm.duration}ms) ${calm.easing}}
 .knobs-wt-frame{position:relative;width:100%;overflow:hidden;border-radius:var(--kw-frame-r);background:var(--_k-fill);aspect-ratio:var(--kw-aspect,16/9)}
 .knobs-wt-frame>:is(video,img){position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;margin:0;border:0}
@@ -378,16 +377,15 @@ export const walkthroughCss = `${foundationCss}
 /* The diff inside it: its header row 28 high on the container's padding, a hairline under it, and
    no line of its own under the code (the container's ring closes it). */
 .knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"]){--kd-head:28px;--kd-x:0px}
-.knobs-wt-slot[data-kind="diff"] .knobs-ui.knobs-diff:not([data-on="pane"])::after{display:none}
-.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--_k-radius-panel);box-shadow:inset 0 0 0 1px var(--_k-border-subtle);color:var(--_k-fg);
+.knobs-wt-slot[data-kind="diff"] :is(.knobs-ui.knobs-diff:not([data-on="pane"]),.knobs-diff-review)::after{display:none}
+.knobs-wt-code{margin:0;padding:var(--_k-pad-card);max-height:420px;overflow:auto;border-radius:var(--kw-frame-r);background:var(--_k-fill);color:var(--_k-fg);
   font:var(--_k-type-label)/var(--_k-leading-body) var(--_k-mono);white-space:pre;tab-size:2;scrollbar-width:thin}
-.knobs-surface :is(.knobs-wt-code,.knobs-wt-slot[data-kind="diff"]>.knobs-wt-body){padding-inline:0;border-radius:0;background:transparent;box-shadow:inset 0 1px 0 var(--_k-border-subtle),inset 0 -1px 0 var(--_k-border-subtle)}
+.knobs-surface .knobs-wt-slot[data-kind="diff"]>.knobs-wt-body{padding:0;border-radius:0;background:transparent;box-shadow:inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-wt-code[data-terminal]{white-space:pre-wrap;overflow-wrap:anywhere}
 .knobs-wt-prompt{color:var(--_k-fg-3);user-select:none;-webkit-user-select:none}
 .knobs-wt-cmd{color:var(--_k-fg);font-weight:var(--_k-weight-label)}
 .knobs-wt-out{color:var(--_k-fg-2)}
 .knobs-wt-metric{display:flex;flex-direction:column;gap:var(--_k-space-sibling)}
-.knobs-wt-mlabel{color:var(--_k-fg-2)}
 .knobs-wt-mvalue{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--_k-space-sibling);font-feature-settings:var(--_kr-data)}
 .knobs-wt-mfrom{color:var(--_k-fg-3)}
 .knobs-wt-mto{font-size:var(--_k-type-title);line-height:var(--_k-leading-title);font-weight:var(--_k-weight-label)}
@@ -406,6 +404,9 @@ export const walkthroughCss = `${foundationCss}
 .knobs-wt-callout[data-tone="bad"]{--kw-tone:var(--_k-danger)}
 .knobs-wt-text{max-width:var(--kw-measure);color:var(--_k-fg-2)}
 .knobs-wt-hold{border-radius:var(--kw-frame-r);background:var(--_k-fill)}
+/* A diff holds its room with its own well's edge, no fill: the diff reads the colour behind it
+   as it mounts, and a loading fill there would stay under its code. */
+.knobs-wt-slot[data-kind="diff"]>.knobs-wt-hold{background:transparent}
 .knobs-wt-failed{display:flex;align-items:center;justify-content:center;min-height:80px;color:var(--_k-fg-3);font-size:var(--_k-type-small)}
 
 /* Annotations: a calm ring round a box, a dot or an arrow at a point, a small label beside it;

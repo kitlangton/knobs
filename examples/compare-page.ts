@@ -7,7 +7,14 @@
 // chapter jumps with a catch-up), and one offers the difference as a third mode.
 // ?recordings uses the onboarding review's recordings instead (local only, gitignored);
 // ?renderer=dom forces the DOM renderer.
-import { compare, type Compare, type CompareMode, type CompareSource } from "knobs/ui"
+import {
+  compare,
+  type Compare,
+  type CompareMode,
+  type CompareSource,
+  type Player,
+  player,
+} from "knobs/ui"
 
 // From the page's own address: Vite rewrites `new URL(\`./…${x}\`, import.meta.url)` into a glob
 // of one folder, which misses these subfolders.
@@ -63,11 +70,26 @@ const recordings: Step[] = [
   walk("57151-models", "Models"),
   walk("57155-connect", "Connect"),
 ]
-const STEPS = params.has("recordings") ? recordings : synthetic
+// ?pair=scrub-1080- shows that one pair alone (scripts/scrub-probe.mjs), with a player of its After
+// above it.
+const only = params.get("pair")
+const STEPS = only
+  ? [pair("compare", only, `${only}before / after`, 16 / 9, false)]
+  : params.has("recordings")
+    ? recordings
+    : synthetic
 const renderer = params.get("renderer") === "dom" ? "dom" : "gpu"
 const main = document.getElementById("main")!
 const compares: Compare[] = []
-const rounds = Math.ceil(12 / STEPS.length)
+const players: Player[] = []
+if (only) {
+  const h = document.createElement("h2")
+  h.textContent = "Player"
+  const host = document.createElement("div")
+  main.append(h, host)
+  players.push(player(host, { src: asset(`compare/${only}after.mp4`), loop: false }))
+}
+const rounds = only ? 1 : Math.ceil(12 / STEPS.length)
 for (let round = 0; round < rounds; round++)
   for (const step of STEPS) {
     const h = document.createElement("h2")
@@ -108,4 +130,4 @@ for (let round = 0; round < rounds; round++)
     }
     compares.push(c)
   }
-Object.assign(window, { __compares: compares })
+Object.assign(window, { __compares: compares, __players: players })

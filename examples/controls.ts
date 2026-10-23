@@ -258,7 +258,6 @@ export function define<S extends Schema>(
 
 export const panelOptions = (): MountPanelOptions => ({
   theme,
-  crumbs: false,
   renderer: gpu ? "gpu" : "dom",
   session: false,
   variants: false,

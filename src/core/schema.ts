@@ -16,6 +16,11 @@ import type { SpringValue } from "./spring.js"
 
 export interface FieldMeta {
   readonly label?: string
+  /**
+   * What the knob does, in a sentence: a tooltip over its row (after a pause, or on keyboard
+   * focus) and its control's accessible description. Search matches it.
+   */
+  readonly description?: string
   readonly group?: string
   /**
    * What the group's header shows when it isn't the `group` id itself (the first field that
@@ -26,7 +31,10 @@ export interface FieldMeta {
   readonly section?: string
   /** What the section's heading shows (the first field that gives one wins); `section` by default. */
   readonly sectionLabel?: string
-  /** One muted line under the group's card title on a page (the first field that gives one wins). */
+  /**
+   * One muted line under the group's card title, in a panel or a page (the first field that gives
+   * one wins).
+   */
   readonly groupDescription?: string
   /** One muted line under the section's heading on a page (the first field that gives one wins). */
   readonly sectionDescription?: string
@@ -62,6 +70,17 @@ export interface FieldMeta {
    */
   readonly tab?: string
   /**
+   * Pins the field's group to the top of a panel, under the header and above the tab strip, on
+   * every tab (the first field of a group that says wins; a field without a group pins itself).
+   * Panel presets and saved variants leave pinned fields alone. See `ControlsOptions.pinned`.
+   */
+  readonly pinned?: boolean
+  /**
+   * `false`: presets, scoped presets and variants leave the field alone, as they leave a pinned
+   * one, but its row stays where it is. See `ControlsOptions.inPresets` for a whole group.
+   */
+  readonly inPresets?: false
+  /**
    * A collapsible sub-heading inside the field's group: a flat heading with a hairline, never a
    * card inside the card. Consecutive fields that share it sit under one heading.
    */
@@ -70,6 +89,7 @@ export interface FieldMeta {
 /** Meta keys copied from a field's options or a descriptor onto the field. */
 export const META_KEYS = [
   "label",
+  "description",
   "group",
   "groupLabel",
   "section",
@@ -83,6 +103,8 @@ export const META_KEYS = [
   "folded",
   "sectionFolded",
   "tab",
+  "pinned",
+  "inPresets",
   "subsection",
 ] as const satisfies readonly (keyof FieldMeta)[]
 /** The meta `source` gives, without undefined keys. */
@@ -127,6 +149,12 @@ export interface Choice<T extends string = string> extends FieldMeta {
    * spare and there are at most four options, and a menu otherwise, switching as the width changes.
    */
   readonly display?: "menu" | "segmented"
+  /**
+   * The options are versions of the design: each is a preset in the panel's top strip (the
+   * default option is the default preset), which is where you switch them, and the choice gets no
+   * row of its own. See `choice`.
+   */
+  readonly variants?: true
 }
 export interface Toggle extends FieldMeta {
   readonly kind: "toggle"
@@ -241,6 +269,15 @@ export interface KeybindField extends FieldMeta {
   readonly kind: "keybind"
   readonly value: string
 }
+/** Words: a name, a caption, a prompt. Typed into a field; `multiline` for a box of lines. */
+export interface TextField extends FieldMeta {
+  readonly kind: "text"
+  readonly value: string
+  /** Lines (Enter starts a new one) in a box that grows with them; one line otherwise. */
+  readonly multiline?: boolean
+  /** Shown in the empty field. */
+  readonly placeholder?: string
+}
 /**
  * A toolbar button's key and where it presses the button: while the panel has focus (`"panel"`),
  * anywhere on the page but a text field (`"page"`), or nowhere (`"none"`: the chip only, for a
@@ -271,6 +308,8 @@ export interface ToolbarItem {
 export interface ToolbarField extends FieldMeta {
   readonly kind: "toolbar"
   readonly items: readonly ToolbarItem[]
+  /** `false`: icons only, each label in its tooltip (see `toolbar`). */
+  readonly labels?: boolean
 }
 export type ValueField =
   | Knob
@@ -285,6 +324,7 @@ export type ValueField =
   | AngleField
   | SeedField
   | KeybindField
+  | TextField
   | GradientField
   | CurveField
 /** A readout's own: polled while its row shows, instead of pushed with `controls.watch`. */
@@ -382,6 +422,50 @@ export const isReadout = (field: { readonly kind: string }): field is ReadoutFie
 export const hasValue = (field: Field): field is ValueField =>
   field.kind !== "action" && field.kind !== "toolbar" && !READOUT_KINDS.has(field.kind)
 export type Schema = Readonly<Record<string, Field>>
+/**
+ * The schema's variants choice (`choice(…, { variants: true })`), if it has one. A pinned choice
+ * (`isPinned`) is never the variants choice: pinned wins, and it stays an ordinary choice.
+ */
+export function variantsOf(
+  schema: Schema,
+  isPinned: (key: string) => boolean = () => false,
+): { key: string; field: Choice } | undefined {
+  let found: { key: string; field: Choice } | undefined
+  for (const [key, field] of Object.entries(schema))
+    if (field.kind === "choice" && field.variants && !isPinned(key)) {
+      if (found) throw new Error(`Only one choice can hold the variants (${found.key}, ${key}).`)
+      found = { key, field }
+    }
+  return found
+}
+/**
+ * The schema's pinned keys (values, actions and readouts alike): every key of a group in `groups`,
+ * or whose first field that gives `pinned` says `true`, and ungrouped fields that say so themselves.
+ */
+export function pinnedKeys(schema: Schema, groups: readonly string[] = []): ReadonlySet<string> {
+  const byGroup = new Map<string, boolean>(groups.map((g) => [g, true]))
+  for (const f of Object.values(schema))
+    if (f.group !== undefined && f.pinned !== undefined && !byGroup.has(f.group))
+      byGroup.set(f.group, f.pinned)
+  const out = new Set<string>()
+  for (const [key, f] of Object.entries(schema))
+    if (f.group === undefined ? f.pinned === true : byGroup.get(f.group) === true) out.add(key)
+  return out
+}
+/**
+ * The keys presets leave alone: the pinned ones, fields that say `inPresets: false`, and every key
+ * of a group `groups` gives `false`.
+ */
+export function presetFreeKeys(
+  schema: Schema,
+  pinned: ReadonlySet<string>,
+  groups: Readonly<Record<string, boolean>> = {},
+): ReadonlySet<string> {
+  const out = new Set(pinned)
+  for (const [key, f] of Object.entries(schema))
+    if (f.inPresets === false || (f.group !== undefined && groups[f.group] === false)) out.add(key)
+  return out
+}
 export type FieldValue<F extends Field> = F extends Knob
   ? number
   : F extends Choice<infer T>
@@ -404,7 +488,7 @@ export type FieldValue<F extends Field> = F extends Knob
                     ? readonly [number, number]
                     : F extends AngleField | SeedField
                       ? number
-                      : F extends KeybindField
+                      : F extends KeybindField | TextField
                         ? string
                         : F extends GradientField
                           ? readonly GradientStop[]
@@ -476,12 +560,20 @@ export function knob(
   const field: Knob = { ...options, kind: "knob", value, step }
   return Object.freeze({ ...field, value: normalizeField(field, value) as number })
 }
+/**
+ * `choice("glass", ["glass", "solid", "flat"])`: one of a set of options, as segments or a menu.
+ * With `variants: true` the options are versions of the design instead: each becomes a preset in
+ * the panel's top strip (the default option is the default preset, the others follow in order),
+ * the choice has no row, and Random leaves it be. The store's `presets` add values to a variant
+ * by its option (`{ Roll: { speed: 0.8 } }`).
+ */
 export function choice<const T extends readonly [string, ...string[]]>(
   value: T[number],
   options: T,
   meta?: FieldMeta & {
     readonly labels?: Readonly<Partial<Record<T[number], string>>>
     readonly display?: "menu" | "segmented"
+    readonly variants?: boolean
   },
 ): Choice<T[number]> {
   if (!options.includes(value) || new Set(options).size !== options.length)
@@ -502,8 +594,9 @@ export function choice<const T extends readonly [string, ...string[]]>(
       options: Object.freeze([...options]),
       ...(labels && Object.keys(labels).length ? { labels } : {}),
       ...(meta?.display ? { display: meta.display } : {}),
+      ...(meta?.variants ? { variants: true as const } : {}),
     },
-    meta,
+    meta?.variants ? { ...meta, random: meta.random ?? false } : meta,
   )
 }
 /**
@@ -745,6 +838,26 @@ export function keybind(value = "", meta?: FieldMeta): KeybindField {
   return withMeta(field, { random: false, ...meta })
 }
 /**
+ * Words typed into a field: `text("Hello")`, `text("", { multiline: true, placeholder: "Notes" })`.
+ * One line unless `multiline` (a line break typed or set there becomes a space). Out of Random
+ * and Mutate.
+ */
+export function text(
+  value = "",
+  options?: FieldMeta & { multiline?: boolean; placeholder?: string },
+): TextField {
+  const { multiline, placeholder, ...meta } = options ?? {}
+  const field: TextField = {
+    kind: "text",
+    value: "",
+    ...(multiline ? { multiline: true } : {}),
+    ...(placeholder ? { placeholder } : {}),
+  }
+  return withMeta({ ...field, value: normalizeText(field, value) }, { random: false, ...meta })
+}
+const normalizeText = (field: TextField, input: string) =>
+  field.multiline ? input.replace(/\r\n?/g, "\n") : input.replace(/\r\n?|\n/g, " ")
+/**
  * Colour over a 0…1 parameter: `gradient([{ at: 0, color: "#fff4d6" }, { at: 1, color: "#20242c" }])`.
  * Colours take what `color` takes and are kept as `oklch()` strings. `space` blends in `oklab`
  * (default) or `srgb`; `presets` are named ramps offered as chips. Sample it with `sampleGradient`.
@@ -841,13 +954,21 @@ export function toolbarShortcut(item: ToolbarItem): ResolvedShortcut | undefined
 export function actionShortcut(field: ActionField): ResolvedShortcut | undefined {
   return field.shortcut ? { key: field.shortcut, scope: field.scope ?? "panel" } : undefined
 }
-/** A wrapping row of buttons with icons and shortcut chips; holds no value. */
-export function toolbar(items: readonly ToolbarItem[], meta?: FieldMeta): ToolbarField {
+/**
+ * A wrapping row of buttons with icons and shortcut chips; holds no value. When every item has an
+ * icon and the labels don't fit on one row, it's one row of icons, each label in its tooltip;
+ * `labels: false` always shows icons only, `labels: true` always shows the labels.
+ */
+export function toolbar(
+  items: readonly ToolbarItem[],
+  meta?: FieldMeta & { readonly labels?: boolean },
+): ToolbarField {
   if (!items.length) throw new Error("A toolbar needs at least one item.")
   return withMeta(
     {
       kind: "toolbar" as const,
       items: Object.freeze(items.map((item) => Object.freeze({ ...item }))),
+      ...(meta?.labels !== undefined ? { labels: meta.labels } : {}),
     },
     meta,
   )
@@ -1069,6 +1190,8 @@ export function normalizeField(field: ValueField, input: unknown): Value {
         : field.value
     case "keybind":
       return typeof input === "string" ? normalizeCombo(input) : field.value
+    case "text":
+      return typeof input === "string" ? normalizeText(field, input) : field.value
     case "gradient":
       return normalizeStops(input) ?? field.value
     case "curve":

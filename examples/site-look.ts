@@ -597,7 +597,6 @@ export function mountSiteLook(options: SiteLookOptions): SiteLook {
   mountPanel(store, options.slot, {
     ...options.panel,
     title: "This page",
-    crumbs: false,
     header: { buttons: ["undo", "redo", "reset", "random"] },
   })
   // Mounted, the panel holds its own place; its height is kept for the next first paint.

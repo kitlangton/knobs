@@ -4,6 +4,7 @@ import {
   crumbTrail,
   digitHints,
   digitOption,
+  digitRoute,
   escapeTo,
   escTarget,
   fitCrumbs,
@@ -69,6 +70,33 @@ describe("digits on a row with options", () => {
   })
 })
 
+describe("digits in a panel", () => {
+  const at = (o: Partial<{ options: boolean; keeps: boolean; presets: number }>) => ({
+    options: false,
+    keeps: false,
+    presets: 0,
+    ...o,
+  })
+
+  it("go to a focused row's options first, even past its last", () => {
+    expect(digitRoute("2", at({ options: true, presets: 9 }))).toBe("options")
+    expect(digitRoute("9", at({ options: true }))).toBe("options")
+  })
+
+  it("pick the strip's variants from anywhere else", () => {
+    expect(digitRoute("1", at({ presets: 9 }))).toBe("presets")
+    expect(digitRoute("9", at({ presets: 9 }))).toBe("presets")
+    expect(digitRoute("4", at({ presets: 3 }))).toBeUndefined()
+    expect(digitRoute("1", at({}))).toBeUndefined()
+  })
+
+  it("leave a number row's typing and other keys alone", () => {
+    expect(digitRoute("3", at({ keeps: true, presets: 9 }))).toBeUndefined()
+    expect(digitRoute("0", at({ presets: 9 }))).toBeUndefined()
+    expect(digitRoute("r", at({ presets: 9 }))).toBeUndefined()
+  })
+})
+
 describe("the scope line", () => {
   it("names each focused level in order, the deepest last", () => {
     expect(crumbTrail({ card: "Shape", row: "Cohesion" })).toEqual([
@@ -91,14 +119,20 @@ describe("the scope line", () => {
     expect(escTarget(crumbTrail({ card: "Shape" }), "")).toBe("panel")
     expect(escTarget([], "Swarm")).toBeUndefined()
   })
-  it("folds the first crumbs into … when the trail doesn't fit, keeping the deepest", () => {
-    expect(fitCrumbs([40, 50], 200, 10, 8)).toEqual({ from: 0, hint: false })
-    expect(fitCrumbs([40, 50, 30], 110, 10, 8)).toEqual({ from: 1, hint: false })
-    expect(fitCrumbs([40, 50, 30], 20, 10, 8)).toEqual({ from: 2, hint: false })
-    expect(fitCrumbs([], 100, 10, 8)).toEqual({ from: 0, hint: false })
+  it("drops the first crumbs when the trail doesn't fit, keeping the deepest", () => {
+    expect(fitCrumbs([40, 50], 200, 10)).toEqual({ from: 0, hint: false })
+    expect(fitCrumbs([40, 50, 30], 100, 10)).toEqual({ from: 1, hint: false })
+    expect(fitCrumbs([40, 50, 30], 30, 10)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([], 100, 10)).toEqual({ from: 0, hint: false })
+  })
+  it("shows nothing when even the deepest crumb doesn't fit, never running past its room", () => {
+    // Kit's go-upsell header: "Desktop go upsell" left ~30 px before the buttons.
+    expect(fitCrumbs([28, 45], 30, 10)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([28, 45], 30, 10, 20)).toEqual({ from: 2, hint: false })
+    expect(fitCrumbs([40], 0, 10)).toEqual({ from: 1, hint: false })
   })
   it("shows the Esc hint only when it fits too", () => {
-    expect(fitCrumbs([40], 100, 10, 8, 50)).toEqual({ from: 0, hint: true })
-    expect(fitCrumbs([40], 90, 10, 8, 50)).toEqual({ from: 0, hint: false })
+    expect(fitCrumbs([40], 100, 10, 50)).toEqual({ from: 0, hint: true })
+    expect(fitCrumbs([40], 90, 10, 50)).toEqual({ from: 0, hint: false })
   })
 })

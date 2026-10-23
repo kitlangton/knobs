@@ -4,6 +4,7 @@ import {
   isReadout,
   same,
   toolbarShortcut,
+  variantsOf,
   type ActionField,
   type Choice,
   type Field,
@@ -50,16 +51,19 @@ import {
   keybindRow,
   rangeRow,
   seedRow,
+  textRow,
   toolbarRow,
   vecRow,
   type ToolbarRow,
 } from "./inspector.js"
+import { descriptionIds } from "./description-ids.js"
 import { flash } from "./flash.js"
 import { spin, spinning } from "./spin.js"
 import { createSearch, markLabel, matchSpan, type SearchBar } from "./search.js"
 import { READOUT, type ReadoutPort } from "../core/readout.js"
 import { readoutRow, type ReadoutRow } from "./readout-row.js"
 import { toast } from "../ui/toast.js"
+import { tooltip } from "../ui/tooltip.js"
 import { createTabStrip, type TabSpec } from "./tabs.js"
 import { tabTransition } from "./tab-transition.js"
 import { createChoice, type ChoiceControl } from "./choice.js"
@@ -68,6 +72,7 @@ import {
   commandScope,
   crumbTrail,
   digitOption,
+  digitRoute,
   escapeTo,
   escTarget,
   scopeLabel,
@@ -77,6 +82,7 @@ import {
   type FocusLevel,
 } from "./scope.js"
 import { createLens, type LensTarget } from "./lens.js"
+import { watchActive } from "./active.js"
 import { createCrumbs } from "./crumbs.js"
 import { trackHas } from "./has.js"
 import { createHintController, type HintTarget } from "./hints.js"
@@ -108,15 +114,18 @@ import {
 import { foldMemory, type FoldMemory } from "./folds.js"
 import { positionPanel } from "./position.js"
 import { reveal } from "./reveal.js"
+import { dock, paneHeadOf } from "./dock.js"
 import { createPresence } from "./presence.js"
 import { toggleLayer } from "./toggle.js"
-import { createPresetStrip, type PresetStrip } from "./presets.js"
+import { createPresetStrip, presetsTouch, type PresetEntry, type PresetStrip } from "./presets.js"
 import { placeSegPill, primeSegPill } from "./seg.js"
 import { smearPill } from "./smear.js"
 import { tapTick, tick } from "./haptics.js"
 import { changed, cue, resolveSound, sound, SOUND_PREF, soundPanel } from "./sound.js"
 import { panSwitch } from "./thumb.js"
-import { createSlider, type Slider, stepValue } from "./slider.js"
+import { createSlider, decimals, type Slider, stepValue } from "./slider.js"
+import { baseSignature, panelFoldSummary } from "./summary.js"
+import { colorHex } from "../core/color.js"
 import { readSession, writeSession } from "./session.js"
 import {
   arrowOf,
@@ -142,6 +151,11 @@ export interface Panel {
   updateAccessories(): void
   /** Folds (`true`) or opens a foldable group's card; toggles without `folded`. */
   fold(group: string, folded?: boolean): void
+  /**
+   * Opens the folded group and sub-heading a field sits in, pinned groups too, and shows its tab,
+   * so its row shows (search still decides on its own). What's remembered stays as the user left it.
+   */
+  unfold(key: string): void
   /** Shows tab `id` (when given) and returns the tab shown, if the panel has tabs. */
   tab(id?: string): string | undefined
   /**
@@ -482,14 +496,18 @@ function buildPanel<S extends Schema>(
             ? (selectionKeys() ?? [])
             : undefined
     const index = group === undefined ? -1 : controls.activeGroupPreset(group)
-    const ref = controls.activePreset()
+    // A row's keys answer to their own scope's preset; anything wider to the strip's.
+    const where = (keys?.length ? controls.scopeOf(keys[0]!) : stripScope()) ?? null
+    const ref = where === null ? null : controls.activePreset(where)
     const name =
       index >= 0
         ? controls.groupPresets[group!]?.[index]?.name
         : ref?.kind === "preset"
-          ? presetLabel(ref.id)
+          ? presetLabel(ref.id, where!)
           : ref
-            ? presetStrip.getEntries().find((e) => e.id === `v:${ref.id}`)?.label
+            ? (where === "" ? controls.variants : controls.scopes[where!]?.variants)
+                ?.list()
+                .find((v) => v.id === ref.id)?.name
             : undefined
     if (!name) return null
     const off = keys
@@ -573,7 +591,7 @@ function buildPanel<S extends Schema>(
   // Resetting everything turns the header's ↺ once (spin.ts), from the button or ⇧R alike. It
   // stays while it turns, so another press adds a turn, and leaves once it has stopped.
   const resetAll = () => {
-    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && !header.hidden) turn(resetBtn)
+    if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && headerShown()) turn(resetBtn)
     cue(root, "reset")
     controls.reset()
   }
@@ -662,10 +680,18 @@ function buildPanel<S extends Schema>(
   // Without the ? button, the title's tooltip keeps the shortcuts discoverable.
   if (helpButton?.hidden)
     titleEl.title = `${titleEl.textContent ? `${titleEl.textContent}\n` : ""}Press ${show("help")} for keyboard shortcuts`
-  const presetLabel = (id: string) =>
+  const presetLabel = (id: string, scope = "") =>
     options.presetLabels?.[id] ??
-    (id === "default" ? options.defaultLabel : undefined) ??
-    controls.presetLabel(id)
+    (id === "default"
+      ? typeof options.defaultLabel === "object"
+        ? options.defaultLabel[scope]
+        : options.defaultLabel
+      : undefined) ??
+    controls.presetLabel(id, scope)
+  const hintReach =
+    (typeof options.hints === "object" ? options.hints.reach : options.hints) ?? "page"
+  /** The strips' digits stay on their chips (`hints: { digits: "always" }`). */
+  const stripDigitsShown = typeof options.hints === "object" && options.hints.digits === "always"
   const presetStrip = createPresetStrip(
     doc,
     controls,
@@ -673,6 +699,8 @@ function buildPanel<S extends Schema>(
     run,
     () => wakeGpu(),
     presetLabel,
+    (entries) => presetsTouchTab(entries),
+    () => stripScope(),
   )
   // Tabs: a strip under the header once any field names one (or `tabs` lists some). A panel
   // remembers the one it showed, for the next mount and (with `session`) a reload.
@@ -715,12 +743,67 @@ function buildPanel<S extends Schema>(
     header.append(titleEl, presetStrip.element, tools)
   } else header.append(titleEl, headActions)
   if (options.header === false && !page) header.hidden = true
+  // Without a title the header row holds only buttons: in a split's pane they join the pane's
+  // header (see dock.ts); elsewhere the row is there only while a button shows (`syncBand`).
+  const untitled = !page && !header.hidden && !titleEl.textContent
+  const paneHead = untitled && inline ? paneHeadOf(host) : undefined
+  const undock = paneHead ? dock(headActions, paneHead) : undefined
+  if (undock) header.hidden = true
+  const headerShown = () => Boolean(undock) || !header.hidden
+  const syncBand = (animate: boolean) => {
+    if (!untitled || undock) return
+    const any = headerButtons.some((b) => !b.button.hidden && b.button.dataset.shown !== "false")
+    if (!animate) header.hidden = !any
+    else if ((!header.hidden && header.dataset.leaving !== "true") !== any)
+      reveal(header, any, () => wakeGpu())
+  }
+  // A page's strip sits in its header bar, where it stays chips.
+  presetStrip.display(page ? "chips" : (options.presetDisplay ?? "auto"))
+  presetStrip.digits(stripDigitsShown)
+  /**
+   * In a panel, a group with presets of its own (`scopedPresets`) shows them at the top of its
+   * card while the strip above shows another scope's: the panel's, or its tab's.
+   */
+  const groupStrips = new Map<string, PresetStrip>()
+  const tabNamed = (id: string) =>
+    (options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
+    Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id)
+  const groupStripFor = (group: string): PresetStrip | undefined => {
+    if (page || !Object.hasOwn(controls.scopes, group) || tabNamed(group)) return undefined
+    let strip = groupStrips.get(group)
+    if (!strip) {
+      strip = createPresetStrip(
+        doc,
+        controls,
+        showVariants,
+        run,
+        () => wakeGpu(),
+        presetLabel,
+        undefined,
+        () => (stripScope() === group ? null : group),
+      )
+      strip.element.setAttribute("aria-label", `${groupTitle(group)} presets`)
+      strip.display(options.presetDisplay ?? "auto")
+      strip.digits(stripDigitsShown)
+      groupStrips.set(group, strip)
+    }
+    return strip
+  }
+  const updateStrips = () => {
+    presetStrip.update()
+    for (const strip of groupStrips.values()) strip.update()
+  }
   const allActions: readonly ControlAction<Values<S>>[] = [
     ...(controls.actions ?? []),
     ...((options.actions as readonly ControlAction<Values<S>>[]) ?? []),
   ]
   const body = el("div")
   const tabMotion = tabTransition(body, root, () => wakeGpu())
+  // Pinned groups sit above the tab strip, on every tab, and a tab change never moves them. The
+  // preset strip leads the body: it belongs to the tabs, and crosses a tab change with the rows.
+  const pinnedBody = el("div")
+  pinnedBody.className = "knobs-pinned"
+  if (!page) body.append(presetStrip.element)
   // Rows share one inset-grouped card per group (and per run of ungrouped rows): a block. A
   // descriptor swap (`RemoteControls.update`) keeps blocks and rows whose keys persist.
   interface Block {
@@ -845,12 +928,12 @@ function buildPanel<S extends Schema>(
   /** A section's heading: its label, else its id. */
   const sectionTitle = (section: string) =>
     options.sectionLabels?.[section] ?? controls.sectionLabel(section) ?? section
-  /** The muted line under a page card's title, if it has one. */
+  /** The muted line under a card's title, if it has one. */
   const groupDescription = (group: string) =>
     options.groupDescriptions?.[group] ?? controls.groupDescription(group)
   const sectionDescription = (section: string) =>
     options.sectionDescriptions?.[section] ?? controls.sectionDescription(section)
-  /** Each page card's description line (hidden while it has none). */
+  /** Each card's description line (hidden while it has none). */
   const groupDescs = new Map<string, HTMLElement>()
   /** Each foldable page card's summary, shown in its header while it's folded. */
   const groupSummaries = new Map<string, HTMLElement>()
@@ -941,22 +1024,28 @@ function buildPanel<S extends Schema>(
     // A page's tile folds to its header; the cards below in its column follow.
     if (page) foldTile(card, next && !filterEl.value.trim(), animate)
     else applyVisibility(animate ? "reveal" : "instant")
-    if (page) {
-      const tile = card.parentElement!
-      tile.toggleAttribute("data-folded", next)
-      // The header's controls and its summary trade places with a fade (see styles).
+    // The summary fades in (on a page, trading places with the header's controls; see styles).
+    const marked = page ? card.parentElement! : head
+    if (marked) {
+      marked.toggleAttribute("data-folded", next)
       if (animate) {
-        tile.setAttribute("data-fold-motion", "")
-        clearTimeout(foldMotions.get(tile))
+        marked.setAttribute("data-fold-motion", "")
+        clearTimeout(foldMotions.get(marked))
         foldMotions.set(
-          tile,
-          setTimeout(() => tile.removeAttribute("data-fold-motion"), 400),
+          marked,
+          setTimeout(() => marked.removeAttribute("data-fold-motion"), 400),
         )
       }
+    }
+    if (page) {
       if (remember) foldsKept?.set("groups", group, next)
-      refreshFolds()
-    } else if (sessionKept)
+    } else if (foldsOwn) {
+      if (remember) panelFolds?.set("groups", group, next)
+    } else if (sessionKept && remember) {
       writeSession(controls.id, { groups: { ...readSession(controls.id).groups, [group]: next } })
+      panelFolds?.set("groups", group, next)
+    }
+    refreshFolds()
     positioned?.constrain()
     wakeGpu()
   }
@@ -1003,11 +1092,8 @@ function buildPanel<S extends Schema>(
     gRandom.dataset.hint = `${title} random`
     gRandom.querySelector(".knobs-icon")?.replaceWith(gDie.node)
     gRandom.onclick = (event) => run(() => rerollGroup(groupName, event.altKey))
-    // A group of readouts alone has nothing to roll.
-    const rollable = (Object.values(controls.schema) as Field[]).some(
-      (f) => f.group === groupName && hasValue(f),
-    )
-    if ((!bound("random") && !bound("mutate")) || !rollable) gRandom.hidden = true
+    // A group Random never changes (readouts, actions, switches) has no die (see `update`).
+    if (!bound("random") && !bound("mutate")) gRandom.hidden = true
     groupDice.set(groupName, { button: gRandom, die: gDie })
     // On a page, the group's presets sit in its header: their names as segments while they fit
     // beside the title, else a compact menu (or numbered chips, whose hovered name shows where
@@ -1110,7 +1196,7 @@ function buildPanel<S extends Schema>(
     // A panel's group folds when it says how it starts (`folded`, `groupFolded`).
     const foldAt = foldDefault(groupName)
     let caret: SVGSVGElement | undefined
-    // On a page, a folded card's header trades its controls for a summary of the card.
+    // A folded card's header shows a summary of the card.
     let ctl: HTMLElement | undefined
     let summary: HTMLElement | undefined
     if (page) {
@@ -1124,12 +1210,11 @@ function buildPanel<S extends Schema>(
       describeGroup(groupName)
     }
     if (foldAt !== undefined) {
-      if (page) {
-        summary = el("span")
-        summary.className = "knobs-group-summary"
-        gRight.append(summary)
-        groupSummaries.set(groupName, summary)
-      }
+      // On a page it trades places with the controls; in a panel it sits between them and the title.
+      summary = el("span")
+      summary.className = "knobs-group-summary"
+      if (page) gRight.append(summary)
+      groupSummaries.set(groupName, summary)
       caret = caretSvg()
       gRight.append(caret)
       gHead.dataset.foldable = ""
@@ -1137,9 +1222,14 @@ function buildPanel<S extends Schema>(
       gHead.setAttribute("role", "button")
       gHead.setAttribute("aria-label", title)
       const folded =
-        (page ? foldsKept?.get("groups", groupName) : session.groups?.[groupName]) ?? foldAt
+        (page
+          ? foldsKept?.get("groups", groupName)
+          : foldsOwn
+            ? panelFolds?.get("groups", groupName)
+            : (session.groups?.[groupName] ?? panelFolds?.get("groups", groupName))) ?? foldAt
       folds.set(groupName, folded)
       gHead.setAttribute("aria-expanded", String(!folded))
+      if (!page) gHead.toggleAttribute("data-folded", folded)
       // Anywhere on the header but its buttons, once (a double click's second click is ignored).
       gHead.addEventListener("click", (event) => {
         if (event.detail > 1 || (event.target as Element).closest("button")) return
@@ -1151,7 +1241,14 @@ function buildPanel<S extends Schema>(
       gTitle.className = "knobs-group-title"
       gTitle.append(gLabel, gPeek)
       gHead.append(gTitle, gRight)
-    } else gHead.append(gLabel, gRight)
+    } else {
+      // In a panel, the group's description (hidden without one) wraps onto a line of its own.
+      const desc = el("span")
+      desc.className = "knobs-group-desc"
+      groupDescs.set(groupName, desc)
+      describeGroup(groupName)
+      gHead.append(gLabel, desc, ...(summary ? [summary] : []), gRight)
+    }
     gpuGroups.push({
       element: gHead,
       labelEl: gLabel,
@@ -1223,18 +1320,30 @@ function buildPanel<S extends Schema>(
   const remember = options.session ?? controls.storage !== null
   const sessionKept = remember
   const session = remember ? readSession(controls.id) : {}
+  /** The store's own storage, unless it persists nothing. */
+  const storePort = controls.persist === "none" ? null : controls.storage
   /**
    * A page's section and group folds: in `foldStorage` when given (folds only, whatever the store
-   * keeps), else in the store's storage unless it persists nothing.
+   * keeps), else in the store's storage.
    */
-  const foldPort =
-    page?.foldStorage !== undefined
-      ? page.foldStorage
-      : controls.persist === "none"
-        ? null
-        : controls.storage
+  const foldPort = page?.foldStorage !== undefined ? page.foldStorage : storePort
   const foldsKept: FoldMemory | null =
     page && foldPort ? foldMemory(controls.id, () => foldPort) : null
+  /**
+   * A panel's own `foldStorage` (folds only, whatever `session` says); `null` keeps them to the tab.
+   */
+  const foldsOwn = !page && options.foldStorage != null
+  /**
+   * A panel's group and sub-heading folds outlive the tab: in its `foldStorage` when given, else in
+   * the store's storage, unless the host keeps them to itself (`session: false`) or the store
+   * persists nothing.
+   */
+  const panelPort = foldsOwn
+    ? options.foldStorage!
+    : !page && remember && options.foldStorage === undefined
+      ? storePort
+      : null
+  const panelFolds: FoldMemory | null = panelPort ? foldMemory(controls.id, () => panelPort) : null
 
   // Every slider's track (knob rows and the parts of compound rows), for arrows and typed digits.
   const tracks = new Map<HTMLElement, SubTrack>()
@@ -1311,6 +1420,9 @@ function buildPanel<S extends Schema>(
     const specs: RowSpec[] = []
     const placed = new Set<string>()
     for (const [key, field] of entries) {
+      // A variants choice is switched from the preset strip; it has no row of its own. One the
+      // presets leave alone (pinned, `inPresets: false`) is an ordinary choice (see `variantsOf`).
+      if (field.kind === "choice" && field.variants && controls.inPresets(key)) continue
       const pair = field.kind === "knob" && field.spring ? halves.get(field.spring.id) : undefined
       if (pair?.duration && pair.bounce && field.kind === "knob" && field.spring) {
         if (placed.has(field.spring.id)) continue
@@ -1328,6 +1440,7 @@ function buildPanel<S extends Schema>(
             ...(duration.group !== undefined ? { group: duration.group } : {}),
             ...(duration.section !== undefined ? { section: duration.section } : {}),
             ...(duration.shortcut !== undefined ? { shortcut: duration.shortcut } : {}),
+            ...(duration.description !== undefined ? { description: duration.description } : {}),
           },
           parts: { duration, bounce },
           group: duration.group,
@@ -1343,8 +1456,13 @@ function buildPanel<S extends Schema>(
         section: field.section,
       })
     }
-    return gatherSubsections(specs)
+    const planned = gatherSubsections(specs)
+    if (page || !planned.some(pinnedRow)) return planned
+    return [...planned.filter(pinnedRow), ...planned.filter((spec) => !pinnedRow(spec))]
   }
+  /** A row of a pinned group (see `ControlsOptions.pinned`); a page pins nothing. */
+  const pinnedRow = (r: { readonly id: string; readonly keys: readonly string[] }) =>
+    !page && controls.isPinned(r.keys[0] ?? r.id)
   /**
    * Within each run of a group's rows, rows without a sub-heading come first, then each
    * sub-heading's rows together (in the order the sub-headings first appear), so a heading never
@@ -1704,7 +1822,9 @@ function buildPanel<S extends Schema>(
                           ? angleRow(live as typeof live & { field: typeof field })
                           : field.kind === "seed"
                             ? seedRow(live as typeof live & { field: typeof field })
-                            : keybindRow(live as typeof live & { field: typeof field })
+                            : field.kind === "text"
+                              ? textRow(live as typeof live & { field: typeof field })
+                              : keybindRow(live as typeof live & { field: typeof field })
       if (field.shortcut) editor.input.setAttribute("aria-keyshortcuts", field.shortcut)
       editor.labelEl.ondblclick = resetRow
       for (const t of editor.tracks) tracks.set(t.slider.track, t)
@@ -1858,6 +1978,41 @@ function buildPanel<S extends Schema>(
     if (node ? slot.childNodes.length === 1 && slot.firstChild === node : !slot.firstChild) return
     slot.replaceChildren(...(node ? [node] : []))
   }
+  /** Rows' descriptions, for screen readers (`aria-describedby`); never shown. */
+  const descriptions = el("div")
+  descriptions.hidden = true
+  root.append(descriptions)
+  const described = new Map<Row, { text: string; node: HTMLElement; untip: () => void }>()
+  const descriptionId = descriptionIds(controls.id)
+  /**
+   * A field's `description`: a tooltip over its row (after the tooltips' pause, or at once on
+   * keyboard focus) and its controls' accessible description.
+   */
+  function describe(row: Row) {
+    const text = row.field.description?.trim() ?? ""
+    const had = described.get(row)
+    if ((had?.text ?? "") === text) return
+    const inputs = row.choice ? [row.choice.seg, row.choice.menu] : [row.input]
+    if (had) {
+      had.untip()
+      had.node.remove()
+      described.delete(row)
+      for (const input of inputs) input.removeAttribute("aria-describedby")
+    }
+    if (!text) return
+    const node = el("span", text)
+    node.id = descriptionId()
+    descriptions.append(node)
+    for (const input of inputs) input.setAttribute("aria-describedby", node.id)
+    described.set(row, { text, node, untip: tooltip(row.row, text) })
+  }
+  const undescribe = (row: Row) => {
+    const had = described.get(row)
+    if (!had) return
+    had.untip()
+    had.node.remove()
+    described.delete(row)
+  }
   /** A field's `disabled` or `readOnly`, static or from the values (for rows without keys). */
   const fieldFlag = (field: Field, name: "disabled" | "readOnly") => {
     const v = field[name]
@@ -1886,6 +2041,9 @@ function buildPanel<S extends Schema>(
       if (readOnly) input.setAttribute("aria-readonly", "true")
       else input.removeAttribute("aria-readonly")
     }
+    // A text field takes no typing either.
+    if (row.input.classList.contains("knobs-text"))
+      (row.input as HTMLInputElement).readOnly = disabled || readOnly
   }
 
   let rows: Row[] = []
@@ -1913,6 +2071,7 @@ function buildPanel<S extends Schema>(
     wakeGpu()
   }
   const dropGpu = (row: Row) => {
+    undescribe(row)
     row.dispose?.()
     row.slider?.dispose()
     row.editor?.dispose()
@@ -1971,11 +2130,13 @@ function buildPanel<S extends Schema>(
       if (existing && existing.shape === shapeOf(spec)) {
         kept.delete(spec.id)
         existing.retune(spec)
+        describe(existing)
         next.push(existing)
         continue
       }
       const row = buildRow(spec)
       decorate(row)
+      describe(row)
       gpuRows.push(...row.gpu)
       entering.add(row)
       next.push(row)
@@ -2026,15 +2187,18 @@ function buildPanel<S extends Schema>(
       else layout?.pack(true)
     } else {
       // Runs of rows sharing a group make blocks; a run reuses its group's block if there is one.
-      const runs: { group: string | undefined; rows: Row[] }[] = []
+      const runs: { group: string | undefined; pinned: boolean; rows: Row[] }[] = []
       for (const r of next) {
         const last = runs.at(-1)
-        if (last && last.group === r.group) last.rows.push(r)
-        else runs.push({ group: r.group, rows: [r] })
+        const pinned = pinnedRow(r)
+        if (last && last.group === r.group && last.pinned === pinned) last.rows.push(r)
+        else runs.push({ group: r.group, pinned, rows: [r] })
       }
       const free = blocks.filter((b) => !b.leaving)
       const chosen: Block[] = []
+      const pinnedBlocks = new Set<Block>()
       const usedSubheads = new Set<string>()
+      const stripped = new Set<string>()
       for (const run of runs) {
         const at = free.findIndex((b) => b.group === run.group)
         const block = at >= 0 ? free.splice(at, 1)[0]! : newBlock(run.group)
@@ -2049,6 +2213,7 @@ function buildPanel<S extends Schema>(
           }
         }
         chosen.push(block)
+        if (run.pinned) pinnedBlocks.add(block)
         // Consecutive rows sharing a `subsection` sit under one flat sub-heading in the card.
         const nodes: HTMLElement[] = []
         let under: string | undefined
@@ -2065,10 +2230,14 @@ function buildPanel<S extends Schema>(
           under = name
           nodes.push(r.row)
         }
-        arrange(block.card, nodes)
+        const strip =
+          run.group !== undefined && !stripped.has(run.group) ? groupStripFor(run.group) : undefined
+        if (strip) stripped.add(run.group!)
+        arrange(block.card, strip ? [strip.element, ...nodes] : nodes)
         if (animate && at >= 0)
           for (const r of run.rows) if (entering.has(r)) motion.push({ node: r.row, show: true })
       }
+      for (const group of groupDescs.keys()) describeGroup(group)
       for (const [id, sh] of subheads)
         if (!usedSubheads.has(id)) {
           sh.el.remove()
@@ -2076,10 +2245,9 @@ function buildPanel<S extends Schema>(
           if (gi >= 0) gpuRows.splice(gi, 1)
           subheads.delete(id)
         }
-      arrange(
-        body,
-        chosen.flatMap((b) => (b.head ? [b.head, b.card] : [b.card])),
-      )
+      const nodesOf = (list: Block[]) => list.flatMap((b) => (b.head ? [b.head, b.card] : [b.card]))
+      arrange(pinnedBody, nodesOf(chosen.filter((b) => pinnedBlocks.has(b))))
+      arrange(body, [presetStrip.element, ...nodesOf(chosen.filter((b) => !pinnedBlocks.has(b)))])
       for (const block of free) {
         block.leaving = true
         const fold = () => {
@@ -2123,7 +2291,7 @@ function buildPanel<S extends Schema>(
       motion.forEach((m, i) => present(m.node, m.show, i * stagger, m.after))
     }
     applyVisibility(animate ? "reveal" : "instant")
-    if (page) refreshFolds()
+    refreshFolds()
     if (focused && root.contains(focused) && doc.activeElement !== focused && focused.isConnected)
       focused.focus({ preventScroll: true })
     // Focus on a row that left goes to the nearest row that's still here, not the page.
@@ -2168,8 +2336,16 @@ function buildPanel<S extends Schema>(
     label.className = "knobs-subhead-label"
     const caret = caretSvg()
     node.append(label, caret)
-    if (!subFolds.has(id))
-      subFolds.set(id, session.subsections?.[id] ?? options.subsectionFolded?.[name] ?? false)
+    if (!subFolds.has(id)) {
+      const given = options.subsectionFolded
+      const start = typeof given === "boolean" ? given : (given?.[name] ?? false)
+      subFolds.set(
+        id,
+        (foldsOwn
+          ? panelFolds?.get("subsections", id)
+          : (session.subsections?.[id] ?? panelFolds?.get("subsections", id))) ?? start,
+      )
+    }
     node.setAttribute("aria-expanded", String(!subFolds.get(id)))
     node.addEventListener("click", (event) => {
       if (event.detail < 2) foldSub(id)
@@ -2186,15 +2362,26 @@ function buildPanel<S extends Schema>(
         labelEl: label,
         caret,
         wave: { at: 0 },
-        isModified: () => false,
+        isModified: () => subModified(id),
       },
     }
     subheads.set(id, sh)
     gpuRows.push(sh.gpu)
     return sh
   }
+  /** Whether anything under a sub-heading is marked modified. */
+  function subModified(id: string) {
+    return anyMarked((r) => r.subhead === id)
+  }
+  /**
+   * Whether a row among these carries its modified mark (see `markRow`): it differs from the
+   * active preset or its scope's, else the defaults.
+   */
+  function anyMarked(inside: (r: Row) => boolean) {
+    return rows.some((r) => inside(r) && r.row.classList.contains("knobs-modified"))
+  }
   /** Folds or opens a sub-heading's rows (toggles without `next`). */
-  function foldSub(id: string, next = !subFolds.get(id)) {
+  function foldSub(id: string, next = !subFolds.get(id), keep = true) {
     const sh = subheads.get(id)
     if (!sh) return
     subFolds.set(id, next)
@@ -2202,10 +2389,14 @@ function buildPanel<S extends Schema>(
     if (next && rows.some((r) => r.subhead === id && r.row.contains(doc.activeElement)))
       sh.el.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     applyVisibility("reveal")
-    if (remember)
+    if (!keep) return
+    if (foldsOwn) panelFolds?.set("subsections", id, next)
+    else if (remember) {
       writeSession(controls.id, {
         subsections: { ...readSession(controls.id).subsections, [id]: next },
       })
+      panelFolds?.set("subsections", id, next)
+    }
   }
 
   // ——— Tabs ———
@@ -2215,8 +2406,11 @@ function buildPanel<S extends Schema>(
       if (f.group === group && f.tab !== undefined) return f.tab
     return undefined
   }
-  /** A row's tab: its field's, else its group's; none shows on every tab. */
-  const tabOf = (r: Row) => r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined)
+  /** A row's tab: its field's, else its group's; none (or pinned) shows on every tab. */
+  const tabOf = (r: Row) =>
+    pinnedRow(r)
+      ? undefined
+      : (r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined))
   /** `tabs` in order, then the tabs fields name that it doesn't list. */
   const tabList = (): TabSpec[] => {
     if (page) return []
@@ -2226,12 +2420,51 @@ function buildPanel<S extends Schema>(
         : { id: t.id, label: t.label ?? readableTitle(t.id) },
     )
     const seen = new Set(list.map((t) => t.id))
-    for (const f of Object.values(controls.schema as Record<string, Field>))
-      if (f.tab !== undefined && !seen.has(f.tab)) {
+    for (const [key, f] of Object.entries(controls.schema as Record<string, Field>))
+      if (f.tab !== undefined && !seen.has(f.tab) && !controls.isPinned(key)) {
         seen.add(f.tab)
         list.push({ id: f.tab, label: readableTitle(f.tab) })
       }
     return list
+  }
+  /**
+   * Whether a preset or saved variant moves anything on the tab showing (presets never hold
+   * pinned keys); with no tabs, always. A tab they leave alone shows no preset strip.
+   */
+  function presetsTouchTab(entries: readonly PresetEntry<any>[]) {
+    // A tab or group's own strip shows wherever it's chosen to (see `stripScope`).
+    if (page || activeTab === undefined || stripScope() !== "") return true
+    const keys = rows.flatMap((r) => {
+      const tab = tabOf(r)
+      return !pinnedRow(r) && (tab === undefined || tab === activeTab)
+        ? r.keys.filter((k) => controls.scopeOf(k) === "")
+        : []
+    })
+    // The variants choice has no row; a variant moves the tab it sits on (every tab without one).
+    const v = variantsOf(controls.schema, (key) => !controls.inPresets(key))
+    if (v) {
+      const tab = v.field.tab ?? (v.field.group !== undefined ? groupTab(v.field.group) : undefined)
+      if (tab === undefined || tab === activeTab) keys.push(v.key)
+    }
+    return presetsTouch(entries, keys, controls.locked)
+  }
+  /**
+   * Whose presets the strip shows (see `ControlsOptions.scopedPresets`): the tab's own, else a
+   * group's on it, else the panel's (`""`) while it has some; null for no strip. One per tab.
+   */
+  function stripScope(): string | null {
+    const named = Object.keys(controls.scopes)
+    const panelWide = named.length === 0 || Object.keys(controls.presets).length > 1
+    if (page) return panelWide ? "" : null
+    if (activeTab === undefined) return panelWide ? "" : (named[0] ?? null)
+    if (named.includes(activeTab)) return activeTab
+    const group = named.find((id) => rows.some((r) => r.group === id && tabOf(r) === activeTab))
+    return group ?? (panelWide ? "" : null)
+  }
+  /** The saved variants the strip shows (the panel's when it shows none). */
+  const stripVariants = () => {
+    const scope = stripScope()
+    return (scope ? controls.scopes[scope]?.variants : undefined) ?? controls.variants
   }
   function syncTabs() {
     const list = tabList()
@@ -2247,6 +2480,8 @@ function buildPanel<S extends Schema>(
     if (remember) writeSession(controls.id, { tab: id })
     tabStrip.select(id, animate)
     const focused = doc.activeElement as HTMLElement | null
+    // The strip takes the new tab's presets before it's shown or hidden with the rows.
+    updateStrips()
     applyVisibility(animate ? "tab" : "instant")
     // Focus on a row that left stays with the tabs.
     if (focused && root.contains(focused) && focused.closest("[hidden],[data-leaving]"))
@@ -2276,7 +2511,9 @@ function buildPanel<S extends Schema>(
         r.key,
         r.group,
         r.group && groupTitle(r.group),
+        r.group && groupDescription(r.group),
         r.field.subsection,
+        r.field.description,
       )
     )
       return false
@@ -2312,6 +2549,7 @@ function buildPanel<S extends Schema>(
       if (b.head) want.set(b.head, any)
       want.set(b.card, any && !(b.group !== undefined && folds.get(b.group) && !finding))
     }
+    want.set(presetStrip.element, presetStrip.shows())
     return want
   }
   /** Folds `node` open or shut with the reveal motion (the GPU follows its presence). */
@@ -2343,6 +2581,8 @@ function buildPanel<S extends Schema>(
       return
     }
     if (tabMotion.running) tabMotion.finish()
+    const strip = presetStrip.element
+    if (strip.hidden === want.get(strip)) strip.hidden = !want.get(strip)
     const showing = (n: HTMLElement) => !n.hidden && n.dataset.leaving !== "true"
     const set = (node: HTMLElement, show: boolean, animate: boolean) => {
       if (showing(node) === show) return
@@ -2411,6 +2651,11 @@ function buildPanel<S extends Schema>(
   const keysOf = (indices: readonly number[]) =>
     indices.flatMap((i) => rows[i]?.keys ?? []) as (keyof S & string)[]
   const groupKeys = (group: string) => rows.filter((r) => r.group === group).flatMap((r) => r.keys)
+  /** Whether Random could ever change `key`: a lock comes and goes, `random: false` stays. */
+  const mayRoll = (key: string) => {
+    const field = (controls.schema as Record<string, Field>)[key]
+    return Boolean(field && hasValue(field) && field.random !== false)
+  }
   const rerollGroup = (group: string, nudge: boolean) => {
     const roller = groupDice.get(group)?.die
     if (!roller) return
@@ -2580,7 +2825,7 @@ function buildPanel<S extends Schema>(
   text.setAttribute("aria-label", "Import or copy text")
 
   const apply = button("Apply import", () => {
-    controls.variants.import(text.value)
+    stripVariants().import(text.value)
     say("Presets imported.")
     reveal(text, false)
     reveal(apply, false)
@@ -2592,19 +2837,27 @@ function buildPanel<S extends Schema>(
 
   /** Copies `value`; the header's Copy turns into a check (`inPlace`, while it shows) or says so. */
   const copy = async (value: string, inPlace = true) => {
+    const done = () => {
+      if (inPlace && !copyButton.hidden && headerShown()) copied()
+      else say("Copied.")
+    }
     try {
       await doc.defaultView!.navigator.clipboard.writeText(value)
-      if (inPlace && !copyButton.hidden && !header.hidden) copied()
-      else say("Copied.")
+      done()
     } catch {
-      text.value = value
-      if (page) togglePopover(true)
-      reveal(text, true)
-      apply.hidden = true
-      positioned?.constrain()
-      text.focus()
-      text.select()
-      say("Clipboard unavailable. Copy the selected text.", 6000)
+      // Without the async clipboard (a page served over plain http, a refused permission), the
+      // older copy command usually still works from the press.
+      if (copyByCommand(doc, value)) done()
+      else {
+        text.value = value
+        if (page) togglePopover(true)
+        reveal(text, true)
+        apply.hidden = true
+        positioned?.constrain()
+        text.focus()
+        text.select()
+        say("Clipboard unavailable. Copy the selected text.", 6000)
+      }
     }
     wakeGpu()
   }
@@ -2628,7 +2881,7 @@ function buildPanel<S extends Schema>(
     const transfer = el("div")
     transfer.className = "knobs-transfer"
     transfer.append(
-      button("Export presets", () => void copy(controls.variants.export(), false)),
+      button("Export presets", () => void copy(stripVariants().export(), false)),
       button("Import presets", () => {
         reveal(text, true)
         reveal(apply, true)
@@ -2669,12 +2922,17 @@ function buildPanel<S extends Schema>(
   } else {
     root.append(header)
     if (showFooter) root.append(popover)
-    root.append(tabStrip.element)
+    root.append(pinnedBody, tabStrip.element)
     if (search) root.append(search.element)
-    root.append(presetStrip.element, body)
+    root.append(body)
     if (panelActions.length > 0) root.append(customActions)
     root.append(text, apply, status, live)
   }
+  // With no rows, the host's line (`empty`), in the panel's quiet style.
+  const emptyEl = el("p", options.empty)
+  emptyEl.className = "knobs-empty"
+  emptyEl.hidden = true
+  if (options.empty && !page) body.after(emptyEl)
 
   // Changes that move several rows at once (presets, reset, random, undo) ripple down the panel:
   // each changed row starts --k-cascade ms after the one above. A row already in motion retargets
@@ -2721,17 +2979,26 @@ function buildPanel<S extends Schema>(
       // A group's reset is a coarse reset, so it follows `resetAll`.
       if (bloom(gReset, (marks && groupMod && bound("resetAll")) || spinning(gReset)))
         changed = true
+      // The header's dot: something inside is marked, which a folded card hides.
+      const head = gReset.closest(".knobs-group-head")
+      const mod = anyMarked((r) => r.group === groupName)
+      if (head && head.hasAttribute("data-modified") !== mod) {
+        head.toggleAttribute("data-modified", mod)
+        changed = true
+      }
+    }
+    for (const sh of subheads.values()) {
+      const mod = subModified(sh.id)
+      if (sh.el.hasAttribute("data-modified") !== mod) {
+        sh.el.toggleAttribute("data-modified", mod)
+        changed = true
+      }
     }
     if (bloom(resetBtn, controls.canReset() || spinning(resetBtn))) changed = true
     if (changed) wakeGpu()
   }
   /** The active presets as last shown, so a change of base alone still updates the resets. */
   let shownBase = ""
-  const baseSignature = () =>
-    JSON.stringify([
-      controls.activePreset(),
-      Object.keys(controls.groupPresets).map((g) => controls.activeGroupPreset(g)),
-    ])
   function update() {
     if (!controls.enabled) {
       close?.()
@@ -2743,6 +3010,7 @@ function buildPanel<S extends Schema>(
       shape = controls.schema
       layoutRows(initialized && !landing)
     }
+    if (emptyEl.isConnected && emptyEl.hidden !== rows.length > 0) emptyEl.hidden = rows.length > 0
     const values = controls.get() as Record<string, unknown>
     const before = shown as Record<string, unknown>
     // A row with nothing shown yet (it just arrived) places its value without motion.
@@ -2753,9 +3021,12 @@ function buildPanel<S extends Schema>(
     if (initialized && !landing) for (const r of rows) if (!fresh(r) && changed(r)) changedCount++
     const stagger = initialized ? cascade(changedCount) : 0
     const moving = initialized ? rows.filter(changed) : rows
+    // A new base (a preset chosen or saved that the values already match) changes what counts as
+    // changed without moving a row.
+    const rebasing = baseSignature(controls) !== shownBase
     // The preset strip first: its chip's weight moves the chips, so it reads after its own writes
     // and before the rows dirty everything else.
-    presetStrip.update()
+    updateStrips()
     // Reads before writes: every row about to move reads its tokens, and every segmented pill its
     // options, before any row writes (see measure.ts).
     batchMeasures(() => {
@@ -2767,7 +3038,7 @@ function buildPanel<S extends Schema>(
       for (const chips of groupChips.values()) primeSegPill(chips.seg, chips.buttons)
       showValues(values, moving, stagger, landing)
     })
-    if (moving.length || !initialized) refreshFolds()
+    if (moving.length || !initialized || rebasing) refreshFolds()
     shown = values as Values<S>
     initialized = true
 
@@ -2797,7 +3068,7 @@ function buildPanel<S extends Schema>(
     const fresh = (r: Row) => r.row.dataset.shown === undefined
     const now = performance.now()
     let turn = 0
-    const based = baseSignature()
+    const based = baseSignature(controls)
     const rebased = based !== shownBase
     shownBase = based
     for (const row of moving) {
@@ -2857,16 +3128,26 @@ function buildPanel<S extends Schema>(
       row.row.classList.toggle("knobs-locked", locked)
     }
     if (randomButton.disabled !== (unlocked === 0)) randomButton.disabled = unlocked === 0
+    // A die shows only where Random could change something: one that never could (only switches,
+    // actions or `random: false`) would be a button that does nothing. Locks only disable it.
+    const rolls = (bound("random") || bound("mutate")) && shows("random")
+    const headerHidden = !rolls || !rows.some((r) => r.keys.some(mayRoll))
+    if (randomButton.hidden !== headerHidden) randomButton.hidden = headerHidden
     for (const [group, { button }] of groupDice) {
       const off =
         !options.groupRandom &&
         !groupKeys(group).some((k) => controls.canRoll(k as keyof S & string))
       if (button.disabled !== off) button.disabled = off
+      const hidden =
+        (!bound("random") && !bound("mutate")) ||
+        (!options.groupRandom && !groupKeys(group).some(mayRoll))
+      if (button.hidden !== hidden) button.hidden = hidden
     }
     if (root.hasAttribute("data-comparing") !== controls.comparing)
       root.toggleAttribute("data-comparing", controls.comparing)
     const undoMoved = bloom(undoButton, controls.canUndo)
     if (bloom(redoButton, controls.canRedo) || undoMoved) wakeGpu()
+    syncBand(initialized)
     if (controls.error && status.textContent !== controls.error) say(controls.error, 8000)
     for (const [group, c] of groupChips) c.show(String(controls.matchingGroupPreset(group)))
     if (search) {
@@ -2935,14 +3216,15 @@ function buildPanel<S extends Schema>(
             () => s.label!.focus(),
             s.label.firstElementChild as HTMLElement,
           )
-    presetStrip.getEntries().forEach((entry, i) => {
-      const chip = presetStrip.getButtons()[i]
-      if (chip)
-        add(chip, entry.label, () => {
-          presetStrip.selectById(entry.id)
-          presetStrip.element.focus({ preventScroll: true })
-        })
-    })
+    for (const strip of [presetStrip, ...groupStrips.values()])
+      strip.getEntries().forEach((entry, i) => {
+        const chip = strip.getButtons()[i]
+        if (chip)
+          add(chip, entry.label, () => {
+            strip.selectById(entry.id)
+            strip.element.focus({ preventScroll: true })
+          })
+      })
     // A page's group dice, resets and numbered presets have keys (g, ⌫, 1–9) instead.
     for (const b of root.querySelectorAll<HTMLButtonElement>(
       page
@@ -2980,7 +3262,7 @@ function buildPanel<S extends Schema>(
   // Page-wide hint mode: this panel's targets join every other panel's and piece's on the page,
   // and draws its own badges (both renderers) with the codes the page chose.
   const unregisterHints =
-    (options.hints ?? "page") === "page" && bound("hint")
+    hintReach === "page" && bound("hint")
       ? pageHints(doc).register(
           root,
           () =>
@@ -3022,38 +3304,54 @@ function buildPanel<S extends Schema>(
     [...customActions.querySelectorAll("button")].filter((b) => visible(b) && !b.disabled)
   let lastActionButton: HTMLButtonElement | undefined
   const stops = () => {
-    const list: { contains(node: Node): boolean; focus(options?: FocusOptions): void }[] = []
+    type Stop = { contains(node: Node): boolean; focus(options?: FocusOptions): void }
+    const list: Stop[] = []
+    const strips: { at: HTMLElement; stops: Stop[] }[] = []
     if (visible(tabStrip.element))
-      list.push({
-        contains: (n) => tabStrip.element.contains(n),
-        focus: (o) => tabStrip.focus(o),
+      strips.push({
+        at: tabStrip.element,
+        stops: [{ contains: (n) => tabStrip.element.contains(n), focus: (o) => tabStrip.focus(o) }],
       })
     if (visible(presetStrip.element))
-      list.push({
-        contains: (n) => presetStrip.element.contains(n),
-        focus: (o) => presetStrip.element.focus(o),
+      strips.push({
+        at: presetStrip.element,
+        stops: [
+          {
+            contains: (n) => presetStrip.element.contains(n),
+            focus: (o) => presetStrip.element.focus(o),
+          },
+        ],
       })
     if (page) {
+      for (const strip of strips) list.push(...strip.stops)
       for (const stop of pageStops())
         list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
       return list
     }
     // Rows keep their editor's own stop order; a foldable group's header is a stop of its own,
-    // placed among them by document order, and rows in a folded card aren't stops.
-    const runs: { at: HTMLElement; stops: HTMLElement[] }[] = rows.map((r) => ({
+    // placed among them by document order, and rows in a folded card aren't stops. The strips
+    // take their place by document order too, so pinned rows come before the tabs.
+    const stopOf = (stop: HTMLElement): Stop => ({
+      contains: (n) => stop.contains(n),
+      focus: (o) => stop.focus(o),
+    })
+    const shown = (stops: HTMLElement[]) =>
+      stops.filter((s) => !s.closest('[hidden],[data-presence="out"]')).map(stopOf)
+    const runs: { at: HTMLElement; stops: Stop[] }[] = rows.map((r) => ({
       at: r.row,
-      stops: r.editor?.stops() ?? [r.input],
+      stops: shown(r.editor?.stops() ?? [r.input]),
     }))
     for (const b of blocks)
       if (b.head?.hasAttribute("data-foldable") && !b.leaving)
-        runs.push({ at: b.head, stops: [b.head] })
-    for (const sh of subheads.values()) runs.push({ at: sh.el, stops: [sh.el] })
+        runs.push({ at: b.head, stops: shown([b.head]) })
+    for (const sh of subheads.values()) runs.push({ at: sh.el, stops: shown([sh.el]) })
+    for (const gs of groupStrips.values())
+      if (visible(gs.element)) runs.push({ at: gs.element, stops: shown([gs.element]) })
+    runs.push(...strips)
     runs.sort((a, b) =>
       a.at.compareDocumentPosition(b.at) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
     )
-    for (const run of runs)
-      for (const stop of run.stops.filter((s) => !s.closest('[hidden],[data-presence="out"]')))
-        list.push({ contains: (n) => stop.contains(n), focus: (o) => stop.focus(o) })
+    for (const run of runs) list.push(...run.stops)
     const bar = actionBarButtons()
     if (bar.length)
       list.push({
@@ -3099,6 +3397,7 @@ function buildPanel<S extends Schema>(
             r.section,
             r.section && sectionTitle(r.section),
             r.section && sectionDescription(r.section),
+            r.field.description,
           )
         if (r.row.hidden === show) r.row.hidden = !show
       }
@@ -3158,19 +3457,53 @@ function buildPanel<S extends Schema>(
     keys: rows.filter((r) => r.section === section).flatMap((r) => r.keys),
   })
   const changedText = (n: number) => (n && marks ? `${n} changed` : "")
+  /** What a row's value reads as in a folded card's summary ("" where it has no short form). */
+  const valueText = (r: Row, values: Record<string, unknown>): string => {
+    const f = r.field
+    const v = r.value(values)
+    const num = (n: number) => String(Number(n.toFixed(2)))
+    switch (f.kind) {
+      case "choice":
+        return f.labels?.[v as string] ?? String(v)
+      case "toggle":
+        return v ? "On" : "Off"
+      case "knob":
+        return `${(v as number).toFixed(f.decimals ?? decimals(f.step))}${f.unit ? ` ${f.unit}` : ""}`
+      case "spring": {
+        const { duration, bounce } = v as SpringValue
+        return `${num(duration)} s${bounce ? `, bounce ${num(bounce)}` : ""}`
+      }
+      case "color":
+        return colorHex(v as string)
+      case "text":
+        return String(v)
+      default:
+        return ""
+    }
+  }
+  /** A folded group card's summary: `groupSummary`'s, else the page's or the panel's default. */
+  const groupSummary = (group: string): string | Node | null => {
+    const info = groupInfo(group)
+    if (options.groupSummary) return options.groupSummary(group, info)
+    if (page) return [info.preset, changedText(info.changed)].filter(Boolean).join(" · ") || null
+    const values = controls.get() as Record<string, unknown>
+    const own = rows.filter((r) => r.group === group && !r.leaving && r.keys.length)
+    return (
+      panelFoldSummary(
+        own.map((r) => ({
+          value: valueText(r, values),
+          changed: marks && r.keys.some((k) => controls.isModified(k as keyof S & string)),
+          choice: r.field.kind === "choice",
+        })),
+        info.preset,
+      ) || null
+    )
+  }
   /** Brings folded cards' and sections' summaries, and the jump strip's counts, up to date. */
   function refreshFolds() {
+    for (const [group, node] of groupSummaries)
+      if (folds.get(group)) putSummary(node, groupSummary(group))
     if (!layout || !page) return
-    for (const [group, node] of groupSummaries) {
-      if (!folds.get(group)) continue
-      const info = groupInfo(group)
-      putSummary(
-        node,
-        page.groupSummary
-          ? page.groupSummary(group, info)
-          : [info.preset, changedText(info.changed)].filter(Boolean).join(" · ") || null,
-      )
-    }
     for (const s of layout.sectionList()) {
       const node = s.label?.querySelector<HTMLElement>(":scope > .knobs-section-summary")
       if (!node || !s.folded) continue
@@ -3591,6 +3924,8 @@ function buildPanel<S extends Schema>(
       if (sub && r.row.contains(sub)) return { el: sub, level: "row" }
       return { el: r.row.closest<HTMLElement>(".knobs-card > *") ?? r.row, level: "row" }
     }
+    const strip = active.closest<HTMLElement>(".knobs-card > .knobs-presets")
+    if (strip) return { el: strip, level: "row" }
     const card = cardOf(active)
     return card ? { el: card, level: "card" } : null
   }
@@ -3609,8 +3944,9 @@ function buildPanel<S extends Schema>(
       editor: t.level === "editor" ? partName(t.el, active) : undefined,
     })
   }
+  // The scope line is opt-in (`crumbs: true`): by default the header is the title and its buttons.
   const crumbs =
-    options.crumbs === false || header.hidden || !titleEl.isConnected
+    options.crumbs !== true || header.hidden || !titleEl.isConnected
       ? undefined
       : createCrumbs({
           header,
@@ -3633,6 +3969,29 @@ function buildPanel<S extends Schema>(
     to.focus(quiet)
     queueScope()
   }
+  // A press on a row's own space (its label, the gap beside its control) selects that row, as
+  // the keys do, not the card the browser would focus as the nearest focusable thing. A control
+  // inside the row (a slider's track, a segment, a menu) takes the press itself, as ever.
+  root.addEventListener(
+    "mousedown",
+    (event) => {
+      if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey) return
+      const target = event.target instanceof Element ? event.target : null
+      const r = rows[rowAt(target)]
+      if (!target || !r || r.leaving || r.row.closest("[hidden]")) return
+      const own = target.closest<HTMLElement>(
+        "button,input,select,textarea,a[href],[tabindex],[contenteditable]",
+      )
+      if (own && r.row.contains(own)) return
+      event.preventDefault()
+      r.input.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
+      // It shows the row's lens, as a press on a heading shows its card's.
+      const t = lensTarget(doc.activeElement)
+      jumpedTo = t && t !== "out" ? t.el : null
+      queueScope()
+    },
+    true,
+  )
   let titleDown: [number, number] | undefined
   titleEl.addEventListener("pointerdown", (event) => {
     titleDown = [event.clientX, event.clientY]
@@ -3701,7 +4060,22 @@ function buildPanel<S extends Schema>(
       queueScope()
     })
   }
+  /**
+   * A press on the page outside the panel hands the keys back to the page, even where the page
+   * keeps focus from moving (a game's canvas that cancels its pointerdown): the panel stays open,
+   * and its keys (digits, R, S, arrows) stop applying until focus comes back.
+   */
+  const onPressOutside = (event: PointerEvent) => {
+    const target = event.target as Element | null
+    if (page || !target || root.contains(target)) return
+    if (target.closest?.(".knobs-root,.knobs-layers")) return
+    setTimeout(() => {
+      const active = doc.activeElement as HTMLElement | null
+      if (active && root.contains(active)) active.blur()
+    })
+  }
   doc.addEventListener("pointerdown", onPress, true)
+  doc.addEventListener("pointerdown", onPressOutside, true)
   doc.addEventListener("pointerup", onRelease, true)
   doc.addEventListener("pointercancel", onRelease, true)
   root.addEventListener(
@@ -3728,7 +4102,9 @@ function buildPanel<S extends Schema>(
     }
     queueLens()
     if (!popover.hidden) describeScope()
-    optionKeys.show("keyboard" in root.dataset ? optionsAt(active) : undefined)
+    optionKeys.show(
+      "keyboard" in root.dataset ? (optionsAt(active) ?? stripOptionsAt(active)) : undefined,
+    )
   }
   let scopeQueued = false
   const queueScope = () => {
@@ -3772,6 +4148,51 @@ function buildPanel<S extends Schema>(
     const r = rows[rowAt(node)]
     if (!r || r.row.closest("[data-disabled],[data-readonly]")) return undefined
     return optionsOf(r)
+  }
+  /** The group's own preset strip `node` is in, if any. */
+  const groupStripAt = (node: Node | null) =>
+    node ? [...groupStrips.values()].find((s) => s.element.contains(node)) : undefined
+  const groupStripOptions = new Map<PresetStrip, RowOptions>()
+  const optionsOfStrip = (strip: PresetStrip) => {
+    let o = groupStripOptions.get(strip)
+    if (!o) {
+      o = {
+        get count() {
+          return strip.getEntries().length
+        },
+        choose: (i) => strip.select(i),
+        shown: () => strip.getButtons(),
+        anchor: strip.element,
+      }
+      groupStripOptions.set(strip, o)
+    }
+    return o
+  }
+  /** Whether 1–9 can pick the preset strip's chips: it shows, with more than one. */
+  const stripDigits = () => visible(presetStrip.element) && presetStrip.getEntries().length > 1
+  const stripOptions: RowOptions = {
+    get count() {
+      return presetStrip.getEntries().length
+    },
+    choose: (i) => presetStrip.select(i),
+    shown: () => presetStrip.getButtons(),
+    anchor: presetStrip.element,
+  }
+  /**
+   * The strip's digits show on its chips while focus is on the strip or the panel itself (the
+   * digits pick them from most rows too, but showing them there would flicker row to row).
+   */
+  const stripOptionsAt = (node: Element | null) => {
+    // Digits that stay on the chips need no hints over them.
+    if (hintCtrl.isActive || !node || stripDigitsShown) return undefined
+    const own = groupStripAt(node)
+    if (own)
+      return visible(own.element) && own.getEntries().length > 1 && !own.nameField()
+        ? optionsOfStrip(own)
+        : undefined
+    if (!stripDigits()) return undefined
+    const at = presetStrip.element.contains(node) || focusLevel(node) === "panel"
+    return at && !presetStrip.nameField() ? stripOptions : undefined
   }
   /** 1–9 on a row with options pick the nth; the row takes the digits even past its last. */
   const pickOption = (event: KeyboardEvent) => {
@@ -4023,8 +4444,10 @@ function buildPanel<S extends Schema>(
     if (pressed("presets", event)) {
       // [ and ] cycle the presets while there are some to cycle; otherwise the tabs.
       const direction = key === keys.presets[0] ? -1 : 1
-      const presetsShown = visible(presetStrip.element) && presetStrip.getEntries().length > 1
-      if (presetsShown) presetStrip.cycle(direction)
+      // In a group's own strip, its presets.
+      const strip = groupStripAt(target) ?? presetStrip
+      const presetsShown = visible(strip.element) && strip.getEntries().length > 1
+      if (presetsShown) strip.cycle(direction)
       else if (!cycleTab(direction)) return
       event.preventDefault()
       event.stopPropagation()
@@ -4056,12 +4479,26 @@ function buildPanel<S extends Schema>(
       search.focus()
       return
     }
-    if (page && /^[1-9]$/.test(key)) {
+    // A group's own strip took the digits it has; the rest are its, not the panel strip's.
+    if (/^[1-9]$/.test(key) && groupStripAt(target)) return
+    if (/^[1-9]$/.test(key)) {
       // A page's digits pick the focused group's numbered preset (where it has them).
-      const group = focusedGroup(target)
-      if (group && groupChips.has(group)) {
+      const group = page ? focusedGroup(target) : undefined
+      const groupDigits = Boolean(group && groupChips.has(group))
+      if (groupDigits) {
         event.preventDefault()
-        run(() => applyGroupPreset(group, Number(key) - 1))
+        run(() => applyGroupPreset(group!, Number(key) - 1))
+        return
+      }
+      // Elsewhere they pick the strip's chips; a number row keeps them for typing.
+      const route = digitRoute(key, {
+        options: false,
+        keeps: tracks.has(target),
+        presets: stripDigits() ? presetStrip.getEntries().length : 0,
+      })
+      if (route === "presets") {
+        event.preventDefault()
+        presetStrip.select(Number(key) - 1)
         return
       }
     }
@@ -4103,7 +4540,7 @@ function buildPanel<S extends Schema>(
     }
     if (pressed("save", event) && showVariants) {
       event.preventDefault()
-      presetStrip.save()
+      ;(groupStripAt(target) ?? presetStrip).save()
       return
     }
     const index = rowAt(target)
@@ -4679,13 +5116,16 @@ function buildPanel<S extends Schema>(
     id: controls.id,
     root,
     body,
+    pinned: pinnedBody,
     inline,
     header,
     titleEl,
-    headerButtons,
-    headerDie: { button: randomButton, die },
+    // Buttons in a pane's header are the DOM's: the overlay draws the panel alone.
+    headerButtons: undock ? [] : headerButtons,
+    ...(undock ? {} : { headerDie: { button: randomButton, die } }),
     locks: lockIcons,
     presetStrip,
+    groupStrips: () => groupStrips.values(),
     tabs: tabStrip,
     groups: gpuGroups,
     cards,
@@ -4758,6 +5198,22 @@ function buildPanel<S extends Schema>(
     attributeFilter: ["data-knobs-renderer", "data-theme", "data-appearance", "class", "style"],
   })
 
+  // `onActive`: the card or row under the pointer or focus, pinned cards and group strips included.
+  const onActive = options.onActive
+  const active = onActive
+    ? watchActive(
+        root,
+        (node) => {
+          if (!node || !root.contains(node)) return null
+          const r = rows.find((r) => !r.leaving && r.row.contains(node))
+          if (r) return r.group === undefined ? null : { group: r.group, key: r.key }
+          const card = node.closest<HTMLElement>("[data-group]")
+          return card && root.contains(card) ? { group: card.dataset.group! } : null
+        },
+        onActive,
+      )
+    : undefined
+
   const panel: Panel = {
     element: root,
     presetStrip,
@@ -4793,6 +5249,14 @@ function buildPanel<S extends Schema>(
     updateAccessories() {
       for (const r of rows) fillAccessory(r)
     },
+    unfold(key) {
+      const r = rows.find((row) => row.key === key || row.keys.includes(key))
+      if (!r) return
+      const tab = tabOf(r)
+      if (tab !== undefined && activeTab !== undefined && tab !== activeTab) selectTab(tab)
+      if (r.group !== undefined && folds.get(r.group)) fold(r.group, false, true, false)
+      if (r.subhead !== undefined && subFolds.get(r.subhead)) foldSub(r.subhead, false, false)
+    },
     fold(group, folded) {
       fold(group, folded ?? !folds.get(group))
     },
@@ -4821,6 +5285,7 @@ function buildPanel<S extends Schema>(
       for (const r of [...rows, ...leavingRows]) dropGpu(r)
       for (const c of groupChips.values()) c.dispose()
       presetStrip.dispose()
+      for (const strip of groupStrips.values()) strip.dispose()
       tabStrip.dispose()
       tabMotion.finish()
       doc.removeEventListener("keydown", onGlobalKey)
@@ -4845,9 +5310,11 @@ function buildPanel<S extends Schema>(
       lens.dispose()
       win?.cancelAnimationFrame(lensFrame)
       doc.removeEventListener("pointerdown", onPress, true)
+      doc.removeEventListener("pointerdown", onPressOutside, true)
       doc.removeEventListener("pointerup", onRelease, true)
       doc.removeEventListener("pointercancel", onRelease, true)
       crumbs?.dispose()
+      active?.dispose()
       clearTimeout(escTimer)
       win?.removeEventListener("blur", queueScope)
       win?.removeEventListener("focus", queueScope)
@@ -4871,6 +5338,7 @@ function buildPanel<S extends Schema>(
       untrackHas()
       unsubscribeSound()
       optionKeys.dispose()
+      undock?.()
       root.remove()
     },
   }
@@ -5066,6 +5534,26 @@ function buildPanel<S extends Schema>(
       win.addEventListener("scrollend", () => revealHighlight(first, tries + 1), { once: true })
   }
   return pageApi
+}
+
+/** Copies `value` with the document's copy command, focus going back where it was. */
+function copyByCommand(doc: Document, value: string): boolean {
+  const was = doc.activeElement as HTMLElement | null
+  const area = doc.createElement("textarea")
+  area.value = value
+  area.setAttribute("readonly", "")
+  area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none"
+  doc.body.append(area)
+  area.select()
+  let ok = false
+  try {
+    ok = doc.execCommand("copy")
+  } catch {
+    ok = false
+  }
+  area.remove()
+  was?.focus({ preventScroll: true })
+  return ok
 }
 
 export function createPanel<S extends Schema>(

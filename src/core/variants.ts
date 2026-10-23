@@ -30,6 +30,8 @@ export function createVariants<S extends Schema>(
   set: (v: Values<S>, id: string, coalesce: boolean) => void,
   notify: () => void,
   enabled: () => boolean,
+  /** What the list starts as while storage holds none yet (it's kept once something's saved). */
+  seed?: () => readonly Variant<Values<S>>[],
 ): Variants<Values<S>> {
   type V = Variant<Values<S>>
   let ready = false
@@ -68,7 +70,7 @@ export function createVariants<S extends Schema>(
   function read() {
     if (ready || !enabled()) return
     const json = storage()?.getItem(key)
-    const next = json ? parse(json) : Object.freeze([])
+    const next = json ? parse(json) : Object.freeze([...(seed?.() ?? [])])
     list = next
     ready = true
   }

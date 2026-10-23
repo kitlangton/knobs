@@ -89,6 +89,8 @@ export interface PanelThemeTokens {
   readonly trayPad: number
   readonly radius: number
   readonly panelRadius: number
+  /** A tuning panel's own outer corners, concentric with its cards (`--k-radius-frame`). */
+  readonly frameRadius: number
   readonly radiusMd: number
   readonly radiusSm: number
   readonly fontSize: number
@@ -236,6 +238,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
   const trayPad = numProp(style, "tray-pad", unit * 0.5)
   const radius = numProp(style, "radius", 8)
   const panelRadius = numProp(style, "radius-panel", radius + unit)
+  const frameRadius = numProp(style, "radius-frame", radius > 0 ? radius + pad + 1 : 0)
   const radiusMd = Math.max(0, radius - trayPad)
   const radiusSm = Math.max(0, radius - trayPad * 2)
   const fontSize = parseFloat(style.fontSize) || numProp(style, "font-size", 12)
@@ -303,6 +306,7 @@ export function readPanelTokens(panel: HTMLElement, version = -1): PanelThemeTok
     trayPad,
     radius,
     panelRadius,
+    frameRadius,
     radiusMd,
     radiusSm,
     fontSize,

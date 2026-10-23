@@ -464,6 +464,14 @@ export const TOKENS = [
     deprecated: ["--k-panel-radius", "--ku-panel-radius"],
   },
   {
+    name: "radius-frame",
+    tier: "semantic",
+    type: "length",
+    group: "Shape",
+    source: css("calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))"),
+    doc: "A tuning panel's outer corners: its cards' radius plus its padding and border, so the cards, the preset strip and the focus lens inside run concentric. Squares when --k-radius is 0.",
+  },
+  {
     name: "round",
     tier: "semantic",
     type: "length",

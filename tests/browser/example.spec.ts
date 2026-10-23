@@ -250,7 +250,9 @@ test("hover chips, independent panels, persistence, clipboard, keyboard, hint pr
   // Mid-morph the content is scaled a touch, so the box is read once it lands.
   await expect(panel).not.toHaveAttribute("data-morphing")
   const restored = (await panel.boundingBox())!
-  expect(restored.x).toBeCloseTo(position.x)
+  // Left on the right half, the spot is kept from the right edge.
+  const view = page.viewportSize()!.width
+  expect(restored.x).toBeCloseTo(position.right ? view - restored.width - position.x : position.x)
   expect(restored.y).toBeCloseTo(position.y)
   await page.setViewportSize({ width: 2048, height: 1100 })
   const captureHeader = (await panel.locator("header").boundingBox())!
@@ -944,6 +946,9 @@ test("springs, colours, points and easings: keyboard, coalesced drags, live curv
   const open = () => openStudy(page, "motion")
   const panel = await open()
   const duration = panel.getByRole("slider", { name: "Travel duration" })
+  // An opened panel has focus at its own level (Esc would close it); ↓ goes in to the first row.
+  await expect(panel).toBeFocused()
+  await page.keyboard.press("ArrowDown")
   await expect(duration).toBeFocused()
 
   // A spring is two slider stops beside its curve; the curve redraws from the same spring math.

@@ -138,7 +138,8 @@ fn hash21(q: vec2f) -> f32 {
 
 // kind 0: Panel card surface + elevation shadow + border + specular rim. With a hairline width
 // (extra.z, whole device px) the edge is that hairline just outside the card, like CSS's
-// 0 0 0 w spread shadow, and the rim is CSS's inset 0 w 0; otherwise a 1px border and a 1px rim.
+// 0 0 0 w spread shadow, and the rim lights its top, like CSS's 0 -w 0 (one edge, not two);
+// otherwise a 1px border and a 1px rim inside it.
 fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   let r = p.look.x;
   let dist = roundedBox(local, size, r);
@@ -147,6 +148,8 @@ fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
   var out = vec4f(0.0);
   if (hair > 0.0 && dist > -1.0) {
     out = premul(p.color2) * clamp(covSd(dist - hair) - bodyCov, 0.0, 1.0);
+    let raised = covSd(roundedBox(local + vec2f(0.0, hair), size, r));
+    out = over(out, premul(p.aux2) * clamp(raised - bodyCov, 0.0, 1.0));
   }
 
   // Floating drop shadow when glowOrBlur (look.z) > 0; like box-shadow, never under the card.
@@ -160,13 +163,16 @@ fn shadePanel(p: Prim, local: vec2f, size: vec2f) -> vec4f {
 
   var card = premul(p.color) * bodyCov;
 
-  // The rim, built like CSS's inset 0 w 0: inside the border, minus that shape moved down w.
+  // Without a hairline, the rim is CSS's inset 0 1px 0: inside the border, minus that shape
+  // moved down.
   let inner = local - vec2f(1.0);
   let innerSize = size - vec2f(2.0);
   let w = select(1.0, hair, hair > 0.0);
   let innerCov = covSd(roundedBox(inner, innerSize, r - 1.0));
-  let rimCov = innerCov * (1.0 - covSd(roundedBox(inner - vec2f(0.0, w), innerSize, r - 1.0)));
-  card = over(card, premul(p.aux2) * rimCov);
+  if (hair <= 0.0) {
+    let rimCov = innerCov * (1.0 - covSd(roundedBox(inner - vec2f(0.0, w), innerSize, r - 1.0)));
+    card = over(card, premul(p.aux2) * rimCov);
+  }
 
   // A morphing card's specular ring (extra.y), w wide inside the border like CSS's inset 0 0 0 w.
   if (p.extra.y > 0.001) {

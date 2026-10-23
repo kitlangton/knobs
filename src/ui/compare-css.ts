@@ -88,7 +88,6 @@ export const compareCss = `
 :where(.knobs-ui) .knobs-cmp-zoom-reset:is(:hover,:focus-visible){background:color-mix(in srgb,var(--_ku-on-media) 16%,transparent);color:var(--_ku-on-media);transition-duration:calc(var(--_k-hover-in) * 1ms)}
 .knobs-cmp-note{position:absolute;left:50%;top:50%;translate:-50% -50%;color:var(--_k-fg-3);pointer-events:none}
 .knobs-cmp-note:empty{display:none}
-.knobs-cmp-strip-host{flex:none;height:60px;min-height:0}
 .knobs-cmp-timeline-host{flex:none;min-height:0}
 /* The frame strip: Before over After per column, a difference bar under them, a dot where it peaks. */
 .knobs-ui.knobs-cmp-strip{--_ku-cmp-diff:var(--k-compare-diff,var(--_k-ok));position:relative;width:100%;height:100%;min-height:40px;overflow:hidden;cursor:col-resize;touch-action:none;

@@ -154,3 +154,10 @@ describe("panel stylesheet", () => {
       expect(m[1]).toMatch(/^--k-density:[\d.]+$/)
   })
 })
+
+describe("digit hints", () => {
+  it("keep a range like 1–9 on one line beside a menu", () => {
+    const rule = /\.knobs-panel \.knobs-optkey\{[^}]*\}/.exec(stylesheet())?.[0] ?? ""
+    expect(rule).toContain("white-space:nowrap")
+  })
+})

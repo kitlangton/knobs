@@ -7,6 +7,7 @@ import {
   angle,
   choice,
   keybind,
+  text,
   range,
   seed,
   toolbar,
@@ -102,6 +103,8 @@ export interface ToolbarDescriptor extends DescriptorMeta {
     readonly global?: boolean
     readonly disabled?: boolean
   }[]
+  /** `false`: icons only (see `toolbar`). */
+  readonly labels?: boolean
   readonly default?: undefined
   readonly bind?: undefined
 }
@@ -155,12 +158,13 @@ export interface ValueDescriptor extends DescriptorMeta {
     | "angle"
     | "seed"
     | "keybind"
+    | "text"
     | "gradient"
     | "curve"
   /**
    * Springs take `{ duration, bounce }`, colours a CSS string, points and vec2 `{ x, y }`, vec3
    * `{ x, y, z }`, easings `[x1, y1, x2, y2]`, ranges `[low, high]`, keybinds a combination
-   * string (`"Meta+K"`), gradients `[{ at, color }]` and curves `[{ x, y }]`.
+   * string (`"Meta+K"`), text a string, gradients `[{ at, color }]` and curves `[{ x, y }]`.
    */
   readonly default: Value
   readonly min?: number
@@ -182,6 +186,10 @@ export interface ValueDescriptor extends DescriptorMeta {
   readonly axes?: readonly string[]
   /** Angles: carry past the ends a whole turn (on for a full turn by default). */
   readonly wrap?: boolean
+  /** Text: lines in a box that grows with them (see `text`). */
+  readonly multiline?: boolean
+  /** Text: shown in the empty field. */
+  readonly placeholder?: string
   /** Gradients: blend in `oklab` (default) or `srgb`. */
   readonly space?: GradientSpace
   /** Curves: the y range, `[0, 1]` by default (`min` and `max` work too). */
@@ -210,6 +218,12 @@ export interface RemoteControlsOptions {
   readonly nullDefaults?: boolean
   readonly values?: State
   readonly presets?: Readonly<Record<string, State>>
+  /** Presets that belong to one tab or group (see `ControlsOptions.scopedPresets`). */
+  readonly scopedPresets?: Readonly<Record<string, Readonly<Record<string, State>>>>
+  /** Groups pinned above the tab strip, outside the presets (see `ControlsOptions.pinned`). */
+  readonly pinned?: readonly string[]
+  /** Groups presets leave alone, in place (see `ControlsOptions.inPresets`). */
+  readonly inPresets?: Readonly<Record<string, boolean>>
   /** Numbered presets per group, e.g. the phone's preset sets (see `ControlsOptions.groupPresets`). */
   readonly groupPresets?: Readonly<Record<string, readonly GroupPreset[]>>
   /** Display labels by group id, section id and preset id (see `ControlsOptions.groupLabels`). */
@@ -217,7 +231,7 @@ export interface RemoteControlsOptions {
   readonly sectionLabels?: Readonly<Record<string, string>>
   readonly presetLabels?: Readonly<Record<string, string>>
   /** Shorthand for `presetLabels.default`, e.g. "Native". */
-  readonly defaultLabel?: string
+  readonly defaultLabel?: string | Readonly<Record<string, string>>
   /** How a page card shows its group presets (see `ControlsOptions.groupPresetDisplay`). */
   readonly groupPresetDisplay?: GroupPresetDisplay
   /** One muted line under a group's card title or a section's heading on a page, by id. */
@@ -317,7 +331,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
   if (d.kind === "toolbar")
     return toolbar(
       d.items.map(({ key, ...item }) => ({ ...item, id: key })),
-      meta,
+      d.labels !== undefined ? { ...meta, labels: d.labels } : meta,
     )
   if (d.bind) return flatSpring({}, { ...meta, id: d.key }).duration
   if (d.kind === "knob" || d.kind === "number") {
@@ -400,6 +414,12 @@ export function descriptorToField(d: ControlDescriptor): Field {
       ...meta,
     })
   if (d.kind === "keybind") return keybind(typeof d.default === "string" ? d.default : "", meta)
+  if (d.kind === "text")
+    return text(typeof d.default === "string" ? d.default : "", {
+      ...(d.multiline ? { multiline: true } : {}),
+      ...(d.placeholder ? { placeholder: d.placeholder } : {}),
+      ...meta,
+    })
   if (d.kind === "gradient") {
     const fallback = [
       { at: 0, color: "#000000" },
@@ -494,7 +514,7 @@ const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
     const [a, b] = v as readonly [number, number]
     return `${decimal(a)}...${decimal(b)}`
   }
-  if (d.kind === "keybind") return JSON.stringify(v)
+  if (d.kind === "keybind" || d.kind === "text") return JSON.stringify(v)
   if (d.kind === "gradient") {
     const stops = (Array.isArray(v) ? (v as readonly GradientStop[]) : []).map((s) => {
       const [r, g, b] = oklchToRgb(parseColor(s.color) ?? { l: 0, c: 0, h: 0 }).map(decimal)
@@ -520,6 +540,7 @@ const swiftTypes = {
   range: "ClosedRange<Double>",
   seed: "Int",
   keybind: "String",
+  text: "String",
   gradient: "Gradient",
   curve: "[CGPoint]",
 } as const
@@ -640,6 +661,9 @@ export function createRemoteControls(
     tunable: options.tunable,
     history: options.history,
     presets: options.presets,
+    scopedPresets: options.scopedPresets,
+    pinned: options.pinned,
+    inPresets: options.inPresets,
     groupPresets: options.groupPresets,
     onPreset: options.onPreset,
     actions: options.actions,

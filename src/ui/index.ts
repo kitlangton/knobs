@@ -39,6 +39,7 @@ export {
   type Command,
   type CommandPalette,
   type CommandPaletteOptions,
+  type PalettePresence,
 } from "./palette.js"
 export {
   contextMenu,
@@ -247,6 +248,19 @@ export {
   type BentoPlan,
   type BentoRect,
 } from "./bento-model.js"
+export { canvas, type Canvas, type CanvasItem, type CanvasOptions } from "./canvas.js"
+export {
+  boundsOf as canvasBounds,
+  dotGrid,
+  fitView,
+  layoutCanvas,
+  packRows,
+  viewPath,
+  zoomAround,
+  type CanvasPoint,
+  type CanvasRect,
+  type CanvasView,
+} from "./canvas-model.js"
 export {
   activity,
   type Activity,

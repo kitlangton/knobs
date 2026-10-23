@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — pinned groups</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; background: #141414; color: #e6e6e6; font: 13px/1.4 system-ui, sans-serif; }
+      /* OpenCode Desktop's Motion container: fixed above the debug bar, 320 wide, scrolling. */
+      #panel { position: fixed; bottom: 40px; right: 12px; z-index: 50; width: 320px; max-height: calc(100vh - 6rem); overflow: auto; padding: 2px; box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <div id="panel"></div>
+    <script type="module" src="./pinned.ts"></script>
+  </body>
+</html>

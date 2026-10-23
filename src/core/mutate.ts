@@ -132,6 +132,7 @@ function shift(field: ValueField, value: Value, random: () => number): unknown {
     case "seed":
       return nudge(value as number, field.min, field.max, 1, random)
     case "keybind":
+    case "text":
       return value
     case "gradient":
       return mutateStops(value as readonly GradientStop[], random, MUTATE.hue, MUTATE.lightness)

@@ -76,9 +76,7 @@ describe("section kickers", () => {
       section("Hidden", { kicker: false }),
     ]
     const of = (kickers: WalkthroughDoc["kickers"]) =>
-      normalizeWalkthrough({ id: "t", title: "T", kickers, sections }).sections.map(
-        (s) => s.kicker,
-      )
+      normalizeWalkthrough({ id: "t", title: "T", kickers, sections }).sections.map((s) => s.kicker)
     expect(of({ noun: "Part" })).toEqual(["Part 1 of 4", "Part 2 of 4", "Interlude", undefined])
     expect(of(false)).toEqual([undefined, undefined, "Interlude", undefined])
     expect(of("pr")).toEqual([undefined, "PR 1 of 1", "Interlude", undefined])
@@ -193,7 +191,13 @@ describe("pull requests", () => {
                 kind: "stack",
                 items: [
                   { pr: 57148, title: "A", branch: "a → dev", status: "Draft" },
-                  { pr: 57158, title: "Serve v2", branch: "b → dev", status: "Open · CI green", tone: "warn" },
+                  {
+                    pr: 57158,
+                    title: "Serve v2",
+                    branch: "b → dev",
+                    status: "Open · CI green",
+                    tone: "warn",
+                  },
                   { pr: 57151, title: "Models", branch: "c → dev", status: "Merged" },
                 ],
               },
@@ -206,7 +210,10 @@ describe("pull requests", () => {
     expect(p.prs["57158"]).toMatchObject({ state: "open", checks: true, title: "Serve v2" })
     expect(p.prs["57151"]).toMatchObject({ state: "merged", title: "Models", href: pr(57151) })
     // An issue: its own link from the repo, never a pull request's state.
-    expect(findPR(p.prs, "57148", "a/b", "issue")).toEqual({ kind: "issue", href: "https://github.com/a/b/issues/57148" })
+    expect(findPR(p.prs, "57148", "a/b", "issue")).toEqual({
+      kind: "issue",
+      href: "https://github.com/a/b/issues/57148",
+    })
     expect(findPR({}, "12", undefined, "issue")).toEqual({ kind: "issue" })
   })
 })
@@ -228,7 +235,12 @@ describe("layout", () => {
 describe("annotations", () => {
   const rect = { x: 10, y: 20, w: 200, h: 100 }
   test("sit in 0–1 of the picture, through a zoom, and leave when out of view", () => {
-    expect(placeMark({ x: 0.5, y: 0.5, w: 0.25, h: 0.5 }, rect)).toEqual({ x: 110, y: 70, w: 50, h: 50 })
+    expect(placeMark({ x: 0.5, y: 0.5, w: 0.25, h: 0.5 }, rect)).toEqual({
+      x: 110,
+      y: 70,
+      w: 50,
+      h: 50,
+    })
     // Zoomed 2× into the top-left quarter: the point at .25, .25 lands in the middle.
     expect(placeMark({ x: 0.25, y: 0.25 }, rect, { u: 0, v: 0, w: 0.5, h: 0.5 })).toEqual({
       x: 110,

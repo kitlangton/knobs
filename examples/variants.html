@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — design variants</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0c0c0e; color: #eee; font: 13px system-ui; }
+      body { display: grid; grid-template-columns: 1fr 300px; }
+      .stage { display: grid; place-items: center; padding: 32px; overflow: hidden; }
+      .dialogs { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+      .dialog { width: 280px; border-radius: 14px; background: #19191c; box-shadow: 0 0 0 1px #ffffff14, 0 20px 50px #0008; overflow: hidden; }
+      .hero { height: 130px; display: grid; place-items: center; background: radial-gradient(circle at 50% 60%, var(--accent) 0, transparent 60%); opacity: var(--glow); }
+      .hero span { font: 600 22px system-ui; letter-spacing: -.02em; color: #fff; text-shadow: 0 1px 12px #000a; }
+      .copy { padding: 14px 16px 16px; }
+      .copy h2 { margin: 0 0 6px; font-size: 15px; }
+      .copy p { margin: 0; color: #aaa; line-height: 1.45; }
+      aside { padding: 12px 12px 12px 0; overflow: auto; }
+      aside .knobs-panel { width: 100%; }
+      body[data-theme="Light"] { background: #f2f2f2; color: #111; }
+      body[data-theme="Light"] .dialog { background: #fff; }
+    </style>
+  </head>
+  <body>
+    <main class="stage"><div class="dialogs"></div></main>
+    <aside></aside>
+    <script type="module" src="./variants.ts"></script>
+  </body>
+</html>

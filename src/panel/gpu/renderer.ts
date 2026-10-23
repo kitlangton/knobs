@@ -30,6 +30,7 @@ import { liveThumb } from "../thumb.js"
 import { giveOf } from "../give.js"
 import { roundOf, stretchAt, stretchOf, thinOf } from "../feel.js"
 import { rangeSmear } from "../smear.js"
+import { HEAD_DOT } from "../head-dot.js"
 import { ATLAS_SIZE, LabelAtlas } from "./atlas.js"
 import {
   cssMix,
@@ -376,6 +377,16 @@ export interface GpuKeybindRow {
   readonly wave: RowWave
   isModified(): boolean
 }
+/** A text row: the canvas draws its label; the field itself is the DOM's, above the canvas. */
+export interface GpuTextRow {
+  readonly kind: "text"
+  readonly key: string
+  readonly display: string
+  readonly row: HTMLElement
+  readonly labelEl: HTMLElement
+  readonly wave: RowWave
+  isModified(): boolean
+}
 export interface GpuToolbarRow {
   readonly kind: "toolbar"
   readonly key: string
@@ -420,6 +431,7 @@ export type GpuRowBinding =
   | GpuAngleRow
   | GpuSeedRow
   | GpuKeybindRow
+  | GpuTextRow
   | GpuToolbarRow
   | GpuSubheadRow
   | GpuActionRow
@@ -448,9 +460,9 @@ export interface GpuGroupBinding {
   readonly peek?: HTMLElement
   /** On a page: the header's controls (presets, reset, die), hidden while the card is folded. */
   readonly controls?: HTMLElement
-  /** On a page: what a folded card's header says in place of its controls. */
+  /** What a folded card's header says (on a page, in place of its controls). */
   readonly summary?: HTMLElement
-  /** On a page: the muted line under the card's title. */
+  /** The muted line under the card's title. */
   readonly desc?: HTMLElement
   /** On a page: the group's presets, as named or numbered segments, or a compact menu. */
   readonly presets?: {
@@ -467,6 +479,8 @@ export interface GpuPanelBinding {
   readonly id: string
   readonly root: HTMLElement
   readonly body: HTMLElement
+  /** The pinned groups' cards, above the tab strip (empty while none are pinned). */
+  readonly pinned?: HTMLElement
   readonly inline: boolean
   readonly header: HTMLElement
   readonly titleEl: HTMLElement
@@ -476,6 +490,8 @@ export interface GpuPanelBinding {
   /** Each locked-capable row's lock icon, by its label element; `data-on` says it's locked. */
   readonly locks?: ReadonlyMap<HTMLElement, HTMLElement>
   readonly presetStrip: PresetStrip
+  /** Groups' own preset strips, each at the top of its card (see `scopedPresets`). */
+  readonly groupStrips?: () => Iterable<PresetStrip>
   /** The tab strip under the header (hidden while the panel has no tabs). */
   readonly tabs?: TabStrip
   readonly groups: readonly GpuGroupBinding[]
@@ -839,6 +855,7 @@ class GpuOverlayManager {
     })
     ro.observe(panel.root)
     ro.observe(panel.body)
+    if (panel.pinned) ro.observe(panel.pinned)
     ro.observe(panel.presetStrip.track)
     const mo = new MutationObserver(() => {
       this.styleVersion++
@@ -1203,6 +1220,177 @@ class GpuOverlayManager {
     d[b + 43] = more ? more[3] : 0
   }
 
+  /**
+   * A preset strip: its tray (`tray`: the panel's strip has one, a group card's sits on the card),
+   * the selected chip's pill on its springs, the chips' names and drift marks, and the save chip.
+   * True while anything in it moves.
+   */
+  private drawPresetStrip(
+    ps: PresetStrip,
+    tokens: PanelThemeTokens,
+    clip: Clip,
+    hinting: boolean,
+    reducedMotion: boolean,
+    dt: number,
+    tray: boolean,
+  ): boolean {
+    let moving = false
+    const psHovered = this.curPanelHovered && ps.element.matches(":hover")
+    this.curSubHovered = psHovered
+    const psRect = this.rectOf(ps.element)
+    const trackRect = this.rectOf(ps.track)
+    // Boxed buttons (see [data-buttons]) stand on their own, with no tray behind them.
+    if (tray && !tokens.boxed)
+      this.pushPrim({
+        x: psRect.left,
+        y: psRect.top,
+        w: psRect.width,
+        h: psRect.height,
+        color: tokens.segBg,
+        color2: tokens.accent,
+        radius: tokens.radius,
+        glowOrBlur: tokens.glowStrength * 8,
+        kind: 1,
+        p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
+      })
+
+    const stripClip = intersectClip(clip, [psRect.left, psRect.top, psRect.right, psRect.bottom])
+    const activeState = ps.getActiveState()
+    const chipButtons = ps.getButtons()
+    if (tokens.boxed)
+      for (const btn of chipButtons) {
+        const br = this.rectOf(btn)
+        if (br.right < stripClip[0] || br.left > stripClip[2]) continue
+        this.drawButtonBox(btn, br, this.isHovered(btn), this.missed(btn, hinting), stripClip)
+      }
+    const activeBtn =
+      activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
+    const pe = ps.pillEdges
+    const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
+    const panned = livePill(ps.track)
+    if (activeBtn && activeBtnRect && !activeState.isCustom) {
+      const left = activeBtnRect.left - trackRect.left
+      const right = left + Math.max(20, activeBtnRect.width)
+      const top = activeBtnRect.top - trackRect.top
+      this.carry(pe, activeBtn, left, right, ps.pillY, top)
+      // A pan holds the pill with the fingers, as a drag holds a slider's fill.
+      if (panned) {
+        pe.snap(panned.left, panned.right)
+        ps.pillY.snap(panned.top)
+      } else if (reducedMotion || pe.end.x - pe.start.x <= 1) {
+        pe.snap(left, right)
+        ps.pillY.snap(top)
+      } else {
+        pe.to(left, right, 0, trailScale(tokens.blurStrength))
+        ps.pillY.set(top)
+      }
+      // Off the active preset's values, its pill softens (see DRIFTED_PILL).
+      ps.pillAlpha.set(activeState.drifted ? DRIFTED_PILL : 1)
+    } else {
+      ps.pillAlpha.set(0)
+    }
+
+    for (const sp of [pe.start, pe.end, ps.pillY, ps.pillAlpha]) {
+      if (reducedMotion) sp.snap(sp.target)
+      else {
+        sp.step(dt)
+        if (!sp.resting) moving = true
+      }
+    }
+
+    const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
+    if (pillAlpha > 0.01) {
+      this.pushPrim({
+        x: trackRect.left + pe.start.x,
+        y: trackRect.top + ps.pillY.x,
+        w: Math.max(18, pe.end.x - pe.start.x),
+        h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
+        clip: stripClip,
+        color: withAlpha(tokens.pillBg, pillAlpha),
+        color2: withAlpha(tokens.pillBorder, pillAlpha),
+        strokeWidth: this.hairline(tokens),
+        aux2: withAlpha(tokens.rim, tokens.rim[3] * pillAlpha),
+        radius: tokens.buttonRadius ?? tokens.radiusMd,
+        glowOrBlur: tokens.glowStrength,
+        kind: 3,
+        blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
+      })
+    }
+
+    for (let i = 0; i < chipButtons.length; i++) {
+      const btn = chipButtons[i]!
+      const br = this.rectOf(btn)
+      if (br.right < stripClip[0] || br.left > stripClip[2]) continue
+      const isActive = i === activeState.activeIndex
+      const chipHovered = this.isHovered(btn)
+      if (chipHovered) this.curSubHovered = false
+      // The active preset's modified mark in the chip's corner, as .knobs-preset-chip::after.
+      const mark = this.ease(btn, "dot", btn.hasAttribute("data-drifted") ? 1 : 0)
+      if (mark > 0.01) {
+        const size = 4 * (0.4 + 0.6 * mark)
+        this.pushPrim({
+          x: br.right - 6 - size / 2,
+          y: br.top + 6 - size / 2,
+          w: size,
+          h: size,
+          clip: stripClip,
+          color: withAlpha(tokens.modified, 0.95 * mark),
+          glowOrBlur: 0.5,
+          kind: 7,
+        })
+      }
+      // While it's being named, its DOM field draws the name over the chip.
+      if (btn.hasAttribute("data-naming")) continue
+      // A digit kept on the chip (.knobs-preset-key) draws quietly where it sits, and the name
+      // where its own span is.
+      const key = btn.querySelector<HTMLElement>(".knobs-preset-key")
+      const name = key && btn.querySelector<HTMLElement>(".knobs-preset-label")
+      if (key && name) {
+        const kr = this.rectOf(key)
+        this.drawText(
+          key.textContent ?? "",
+          kr.left,
+          br.top + br.height * 0.5,
+          withAlpha(tokens.dim, this.missed(btn, hinting)),
+          { px: tokens.textMeta, weight: tokens.labelWeight, clip: stripClip },
+        )
+      }
+      const nr = name ? this.rectOf(name) : undefined
+      this.drawText(
+        name ? (name.textContent ?? "") : (btn.textContent ?? ""),
+        nr ? nr.left : br.left + br.width * 0.5,
+        br.top + br.height * 0.5,
+        withAlpha(
+          this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
+          this.missed(btn, hinting),
+        ),
+        {
+          px: tokens.buttonFontSize ?? tokens.textControl,
+          weight: isActive ? tokens.titleWeight : tokens.labelWeight,
+          align: nr ? "left" : "center",
+          clip: stripClip,
+        },
+      )
+    }
+
+    if (ps.saveButton && !ps.saveButton.hidden) {
+      const sr = this.rectOf(ps.saveButton)
+      const hot = this.isHovered(ps.saveButton)
+      this.drawText(
+        "+",
+        sr.left + sr.width * 0.5,
+        sr.top + sr.height * 0.5,
+        this.hot(ps.saveButton, hot, tokens.dim),
+        {
+          px: tokens.textTitle,
+          weight: 400,
+          align: "center",
+        },
+      )
+    }
+    return moving
+  }
+
   /** --k-rim-width in CSS px, on whole device pixels (at least one), so hairlines stay crisp. */
   private hairline(tokens: PanelThemeTokens) {
     return Math.max(1, Math.round(tokens.rimWidth * this.curScale)) / this.curScale
@@ -1446,6 +1634,25 @@ class GpuOverlayManager {
     return ms <= 1 ? SNAP_OMEGA : 4500 / ms
   }
 
+  /**
+   * A group or sub-heading header's modified dot, at the end of its label's box (the room it keeps
+   * there, see `HEAD_DOT`), as the label's ::after.
+   */
+  private drawHeadDot(labelEl: HTMLElement, modified: boolean, centerY: number, alpha: number) {
+    const dot = this.ease(labelEl, "dot", modified ? 1 : 0)
+    if (dot <= 0.01) return
+    const size = 4 * (0.4 + 0.6 * dot)
+    const lr = this.rectOf(labelEl)
+    this.pushPrim({
+      x: lr.right - 2 - size / 2,
+      y: centerY - size / 2,
+      w: size,
+      h: size,
+      color: withAlpha(this.curTokens.modified, alpha * dot),
+      glowOrBlur: 0.5,
+      kind: 7,
+    })
+  }
   private drawRowLabel(
     labelEl: HTMLElement,
     text: string,
@@ -2197,6 +2404,51 @@ class GpuOverlayManager {
     const clipped = width > 0 && el.scrollWidth > el.clientWidth
     this.clipCache.set(el, { key, text, width, clipped })
     return clipped
+  }
+
+  private lineCache = new WeakMap<
+    HTMLElement,
+    { text: string; width: number; lines: { text: string; y: number }[] }
+  >()
+  /**
+   * The lines the DOM wraps `el`'s text into, each with its middle's offset from `el`'s top, read
+   * back word by word (kept until the text or the width changes).
+   */
+  private linesOf(el: HTMLElement, width: number) {
+    const text = el.textContent ?? ""
+    const hit = this.lineCache.get(el)
+    if (hit && hit.text === text && hit.width === width) return hit.lines
+    const lines: { text: string; y: number }[] = []
+    const node = el.firstChild
+    if (node?.nodeType === Node.TEXT_NODE) {
+      const top = el.getBoundingClientRect().top
+      const range = el.ownerDocument.createRange()
+      let line: { from: number; to: number; top: number; bottom: number } | undefined
+      const flush = () => {
+        if (line)
+          lines.push({
+            text: text.slice(line.from, line.to),
+            y: (line.top + line.bottom) / 2 - top,
+          })
+      }
+      for (const word of text.matchAll(/\S+/g)) {
+        const from = word.index
+        const to = from + word[0].length
+        range.setStart(node, from)
+        range.setEnd(node, to)
+        const r = range.getBoundingClientRect()
+        if (line && Math.abs(r.top - line.top) < 1) {
+          line.to = to
+          line.bottom = Math.max(line.bottom, r.bottom)
+        } else {
+          flush()
+          line = { from, to, top: r.top, bottom: r.bottom }
+        }
+      }
+      flush()
+    }
+    this.lineCache.set(el, { text, width, lines })
+    return lines
   }
 
   private curReduced = false
@@ -3939,10 +4191,11 @@ class GpuOverlayManager {
       }
       const lr = this.rectOf(item.label)
       const px = t.buttonFontSize ?? t.textControl
-      // A narrow column ellipsizes the label, as the DOM's does.
+      // A narrow column ellipsizes the label, as the DOM's does; icons only, it has none.
       const words = this.fit(item.label.textContent ?? "", lr.width + 1, px, t.labelWeight)
-      this.drawText(words, lr.left, cy, ink, { px, weight: t.labelWeight, ...zoom })
-      if (item.chip) {
+      if (lr.width > 0)
+        this.drawText(words, lr.left, cy, ink, { px, weight: t.labelWeight, ...zoom })
+      if (item.chip && item.chip.getClientRects().length) {
         const kr = this.rectOf(item.chip)
         this.drawText(item.chip.textContent ?? "", kr.left, cy, withAlpha(t.dim, alpha), {
           px: t.textCap,
@@ -4083,7 +4336,7 @@ class GpuOverlayManager {
       const morph = panel.morph?.(this.frameNow)
       const shown = morph ? clamp(morph.progress, 0, 1) : 1
       const card = morph ? new DOMRect(morph.x, morph.y, morph.w, morph.h) : pRect
-      const cardRadius = morph ? morph.radius : tokens.panelRadius
+      const cardRadius = morph ? morph.radius : tokens.frameRadius
       if (morph) anyMoving = true
       // The mask clips the content to the shape after blurring and scaling it, as the DOM's
       // clip-path does; only without a mask slot does the clip take the shape's box.
@@ -4096,7 +4349,6 @@ class GpuOverlayManager {
         this.placeBackdrop(panel)
         continue
       }
-      const pillFill = tokens.pillBg
 
       // 1. Panel card. Glass thins it over the backdrop blur placed under the canvas; a panel
       // lying over another firms up, since the canvas can't blur what it drew below. A page has no
@@ -4325,150 +4577,13 @@ class GpuOverlayManager {
       // 3. Preset strip
       const ps = panel.presetStrip
       const hinting = panel.root.classList.contains("knobs-hinting")
+      const stripAlpha = this.curAlpha
       if (!ps.element.hidden) {
-        const psHovered = this.curPanelHovered && ps.element.matches(":hover")
-        this.curSubHovered = psHovered
-        const psRect = this.rectOf(ps.element)
-        const trackRect = this.rectOf(ps.track)
-        // Boxed buttons (see [data-buttons]) stand on their own, with no tray behind them.
-        if (!tokens.boxed)
-          this.pushPrim({
-            x: psRect.left,
-            y: psRect.top,
-            w: psRect.width,
-            h: psRect.height,
-            color: tokens.segBg,
-            color2: tokens.accent,
-            radius: tokens.radius,
-            glowOrBlur: tokens.glowStrength * 8,
-            kind: 1,
-            p0: psHovered || this.isFocused(ps.element) ? 0.4 : 0,
-          })
-
-        const stripClip = intersectClip(bodyClip, [
-          psRect.left,
-          psRect.top,
-          psRect.right,
-          psRect.bottom,
-        ])
-        const activeState = ps.getActiveState()
-        const chipButtons = ps.getButtons()
-        if (tokens.boxed)
-          for (const btn of chipButtons) {
-            const br = this.rectOf(btn)
-            if (br.right < stripClip[0] || br.left > stripClip[2]) continue
-            this.drawButtonBox(btn, br, this.isHovered(btn), this.missed(btn, hinting), stripClip)
-          }
-        const activeBtn =
-          activeState.activeIndex >= 0 ? chipButtons[activeState.activeIndex] : undefined
-        const pe = ps.pillEdges
-        const activeBtnRect = activeBtn ? this.rectOf(activeBtn) : undefined
-        const panned = livePill(ps.track)
-        if (activeBtn && activeBtnRect && !activeState.isCustom) {
-          const left = activeBtnRect.left - trackRect.left
-          const right = left + Math.max(20, activeBtnRect.width)
-          const top = activeBtnRect.top - trackRect.top
-          this.carry(pe, activeBtn, left, right, ps.pillY, top)
-          // A pan holds the pill with the fingers, as a drag holds a slider's fill.
-          if (panned) {
-            pe.snap(panned.left, panned.right)
-            ps.pillY.snap(panned.top)
-          } else if (reducedMotion || pe.end.x - pe.start.x <= 1) {
-            pe.snap(left, right)
-            ps.pillY.snap(top)
-          } else {
-            pe.to(left, right, 0, trailScale(tokens.blurStrength))
-            ps.pillY.set(top)
-          }
-          // Off the active preset's values, its pill softens (see DRIFTED_PILL).
-          ps.pillAlpha.set(activeState.drifted ? DRIFTED_PILL : 1)
-        } else {
-          ps.pillAlpha.set(0)
-        }
-
-        for (const sp of [pe.start, pe.end, ps.pillY, ps.pillAlpha]) {
-          if (reducedMotion) sp.snap(sp.target)
-          else {
-            sp.step(dt)
-            if (!sp.resting) anyMoving = true
-          }
-        }
-
-        const pillAlpha = clamp(ps.pillAlpha.x, 0, 1)
-        if (pillAlpha > 0.01) {
-          this.pushPrim({
-            x: trackRect.left + pe.start.x,
-            y: trackRect.top + ps.pillY.x,
-            w: Math.max(18, pe.end.x - pe.start.x),
-            h: Math.max(16, activeBtnRect?.height ?? trackRect.height),
-            clip: stripClip,
-            color: withAlpha(pillFill, pillAlpha),
-            color2: withAlpha(tokens.pillBorder, pillAlpha),
-            strokeWidth: this.hairline(tokens),
-            aux2: withAlpha(tokens.rim, tokens.rim[3] * pillAlpha),
-            radius: tokens.buttonRadius ?? tokens.radiusMd,
-            glowOrBlur: tokens.glowStrength,
-            kind: 3,
-            blurX: reducedMotion ? 0 : clamp(pe.velocity * 0.006 * tokens.motionBlur, -8, 8),
-          })
-        }
-
-        for (let i = 0; i < chipButtons.length; i++) {
-          const btn = chipButtons[i]!
-          const br = this.rectOf(btn)
-          if (br.right < stripClip[0] || br.left > stripClip[2]) continue
-          const isActive = i === activeState.activeIndex
-          const chipHovered = this.isHovered(btn)
-          if (chipHovered) this.curSubHovered = false
-          // The active preset's modified mark in the chip's corner, as .knobs-preset-chip::after.
-          const mark = this.ease(btn, "dot", btn.hasAttribute("data-drifted") ? 1 : 0)
-          if (mark > 0.01) {
-            const size = 4 * (0.4 + 0.6 * mark)
-            this.pushPrim({
-              x: br.right - 6 - size / 2,
-              y: br.top + 6 - size / 2,
-              w: size,
-              h: size,
-              clip: stripClip,
-              color: withAlpha(tokens.modified, 0.95 * mark),
-              glowOrBlur: 0.5,
-              kind: 7,
-            })
-          }
-          // While it's being named, its DOM field draws the name over the chip.
-          if (btn.hasAttribute("data-naming")) continue
-          this.drawText(
-            btn.textContent ?? "",
-            br.left + br.width * 0.5,
-            br.top + br.height * 0.5,
-            withAlpha(
-              this.hot(btn, isActive || chipHovered, tokens.buttonColor ?? tokens.label),
-              this.missed(btn, hinting),
-            ),
-            {
-              px: tokens.buttonFontSize ?? tokens.textControl,
-              weight: isActive ? tokens.titleWeight : tokens.labelWeight,
-              align: "center",
-              clip: stripClip,
-            },
-          )
-        }
-
-        if (ps.saveButton && !ps.saveButton.hidden) {
-          const sr = this.rectOf(ps.saveButton)
-          const hot = this.isHovered(ps.saveButton)
-          this.drawText(
-            "+",
-            sr.left + sr.width * 0.5,
-            sr.top + sr.height * 0.5,
-            this.hot(ps.saveButton, hot, tokens.dim),
-            {
-              px: tokens.textTitle,
-              weight: 400,
-              align: "center",
-            },
-          )
-        }
+        // It crosses a tab change with the rows it sits over.
+        this.curAlpha = stripAlpha * this.presence(ps.element)
+        anyMoving =
+          this.drawPresetStrip(ps, tokens, bodyClip, hinting, reducedMotion, dt, true) || anyMoving
+        this.curAlpha = stripAlpha
       }
 
       // 3b. Tabs: text over a hairline, the chosen one's underline on the lead and trail springs
@@ -4638,7 +4753,9 @@ class GpuOverlayManager {
 
       // 4. Group headers
       if (bodyRevealing || pageMoving) this.curBypassRectCache = true
-      const bodyHovered = this.curPanelHovered && panel.body.matches(":hover")
+      const bodyHovered =
+        this.curPanelHovered &&
+        (panel.body.matches(":hover") || Boolean(panel.pinned?.matches(":hover")))
       this.curSubHovered = bodyHovered
       this.curPointerRow = bodyHovered && panel.root.hasAttribute("data-k-row-hover")
       const panelAlpha = this.curAlpha
@@ -4670,7 +4787,7 @@ class GpuOverlayManager {
           const cy = lr.top + lr.height * 0.5
           if (peek < 0.995)
             this.drawText(
-              this.fit(g.labelEl.textContent ?? "", lr.width, px, tokens.titleWeight),
+              this.fit(g.labelEl.textContent ?? "", lr.width - HEAD_DOT, px, tokens.titleWeight),
               lr.left,
               cy,
               withAlpha(tokens.text, 1 - peek),
@@ -4684,20 +4801,37 @@ class GpuOverlayManager {
               withAlpha(tokens.text, peek),
               { px, weight: tokens.titleWeight, track: -0.01 },
             )
-        } else
+          this.drawHeadDot(g.labelEl, g.element.hasAttribute("data-modified"), cy, 1 - peek)
+        } else {
+          const label = tokens.groupUpper
+            ? (g.labelEl.textContent ?? "").toUpperCase()
+            : (g.labelEl.textContent ?? "")
+          const px = Math.max(9, tokens.groupSize)
+          // A title too long for its header ends in "…", as the DOM's does.
           this.drawText(
-            tokens.groupUpper
-              ? (g.labelEl.textContent ?? "").toUpperCase()
-              : (g.labelEl.textContent ?? ""),
+            this.domClipped(g.labelEl, label, lr.width)
+              ? this.fit(
+                  label,
+                  lr.width - HEAD_DOT,
+                  px,
+                  tokens.titleWeight,
+                  undefined,
+                  tokens.groupTracking,
+                  true,
+                )
+              : label,
             lr.left,
             lr.top + lr.height * 0.5,
             tokens.groupColor,
-            {
-              px: Math.max(9, tokens.groupSize),
-              weight: tokens.titleWeight,
-              track: tokens.groupTracking,
-            },
+            { px, weight: tokens.titleWeight, track: tokens.groupTracking },
           )
+          this.drawHeadDot(
+            g.labelEl,
+            g.element.hasAttribute("data-modified"),
+            lr.top + lr.height * 0.5,
+            1,
+          )
+        }
         // --k-group-divider: a hairline over every group but the first.
         if (!g.title && tokens.groupDivider[3] > 0 && g.element.previousElementSibling)
           this.pushPrim({
@@ -4708,22 +4842,26 @@ class GpuOverlayManager {
             color: tokens.groupDivider,
             kind: 1,
           })
-        // A page card's description, under its title.
+        // A card's description, under its title: one truncated line on a page, wrapped in a panel.
         if (g.desc && !g.desc.hidden) {
           const r = this.rectOf(g.desc)
           const cs = getComputedStyle(g.desc)
           const left = r.left + (parseFloat(cs.paddingLeft) || 0)
           const w = r.width - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
-          this.drawText(
-            this.fit(g.desc.textContent ?? "", w + 0.5, tokens.textMeta, tokens.labelWeight),
-            left,
-            r.top + r.height * 0.5,
-            tokens.dim,
-            { px: tokens.textMeta, weight: tokens.labelWeight },
-          )
+          const lines = cs.whiteSpace.includes("nowrap")
+            ? [{ text: g.desc.textContent ?? "", y: r.height * 0.5 }]
+            : this.linesOf(g.desc, r.width)
+          for (const line of lines)
+            this.drawText(
+              this.fit(line.text, w + 0.5, tokens.textMeta, tokens.labelWeight),
+              left,
+              r.top + line.y,
+              tokens.dim,
+              { px: tokens.textMeta, weight: tokens.labelWeight },
+            )
         }
-        // Folded, a page card's header shows its summary in place of its controls; each fades in
-        // as it arrives (the DOM's animation, read back).
+        // Folded, a card's header shows its summary (a page's in place of its controls); each fades
+        // in as it arrives (the DOM's animation, read back).
         const fadeIn = (node: HTMLElement) =>
           node.parentElement?.closest("[data-fold-motion]")
             ? Number(getComputedStyle(node).opacity) || 0
@@ -4731,12 +4869,14 @@ class GpuOverlayManager {
         if (g.summary && g.summary.getClientRects().length) {
           const r = this.rectOf(g.summary)
           const a = fadeIn(g.summary)
+          // A page card's at its controls' size; a panel card's at its small title's.
+          const px = g.title ? tokens.textControl : tokens.textMeta
           this.drawText(
-            this.fit(g.summary.textContent ?? "", r.width + 0.5, tokens.textControl, 500),
+            this.fit(g.summary.textContent ?? "", r.width + 0.5, px, 500),
             r.left,
             r.top + r.height * 0.5,
             withAlpha(tokens.dim, a),
-            { px: tokens.textControl, weight: 500 },
+            { px, weight: 500 },
           )
         }
         const ctlShown = !g.controls || g.controls.getClientRects().length > 0
@@ -4849,6 +4989,20 @@ class GpuOverlayManager {
           })
           if (bar === card) this.drawScope(card, cr, tokens.radius, 1)
         }
+      }
+      // A group's own preset strip sits on its card, with no tray of its own.
+      for (const gs of panel.groupStrips?.() ?? []) {
+        const card = gs.element.parentElement
+        if (!card || gs.element.closest("[hidden]")) continue
+        const cr = cardRects.get(card) ?? this.rectOf(card)
+        this.curClip = clipToTile(
+          card,
+          intersectClip(bodyClip, [cr.left, cr.top, cr.right, cr.bottom]),
+        )
+        this.curAlpha = panelAlpha * this.presence(card) * fadeOf(card)
+        anyMoving =
+          this.drawPresetStrip(gs, tokens, this.curClip, hinting, reducedMotion, dt, false) ||
+          anyMoving
       }
       this.curClip = bodyClip
       this.curAlpha = panelAlpha
@@ -5318,12 +5472,13 @@ class GpuOverlayManager {
           this.drawRowHover(row.row, rRect, hovered)
           const lr = this.rectOf(row.labelEl)
           this.drawText(
-            this.fit(row.display, lr.width + 1, tokens.textMeta, tokens.titleWeight),
+            this.fit(row.display, lr.width - HEAD_DOT + 1, tokens.textMeta, tokens.titleWeight),
             lr.left,
             rowCenterY,
             withAlpha(tokens.label, rowAlpha),
             { px: tokens.textMeta, weight: tokens.titleWeight },
           )
+          this.drawHeadDot(row.labelEl, row.isModified(), rowCenterY, rowAlpha)
           this.drawCaret(
             row.caret,
             row.row.getAttribute("aria-expanded") === "true",
@@ -5366,6 +5521,14 @@ class GpuOverlayManager {
           this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "keybind") {
           this.drawKeybind(row, rRect, cardClip, rowAlpha, hovered)
+        } else if (row.kind === "text") {
+          const top = row.row.hasAttribute("data-multiline")
+          const labelY = top
+            ? this.rectOf(row.labelEl).top + this.rectOf(row.labelEl).height / 2
+            : rowCenterY
+          this.drawRowHover(row.row, rRect, hovered || row.row.classList.contains("knobs-active"))
+          this.drawRowLabel(row.labelEl, row.display, row.isModified(), labelY, rowAlpha)
+          this.drawRowOverlay(row.row, rRect, cardClip)
         } else if (row.kind === "toolbar") {
           this.drawToolbar(row, rRect, cardClip, rowAlpha, hinting)
         } else if (row.kind === "readout") {

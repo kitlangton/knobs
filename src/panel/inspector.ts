@@ -9,6 +9,7 @@ import {
   type AngleField,
   type KeybindField,
   type Point,
+  type TextField,
   type RangeField,
   type SeedField,
   type ToolbarField,
@@ -32,6 +33,7 @@ import type {
   GpuKeybindRow,
   GpuRangeRow,
   GpuSeedRow,
+  GpuTextRow,
   GpuToolbarRow,
   GpuVecRow,
 } from "./gpu/renderer.js"
@@ -59,6 +61,7 @@ import { giveRoom, offRow, precisionRate } from "./feel.js"
 import { tick } from "./haptics.js"
 import { onPan } from "./swipe.js"
 import { toolbarColumns } from "./toolbar-grid.js"
+import { tooltip } from "../ui/tooltip.js"
 
 function make(doc: Document) {
   return <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -1348,6 +1351,69 @@ export function keybindRow(c: RowContext<KeybindField>): EditorRow {
   }
 }
 
+// ——— text ———
+
+/**
+ * Words in a field: one line beside the label, or (`multiline`) a box under it that grows with
+ * its lines. Each keystroke sets the value; one focus's typing is one undo step. Enter (⌘Enter in
+ * a box) or Esc lets go of it.
+ */
+export function textRow(c: RowContext<TextField>): EditorRow {
+  const { row, label, el } = shell(c, "text")
+  const multiline = Boolean(c.field.multiline)
+  row.toggleAttribute("data-multiline", multiline)
+  const input: HTMLInputElement | HTMLTextAreaElement = multiline
+    ? Object.assign(el("textarea", "knobs-text"), { rows: 2 })
+    : Object.assign(el("input", "knobs-text"), { type: "text" })
+  input.spellcheck = false
+  input.autocomplete = "off"
+  input.placeholder = c.field.placeholder ?? ""
+  input.setAttribute("aria-label", c.display)
+  input.value = c.get() as string
+  row.append(input)
+  // The first keystroke since focus starts an undo step; the rest fold into it.
+  let typed = false
+  input.addEventListener("focus", () => (typed = false))
+  input.addEventListener("input", () => {
+    c.set(input.value, { coalesce: typed })
+    typed = true
+  })
+  input.addEventListener("keydown", (e) => {
+    const event = e as KeyboardEvent
+    if (event.isComposing) return
+    const done =
+      event.key === "Escape" ||
+      (event.key === "Enter" && (!multiline || event.metaKey || event.ctrlKey))
+    if (!done) return
+    event.preventDefault()
+    event.stopPropagation()
+    input.blur()
+  })
+  const gpu: GpuTextRow = {
+    kind: "text",
+    key: c.key,
+    display: c.display,
+    row,
+    labelEl: label,
+    wave: c.wave,
+    isModified: c.isModified,
+  }
+  return {
+    row,
+    labelEl: label,
+    input,
+    stops: () => [input],
+    update(next: Value, _delay: number, _instant?: boolean, isMixed = false) {
+      input.placeholder = isMixed ? "—" : (c.field.placeholder ?? "")
+      const shown = isMixed ? "" : (next as string)
+      if (input.value !== shown) input.value = shown
+    },
+    dispose() {},
+    tracks: [],
+    gpu: [gpu],
+  }
+}
+
 // ——— toolbar ———
 
 export interface ToolbarRow extends EditorRow {
@@ -1377,8 +1443,10 @@ function naturalWidth(b: HTMLElement) {
 
 /**
  * A toolbar: its buttons in equal columns, as many as fit and balanced across the rows (see
- * `toolbarColumns`), each with its icon and label at the start and its shortcut at the end.
- * `keyOf` is each item's shortcut as it is now (the store's rebinding, else its own).
+ * `toolbarColumns`), each with its icon and label at the start and its shortcut at the end. When
+ * every button has an icon and the labels don't fit on one row (or `labels: false`), it's one row
+ * of icons, each label and shortcut in its tooltip. `keyOf` is each item's shortcut as it is now
+ * (the store's rebinding, else its own).
  */
 export function toolbarRow(
   c: RowContext<ToolbarField>,
@@ -1394,15 +1462,41 @@ export function toolbarRow(
   let buttons: HTMLButtonElement[] = []
   let last = 0
   let keys = ""
+  let untips: (() => void)[] = []
   const keysNow = () => field.items.map((item) => keyOf(item)?.key ?? "").join("\u0000")
+  /** Icons only, each label (and shortcut) in its tooltip; or back to labelled buttons. */
+  const showIcons = (on: boolean) => {
+    if (row.hasAttribute("data-icons") === on && untips.length === (on ? buttons.length : 0)) return
+    row.toggleAttribute("data-icons", on)
+    for (const off of untips) off()
+    untips = on
+      ? field.items.map((item, i) => {
+          const key = keyOf(item)
+          return tooltip(buttons[i]!, item.label, key ? { shortcut: key.key } : {})
+        })
+      : []
+  }
   const layout = () => {
     const cs = getComputedStyle(row)
     const avail =
       row.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0)
     if (avail <= 0 || !buttons.length) return
-    const widest = Math.max(...buttons.map(naturalWidth))
+    const gap = parseFloat(cs.columnGap) || 0
+    const iconed = field.items.every((item) => item.icon)
+    let icons = iconed && field.labels === false
+    if (iconed && field.labels === undefined) {
+      // The labelled buttons' widths, read with their labels showing.
+      const was = row.hasAttribute("data-icons")
+      if (was) row.removeAttribute("data-icons")
+      const widest = Math.max(...buttons.map(naturalWidth))
+      if (was) row.setAttribute("data-icons", "")
+      icons = toolbarColumns(buttons.length, widest, avail, gap) < buttons.length
+    }
+    showIcons(icons)
     const cols = String(
-      toolbarColumns(buttons.length, widest, avail, parseFloat(cs.columnGap) || 0),
+      icons
+        ? buttons.length
+        : toolbarColumns(buttons.length, Math.max(...buttons.map(naturalWidth)), avail, gap),
     )
     if (row.style.getPropertyValue("--k-tool-cols") !== cols) {
       row.style.setProperty("--k-tool-cols", cols)
@@ -1430,6 +1524,7 @@ export function toolbarRow(
       b.tabIndex = -1
       b.disabled = Boolean(item.disabled)
       b.dataset.item = item.id ?? item.label
+      b.setAttribute("aria-label", item.label)
       let iconEl: Element | undefined
       if (item.icon) {
         iconEl = iconSvg(c.doc, item.icon)
@@ -1462,6 +1557,8 @@ export function toolbarRow(
     row.replaceChildren(...buttons)
     ;(gpu as { items: GpuToolbarRow["items"] }).items = items
     keys = keysNow()
+    for (const off of untips) off()
+    untips = []
     if (row.isConnected) layout()
   }
   build()
@@ -1527,6 +1624,7 @@ export function toolbarRow(
     },
     dispose() {
       sizes.disconnect()
+      for (const off of untips) off()
     },
     tracks: [],
     gpu: [gpu],

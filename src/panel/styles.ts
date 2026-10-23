@@ -4,6 +4,7 @@ import { LEAD, springEasing, TRAIL } from "./motion.js"
 import { FLASH_MS } from "./flash.js"
 import { RULER, RULER_FADE, RULER_NEAR } from "./feel.js"
 import { CRUMB_GLIDE } from "./crumbs.js"
+import { HEAD_DOT } from "./head-dot.js"
 import { injectTokens } from "../core/root.js"
 import { aliased, TOKEN_TRANSITIONS } from "../core/glide.js"
 import { SPRINGS, springLinear } from "../core/motion.js"
@@ -112,8 +113,8 @@ const css = `
 .knobs-panel *:where(:not(.knobs-accessory,.knobs-accessory *,.knobs-live *)),.knobs-menu *{box-sizing:border-box;color:inherit;letter-spacing:inherit;word-spacing:inherit;line-height:inherit;text-transform:inherit;text-shadow:inherit;font-style:inherit}
 /* Hover washes come in at --k-hover-in and leave at --k-hover-out (ms). Set per element, so a
    hovered card doesn't hand its quick entrance to the rows inside it. */
-:where(.knobs-panel,.knobs-menu) *{--k-hover-t:calc(var(--_k-hover-out) * 1ms)}
-:where(.knobs-panel,.knobs-menu) :is(:hover,.knobs-active){--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
+:where(.knobs-panel,.knobs-menu,.knobs-head-actions[data-docked]) *{--k-hover-t:calc(var(--_k-hover-out) * 1ms)}
+:where(.knobs-panel,.knobs-menu,.knobs-head-actions[data-docked]) :is(:hover,.knobs-active){--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
 
 .knobs-panel,.knobs-chip{
   box-sizing:border-box;font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);text-align:left;
@@ -129,7 +130,7 @@ const css = `
 
 /* The chip: a round cog button, or a capsule with a label beside the cog. */
 .knobs-chip{position:fixed;z-index:2147480000;display:inline-flex;align-items:center;justify-content:center;gap:5px;width:26px;height:26px;padding:0;border-radius:999px;cursor:pointer;background:var(--_k-bg);border:1px solid transparent;
-  color:var(--_k-fg-2);font-size:var(--_k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--_k-border-subtle);box-shadow:0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1))),inset 0 var(--k-rim-width) 0 var(--_k-rim);transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
+  color:var(--_k-fg-2);font-size:var(--_k-text-control);line-height:1;letter-spacing:.01em;white-space:nowrap;--k-chip-edge:var(--_k-border-subtle);box-shadow:0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--k-chip-edge),0 4px 16px rgba(0,0,0,calc(.35 * var(--_k-shadow-k,1)));transition:color .15s,border-color .15s,transform .2s var(--k-ease),opacity .2s,scale .12s var(--k-ease),${TOKEN_TRANSITIONS};}
 .knobs-chip[data-label]{width:auto;padding:0 10px 0 7px}
 .knobs-chip .knobs-icon{display:block;flex:none;width:15px;height:15px}
 .knobs-chip:hover{color:var(--_k-fg);--k-chip-edge:var(--_k-border-strong)}
@@ -156,22 +157,25 @@ const css = `
 /* Panel material: --k-glass (0 opaque … 1 clearest) thins the surface over a blurred, saturated
    backdrop, toned toward the theme (--k-glass-tone dims it under dark panels) so text keeps its
    contrast. Its edge is a hairline (--k-edge, --k-rim-width wide) and a hairline of light (--k-rim)
-   catches its top. */
+   catches its top. The light rides on the edge (a shadow raised by its width, so only its top
+   shows), not inside the card's 1px border, where it read as a second edge. */
 .knobs-panel{-webkit-user-select:none;user-select:none;transition:${TOKEN_TRANSITIONS},--k-armed ${ARMED_T};position:fixed;z-index:2147480001;width:var(--_k-width);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:var(--_k-pad);
-  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-panel);box-shadow:var(--_k-shadow-overlay),0 0 0 var(--k-rim-width) var(--ka-edge),inset 0 var(--k-rim-width) 0 var(--_k-rim),var(--ka-glow);scrollbar-width:thin;
+  background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20%),transparent);border:1px solid transparent;border-radius:var(--_k-radius-frame);box-shadow:var(--_k-shadow-overlay),0 calc(var(--k-rim-width) * -1) 0 var(--_k-rim),0 0 0 var(--k-rim-width) var(--ka-edge),var(--ka-glow);scrollbar-width:thin;
   /* Armed (focus inside: keys come here), the edge takes the accent and a faint glow lifts it. */
   --ka-edge:color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-edge) * 100%),var(--_k-border-subtle));
   --ka-glow:0 0 calc(var(--k-armed-glow) * 1px) color-mix(in srgb,var(--_k-accent) calc(var(--k-armed) * var(--k-armed-glow-a) * var(--k-chrome,1) * 100%),transparent);
   --k-backdrop:blur(calc(var(--_k-glass) * 24px)) saturate(calc(1 + var(--_k-glass) * .8)) brightness(calc(1 + (var(--_k-glass-tone) - 1) * var(--_k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop);
   animation:knobs-in .16s var(--k-ease);}
+/* On a phone a floating panel takes the width, less a gutter, and scrolls inside the height. */
+@media(max-width:420px){.knobs-panel:not(.knobs-inline){width:calc(100vw - 16px)}}
 .knobs-panel[data-restored]{animation:none}
 /* Opening from its chip, the panel's chrome rides a separate shape (see morph.ts) while the
    content, laid out at full size, is clipped to it and revealed top first. */
 .knobs-panel[data-morphing]{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;animation:none}
 .knobs-morph{position:fixed;left:0;top:0;z-index:2147480001;pointer-events:none;box-sizing:border-box;--p:0;--spec:0;
   background:color-mix(in srgb,var(--_k-bg) calc(100% - var(--_k-glass) * 20% * var(--p)),transparent);border:1px solid transparent;
-  box-shadow:0 0 0 var(--k-rim-width) var(--_k-border-subtle),inset 0 0 0 var(--k-rim-width) rgb(255 255 255/var(--spec)),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--_k-rim) calc(var(--p) * 100%),transparent);
+  box-shadow:0 calc(var(--k-rim-width) * -1) 0 color-mix(in srgb,var(--_k-rim) calc(var(--p) * 100%),transparent),0 0 0 var(--k-rim-width) var(--_k-border-subtle),inset 0 0 0 var(--k-rim-width) rgb(255 255 255/var(--spec));
   --k-backdrop:blur(calc(var(--_k-glass) * 24px)) saturate(calc(1 + var(--_k-glass) * .8)) brightness(calc(1 + (var(--_k-glass-tone) - 1) * var(--_k-glass)));
   -webkit-backdrop-filter:var(--k-backdrop);backdrop-filter:var(--k-backdrop)}
 .knobs-morph::before,.knobs-morph::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none}
@@ -179,7 +183,7 @@ const css = `
 .knobs-morph::after{box-shadow:var(--_k-shadow-overlay);opacity:var(--p)}
 /* Meanwhile the chip is just its label, fading on the shape. */
 .knobs-chip.knobs-chip[data-morph]{visibility:visible;pointer-events:auto;transform:none;transition:none;background:transparent;border-color:transparent;box-shadow:none}
-.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:0 0 0 var(--k-rim-width) color-mix(in srgb,var(--ka-edge) calc(var(--k-chrome) * 100%),transparent),inset 0 var(--k-rim-width) 0 color-mix(in srgb,var(--_k-rim) calc(var(--k-chrome) * 100%),transparent),var(--ka-glow);animation:none;
+.knobs-panel.knobs-inline{position:relative;z-index:auto;left:auto!important;top:auto!important;max-width:100%;max-height:none;box-shadow:0 calc(var(--k-rim-width) * -1) 0 color-mix(in srgb,var(--_k-rim) calc(var(--k-chrome) * 100%),transparent),0 0 0 var(--k-rim-width) color-mix(in srgb,var(--ka-edge) calc(var(--k-chrome) * 100%),transparent),var(--ka-glow);animation:none;
   /* --k-chrome 0: an embedded panel sheds its card (background, border, rim) for the host's column,
      border width too, so its rows line up with the column's edges. */
   border-width:calc(var(--k-chrome) * 1px);
@@ -198,8 +202,9 @@ const css = `
 :is(.knobs-panel,.knobs-menu) :is(:focus,:focus-visible):where(:not(.knobs-accessory *)){outline:none}
 
 /* Header */
-.knobs-panel header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;touch-action:none;padding:0 var(--_k-inset) var(--k-section-gap);min-height:var(--k-icon-btn)}
-.knobs-panel.knobs-inline header,.knobs-panel.knobs-inline header:active{cursor:default}
+/* A floating panel's header carries it; the hand shows only while it's carrying (data-dragging). */
+.knobs-panel header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;touch-action:none;padding:0 var(--_k-inset) var(--k-section-gap);min-height:var(--k-icon-btn)}
+.knobs-panel[data-dragging]>header,.knobs-panel[data-dragging]>header *{cursor:grabbing}
 /* The title row stays pinned while the rows scroll under it, in the panel (it scrolls once it's
    bounded) or, with .knobs-pin-ancestor (which also makes the panel overflow:visible), in the
    nearest scroller around it. Once rows are under it, and only then, it frosts (backdrop blur over
@@ -214,7 +219,7 @@ const css = `
 @supports (animation-timeline:scroll()){
   .knobs-panel:not(.knobs-page){scroll-timeline:--knobs-self block}
   .knobs-panel.knobs-pin-ancestor:not(.knobs-page){overflow:visible;view-timeline:--knobs-view block}
-  .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-panel) - 1px)) max(0px,calc(var(--_k-radius-panel) - 1px)) 0 0;
+  .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-frame) - 1px)) max(0px,calc(var(--_k-radius-frame) - 1px)) 0 0;
     --k-head-on:max(var(--k-head-s),var(--k-head-v));--k-head-bg:color-mix(in srgb,var(--_k-bg) 88%,transparent);
     background:color-mix(in srgb,var(--k-head-bg) calc(var(--k-head-on) * 100%),transparent);
     animation:knobs-head-s linear both;animation-timeline:--knobs-self;animation-range:0px 24px}
@@ -224,7 +229,6 @@ const css = `
   .knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header{background:transparent!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
   .knobs-panel[data-gpu-active="true"]:not(.knobs-page)>header::after{display:none}
 }
-.knobs-panel header:active{cursor:grabbing}
 .knobs-panel header strong{flex:1;min-width:0;font-weight:var(--_k-weight-title);font-size:var(--_k-text-title);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .2s var(--k-ease),color ${ARMED_T};
   color:color-mix(in srgb,var(--_k-fg) calc(var(--k-title-rest) * 100%),var(--_k-fg-2))}
 /* At rest a panel's title is a little quiet; armed (keys come here) it's at full strength. */
@@ -233,7 +237,7 @@ const css = `
 .knobs-crumbs{position:absolute;left:0;top:50%;height:0;pointer-events:none;white-space:nowrap;font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);line-height:1.2;letter-spacing:0;text-transform:none}
 .knobs-crumbs>*{position:absolute;left:0;top:0;translate:0 -50%;color:var(--_k-fg-3);transition:opacity .2s var(--k-ease),translate ${CRUMB_GLIDE},color .2s var(--k-ease)}
 .knobs-crumbs>[data-leaving]{transition:opacity .14s cubic-bezier(.4,0,1,1),translate .14s cubic-bezier(.4,0,1,1)}
-.knobs-crumbs>.knobs-crumb-crumb{pointer-events:auto;cursor:pointer}
+.knobs-crumbs>.knobs-crumb-crumb{pointer-events:auto;cursor:default}
 .knobs-crumbs>.knobs-crumb-crumb[data-deep]{color:var(--_k-fg)}
 .knobs-crumbs>.knobs-crumb-crumb:not([data-deep]):hover{color:var(--_k-fg-2)}
 .knobs-crumbs>.knobs-crumb-sep{color:color-mix(in srgb,var(--_k-fg-3) 70%,transparent)}
@@ -250,40 +254,53 @@ const css = `
 .knobs-panel[data-gpu-active="true"] .knobs-die-icon>canvas{visibility:hidden}
 /* The tools sit quiet (--k-dim) until the panel has the pointer or keyboard focus, then read as
    labels, and as text under the pointer. */
-.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--_k-fg-3);background:transparent;border-radius:var(--_k-round);cursor:pointer;font-size:12px;line-height:1;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s}
+.knobs-panel header button{position:relative;width:var(--k-icon-btn);height:var(--k-icon-btn);padding:0;display:inline-flex;align-items:center;justify-content:center;color:var(--_k-fg-3);background:transparent;border-radius:var(--_k-round);cursor:default;font-size:12px;line-height:1;transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s}
 .knobs-panel:is(:hover,:has(:focus-visible)) header button{color:var(--_k-fg-2)}
 .knobs-panel header button:is(:hover:not([disabled]),:focus-visible),.knobs-panel header button[aria-expanded="true"]{background:var(--_k-fill-selected);color:var(--_k-fg)}
 .knobs-panel header button[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 /* The close X's ink sits a fifth of its box in from each side, a digit's barely: nudged right, its
    ink ends where the values' digits do. */
 .knobs-panel header .knobs-close>.knobs-icon{translate:calc(var(--k-icon-size) * .1) 0}
+/* In a split pane's header (dock.ts) the buttons are the pane's: its size, ink and wash, which
+   comes on at once and eases off. Outside the panel, they bring its resets with them. */
+.knobs-head-actions[data-docked]{--k-icon-size:13px;--k-icon-btn:20px;margin-right:0}
+.knobs-head-actions[data-docked] button{all:revert;box-sizing:border-box;position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--k-icon-btn);height:var(--k-icon-btn);margin:0;padding:0;border:0;border-radius:var(--_k-round);
+  background:transparent;color:var(--_k-fg-3);font:inherit;line-height:1;cursor:default;outline:none;box-shadow:none;transition:background var(--k-hover-t),color var(--k-hover-t)}
+.knobs-head-actions[data-docked] button:is(:hover:not([disabled]),:focus-visible){background:var(--_ku-wash-hi,var(--_k-fill-selected));color:var(--_k-fg)}
+.knobs-head-actions[data-docked] .knobs-icon>path{fill:currentColor}
+.knobs-head-actions[data-docked] button:focus-visible{--k-hover-t:calc(var(--_k-hover-in) * 1ms)}
 /* Undo · Redo sit apart from Reset · Copy · Random. Undo, Redo and Reset (and a group's reset)
    keep their slots while they're away and bloom in and out of them: nothing beside them moves. */
 .knobs-head-history{display:flex;flex:none;margin-right:calc(var(--_k-unit) * 1.5)}
-.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},filter 0s,visibility 0s}
-.knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
-  transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_IN},scale ${BLOOM_IN},width ${BLOOM_IN}}
+:is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{opacity:0;scale:.9;filter:blur(2.5px);visibility:hidden;
+  transition:background var(--k-hover-t),color var(--k-hover-t),opacity ${BLOOM_OUT},scale ${BLOOM_OUT},filter ${BLOOM_OUT},width ${BLOOM_OUT},visibility 0s ${snappyOut.ms}ms}
+/* Docked, a slot opens and closes with its button (the width above) rather than waiting: the
+   pane's title keeps the room. */
+.knobs-head-actions[data-docked] button[data-shown="false"]{width:0}
+.knobs-head-actions[data-docked]>.knobs-head-history{transition:margin ${BLOOM_IN}}
+.knobs-head-actions[data-docked]>.knobs-head-history:not(:has(>[data-shown="true"]:not([hidden]))){margin-right:0}
 @media(prefers-reduced-motion:reduce){
-  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown]{transition:opacity .15s,visibility 0s!important}
-  .knobs-panel :is(.knobs-head-actions,.knobs-group-head) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
+  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown]{transition:opacity .15s!important}
+  :is(.knobs-panel :is(.knobs-head-actions,.knobs-group-head),.knobs-head-actions[data-docked]) button[data-shown="false"]{scale:1;filter:none;transition:opacity .15s,visibility 0s .15s!important}}
 /* A press flash (flash.ts): from a key or a click, the button's wash brightens at once and eases
    back to its own, its ink with it. Two names, so a second press restarts it. */
 @keyframes knobs-flash-a{from{background-color:var(--k-flash-bg);color:var(--_k-fg)}}
 @keyframes knobs-flash-b{from{background-color:var(--k-flash-bg);color:var(--_k-fg)}}
-.knobs-panel :is(header,.knobs-group-head) button{--k-flash-bg:color-mix(in srgb,var(--_k-fill-selected),var(--_k-fg) 10%)}
-.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="a"]{animation:knobs-flash-a ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
-.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="b"]{animation:knobs-flash-b ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
+.knobs-panel :is(header,.knobs-group-head) button,.knobs-head-actions[data-docked] button{--k-flash-bg:color-mix(in srgb,var(--_k-fill-selected),var(--_k-fg) 10%)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="a"],.knobs-head-actions[data-docked] button[data-k-flash="a"]{animation:knobs-flash-a ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
+.knobs-panel :is(header,.knobs-group-head) button[data-k-flash="b"],.knobs-head-actions[data-docked] button[data-k-flash="b"]{animation:knobs-flash-b ${FLASH_MS}ms cubic-bezier(.33,1,.68,1)}
 /* Copied: the glyph shrinks away and a check draws itself in its place, held, then they trade
    back (the check fading). Driven by --k-copy (the glyph), --k-check (how much of the check is
    drawn) and --k-check-a (its opacity), which the GPU renderer reads too. */
-.knobs-panel header .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
+.knobs-panel header .knobs-copy,.knobs-head-actions[data-docked] .knobs-copy{--k-copy:1;--k-check:0;--k-check-a:0;
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy ${BLOOM_IN} .04s,--k-check 0s .1s,--k-check-a .1s cubic-bezier(.4,0,1,1)}
-.knobs-panel header .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--_k-fg);
+.knobs-panel header .knobs-copy[data-copied],.knobs-head-actions[data-docked] .knobs-copy[data-copied]{--k-copy:0;--k-check:1;--k-check-a:1;color:var(--_k-fg);
   transition:background var(--k-hover-t),color var(--k-hover-t),opacity .15s,--k-copy .1s cubic-bezier(.4,0,1,1),--k-check .18s cubic-bezier(.2,.8,.2,1) .03s,--k-check-a .04s linear .03s}
 .knobs-copy>.knobs-icon:not(.knobs-check){opacity:var(--k-copy);scale:calc(.5 + .5 * var(--k-copy))}
 .knobs-copy>.knobs-check{position:absolute;inset:0;margin:auto;opacity:var(--k-check-a)}
 /* (Over .knobs-icon>path's fill: the check is a stroke, 16 of 256 wide like Phosphor's regular icons.) */
-.knobs-panel .knobs-icon.knobs-check>path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
+.knobs-panel .knobs-icon.knobs-check>path,.knobs-head-actions[data-docked] .knobs-icon.knobs-check>path{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 2;stroke-dashoffset:calc(1 - var(--k-check))}
 .knobs-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
 /* Shortcuts Popover */
@@ -305,14 +322,30 @@ const css = `
 .knobs-panel[data-buttons] .knobs-preset-chip:hover{background:var(--k-button-hover-bg,var(--_k-fill-selected))!important;box-shadow:inset 0 0 0 1px var(--k-button-hover-line,var(--k-button-line,transparent))}
 .knobs-panel .knobs-preset-chip:hover{color:var(--_k-fg)}
 .knobs-panel .knobs-preset-chip[aria-checked="true"]{color:var(--_k-fg);font-weight:var(--_k-weight-title)}
+/* A list (presetDisplay "list", or chips that would take more than two lines): rows like a
+   menu's, their names on the rows' text edge and each wash bleeding 8 px past it, the selection a
+   quiet wash that glides between them. Hover is a wash too, on at once. */
+.knobs-presets[data-display="list"]{padding:0;background:transparent}
+.knobs-presets[data-display="list"]>.knobs-presets-track{grid-template-columns:minmax(0,1fr);gap:0;margin:0 calc(var(--_k-inset) - 8px)}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip{height:var(--_k-control-h);padding:0 16px 0 8px;text-align:left;cursor:default;font-weight:var(--_k-weight-label);transition:color var(--k-hover-t),background var(--k-hover-t)}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip:hover:not([aria-checked="true"]){background:var(--_k-row-hover)!important}
+.knobs-panel .knobs-presets[data-display="list"] .knobs-preset-chip::after{top:50%;right:8px;margin-top:-2px}
+.knobs-presets[data-display="list"] .knobs-presets-pill{background:var(--_k-fill-selected);box-shadow:none}
 .knobs-panel .knobs-preset-save{flex:none;width:calc((var(--_k-inset) - var(--_k-tray-pad)) * 2 + 8px);padding:0!important;color:var(--_k-fg-3)!important;font-weight:400!important;font-size:var(--_k-text-title)!important}
 .knobs-panel .knobs-preset-save:hover{color:var(--_k-fg)!important}
 /* The active preset's modified mark: the values have drifted off it (a row's dot, in its corner). */
 .knobs-panel .knobs-preset-chip::after{content:"";position:absolute;top:4px;right:4px;width:4px;height:4px;border-radius:50%;background:var(--_k-modified);opacity:0;transform:scale(.4);pointer-events:none;transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
 .knobs-panel .knobs-preset-chip[data-drifted]::after{opacity:.95;transform:none}
+/* Digits that stay on the chips (hints: { digits: "always" }): quiet, in a column of their own. */
+.knobs-panel .knobs-preset-key{display:inline-block;margin-right:6px;color:var(--_k-fg-3);font-size:var(--_k-text-meta);font-weight:var(--_k-weight-label);font-variant-numeric:tabular-nums}
+/* A group's own presets at the top of its card: the chips sit on the card, with no tray. */
+.knobs-panel .knobs-card>.knobs-presets{margin:0;padding:max(4px,calc((var(--_k-row) - var(--k-button-h,var(--_k-control-h))) / 2)) var(--_k-inset);background:transparent;border-radius:0}
+.knobs-panel .knobs-card>.knobs-presets[data-display="list"]{padding-inline:0}
+.knobs-card>.knobs-presets:hover{background:transparent}
 /* Naming a saved preset: a field over its chip that opens out from the middle to the chip's width;
    the chip's own name hides beneath it. Leaving, it fades. */
 .knobs-panel .knobs-preset-chip[data-naming]{color:transparent!important}
+.knobs-panel .knobs-preset-chip[data-naming] .knobs-preset-key{color:transparent}
 .knobs-panel .knobs-preset-name{position:absolute;z-index:2;box-sizing:border-box;min-width:0;margin:0;padding:0 6px;border:1px solid color-mix(in srgb,var(--_k-accent) 55%,transparent);border-radius:var(--k-button-radius,var(--_k-radius-md));outline:none;background:color-mix(in srgb,var(--_k-accent) 10%,transparent);color:var(--_k-fg);caret-color:var(--_k-accent);
   font-family:inherit;font-size:var(--k-button-font-size,var(--_k-text-control));font-weight:var(--_k-weight-title);letter-spacing:inherit;text-align:center;animation:knobs-name-in .25s cubic-bezier(.2,.8,.2,1);transition:opacity .11s cubic-bezier(.4,0,1,1)}
 .knobs-preset-name::selection{background:color-mix(in srgb,var(--_k-accent) 24%,transparent);color:var(--_k-fg)}
@@ -324,6 +357,9 @@ const css = `
 .knobs-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px;margin:var(--k-group-gap) 0 var(--_k-gap);padding:0 var(--k-group-inset);color:var(--_k-group-label);font-size:var(--k-group-size);font-weight:var(--_k-weight-title);letter-spacing:var(--k-group-tracking);text-transform:var(--k-group-transform)}
 .knobs-panel:not(.knobs-page) .knobs-group-head:not(:first-child){border-top:1px solid var(--k-group-divider);padding-top:var(--k-group-divider-gap)}
 .knobs-group-head:first-child{margin-top:0}
+.knobs-panel:not(.knobs-page) .knobs-presets+.knobs-group-head{margin-top:0;border-top:0;padding-top:0}
+.knobs-pinned{margin-bottom:var(--k-group-gap)}
+.knobs-pinned:empty{display:none}
 .knobs-group-head>span:last-child{display:flex;align-items:center;gap:var(--_k-tray-pad);margin-right:calc((var(--k-icon-sm) - 20px) / 2)}
 .knobs-group-head button{height:20px;padding:0 6px;font-size:var(--_k-text-meta);font-weight:500;letter-spacing:0;text-transform:none;color:var(--_k-fg-2);background:transparent;border-radius:var(--_k-radius-sm);cursor:pointer}
 .knobs-group-head button:is(:hover:not([disabled]),:focus-visible){background:var(--_k-fill-selected);color:var(--_k-fg)}
@@ -332,6 +368,13 @@ const css = `
 .knobs-group-head .knobs-group-die{width:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--_k-round);color:var(--_k-fg-3)}
 .knobs-group-head .knobs-group-die[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-panel .knobs-group-head button:where(:not(.knobs-group-reset)){transition:background var(--k-hover-t),color var(--k-hover-t),opacity .2s,transform .12s}
+/* A panel card's header: its title, a folded card's summary and its buttons on one line, and its
+   description on the next. The title takes its room first; the summary gets what's left. */
+.knobs-panel:not(.knobs-page) .knobs-group-head{flex-wrap:wrap;row-gap:0}
+.knobs-panel:not(.knobs-page) .knobs-group-head>.knobs-group-label{flex:1000 1 0;max-width:max-content;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.knobs-group-head>.knobs-group-desc{order:1;flex:0 0 100%;padding:0;line-height:16px;white-space:normal;overflow:visible;text-wrap:pretty}
+.knobs-group-head>.knobs-group-summary{flex:1 1 0;max-width:max-content;margin-left:auto;font-size:var(--_k-text-meta);text-transform:none}
+.knobs-group-head[data-folded]>.knobs-group-summary:not(:empty){display:block}
 
 /* Grouped cards: rows share one surface, split by hairlines that stay put whatever a row is doing */
 .knobs-card{position:relative;margin-bottom:var(--k-section-gap);border-radius:var(--_k-radius);background:var(--_k-fill);overflow:hidden}
@@ -376,8 +419,14 @@ ${POINTER_ROW} :is(.knobs-card>*,.knobs-sub,.knobs-x-head):not(:hover)::after{op
 .knobs-panel .knobs-slider{height:var(--_k-row);contain:layout style}
 .knobs-panel .knobs-row:where(:not(.knobs-slider,.knobs-x,.knobs-spring)){display:flex;align-items:center;justify-content:space-between;gap:8px;height:var(--_k-row);padding:0 var(--_k-inset);contain:layout style}
 .knobs-panel .knobs-row>span:first-child{color:var(--_k-fg-2);font-weight:var(--_k-weight-label);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.knobs-row>span:first-child::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--_k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
-.knobs-modified.knobs-row>span:first-child::after{opacity:.95;transform:none}
+/* Rows, and group and sub-heading labels with something changed inside, carry the modified dot. */
+:is(.knobs-row>span:first-child,.knobs-group-label,.knobs-subhead-label)::after{content:"";display:inline-block;width:4px;height:4px;margin-left:5px;border-radius:50%;background:var(--_k-modified);vertical-align:middle;opacity:0;transform:scale(.4);transition:opacity .16s ease-out,transform .28s cubic-bezier(.34,1.5,.64,1)}
+:is(.knobs-modified.knobs-row>span:first-child,:is(.knobs-group-head,.knobs-subhead)[data-modified] :is(.knobs-group-label,.knobs-subhead-label))::after{opacity:.95;transform:none}
+/* A header's dot keeps its room at the label's end, so a long title (or a folded card's summary
+   beside it) ellipsizes the text, never the dot. */
+:is(.knobs-group-label,.knobs-subhead-label){position:relative;padding-right:${HEAD_DOT}px}
+:is(.knobs-group-label,.knobs-subhead-label)::after{position:absolute;top:50%;right:0;margin:-2px 0 0}
+.knobs-group-title>.knobs-group-label{justify-self:start;max-width:100%}
 /* A locked row's lock sits just left of its readout (or its control), where the eye reads the value.
    Its room opens at once (it's right-aligned, so nothing beside it moves); the icon fades and
    scales in place. */
@@ -645,6 +694,14 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 :where(.knobs-panel)[data-frame="flat"]{--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
 :where(.knobs-panel.knobs-inline:not(.knobs-page))[data-frame="flat"]{--k-chrome:0;--k-pad:0px}
 .knobs-panel[data-frame="flat"] .knobs-card{background:transparent;border-radius:0}
+/* One surface: an inline panel on another card (a split's pane, anything .knobs-surface, or in
+   [data-nested]) takes the flat frame by itself: no padding (its rows keep their inset, so their
+   text sits on the card's, and its preset chips line up with them), groups as plain sections,
+   rows on hairlines. */
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) :where(.knobs-panel.knobs-inline:not(.knobs-page)){--k-chrome:0;--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page){padding:0}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-card{background:transparent;border-radius:0}
+:where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-presets:not([data-display="list"]){margin-inline:var(--_k-inset)}
 .knobs-panel[data-frame="flat"][data-rows] .knobs-card>*,.knobs-panel[data-frame="flat"][data-rows] .knobs-sub{background:transparent;border-radius:0}
 
 /* Disabled rows dim and take no edits (focus still reaches them, to read); read-only rows keep
@@ -797,6 +854,10 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel .knobs-tool[disabled]{opacity:var(--k-disabled-opacity);cursor:default}
 .knobs-tool .knobs-icon{flex:none;width:var(--k-icon-sm);height:var(--k-icon-sm)}
 .knobs-tool-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Icons only (labels that don't fit one row, or labels: false): one row of equal buttons, each
+   its icon centred, its label and shortcut in its tooltip. */
+.knobs-panel .knobs-toolbar[data-icons] .knobs-tool{justify-content:center;padding:0;cursor:default}
+.knobs-panel .knobs-toolbar[data-icons] :is(.knobs-tool-label,.knobs-tool-key){display:none}
 /* The shortcut sits at the button's end, so a column of buttons lines their chips up. */
 .knobs-panel .knobs-tool-key{flex:none;margin-left:auto;padding-left:4px;font:inherit;font-size:var(--_k-text-cap);font-variant-numeric:tabular-nums;color:var(--_k-fg-3);letter-spacing:.06em}
 .knobs-panel :is([data-disabled],[data-readonly]) :is(.knobs-cell,.knobs-range-track,.knobs-angle,.knobs-dial,.knobs-seed,.knobs-keys,.knobs-tool){cursor:default}
@@ -842,7 +903,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 
 /* A focused row's options: tiny digits in hint mode's look, once focus settles (optkeys.ts). */
 .knobs-optkeys{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:5}
-.knobs-panel .knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;align-items:center;height:12px;padding:0 3px;border-radius:var(--_k-radius-sm);background:var(--_k-accent);color:var(--_k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
+.knobs-panel .knobs-optkey{position:absolute;transform:translateY(-50%);display:inline-flex;white-space:nowrap;align-items:center;height:12px;padding:0 3px;border-radius:var(--_k-radius-sm);background:var(--_k-accent);color:var(--_k-bg);box-shadow:0 1px 3px rgba(0,0,0,calc(.35 * var(--k-lift)));
   font:700 calc(var(--_k-text-cap) * .85)/1 var(--_k-mono);letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .12s var(--k-ease)}
 .knobs-panel .knobs-optkey-range{transform:translate(-100%,-50%)}
 .knobs-panel .knobs-optkey[data-shown]{opacity:.85;transition-duration:.15s}
@@ -884,7 +945,18 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-menu-item[data-separated]{margin-top:calc(var(--_k-unit) * 2 + 1px)}
 .knobs-menu-item[data-separated]::before{content:"";position:absolute;left:8px;right:8px;top:calc(var(--_k-unit) * -1 - 1px);height:1px;transform:scaleY(.5);background:var(--_k-border)}
 
+/* Text: a field beside its label, or (multiline) a box under it that grows with its lines */
+.knobs-panel .knobs-text{flex:1 1 auto;min-width:0;max-width:62%;height:var(--_k-control-h);margin:0;padding:0 8px;border:0;border-radius:var(--_k-radius-md);outline:none;background:var(--_k-segmented-track);color:var(--_k-fg);caret-color:var(--_k-accent);font:inherit;font-size:var(--_k-text-control);-webkit-user-select:text;user-select:text;cursor:text}
+.knobs-panel .knobs-text::placeholder{color:var(--_k-fg-3);opacity:1}
+.knobs-panel .knobs-text:is(:hover,:focus){background:color-mix(in srgb,var(--_k-fill-selected) 70%,var(--_k-segmented-track))}
+.knobs-panel .knobs-text::selection{background:color-mix(in srgb,var(--_k-accent) 24%,transparent);color:var(--_k-fg)}
+.knobs-panel .knobs-insp[data-multiline]{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:calc(var(--_k-unit) * 1.5);height:auto;padding-block:calc(var(--_k-unit) * 2)}
+.knobs-panel .knobs-insp[data-multiline]>span:first-child{align-self:flex-start;max-width:100%}
+.knobs-panel textarea.knobs-text{max-width:none;height:auto;min-height:calc(2lh + 12px);max-height:calc(8lh + 12px);margin:0;padding:6px 8px;resize:none;field-sizing:content;font:inherit;font-size:var(--_k-text-control);line-height:1.4}
+.knobs-panel :is([data-disabled],[data-readonly]) .knobs-text{cursor:default}
+
 /* Status & Transfer Textarea */
+.knobs-panel .knobs-empty{margin:0;padding:calc(var(--_k-unit) * 2) var(--_k-inset);color:var(--_k-fg-3);font-size:var(--_k-text-control);overflow-wrap:anywhere}
 .knobs-panel .knobs-status{margin:6px 0 0;padding:0 var(--_k-inset);color:var(--_k-fg-2);font-size:var(--_k-text-meta);overflow-wrap:anywhere}
 
 .knobs-panel textarea{width:100%;min-height:84px;margin-top:6px;padding:6px var(--_k-inset);resize:vertical;font:var(--_k-text-meta)/1.4 var(--_k-mono)}
@@ -896,7 +968,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :where(header strong,header button,.knobs-tile,.knobs-section-head,.knobs-group-label,.knobs-peek,.knobs-card>*,.knobs-presets,.knobs-preset-chip,.knobs-group-head,.knobs-group-head button,.knobs-card,.knobs-row,.knobs-row>span:first-child,.knobs-slider,.knobs-track,.knobs-label,.knobs-value,.knobs-digits,.knobs-digits *,.knobs-unit,.knobs-seg,.knobs-seg button,.knobs-custom-actions button,.knobs-action,.knobs-select,.knobs-select-value,
   .knobs-sub,.knobs-x-head,.knobs-x-label,.knobs-x-read,.knobs-strip-label,.knobs-strip-read,.knobs-pad,.knobs-ease,.knobs-spring-curve,.knobs-ease-chips,.knobs-ease-chip,.knobs-graph,.knobs-graph-read,
   .knobs-tabs,.knobs-tab,.knobs-subhead,.knobs-subhead-label,.knobs-match,.knobs-cell,.knobs-cell-axis,.knobs-cell-read,.knobs-link,.knobs-range-read,.knobs-angle,.knobs-angle-read,.knobs-dial,
-  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,
+  .knobs-seed,.knobs-seed-read,.knobs-seed-digits,.knobs-seed-digits *,.knobs-seed-roll,.knobs-keys,.knobs-keys-text,.knobs-tool,.knobs-tool-label,.knobs-tool-key,.knobs-preset-key,
   .knobs-section-name,.knobs-section-summary,.knobs-section-desc,.knobs-group-desc,.knobs-group-summary,.knobs-tab-count):not(.knobs-live,.knobs-live *){
   background:transparent!important;color:transparent!important;border-color:transparent!important;box-shadow:none!important;
 }
@@ -913,14 +985,15 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel[data-gpu-active="true"] :is(.knobs-card:not(.knobs-live *),.knobs-tile:not(.knobs-live))::after,
 .knobs-panel[data-gpu-active="true"] .knobs-optkey,
 .knobs-panel[data-gpu-active="true"] .knobs-row:not(.knobs-live *)>span:first-child::after,
+.knobs-panel[data-gpu-active="true"] :is(.knobs-group-head:not(.knobs-live *)>.knobs-group-label,.knobs-group-head:not(.knobs-live *)>.knobs-group-title>.knobs-group-label,.knobs-subhead-label)::after,
 .knobs-panel[data-gpu-active="true"] .knobs-preset-chip::after,
 .knobs-panel[data-gpu-active="true"] :is(.knobs-tile:not(.knobs-live)>.knobs-veil,.knobs-tile:not(.knobs-live)>.knobs-mark,.knobs-section-head>.knobs-mark){opacity:0!important}
 /* Parts the canvas doesn't draw (shortcuts, status, editors) sit above it. */
-.knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-apply-btn){position:relative;z-index:2147480003}
+.knobs-panel[data-gpu-active="true"] :where(.knobs-popover,.knobs-status,textarea,.knobs-text,.knobs-apply-btn){position:relative;z-index:2147480003}
 .knobs-panel[data-gpu-active="true"] :is(.knobs-number,.knobs-preset-name){z-index:2147480003}
 /* A row accessory is the host's own DOM, so it sits above the canvas too (its row then can't
    contain its layout, which would trap it in a stacking context under the canvas). */
-.knobs-panel[data-gpu-active="true"] .knobs-row[data-accessory]{contain:style}
+.knobs-panel[data-gpu-active="true"] :is(.knobs-row[data-accessory],.knobs-insp[data-kind="text"]){contain:style}
 :where(.knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory){position:relative}
 .knobs-panel[data-gpu-active="true"] .knobs-row>.knobs-accessory{z-index:2147480003}
 
@@ -1014,7 +1087,7 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-group-summary{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--_k-fg-3);font-size:var(--_k-text-control);font-weight:500;letter-spacing:0;font-variant-numeric:tabular-nums}
 .knobs-tile[data-folded]>.knobs-group-head .knobs-group-summary:not(:empty){display:block}
 .knobs-tile[data-folded]>.knobs-group-head .knobs-group-ctl{display:none}
-.knobs-tile[data-fold-motion]>.knobs-group-head :is(.knobs-group-summary,.knobs-group-ctl){animation:knobs-fade .2s var(--k-ease) both}
+.knobs-tile[data-fold-motion]>.knobs-group-head :is(.knobs-group-summary,.knobs-group-ctl),.knobs-group-head[data-fold-motion]>.knobs-group-summary{animation:knobs-fade .2s var(--k-ease) both}
 /* A highlight (page.highlight): the rest dims under a veil of the page's colour (--k-page-dim at
    full), and what's highlighted on its own gets a dot in the gutter by its title. The veil and
    dot are written each frame on the panel spring (see page.ts). */

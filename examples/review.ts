@@ -19,7 +19,13 @@ import {
 } from "knobs/review"
 import { apca } from "../src/tokens/index"
 
-const asset = (name: string) => new URL(`./assets/${name}`, import.meta.url).href
+// Listed, not `new URL(`./assets/${name}`)`: Vite reads that as `./assets/*`, one level deep, and
+// every file under compare/ and ideas/ came out as `undefined`.
+const assets = import.meta.glob(
+  ["./assets/compare/{before,after,long-after}.{mp4,png}", "./assets/ideas/*-wide-640.jpg"],
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>
+const asset = (name: string) => assets[`./assets/${name}`]!
 const pr = (n: number) => `https://github.com/anomalyco/opencode/pull/${n}`
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -251,6 +257,32 @@ index a1dbf70..a16c034 100644
  ]
 `
 
+const REVIEW_PATCH = `${PATCH}diff --git a/src/plugin/models-dev.ts b/src/plugin/models-dev.ts
+index 3c1d2e0..9f8a7b6 100644
+--- a/src/plugin/models-dev.ts
++++ b/src/plugin/models-dev.ts
+@@ -40,4 +40,5 @@ export function integrations(catalog: Catalog) {
+   return Object.values(catalog)
+-    .filter((p) => p.env?.length)
++    // Go is a subscription inside an OpenCode workspace, not an integration of its own.
++    .filter((p) => p.env?.length && p.id !== "opencode-go")
+     .map((p) => ({ id: p.id, label: p.name, auth: "api-key" as const }))
+ }
+diff --git a/test/connect.test.ts b/test/connect.test.ts
+index 7d6e5f4..1b2c3d4 100644
+--- a/test/connect.test.ts
++++ b/test/connect.test.ts
+@@ -8,4 +8,8 @@ describe("/connect", () => {
+   test("lists OpenCode first", () => {
+     expect(rows()[0].id).toBe("opencode")
+   })
++
++  test("has no OpenCode Go row", () => {
++    expect(rows().some((r) => r.id === "opencode-go")).toBe(false)
++  })
+ })
+`
+
 const compareVideos = {
   kind: "compare",
   before: { src: asset("compare/before.mp4"), label: "Before" },
@@ -473,6 +505,7 @@ const doc: WalkthroughDoc = {
         ask: "none",
         media: {
           kind: "compare",
+          label: "Provider list",
           before: { src: asset("compare/before.png"), label: "Before" },
           after: { src: asset("compare/after.png"), label: "After" },
           aspect: "640/360",
@@ -501,6 +534,7 @@ const doc: WalkthroughDoc = {
         ask: "none",
         media: {
           kind: "video",
+          label: "First launch",
           src: asset("compare/long-after.mp4"),
           aspect: "640/360",
           chapters: [
@@ -609,6 +643,12 @@ const doc: WalkthroughDoc = {
     ]),
     piece("Code", "Code, in one well: a diff, a file, a terminal.", [
       { title: "Diff", ask: "none", media: { kind: "diff", patch: PATCH } },
+      {
+        title: "Diff with its files",
+        caption: "The files in a drawer beside it; ⌘B opens and shuts it.",
+        ask: "none",
+        media: { kind: "diff", patch: REVIEW_PATCH, review: true, height: 360 },
+      },
       {
         title: "Code and terminal",
         ask: "none",

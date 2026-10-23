@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Components lab · knobs in a three-pane split</title>
+    <style>
+      /* OpenCode Desktop's components lab, in miniature: a tree of stories, the story, and its
+         controls, each a pane of one knobs/ui split on the app's near-black page. */
+      html, body { margin: 0; height: 100%; background: #0b0b0c; color: #e6e6e6; font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; overflow: hidden; }
+      .lab { position: absolute; inset: 44px 12px 12px; }
+      .story { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 100%; background: #161617; }
+      .story .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 360px; }
+      .story .chip { padding: 4px 10px; border-radius: 999px; background: #232325; color: #cfcfd2; font-size: 12px; }
+      .story .caption { color: #8a8a8f; font-size: 12px; }
+      .story .composer { box-sizing: border-box; width: min(420px, 80%); min-height: 64px; padding: 10px 12px; border-radius: 10px; background: #1f1f21; color: #e6e6e6; white-space: pre-wrap; }
+      .story .composer[data-empty] { color: #6d6d72; }
+      .story .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #3a3a3d; border-top-color: #e6e6e6; animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { rotate: 1turn } }
+    </style>
+  </head>
+  <body>
+    <div class="lab" id="lab"></div>
+    <script type="module" src="/components-lab.ts"></script>
+  </body>
+</html>

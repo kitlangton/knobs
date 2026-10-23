@@ -3,14 +3,15 @@
 // difference, drawn by one WebGPU pass (two <video>s with a
 // clip-path wipe where there's no WebGPU). Both videos run from one clock: paused, scrubbed or
 // stepped, each seeks to the frame's midpoint, coalesced, and while a seek is in flight the nearest
-// decoded frame from a shared cache (compare-frames.ts) shows at once; playing, After leads,
+// decoded frame from a shared cache (compare-frames.ts) shows at once; scrubbed, the cache's proxy
+// of the frame under the hand shows and the videos seek once it lets go; playing, After leads,
 // Before's rate leans to stay on it, and a bound timeline follows After's own time, so two clocks
 // never fight. Sources load when the viewer nears the screen and are let go when it's well off,
 // so a long page can hold many; every viewer shares one GPU device.
 import { Spring, springMotion } from "../core/spring.js"
 import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
-import { acquireFrames, type CachedFrame, type FrameCache } from "./compare-frames.js"
+import { acquireFrames, scrubCaching, type CachedFrame, type FrameCache } from "./compare-frames.js"
 import { createCompareGpu, MODE_INDEX, type CompareGpu } from "./compare-gpu.js"
 import {
   clampZoom,
@@ -40,7 +41,9 @@ import {
   seeked,
   type Size,
   splitHeight,
+  stallGuard,
   syncAction,
+  type Timers,
   wipeAt,
   wipeGrab,
   wipeKey,
@@ -49,7 +52,6 @@ import {
   zoomedRect,
   type ZoomRegion,
 } from "./compare-model.js"
-import { compareStrip, type CompareStrip } from "./compare-strip.js"
 import { icon } from "./icons.js"
 import { applyLook, frameLoop, isTypingTarget, reducedMotion, tune, type UiLook } from "./look.js"
 import { tokenColor } from "./rgba.js"
@@ -112,8 +114,6 @@ export interface CompareOptions extends UiLook {
    * `play` and keys still work.
    */
   readonly timeline?: Timeline | boolean
-  /** The frame strip over the timeline (off; one timeline is made if there's none). */
-  readonly strip?: boolean
   /**
    * The sources' width over height before they load (16/9). In a container without a height of
    * its own, the viewer takes the height its sides need: a split screen with no margins.
@@ -123,6 +123,12 @@ export interface CompareOptions extends UiLook {
   readonly lazy?: boolean
   /** `"gpu"` (the default, where WebGPU is there) or `"dom"`. */
   readonly renderer?: "gpu" | "dom"
+  /**
+   * Decode the videos' frames in the background, so a step or a scrub shows its frame at once (it
+   * fetches each whole file). On unless the reader prefers reduced data or saves data; false
+   * never, true always. Without it, the videos seek as the playhead moves.
+   */
+  readonly scrubCache?: boolean
   readonly label?: string
   /** The modes, the loupe and the wipe take codes in the page's hint mode (`s`); on by default. */
   readonly hints?: boolean
@@ -148,7 +154,6 @@ export interface Compare {
   readonly renderer: "gpu" | "dom"
   /** The bound timeline, or the one it made. */
   readonly timeline: Timeline | null
-  readonly strip: CompareStrip | null
   /** The part of each side in view (`{ u: 0, v: 0, w: 1, h: 1 }` is all of it). */
   readonly zoom: ZoomRegion
   /** The timeline's loop, or null. */
@@ -232,6 +237,8 @@ interface Side {
   /** Uploads that failed in a row. */
   misses: number
   failed: boolean
+  /** Its seek in flight, given up on if it never lands. */
+  readonly stall: ReturnType<typeof stallGuard>
   stop(): void
 }
 
@@ -244,6 +251,7 @@ type FrameVideo = HTMLVideoElement & {
 export function compare(container: HTMLElement, options: CompareOptions): Compare {
   const doc = container.ownerDocument
   const win = doc.defaultView!
+  const caching = scrubCaching(options.scrubCache, win)
   const look: UiLook = {
     ...(options.preset ? { preset: options.preset } : {}),
     ...(options.theme ? { theme: options.theme } : {}),
@@ -369,15 +377,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   root.append(bar, stage)
 
   // ——— the clock: a bound timeline, one of its own, or none (its own time) ———
-  const wantsStrip = options.strip === true
   let tl: Timeline | null = bound
   let ownTimeline = false
-  let stripHost: HTMLElement | null = null
-  if (wantsStrip) {
-    stripHost = el("div", "knobs-cmp-strip-host")
-    root.append(stripHost)
-  }
-  if (!tl && (options.timeline === true || wantsStrip)) {
+  if (!tl && options.timeline === true) {
     const host = el("div", "knobs-cmp-timeline-host")
     root.append(host)
     tl = makeTimeline(host, {
@@ -537,7 +539,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       s.frames.keep(at, v, v.videoWidth, v.videoHeight)
       return
     }
-    const c = s.frames.nearest(want)
+    const c = s.frames.nearest(want, Number.POSITIVE_INFINITY, true)
     if (c && Math.abs(c.frame - want) < Math.abs(at - want)) showCached(s, c)
     else showVideo(s)
   }
@@ -546,10 +548,20 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     if (!s.loaded || !s.frames || isPlaying()) return
     const want = wantOf(s)
     if (s.shown && !s.shown.cached && s.shown.frame === want) return
-    const c = s.frames.nearest(want)
+    const c = s.frames.nearest(want, Number.POSITIVE_INFINITY, true)
     if (!c) return
     const was = s.shown ? Math.abs(s.shown.frame - want) : Number.POSITIVE_INFINITY
     if (Math.abs(c.frame - want) < was) showCached(s, c)
+  }
+
+  /** A seek that never landed: the video shows what it has, and the next seek goes out. */
+  const giveUp = (s: Side) => {
+    s.seek = SEEK_IDLE
+    if (!s.loaded || disposed) return
+    if ((s.el as HTMLVideoElement).readyState >= 2) return showVideo(s)
+    s.shown = null
+    setCached(s, false)
+    requestDraw()
   }
 
   // ——— sides: made at once, loaded near the screen ———
@@ -584,7 +596,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       frameAt: 0,
       misses: 0,
       failed: false,
+      stall: stallGuard(win as unknown as Timers, () => giveUp(side)),
       stop: () => {
+        side.stall.clear()
         for (const f of offs) f()
       },
     }
@@ -592,6 +606,11 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (!side.loaded) return
       side.failed = true
       note.textContent = `Couldn't load ${labelOf(index)}`
+      // Nothing it was seeking will land, and no cached frame stands in for it.
+      side.stall.clear()
+      side.seek = SEEK_IDLE
+      side.shown = null
+      setCached(side, false)
     }
     if (media instanceof HTMLVideoElement) {
       const v = media as FrameVideo
@@ -618,6 +637,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         const step = seeked(side.seek, v.currentTime, fps())
         side.seek = step.state
         if (step.apply !== null) seekVideo(side, v, step.apply)
+        else side.stall.clear()
         pushFrame(side)
       })
       on("error", fail)
@@ -648,7 +668,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     s.loaded = true
     s.failed = false
     s.el.src = s.source.src
-    if (s.kind === "video") {
+    if (s.kind === "video" && caching) {
       s.frames = acquireFrames(doc, s.source.src, fps())
       s.unlisten = s.frames.listen(() => refreshCached(s))
       if (onScreen) {
@@ -663,6 +683,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     s.el.removeAttribute("src")
     if (s.el instanceof HTMLVideoElement) s.el.load()
     s.seek = SEEK_IDLE
+    s.stall.clear()
     s.shown = null
     setCached(s, false)
     s.unlisten?.()
@@ -789,6 +810,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     const far = !c || Math.abs(c.frame - wantOf(s)) > FAST_SEEK_FRAMES
     if (scrubbing && far && v.fastSeek) v.fastSeek(t)
     else v.currentTime = t
+    s.stall.arm()
   }
   /** Paused: both seek to the frame's midpoint, coalesced; a cached frame shows meanwhile. */
   const showFrame = (t: number, used: boolean) => {
@@ -800,12 +822,21 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         v.playbackRate = 1
       }
       const want = Math.min(frameOf(t, fps()), lastFrame(v.duration, fps()))
-      const step = requestSeek(s.seek, frameMidpoint(want, fps(), v.duration), v.currentTime, fps())
-      s.seek = step.state
-      if (step.apply !== null) seekVideo(s, v, step.apply)
-      else if (step.settled && (s.shown?.cached || s.shown?.frame !== want)) pushFrame(s)
-      // The viewer in use: full-size frames around its playhead decode first.
-      if (used) s.frames?.focus(want)
+      // The viewer in use goes first: scrubbed, its proxies nearest the hand; at rest, full-size
+      // frames around the playhead.
+      if (used) {
+        if (scrubbing) s.frames?.follow(want)
+        else s.frames?.focus(want)
+      }
+      // Mid-scrub over frames the cache holds, the video waits for the hand to let go: its seeks
+      // would only queue behind each other and fight the proxies for the decoder.
+      if (!(scrubbing && s.frames?.covers(want))) {
+        const at = frameMidpoint(want, fps(), v.duration)
+        const step = requestSeek(s.seek, at, v.currentTime, fps())
+        s.seek = step.state
+        if (step.apply !== null) seekVideo(s, v, step.apply)
+        else if (step.settled && (s.shown?.cached || s.shown?.frame !== want)) pushFrame(s)
+      }
       refreshCached(s)
     }
     requestDraw()
@@ -1445,7 +1476,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         if (!e.repeat) holdLoupe(true)
         return
       case "l":
-        if (e.altKey || e.shiftKey) return
+        if (e.altKey || e.shiftKey || loopBtn.hidden) return
         claim()
         return api.setLoop(!loopNow())
       case "0":
@@ -1466,6 +1497,10 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     }
   }
 
+  /** Two stills have no time to loop. */
+  const syncLoopButton = () => {
+    loopBtn.hidden = !sides.some((s) => s.kind === "video")
+  }
   const replace = (index: 0 | 1, source: CompareSource) => {
     const old = sides[index]
     old.stop()
@@ -1474,6 +1509,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     old.el.replaceWith(s.el)
     old.preview.replaceWith(s.preview)
     sides[index] = s
+    syncLoopButton()
     note.textContent = ""
     setLabel(index, labelOf(index))
     if (near) loadSide(s)
@@ -1490,6 +1526,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
   stage.insertBefore(sides[0].preview, labels[0])
   setLabel(0, labelOf(0))
   setLabel(1, labelOf(1))
+  syncLoopButton()
   loupeBtn.setAttribute("aria-pressed", String(loupeOn))
   loopBtn.setAttribute("aria-pressed", String(loopNow() !== null))
   const modePill =
@@ -1579,7 +1616,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
                   activate: () => setMode(m),
                 }))
               : []),
-            { el: loopBtn, label: "Loop", activate: () => api.setLoop(!loopNow()) },
+            ...(loopBtn.hidden
+              ? []
+              : [{ el: loopBtn, label: "Loop", activate: () => api.setLoop(!loopNow()) }]),
             ...(loupeBtn.hidden
               ? []
               : [{ el: loupeBtn, label: "Loupe", activate: () => setLoupe(!loupeOn) }]),
@@ -1598,18 +1637,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
           ],
           { listen: false, rank: 1 },
         )
-
-  const strip =
-    wantsStrip && stripHost && tl
-      ? compareStrip(stripHost, {
-          ...look,
-          before: options.before,
-          after: options.after,
-          timeline: tl,
-          ...(fpsOpt ? { fps: fpsOpt } : {}),
-          threshold,
-        })
-      : null
 
   const api: Compare = {
     element: root,
@@ -1636,7 +1663,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       return renderer
     },
     timeline: tl,
-    strip,
     get zoom() {
       return clampZoom(zoomNow())
     },
@@ -1653,8 +1679,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       else if (next.before) setLabel(0, next.before.label ?? "Before")
       if (after) replace(1, after)
       else if (next.after) setLabel(1, next.after.label ?? "After")
-      if (before || after)
-        strip?.update({ ...(before ? { before } : {}), ...(after ? { after } : {}) })
       if (next.before || next.after) readColors()
       if (next.mode !== undefined) setMode(next.mode, false)
       if (next.wipe !== undefined) setWipe(next.wipe, false)
@@ -1712,7 +1736,6 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         tl.drive(null)
         if (ownTimeline) tl.dispose()
       }
-      strip?.dispose()
       for (const s of sides) {
         s.stop()
         unloadSide(s)

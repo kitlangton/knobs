@@ -149,12 +149,12 @@ export type WalkthroughMedia =
       readonly kind: "compare"
       readonly before: string | WalkthroughSource
       readonly after: string | WalkthroughSource
+      /** A small faint line over it, as every kind's `label` is. */
+      readonly label?: string
       /** `"side"` by default (`"wipe"` where the slot is narrow). */
       readonly mode?: CompareMode
       /** Width over height (`16 / 9`, or `"1100/900"`); read from the video when left out. */
       readonly aspect?: number | string
-      /** The frame strip over the timeline. */
-      readonly strip?: boolean
       /** Pills under it that seek, and markers on its timeline. */
       readonly chapters?: readonly WalkthroughChapter[]
       /** Marks on the pictures, on both sides (and under a zoom). */
@@ -224,6 +224,7 @@ export type WalkthroughMedia =
       readonly kind: "diff"
       /** `git diff` / `git show` output. */
       readonly patch?: string
+      readonly label?: string
       readonly files?: readonly DiffSource[]
       readonly file?: string
       readonly layout?: "split" | "unified"
@@ -270,6 +271,7 @@ export type WalkthroughMedia =
   | {
       readonly kind: "mount"
       readonly mount: (element: HTMLElement) => (() => void) | void
+      readonly label?: string
       /** Pixels held for it before it mounts. */
       readonly height?: number
     }

@@ -2,20 +2,12 @@ import { Spring, springMotion } from "../core/spring.js"
 import { MOTION } from "../core/motion.js"
 import { arrowOf } from "./prefs.js"
 import type { StoragePort } from "../core/storage.js"
-import type { MountPanelOptions, SectionFolded } from "../core/store.js"
+import type { FoldSummaryInfo, MountPanelOptions, SectionFolded } from "../core/store.js"
 import type { Panel } from "./panel.js"
 import { isRevealingIn, resize, reveal } from "./reveal.js"
 import { createChoice } from "./choice.js"
 
-/** What a folded card's or section's summary is made of (see `MountPageOptions.groupSummary`). */
-export interface FoldSummaryInfo {
-  /** The group preset its values match (its name), "Custom" when none does; null without any. */
-  readonly preset: string | null
-  /** How many of its rows differ from their defaults (a spring's two keys count once). */
-  readonly changed: number
-  /** Its value keys. */
-  readonly keys: readonly string[]
-}
+export type { FoldSummaryInfo }
 
 export interface MountPageOptions extends MountPanelOptions {
   /** Section order; sections not listed follow in the order they first appear. */
@@ -46,11 +38,6 @@ export interface MountPageOptions extends MountPanelOptions {
    * opening it if it's folded.
    */
   readonly nav?: boolean
-  /**
-   * What a folded group card's header says. By default "<matching preset, or Custom> · N
-   * changed", leaving out what doesn't apply. `null` shows nothing.
-   */
-  readonly groupSummary?: (group: string, info: FoldSummaryInfo) => string | Node | null
   /** What a folded section's heading says ("N changed · M cards" by default; `preset` is null). */
   readonly sectionSummary?: (section: string, info: FoldSummaryInfo) => string | Node | null
 }

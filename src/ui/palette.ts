@@ -4,7 +4,7 @@
 // store's actions, presets and fields as commands.
 import { comboParts, matchesCombo } from "../core/keys.js"
 import type { UiLook } from "./look.js"
-import { focusReturn, layerElement, presence, pushLayer } from "./layer.js"
+import { focusReturn, layerElement, type PresenceOptions, presence, pushLayer } from "./layer.js"
 import { marks, rank } from "./overlay-model.js"
 import { toast } from "./toast.js"
 
@@ -35,8 +35,43 @@ export interface CommandPaletteOptions {
   readonly placeholder?: string
   /** Recent commands are remembered under this key in localStorage; `false` remembers nothing. */
   readonly recents?: string | false
+  /**
+   * How it comes and goes: `"fade"` (opacity over about 80 ms, the default), `"none"` or `false`
+   * (at once), or a spring of your own. Fields you leave out are the full entrance: grows from
+   * .96, sharpens from 8 px, drops 8 px, over .34 s; it leaves in .2 s at most.
+   */
+  readonly presence?: PalettePresence
   readonly look?: UiLook
   readonly doc?: Document
+}
+
+export type PalettePresence =
+  | "fade"
+  | "none"
+  | false
+  | {
+      readonly duration?: number
+      readonly scale?: number
+      readonly blur?: number
+      readonly dy?: number
+    }
+
+const FADE_SECONDS = 0.08
+
+/** The layer motion for a `presence` option; null for none. */
+export function palettePresence(p: PalettePresence = "fade"): PresenceOptions | null {
+  if (p === false || p === "none") return null
+  if (p === "fade")
+    return { scale: 1, blur: 0, dy: 0, duration: FADE_SECONDS, exit: FADE_SECONDS, bounce: 0 }
+  const duration = p.duration ?? 0.34
+  return {
+    scale: p.scale ?? 0.96,
+    blur: p.blur ?? 8,
+    dy: p.dy ?? -8,
+    duration,
+    exit: Math.min(0.2, duration),
+    bounce: 0,
+  }
 }
 
 export interface CommandPalette {
@@ -55,6 +90,7 @@ export function commandPalette(options: CommandPaletteOptions): CommandPalette {
   const doc = options.doc ?? document
   const win = doc.defaultView!
   const hotkey = options.hotkey === undefined ? "Mod+K" : options.hotkey
+  const motionOptions = palettePresence(options.presence)
   const storeKey = options.recents === false ? null : `knobs-palette:${options.recents ?? "recent"}`
   const readRecents = (): string[] => {
     if (!storeKey) return []
@@ -82,7 +118,7 @@ export function commandPalette(options: CommandPaletteOptions): CommandPalette {
     items: { command: Command; row: HTMLElement }[]
     active: number
     commands: readonly Command[]
-    motion: ReturnType<typeof presence>
+    motion: ReturnType<typeof presence> | null
     unstack: () => void
     giveBack: () => void
   } | null = null
@@ -290,7 +326,7 @@ export function commandPalette(options: CommandPaletteOptions): CommandPalette {
     const layer = el
     const giveBack = focusReturn(doc, layer)
     const commands = typeof options.commands === "function" ? options.commands() : options.commands
-    const motion = presence(layer, { scale: 0.96, blur: 8, dy: -8, duration: 0.34 })
+    const motion = motionOptions ? presence(layer, motionOptions) : null
     state = {
       input,
       list,
@@ -324,7 +360,7 @@ export function commandPalette(options: CommandPaletteOptions): CommandPalette {
         if (state) runAt(state.active)
       }
     })
-    motion.show()
+    motion?.show()
     input.focus({ preventScroll: true })
     input.select()
   }
@@ -337,7 +373,8 @@ export function commandPalette(options: CommandPaletteOptions): CommandPalette {
     el = null
     s.unstack()
     s.giveBack()
-    void s.motion.hide().then(() => layer.remove())
+    if (s.motion) void s.motion.hide().then(() => layer.remove())
+    else layer.remove()
   }
 
   const onKey = (e: KeyboardEvent) => {

@@ -1,5 +1,5 @@
 import { arrowOf } from "./prefs.js"
-import { equal, type Schema, type Values } from "../core/schema.js"
+import { equal, same, type Schema, type Values } from "../core/schema.js"
 import type { Controls } from "../core/store.js"
 import { Edges, Spring } from "./motion.js"
 import { tick } from "./haptics.js"
@@ -29,9 +29,12 @@ export interface ActivePresetState {
 /** How strong the selection pill stays on the active preset once the values drift off it. */
 export const DRIFTED_PILL = 0.5
 
-/** The strip's id for the store's active preset (`p:` a preset, `v:` a saved variant), if any. */
-export function activeEntryId(controls: Controls<any>): string | null {
-  const ref = controls.activePreset()
+/**
+ * The strip's id for the store's active preset (`p:` a preset, `v:` a saved variant), if any;
+ * `scope` as in `Controls.preset`.
+ */
+export function activeEntryId(controls: Controls<any>, scope = ""): string | null {
+  const ref = controls.activePreset(scope)
   return ref ? `${ref.kind === "preset" ? "p" : "v"}:${ref.id}` : null
 }
 
@@ -82,11 +85,39 @@ export function resolveActivePresetEntry<V extends Record<string, any>>(
   }
 }
 
+/**
+ * How many lines `count` chips take in `avail` px, at least `min` px each with `gap` between (as
+ * the strip's auto-fit grid lays them); 1 before there's room to measure.
+ */
+export function presetLines(count: number, min: number, avail: number, gap: number): number {
+  if (count <= 0 || min <= 0 || avail <= 0) return 1
+  return Math.ceil(count / Math.max(1, Math.floor((avail + gap) / (min + gap))))
+}
+
+/** Whether any entry but the defaults gives one of `keys` a value other than its default. */
+export function presetsTouch(
+  entries: readonly PresetEntry<any>[],
+  keys: readonly string[],
+  defaults: Readonly<Record<string, unknown>>,
+): boolean {
+  return entries.some(
+    (e) =>
+      !(e.kind === "preset" && e.rawId === "default") &&
+      keys.some((k) => !same(e.values[k], defaults[k])),
+  )
+}
+
 export function nextPresetIndex(count: number, activeIndex: number, direction: number): number {
   if (count <= 0) return -1
   if (activeIndex < 0) return direction > 0 ? 0 : count - 1
   return (((activeIndex + direction) % count) + count) % count
 }
+
+/**
+ * How the strip lays out its presets: `"chips"` in a tray of equal columns, `"list"` as rows like a
+ * menu's, or `"auto"` (the default): chips while they fit on two lines, else the list.
+ */
+export type PresetDisplay = "auto" | "list" | "chips"
 
 export interface PresetStrip {
   readonly element: HTMLElement
@@ -102,6 +133,12 @@ export interface PresetStrip {
   getButtons(): readonly HTMLButtonElement[]
   getActiveState(): ActivePresetState
   cycle(direction: -1 | 1): void
+  /** Applies the nth chip (0-based), as a click on it does. */
+  select(index: number): void
+  /** Lays the presets out as chips or a list (see `PresetDisplay`). */
+  display(mode: PresetDisplay): void
+  /** Keeps each of the first nine chips' digit on it, quietly, before its name. */
+  digits(on: boolean): void
   selectById(id: string): void
   /** Saves the current values as "Variant N" and opens its name to typing; returns a status message. */
   save(): string
@@ -111,6 +148,8 @@ export interface PresetStrip {
   readonly nameField: () => HTMLInputElement | null
   /** Deletes the selected chip when it's a saved variant; returns a status message. */
   deleteActive(): string | undefined
+  /** Whether the strip should show: presets to pick (or saving on) that touch what's shown. */
+  shows(): boolean
   update(): void
   dispose(): void
 }
@@ -122,7 +161,15 @@ export function createPresetStrip<S extends Schema>(
   run: (action: () => unknown) => void,
   onAfterChange?: () => void,
   /** What a preset's chip says (its id stays its identity); `controls.presetLabel` by default. */
-  presetLabel: (id: string) => string = (id) => controls.presetLabel(id),
+  presetLabel: (id: string, scope: string) => string = (id, scope) =>
+    controls.presetLabel(id, scope),
+  /** Whether these entries matter where the strip is shown (a tab they don't touch hides it). */
+  relevant?: (entries: readonly PresetEntry<any>[]) => boolean,
+  /**
+   * Whose presets it shows: a tab or group's (see `ControlsOptions.scopedPresets`), `""` for the
+   * panel's own, or null for none (the strip hides).
+   */
+  scopeOf: () => string | null = () => "",
 ): PresetStrip {
   const wake = () => onAfterChange?.()
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -171,27 +218,58 @@ export function createPresetStrip<S extends Schema>(
   let initializedPill = false
   /** While the pill slides to a new chip, a resize retargets it instead of snapping it there. */
   let slideUntil = 0
+  let display: PresetDisplay = "auto"
+  let digits = false
+  /** A chip column's least width (px): the longest name's (see `fitColumns`). */
+  let chipMin = 0
+
+  /** The scope showing (read on each update), null while there's none. */
+  let scope: string | null = null
+  const at = () => scope ?? ""
+  /** The scope's presets and saved variants (none without a scope). */
+  const source = () =>
+    scope === null
+      ? undefined
+      : scope === ""
+        ? { presets: controls.presets, variants: controls.variants }
+        : controls.scopes[scope]
+  /**
+   * Keys outside the scope (pinned ones too) at their defaults: its presets and variants leave
+   * them out (see `Controls.scopeOf`).
+   */
+  const unpinned = (values: Values<S>): Values<S> => {
+    let out: Record<string, unknown> | undefined
+    for (const k of Object.keys(values))
+      if (controls.scopeOf(k) !== at() && !same(values[k], controls.locked[k])) {
+        out ??= { ...values }
+        out[k] = controls.locked[k]
+      }
+    return (out as Values<S> | undefined) ?? values
+  }
 
   function buildEntries(): PresetEntry<Values<S>>[] {
-    const presetEntries: PresetEntry<Values<S>>[] = Object.entries(controls.presets).map(
+    const from = source()
+    if (!from) return []
+    const where = at()
+    const presetEntries: PresetEntry<Values<S>>[] = Object.entries(from.presets).map(
       ([id, presetValues]) => ({
         id: `p:${id}`,
         kind: "preset",
         rawId: id,
-        label: presetLabel(id),
+        label: presetLabel(id, where),
         values: presetValues,
-        apply: (coalesce) => controls.preset(id, { coalesce }),
+        apply: (coalesce) => controls.preset(id, { coalesce, scope: where }),
       }),
     )
     if (!showVariants) return presetEntries
-    const variants = controls.variants.list()
+    const variants = from.variants.list()
     const variantEntries: PresetEntry<Values<S>>[] = variants.map((v) => ({
       id: `v:${v.id}`,
       kind: "variant",
       rawId: v.id,
       label: v.name ?? v.id.slice(0, 8),
-      values: v.values,
-      apply: (coalesce) => controls.variants.load(v.id, { coalesce }),
+      values: unpinned(v.values),
+      apply: (coalesce) => from.variants.load(v.id, { coalesce }),
     }))
     return [...presetEntries, ...variantEntries]
   }
@@ -251,7 +329,19 @@ export function createPresetStrip<S extends Schema>(
   }
 
   const resolve = () =>
-    resolveActivePresetEntry(entries, controls.get(), lastAppliedId, activeEntryId(controls))
+    resolveActivePresetEntry(
+      entries,
+      unpinned(controls.get()),
+      lastAppliedId,
+      activeEntryId(controls, at()),
+    )
+  const wanted = (list: readonly PresetEntry<any>[]) =>
+    scope !== null && (list.length > 1 || showVariants) && (relevant?.(list) ?? true)
+  /** Shows or hides the strip, unless a tab change is carrying it in or out. */
+  function syncShown() {
+    const show = wanted(entries)
+    if (root.hidden === show && root.dataset.presence === undefined) root.hidden = !show
+  }
   function syncSelection(snap = false) {
     activeState = resolve()
     if (lastAppliedId !== null && activeState.activeId !== lastAppliedId) {
@@ -315,21 +405,31 @@ export function createPresetStrip<S extends Schema>(
 
   function update() {
     run(() => {
-      const variantsRef = showVariants ? controls.variants.list() : null
-      if (signature !== "" && variantsRef === lastVariantsRef) {
+      const was = scope
+      scope = scopeOf()
+      if (scope !== was) lastAppliedId = null
+      const variantsRef = showVariants ? (source()?.variants.list() ?? null) : null
+      if (signature !== "" && scope === was && variantsRef === lastVariantsRef) {
+        syncShown()
         syncSelection(false)
         return
       }
       lastVariantsRef = variantsRef
       const nextEntries = buildEntries()
-      const nextSig = JSON.stringify(nextEntries.map((e) => [e.id, e.label]))
-      const shouldShow = nextEntries.length > 1 || showVariants
-      root.hidden = !shouldShow
+      const nextSig = JSON.stringify([scope, digits, nextEntries.map((e) => [e.id, e.label])])
+      entries = nextEntries
+      syncShown()
       if (nextSig !== signature) {
         signature = nextSig
         entries = nextEntries
         buttons = entries.map((entry, idx) => {
-          const b = el("button", "knobs-preset-chip", entry.label)
+          const b = el("button", "knobs-preset-chip")
+          if (digits && idx < 9) {
+            const key = el("span", "knobs-preset-key", String(idx + 1))
+            key.setAttribute("aria-hidden", "true")
+            b.append(key, el("span", "knobs-preset-label", entry.label))
+            b.setAttribute("aria-keyshortcuts", String(idx + 1))
+          } else b.textContent = entry.label
           b.type = "button"
           b.tabIndex = -1
           b.dataset.presetId = entry.id
@@ -372,17 +472,39 @@ export function createPresetStrip<S extends Schema>(
       widest = Math.max(widest, range.getBoundingClientRect().width)
     }
     // Room for the bolder selected weight plus the chip's side padding.
-    if (widest > 0) track.style.setProperty("--k-preset-min", `${Math.ceil(widest * 1.06 + 14)}px`)
+    if (widest > 0) {
+      chipMin = Math.ceil(widest * 1.06 + 14)
+      track.style.setProperty("--k-preset-min", `${chipMin}px`)
+    }
+    placeDisplay()
+  }
+
+  /** How many lines the chips take at the strip's width (as the track's auto-fit grid lays them). */
+  function chipLines() {
+    const pad = parseFloat(getComputedStyle(root).getPropertyValue("--_k-tray-pad")) || 0
+    const save = saveButton ? saveButton.offsetWidth + pad : 0
+    return presetLines(buttons.length, chipMin, root.clientWidth - pad * 2 - save, pad)
+  }
+
+  /** Chips, or a list once they'd take more than two lines; true when that changed. */
+  function placeDisplay() {
+    const list = display === "list" || (display === "auto" && chipLines() > 2)
+    const want = list ? "list" : "chips"
+    if (root.dataset.display === want) return false
+    root.dataset.display = want
+    return true
   }
 
   function save() {
     finishName(true)
-    const used = new Set(controls.variants.list().map((v) => v.name))
+    const variants = source()?.variants
+    if (!variants) return ""
+    const used = new Set(variants.list().map((v) => v.name))
     let n = 1
     while (used.has(`Variant ${n}`)) n++
-    const variant = controls.variants.save(`Variant ${n}`)
+    const variant = variants.save(`Variant ${n}`)
     // The saved values become the active preset: Reset comes back to them, Random roams near.
-    controls.variants.load(variant.id)
+    variants.load(variant.id)
     lastAppliedId = `v:${variant.id}`
     update()
     startName(
@@ -466,7 +588,7 @@ export function createPresetStrip<S extends Schema>(
     if (refocus) focusQuietly()
     let message: string | undefined
     if (keep && entry?.kind === "variant" && name && name !== was) {
-      controls.variants.rename(entry.rawId, name)
+      source()?.variants.rename(entry.rawId, name)
       update()
       message = `Named “${name}”.`
     }
@@ -485,7 +607,7 @@ export function createPresetStrip<S extends Schema>(
   function deleteActive() {
     const entry = entries[activeState.activeIndex]
     if (!entry || entry.kind !== "variant") return undefined
-    controls.variants.remove(entry.rawId)
+    source()?.variants.remove(entry.rawId)
     lastAppliedId = null
     update()
     onAfterChange?.()
@@ -599,8 +721,12 @@ export function createPresetStrip<S extends Schema>(
   })
 
   void doc.fonts?.ready.then(fitColumns)
-  const ro = new ResizeObserver(() => measurePill(performance.now() >= slideUntil))
+  // A new layout places the pill at once; a resize mid-slide retargets it.
+  const ro = new ResizeObserver(() =>
+    measurePill(placeDisplay() || performance.now() >= slideUntil),
+  )
   ro.observe(track)
+  ro.observe(root)
 
   return {
     element: root,
@@ -613,8 +739,26 @@ export function createPresetStrip<S extends Schema>(
     getEntries: () => entries,
     getButtons: () => buttons,
     getActiveState: () => activeState,
+    shows: () => wanted(entries),
     cycle,
+    select: (index) => {
+      // The active chip again brings its values back once they've drifted, as a click does.
+      if (index !== activeState.activeIndex || activeState.drifted) selectAt(index)
+    },
     selectById,
+    display(mode) {
+      display = mode
+      if (placeDisplay()) measurePill(true)
+    },
+    digits(on) {
+      if (digits === on) return
+      digits = on
+      root.toggleAttribute("data-digits", on)
+      // Built chips are rebuilt with (or without) their digits; unbuilt ones start that way.
+      if (signature === "") return
+      signature = ""
+      update()
+    },
     save: () => {
       let message = ""
       run(() => (message = save()))

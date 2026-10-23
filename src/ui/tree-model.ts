@@ -127,13 +127,23 @@ export interface NavResult {
   readonly toggle?: { readonly id: string; readonly expanded: boolean }
 }
 
-/** Roving focus: ↑↓ move, ← closes or goes to the parent, → opens or goes to the first child. */
+/**
+ * Roving focus: ↑↓ move, ← closes or goes to the parent, → opens or goes to the first child.
+ * Right to left, ← and → swap.
+ */
 export function navigate<T>(
   rows: readonly FlatRow<T>[],
   active: string | null,
-  key: NavKey | "PageUp" | "PageDown",
+  pressed: NavKey | "PageUp" | "PageDown",
   page = 10,
+  dir: "ltr" | "rtl" = "ltr",
 ): NavResult {
+  const key =
+    dir === "rtl" && (pressed === "ArrowLeft" || pressed === "ArrowRight")
+      ? pressed === "ArrowLeft"
+        ? "ArrowRight"
+        : "ArrowLeft"
+      : pressed
   if (rows.length === 0) return { active: null }
   const i = active === null ? -1 : rows.findIndex((r) => r.id === active)
   const at = (n: number) => rows[Math.min(rows.length - 1, Math.max(0, n))]!.id

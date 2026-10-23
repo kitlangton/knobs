@@ -286,7 +286,7 @@ export function morphFromChip(
     if (shape) return shape
     const cs = getComputedStyle(root)
     // A square panel (radius 0, as labPreset's) stays square: 0 is a radius, not a missing one.
-    const r = parseFloat(cs.getPropertyValue("--kv-radius-panel"))
+    const r = parseFloat(cs.getPropertyValue("--kv-radius-frame"))
     if (Number.isFinite(r)) panelRadius = r
     shape = doc.createElement("div")
     shape.className = "knobs-root knobs-morph"

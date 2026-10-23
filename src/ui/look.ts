@@ -221,13 +221,17 @@ const css = `
 .knobs-tree-row[aria-expanded="true"]>.knobs-tree-caret{transform:rotate(90deg)}
 .knobs-tree-row:not([aria-expanded])>.knobs-tree-caret{visibility:hidden}
 .knobs-tree-icon{flex:none;display:flex;align-items:center;justify-content:center;width:14px;margin-right:6px;color:var(--_k-fg-3);font-size:calc(var(--_k-font-size) - 1px)}
-.knobs-tree-label{position:relative;flex:1;min-width:0;overflow:hidden;font-weight:var(--_k-weight)}
+/* The label wins the room: it keeps its width while the detail (which only takes what's left)
+   fades out at its end, and gives way only once the detail is gone. Each fades where it's cut. */
+.knobs-tree-label{position:relative;flex:0 1 auto;min-width:0;overflow:hidden;font-weight:var(--_k-weight)}
+.knobs-tree-row[data-editing]>.knobs-tree-label{flex-grow:1}
 .knobs-tree-row[data-ancestor] .knobs-tree-label{color:var(--_k-fg-2)}
 .knobs-tree-label .knobs-tree-mark{color:var(--_k-accent)}
 .knobs-tree-row[data-off~="visible"] :is(.knobs-tree-label,.knobs-tree-icon){opacity:.45}
 .knobs-tree-row[data-off~="locked"] .knobs-tree-label{color:var(--_k-fg-2)}
-.knobs-tree-detail{flex:none;margin-left:6px;color:var(--_k-fg-3);font-variant-numeric:tabular-nums}
-.knobs-tree-tools{flex:none;display:flex;align-items:center;gap:1px;margin-left:4px}
+.knobs-tree-detail{flex:1 1 0;min-width:0;overflow:hidden;padding-left:6px;text-align:right;color:var(--_k-fg-3);font-variant-numeric:tabular-nums}
+.knobs-tree-row[data-editing]>.knobs-tree-detail{flex-grow:0;visibility:hidden}
+.knobs-tree-tools{flex:none;display:flex;align-items:center;gap:1px;margin-left:auto;padding-left:4px}
 .knobs-ui .knobs-tree-toggle{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:calc(var(--_k-radius) * 999);color:var(--_k-fg-3);cursor:pointer;opacity:0;transition:opacity .12s,color .12s,background .12s}
 .knobs-ui .knobs-tree-toggle svg{width:12px;height:12px}
 .knobs-tree-row:is(:hover,[data-active],[aria-selected="true"]) .knobs-tree-toggle,.knobs-ui .knobs-tree-toggle[aria-pressed="false"]{opacity:1}

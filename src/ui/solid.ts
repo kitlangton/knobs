@@ -1,9 +1,10 @@
 import {
-  children,
   createEffect,
+  createMemo,
   createRoot,
   getOwner,
   onCleanup,
+  splitProps,
   untrack,
   type JSX,
 } from "solid-js"
@@ -11,6 +12,7 @@ import { insert } from "solid-js/web"
 import { anyChanged, propChanges, timelineChanges } from "./follow.js"
 import { activity, type Activity as ActivityHandle, type ActivityOptions } from "./activity.js"
 import { bento, type Bento as BentoHandle, type BentoOptions } from "./bento.js"
+import { canvas, type Canvas as CanvasHandle, type CanvasOptions } from "./canvas.js"
 import {
   codeDiff,
   diffReview,
@@ -62,6 +64,15 @@ const follow = <P extends object>(read: () => P, apply: (changed: Partial<P>) =>
   })
 }
 
+/** A child's nodes, its reactive parts read (as Solid's `children` helper reads them). */
+const nodes = (kid: unknown): Node[] => {
+  if (typeof kid === "function" && kid.length === 0) return nodes(kid())
+  if (Array.isArray(kid)) return kid.flatMap(nodes)
+  if (kid instanceof Node) return [kid]
+  if (kid == null || typeof kid === "boolean") return []
+  return [document.createTextNode(String(kid))]
+}
+
 export type SplitProps = SplitOptions & {
   /** One element per pane, in the panes' order; each goes into its pane's body. */
   children?: JSX.Element
@@ -76,18 +87,29 @@ export function Split(props: SplitProps): JSX.Element {
   if (typeof document === "undefined") return null as unknown as JSX.Element
   const host = document.createElement("div")
   host.style.cssText = "width:100%;height:100%"
-  const s = untrack(() => split(host, { ...props, onLayout: (layout) => props.onLayout?.(layout) }))
-  const kids = children(() => props.children)
+  // Reading `children` makes them, so only the memo below reads it: spreading props into split()
+  // would make every pane's child a second time.
+  const [, options] = splitProps(props, ["children", "onReady"])
+  const s = untrack(() =>
+    split(host, { ...options, onLayout: (layout) => props.onLayout?.(layout) }),
+  )
+  // The children, made once (again only if the expression itself changes); then one entry per
+  // pane, each its child's nodes (a fragment or <For> stays in its own pane), re-read when a
+  // reactive child (a <Show>) changes without making its siblings again.
+  const made = createMemo(() => props.children as unknown)
+  const kids = createMemo(() => {
+    const list = made()
+    return (Array.isArray(list) ? list : [list]).map(nodes)
+  })
   createEffect(() => {
-    const list = kids.toArray()
+    const list = kids()
     untrack(() =>
       props.panes.forEach((p, i) => {
         const body = s.pane(p.id).body
-        const kid = list[i]
-        const node =
-          kid instanceof Node ? kid : kid == null ? null : document.createTextNode(String(kid))
-        if (node ? body.firstChild !== node || body.childNodes.length > 1 : body.firstChild)
-          body.replaceChildren(...(node ? [node] : []))
+        const next = list[i] ?? []
+        const same =
+          body.childNodes.length === next.length && next.every((n, j) => body.childNodes[j] === n)
+        if (!same) body.replaceChildren(...next)
       }),
     )
   })
@@ -246,7 +268,7 @@ export function Timeline(props: TimelineProps): JSX.Element {
 export type CompareProps = CompareOptions & { onReady?: (compare: CompareHandle) => void }
 
 /**
- * `compare()` as a component, made once (with the `timeline`, `strip` and `renderer` it starts
+ * `compare()` as a component, made once (with the `timeline` and `renderer` it starts
  * with). `before`, `after` (by `src`), `mode`, `wipe`, `loupe`, `threshold` and `fps` follow
  * their props; callbacks always call the latest props.
  */
@@ -333,6 +355,28 @@ export function Bento(props: BentoProps): JSX.Element {
     },
   )
   onCleanup(() => b.dispose())
+  return host as unknown as JSX.Element
+}
+
+export type CanvasProps = CanvasOptions & { onReady?: (canvas: CanvasHandle) => void }
+
+/**
+ * `canvas()` as a component. New `items` update it in place (items that stay keep their content
+ * and glide); `onView` always calls the latest prop.
+ */
+export function Canvas(props: CanvasProps): JSX.Element {
+  if (typeof document === "undefined") return null as unknown as JSX.Element
+  const host = document.createElement("div")
+  host.style.height = "100%"
+  const c = untrack(() => canvas(host, { ...props, onView: (v) => props.onView?.(v) }))
+  untrack(() => props.onReady?.(c))
+  follow(
+    () => ({ items: props.items }),
+    (ch) => {
+      if (ch.items) c.update(ch.items)
+    },
+  )
+  onCleanup(() => c.dispose())
   return host as unknown as JSX.Element
 }
 

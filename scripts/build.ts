@@ -10,6 +10,9 @@ for (const development of [false, true]) {
     target: "browser",
     format: "esm",
     splitting: true,
+    // Bun's preload runtime resolves chunks against import.meta.url; Vite's dep optimizer moves
+    // that into node_modules/.vite/deps, so the injected <link rel=modulepreload> 404s.
+    modulePreload: false,
     minify: { syntax: true, whitespace: false, identifiers: false },
     define: { __KNOBS_DEV__: String(development) },
   })
@@ -62,6 +65,10 @@ if (/createPanel|mountPanel|KnobsGpuRenderer|knobs-panel\{/.test(review))
   throw new Error("The panel leaked into knobs/review.")
 if (!/import\(["']@pierre\/diffs["']\)/.test(review))
   throw new Error("@pierre/diffs must stay a lazy import in knobs/review.")
+for (const dir of ["dist", "dist/dev"])
+  for (const file of new Bun.Glob("*.js").scanSync(dir))
+    if (/modulepreload|__preload/.test(await Bun.file(`${dir}/${file}`).text()))
+      throw new Error(`${dir}/${file} must not inject modulepreload links.`)
 const built = await import(new URL("../dist/index.js", import.meta.url).href)
 const locked = built.defineControls(
   "production-proof",

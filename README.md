@@ -202,10 +202,10 @@ keeps a gradient's stop count and walks its hue along a lightness ramp. On a cur
 a built-in shape and jitters it. Mutate nudges colours as it does a `color` and moves stops and
 points without letting them pass each other.
 
-### Inspector fields: vectors, ranges, angles, seeds, key combinations and toolbars
+### Inspector fields: vectors, ranges, angles, seeds, key combinations, text and toolbars
 
 ```ts
-import { action, angle, defineControls, keybind, range, seed, toolbar, vec2, vec3 } from "knobs"
+import { action, angle, defineControls, keybind, range, seed, text, toolbar, vec2, vec3 } from "knobs"
 
 const node = defineControls("node", {
   replay: action("Replay", { run: replay, shortcut: "Shift+K", global: true, rebind: true }),
@@ -222,6 +222,8 @@ const node = defineControls("node", {
   yaw: angle(90),                                                             // degrees
   seed: seed(1234),                                                           // a whole number
   fire: keybind("Space"),                                                     // "Meta+Shift+K", "" for none
+  name: text("Lamp", { placeholder: "Untitled" }),                            // one line
+  notes: text("", { multiline: true }),                                       // lines in a box
 }, { onAction: (id) => run(id) })
 ```
 
@@ -246,7 +248,12 @@ const node = defineControls("node", {
   Esc cancels and ⌫ clears. Not rolled by Random or Mutate. Letters follow the user's layout
   (Dvorak's K records and matches as K), with ⌥ combinations read through the browser's layout
   map; `comboFromEvent`, `matchesCombo` and `letterOf` do the same for a host's own keys.
-- **`toolbar(items)`**: a row of buttons with an icon (`play`, `pause`, `frame`,
+- **`text(value?, { multiline?, placeholder? })`**: words typed into a field beside the label, or
+  with `multiline` a box under it that grows with its lines (up to eight, then it scrolls). Each
+  keystroke sets the value and one focus's typing is one undo step; Enter (`⌘Enter` in a box) or
+  Esc lets go. A one-line field turns a line break into a space. Presets, copy and remote
+  descriptors carry it like any string; Random and Mutate leave it alone.
+- **`toolbar(items, { labels? })`**: a row of buttons with an icon (`play`, `pause`, `frame`,
   `retrigger`, `clear`, `target`, `camera`, `sparkle`, … or SVG path data on a 256 grid), a label
   and a shortcut chip. The buttons share equal columns, as many as fit, balanced across the rows
   (four that don't fit in one row wrap as two and two), each chip at its button's end. A press calls the item's `run` and `onAction(id)`; `controls.action(key, id)`
@@ -255,7 +262,8 @@ const node = defineControls("node", {
   `shortcut: { key, scope }` says where one works: `"panel"` (the default), `"page"` (as `global`)
   or `"none"`, a chip that only shows a key the host binds itself (a canvas's `F`), so the panel's
   own `f` and `g` still work beside it. The row holds no value; ←/→ move along it and Enter or
-  Space presses.
+  Space presses. When every button has an icon and the labels don't fit on one row, it's one row
+  of icons, each label and shortcut in its tooltip; `labels: false` always shows icons only.
 - **`action(label, { run, shortcut?, global?, rebind? })`**: a button row, whose `shortcut` (a
   combination such as `"Shift+K"`, or `{ key, scope }`) presses it under the same rules as a
   toolbar button's: while the panel has focus, or anywhere on the page with `global: true` (not
@@ -268,9 +276,9 @@ const node = defineControls("node", {
   button's too (by its id), which has no cap of its own to rebind it from.
 
 Remote descriptors use the same names: `kind: "vec2" | "vec3" | "range" | "angle" | "seed" |
-"keybind"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
-`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }] }`; vectors take
-`axes`. Each kind takes
+"keybind" | "text"` with `default`, `min`, `max`, `step`, `unit`, `decimals`, `link`, `linked` and `wrap`, and
+`{ kind: "toolbar", items: [{ key, label, icon?, shortcut?, global?, disabled? }], labels? }`; vectors take
+`axes`, text `multiline` and `placeholder`. Each kind takes
 `disabled`, `readOnly` and mixed values like the rest ("—" in place of the value).
 
 Spring, point, easing, gradient and curve values compare by their contents everywhere (`isModified`, presets, undo, variants), and unchanged ones keep their identity across updates so memoized React children skip them. Random values stay in range people use (springs 0.2–0.9 s with bounce up to 0.45, mid-light colours of moderate chroma, any point, a named curve). Switches sit out of Random and Mutate unless a field says `random: true`: they usually show or hide things (a view, a scene's part), and a roll that hides the page isn't a new take on it.
@@ -317,6 +325,38 @@ live.watch("events", { level: "warn", text: "Gutter drip over budget" })
 
 Readouts cost nothing at rest. They draw on one shared clock, only while on screen and only when something arrived, so a paused feed lets the page, and the GPU overlay, sleep. Graphics are canvases redrawn from a list of drawing ops (the GPU overlay draws the same ops). Text changes at most `hz` times a second (4 by default), in boxes that only grow, so nothing reflows as numbers change. Scales snap to round steps (1, 2 or 5 × 10ⁿ) and ease there on a spring, in log space, so a spike rescales smoothly. The store keeps each readout's history, so a panel mounted later starts with it. On their own, outside a panel: `readout(sparkline({ unit: "ms" }), { preset })` from `knobs/ui` returns `{ element, push(value), value, dispose() }`.
 
+## Versions of a design: variants in the strip
+
+When a page has several versions of one design (nine hero animations, three card layouts), the
+preset strip at the top of the panel is where you switch them. Each version is a preset. Don't
+add a `variant` choice beside it: two ways to switch the same thing is one too many.
+
+When the page's code branches on which version is on, give that choice `variants: true`:
+
+```ts
+const controls = defineControls("upsell", {
+  variant: choice("Stand up", ["Stand up", "Anamorphic", "Roll", "Trace"], { variants: true }),
+  speed: knob(1, { min: 0.25, max: 2, step: 0.05 }),
+}, {
+  presets: { Roll: { speed: 0.8 } }, // optional: values a variant changes beside itself
+})
+
+render(controls.get().variant) // "Stand up", until another chip is picked
+```
+
+- **Each option is a chip in the strip.** The default option is the `default` preset, named after
+  it; the others follow in order, then any other `presets`. Their ids are the options, and
+  `labels` name the chips.
+- **The choice has no row.** The strip is the one place to switch, with a click, a sideways pan,
+  `[` / `]`, or `1`–`9` from anywhere in the panel but a number row.
+- **Random leaves it be** (`random: false` unless you say otherwise). Random explores around the
+  active variant, and Reset goes back to it, as with any preset.
+- **`presets` keyed by an option add to that variant.** The default variant's values are the
+  schema's defaults, so it takes none there.
+
+Versions that differ only in their values need no choice at all: they're plain `presets`, with
+`defaultLabel` naming the first.
+
 ## Presets: names and the base
 
 The strip holds the schema's `presets` (and `default`) beside the variants you save. Saving (`+` or `⇧S`) puts a field where the new chip goes, its name ("Variant 3") selected so typing replaces it; `Enter` keeps what you typed, `Esc` keeps "Variant 3", and the field opens out to the chip's width without moving anything else. `F2` or `Enter` on the strip, or a double-click, renames a saved one the same way (`controls.variants.rename(id, name)`); names are kept with the variants in the store's storage. The schema's presets keep their names.
@@ -329,7 +369,7 @@ The preset you apply last (a chip, `[` / `]`, a pan, `controls.preset(id)`, `var
 - **The `?` popover says so:** "Random around Storm / Back to Storm", then "Reset all to defaults" once you're there.
 - **Undo covers it:** applying a preset, each reset and each roll is one undo step, and undoing restores the active preset with the values. The active preset is kept with the values in storage.
 
-`controls.activePreset()` returns `{ kind: "preset" | "variant", id }` or null, `controls.activeGroupPreset(group)` the group's index or -1, `controls.baseValues()` what Reset returns to first, and `controls.canReset(keys?)` whether a reset would change anything. A reset back to a preset reaches `onChange` with `source: "reset"` and `base: true`; remote controls send its values with `onSet` (nulls only for a reset to the defaults), or call `onPreset` again for a group whose peer applies its own presets.
+`controls.activePreset(scope?)` returns `{ kind: "preset" | "variant", id }` or null (a tab's or group's with `scope`, see `scopedPresets` under [Tabs](#tabs-sub-headings-and-search)), `controls.activeGroupPreset(group)` the group's index or -1, `controls.baseValues()` what Reset returns to first, and `controls.canReset(keys?)` whether a reset would change anything. A reset back to a preset reaches `onChange` with `source: "reset"` and `base: true`; remote controls send its values with `onSet` (nulls only for a reset to the defaults), or call `onPreset` again for a group whose peer applies its own presets.
 
 ## Keyboard
 
@@ -344,7 +384,7 @@ Panels and switchers are keyboard-first:
 | Arrows on a pad or curve handle | Move the puck or handle (`⇧` ×10, `⌥` finest); `j` / `k` or `Tab` move on |
 | On a gradient strip or curve graph | Arrows move the selected stop or point; `Tab` / `⇧Tab` and `[` / `]` pick another; `n` adds one, `Delete` removes it; `Enter` edits a stop's colour (`Esc` returns) |
 | `[` / `]` | Cycle presets and saved variants from anywhere in the panel; with no preset strip, cycle tabs |
-| `1`–`9` | Pick the focused row's Nth option: a choice (segmented or menu) or a curve's, easing's or gradient's presets. Tiny digit hints show on the options once focus settles. A row with options keeps the digits; elsewhere they do what they did before (inline number edits, a page's group presets) |
+| `1`–`9` | Pick the focused row's Nth option: a choice (segmented or menu) or a curve's, easing's or gradient's presets. Anywhere else in the panel, pick the preset strip's Nth chip (a design's variants). While you use keys, tiny digit hints show on the options once focus settles, and on the strip's chips while focus is on the strip or the panel (`hints: { digits: "always" }` on the mount keeps them on the chips all the time, small and dim before each name). A number row keeps its digits for inline edits, and a page's card for its group presets |
 | `⌥1`–`⌥9` | Show tab 1–9 |
 | `/` | Focus the search field (`Esc` clears it, then hands focus back; `↓` or `Enter` go to the first row left) |
 | `Home` / `End` | Jump slider to `min` or `max` |
@@ -391,12 +431,14 @@ Three things show which, in both renderers, on floating and inline panels and on
   its hairline edge brightens a touch toward the accent and its title is at full strength. At rest
   the title is a little quieter, so on a page with several panels the one listening is plain.
   Focus leaving (or `Esc` out of the panel, or the window going to the background) disarms it.
-- **The scope line.** Beside the title, a quiet trail says where keys go: `Swarm › Shape ›
-  Cohesion`, the deepest crumb bright and its parents dim. Crumbs glide to their places as focus
-  moves, and one that changes fades out as the new one fades in. For a moment after a key below
+- **The scope line** (opt-in: `crumbs: true` on the mount). Beside the title, a quiet trail says
+  where keys go: `Swarm › Shape › Cohesion`, the deepest crumb bright and its parents dim. Crumbs
+  glide to their places as focus moves, and one that changes fades out as the new one fades in. For a moment after a key below
   the panel's level, a faint `esc ↑ Shape` follows it, then fades. Clicking a crumb takes focus to
-  its level; clicking the title takes it to the panel. When it doesn't fit, the first crumbs fold
-  into `…`. `crumbs: false` on the mount drops the line (the lens and the armed frame stay).
+  its level; clicking the title takes it to the panel. The line lives in the room between the
+  title and the header's buttons: when it doesn't fit, the first crumbs drop off, and without room
+  for the deepest it stays empty, so it never runs under the buttons and the title never moves.
+  Without it the header is the title and its buttons; the lens and the armed frame show either way.
 
 Tune them with tokens on the panel or any ancestor:
 
@@ -416,7 +458,7 @@ Tune them with tokens on the panel or any ancestor:
 
 With more than one thing on the page to label (two panels, a panel beside a `knobs/ui` tree,
 timeline or split, or the host's own `data-hint` buttons), `s` reaches all of them: pressed in a
-panel or anywhere outside a text field, every visible control in every panel (rows, tabs, toolbar
+panel or a piece, every visible control in every panel (rows, tabs, toolbar
 buttons, header buttons), each tree row on screen, a timeline's Play, markers and playhead, the
 splits' header actions, collapse buttons and rails, and the host's elements gets a code. Typing one
 focuses its control (a row) or presses it (a button, a marker, a tree row); `Backspace` takes a
@@ -428,7 +470,9 @@ then the pieces, then the host's; down each column, left to right; home row firs
 a second letter, home row first, so `a` then `s` is the first panel's second control. A group of
 one is just its letter; spare letters split a big group so its second letters stay on the home row.
 With only one panel on the page, nothing changes: `s` works while focus is in it, with codes from
-its labels.
+its labels. On the page itself (focus on its body, a game's canvas, your content in a split's
+pane) `s` stays the page's, so a game's WASD keeps its S. It starts hint mode there only when the
+host asks: it registers targets of its own (`hints.register`) or marks elements `data-hint`.
 
 ```ts
 import { hints } from "knobs/panel" // or "knobs/ui"
@@ -599,9 +643,13 @@ Without Solid: `remote.update(descriptors, values, { land })` and `mountPanel(re
   the row. They switch both ways as the width changes; `display: "menu" | "segmented"` fixes one.
   On a menu row, ←/→ step through the options, and Enter or Space opens the menu (↑↓, a letter,
   Enter, Esc).
-- **Keys stay scoped.** An inline panel hears keys only while focus is inside it. Keys it handles
-  are claimed (`preventDefault`) and stopped there, and everything else reaches the page. Esc hands
-  focus back. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
+- **Keys stay scoped.** A panel, inline or floating, hears keys only while focus is inside it. Keys
+  it handles are claimed (`preventDefault`) and stopped there, and everything else reaches the page.
+  A press on the page outside it hands focus back to the page and leaves the panel open, even where
+  the page cancels its presses so focus can't move (a game's canvas): play with the panel open, and
+  click back into it to tune. A floating panel opens with focus at its own level, so one Esc closes
+  it and ↓ goes in to the rows. Esc hands focus back (a floating panel's Esc at its own level closes
+  it), and the page's toggle key (`` ` ``) shows and hides it from anywhere. `keys` remaps (`{ hint: "f" }`) or turns off (`{ random: false }`) any command; a
   command that's off loses its header button too, and the `?` popover and row menu list only what's
   on (see **Header** for picking buttons). `vim: false` drops j/k, `edit: false` leaves digits
   and Enter to the page, `bigStep` sets ⇧'s multiplier and `wrap: false` stops ↑/↓ at the ends.
@@ -706,9 +754,24 @@ mountPanel(station, column, {
   `"help"` to keep it (`buttons: ["random", "reset", "copy", "undo", "redo", "help", "close"]`); a
   `buttons` list that already names `"help"`, as the Lab's does, behaves as before.
   The buttons sit in fixed slots, left to right Undo · Redo, Reset, Copy, Random (then `?` and
-  the close X): a list picks which show, not their order. A button left out takes no slot; Undo,
+  the close X): a list picks which show, not their order. A die (the header's, or a group's) shows
+  only where Random could change something; a store or group of switches, actions and
+  `random: false` fields has none, and locks only disable it. Copy falls back to the browser's copy
+  command where the clipboard API isn't there (a page served over plain http). A button left out takes no slot; Undo,
   Redo and Reset keep theirs while they're away (`data-shown="false"`, `disabled`, out of the
   tab order and the accessibility tree).
+- **On a surface.** An inline panel in a split's pane (or inside anything with the class
+  `knobs-surface`) is one surface with it: no card, padding or background of its own, its groups
+  plain sections on hairlines, its rows and preset chips keeping their inset so their text lines
+  up with the pane's. Without a title, its header buttons join the pane's header (left of the
+  collapse button) and it draws no header band; elsewhere an untitled header shows only while one
+  of its buttons does.
+- **Presets as a list.** `presetDisplay: "auto"` (the default) shows the preset strip's chips
+  while they fit on two lines and a list once they'd take more (many presets, or long names):
+  left-aligned rows, like a menu's, with the selection gliding between them. `"list"` and
+  `"chips"` pick one.
+- **Empty.** `empty: "This story has no controls"` shows that line, quietly, while the panel has
+  no rows. Without it an empty panel shows nothing.
 - **Height-bounded panels.** The header (title and buttons) stays pinned while the rows scroll
   under it; the preset strip, tabs and search scroll with the rows. Once rows are under it, and
   only then, it frosts and softens its foot with a short fade, scroll-driven with no script, in
@@ -721,9 +784,33 @@ mountPanel(station, column, {
   always did. Where scroll-driven animations aren't supported, the header doesn't pin.
 - **Folding groups.** A field's `folded: true` (or `groupFolded` on the mount) makes its group
   foldable, starting folded. Its header folds and opens it with a click, Enter or Space; it's a ↑↓
-  stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. On a
+  stop of its own, ← folds and → opens. `panel.fold(group, folded?)` does it from code. Group
+  and sub-heading folds the user chose come back on the next visit, in the store's storage (with
+  `session: false` or `persist: "none"`, they don't), over `folded`, `groupFolded` and
+  `subsectionFolded`. `foldStorage` on the mount keeps them somewhere else instead, folds only
+  (under `knobs:<id>:folds:v1`), whatever `session` says; `null` keeps them to the tab.
+  `panel.unfold(key)` opens the folded group and sub-heading a field sits in (pinned groups too)
+  and shows its tab, without changing what's remembered. A group's or sub-heading's header carries
+  the rows' modified dot, after its title, while a row inside differs from its base (the active
+  preset or its scope's, else the defaults), so a folded card still says so. On a
   [full page](#full-page) the group's tile folds to its header, the cards below follow, and the
-  filter opens it while it runs.
+  filter opens it while it runs. Folded, the header sums the card up on its right, quietly and
+  live: a one-row card's value ("CSS orb"), otherwise its matching group preset (or "Custom"),
+  else its first changed value, else its first choice, then "· 2 changed". The title keeps its
+  room; the summary truncates first. `groupSummary(group, info)` on the mount replaces it, as on a
+  page (`info` is `{ preset, changed, keys }`; `null` shows nothing).
+- **Card descriptions.** A group's `groupDescription` (on any of its fields; the first wins) or the
+  store's `groupDescriptions` puts one muted line under its card's title, wrapping under the whole
+  header. Search matches it.
+- **Row descriptions.** A field's `description` (`knob(260, { description: "How fast the square
+  moves" })`, or on a descriptor) is a tooltip over its row: it shows after the tooltips' usual
+  pause over the row, or at once on keyboard focus, and goes with a press. Screen readers hear it
+  as the control's description (`aria-describedby`), and search matches it.
+- **What's active.** `onActive: (at) => …` hears which card or row the pointer or keyboard focus is
+  on: `{ group }` for a card's header or body, `{ group, key }` for a row, `null` for nothing
+  (pinned cards and group preset strips count). Whichever moved last wins; it's called at most once
+  a frame, never twice with the same value, and once more with `null` when the panel goes. Use it
+  to outline the part of your app a card changes. `mountPage` takes it too.
 - **Group Random by the host.** `groupRandom: (group, mode) => …` runs first for a group's die, `g`
   and `⌥G` (`mode` is `"random"` or `"mutate"`). Return `true` when the host rolled the group (its
   own seeded "Randomize <group>"): the die tumbles and knobs leaves the values alone. Return
@@ -755,23 +842,88 @@ const panel = mountPanel(node, column, {
   tabs: [{ id: "transform", label: "Transform" }, "emitter"], // order and labels
   tab: "transform",                 // first shown (else the last one shown, else the first)
   onTab: (id) => save(id),
-  subsectionFolded: { Forces: true },
+  subsectionFolded: true,           // every sub-heading starts folded ({ Forces: true }: by name)
+  foldStorage: localStorage,        // folds kept here (default: the store's storage)
   search: { placeholder: "Search", chips: ["modified"] },
 })
 panel.tab("emitter") // shows a tab; panel.tab() answers the one showing
+panel.unfold("drag") // shows the emitter tab and opens "Forces", so the Drag row shows
 ```
 
 - **Tabs.** A row shows on its field's `tab`, or else the first `tab` its group names; rows with
   none show on every tab. The strip's underline slides to the chosen tab and the rows cross: what
   leaves folds away as what arrives unfolds, a moment behind. `⌥1`–`⌥9` pick a tab, and `[` / `]`
   cycle tabs when there's no preset strip. The tab last shown is remembered for these controls (and
-  in the session).
+  in the session). The preset strip sits under the tabs and crosses a tab change with the rows; a
+  tab that no preset or saved variant moves shows no strip at all (not even its `+`).
+- **Pinned groups.** Groups that apply to every tab (a global speed, a slow-motion switch) sit at
+  the top of the panel, under its one header and above the tab strip, and a tab change never moves
+  them. Name them on the store, `pinned: ["Global"]`, or say `pinned: true` on a field (the first
+  field of a group that says wins; a field without a group pins itself). A pinned field's `tab` is
+  ignored. Pinned groups keep their own die and reset. Presets and saved variants leave them out:
+  applying one keeps their values, saving one doesn't record them, a preset's chip doesn't drift
+  when they change, and their modified marks are against their defaults. Random rolls them freely
+  even under an active preset. The header's Random and Reset still cover everything, pinned
+  groups included, as they cover every tab; give a field `random: false` to keep it out of
+  Random. Keyboard order and search follow the panel top to bottom: pinned rows, the tabs, the
+  preset strip, then the tab's rows. `controls.isPinned(key)` says whether a key is pinned.
+  A pinned `variants: true` choice is an ordinary choice with a row: pinned wins, and its options
+  make no presets. A tab whose rows no preset moves shows no preset strip; a variants choice moves
+  its own tab (or every tab, if it has none).
+- **Keys presets leave alone, in place.** `inPresets: false` on a field, or `inPresets: { Motion:
+  false }` on the store for a whole group, keeps presets, scoped presets and saved variants off
+  those keys exactly as they stay off pinned ones (and a preset's chip stays lit when they move),
+  but the rows stay where they are. A pinned key is one of these, moved to the top. The rule, for
+  `inPresets: false` and `pinned` groups alike: presets and variants from *other* scopes (the
+  panel-wide presets, tab scopes, other groups') leave the group alone, but a scope keyed by the
+  group's own name still moves it. So `inPresets: { Motion: false }` with
+  `scopedPresets: { Motion: { Snappy } }` gives Motion its own strip that state presets never
+  touch; its chips apply, save, match and mark only Motion. A field's own `inPresets: false` stays
+  out of every scope. `controls.inPresets(key)` says whether presets from other scopes move a key.
+- **Presets of a tab's own.** `scopedPresets` gives a tab (or a group) presets that belong to it:
+  `{ Sidebars: { snappy, smooth, calm } }`. Its strip shows only on that tab, and a tab without any
+  shows none. A scoped preset moves only its tab's (or group's) keys, never pinned ones or another
+  tab's, so each tab is its own experiment: it has its own active preset (Reset's base and
+  Random's centre for its keys), its own modified mark on the chip and its own saved variants
+  (`controls.scopes.Sidebars.variants`, kept apart in storage). A preset switch is one undo step.
+  A `variants: true` choice on a tab adds its options to that tab's presets. Keys belong to their
+  tab's scope first, then their group's. Plain `presets` then cover only the keys no scope holds;
+  leave them out and only the scoped strips show. One strip shows per tab: the tab's own, else the
+  first group scope on it. In a panel, any other group's presets show at the top of its own card,
+  in the strip's look without its tray, so a story's states can lead the panel while its Motion
+  group keeps Shipped, Snappy and Calm beside its knobs. Every strip's default chip reads `defaultLabel`; by scope,
+  `defaultLabel: { "": "Empty", Motion: "Shipped" }` names each on its own. In code, `controls.preset(id, { scope })`, `activePreset(scope)` and
+  `matchingPreset(scope)` take the tab or group, and `controls.scopeOf(key)` says whose presets
+  move a key (`""` for plain `presets`, the group's id for a pinned or `inPresets: false`
+  group with a scope of its own, else undefined when pinned). An active preset saved while the
+  presets were panel-wide comes back on the scope that now has one by that id, and variants saved
+  then start out in each scope they move.
+
+  ```ts
+  const motion = defineControls(
+    "motion",
+    {
+      speed: knob(1, { min: 0.25, max: 4, step: 0.05, unit: "×", group: "Global" }),
+      slow: toggle(false, { label: "Slow motion (0.25×)", group: "Global" }),
+      sidebars: spring({ duration: 0.3, bounce: 0 }, { group: "Sidebars", tab: "Sidebars" }),
+      hover: spring({ duration: 0.14, bounce: 0 }, { group: "Experiments", tab: "Experiments" }),
+    },
+    {
+      pinned: ["Global"],
+      defaultLabel: "Shipped",
+      // Only the Sidebars tab has a strip, and its presets set only its springs.
+      scopedPresets: { Sidebars: { snappy, smooth, calm } },
+    },
+  )
+  motion.mount(el, { title: "Knobs", tabs: ["Sidebars", "Experiments"] })
+  ```
 - **Sub-headings.** Fields with the same `subsection` in a group sit under a flat heading inside the
   group's card, split off by a hairline (never a card inside a card). They're gathered: a group's
   rows without a sub-heading come first, then each sub-heading's rows together, in the order the
   sub-headings first appear, wherever their fields sit in the schema. The heading is a ↑↓ stop: a
-  click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded; the
-  session remembers the rest.
+  click, Enter or Space folds it, ← folds and → opens. `subsectionFolded` starts some folded, by
+  name (`{ Forces: true }`), or every one with `true`; what the user folds or opens is remembered
+  as a group's folds are, and wins.
 - **Search.** `search: true` (or `{ placeholder, chips }`) puts a field under the header. Typing
   filters rows by label, key, group or sub-heading across every tab, opening folded groups and
   sub-headings while it runs; matches show in the accent colour. Chips narrow it further:
@@ -851,6 +1003,7 @@ A panel inside an app should look like the app's own controls. Four things get i
 | `--k-font`, `--k-mono`, `--k-font-size` | system, mono, `12px` by density | Faces and size; `--k-value-font: var(--k-mono)` puts readouts in mono |
 | `--k-font-weight`, `--k-label-weight`, `--k-title-weight` | `400`, `500`, `600` | Body, row labels, and titles, group headings and the chosen chip |
 | `--k-radius`, `--k-panel-radius` | `8px` by density, radius + `4px` | Corners. `0` squares everything, the pill shapes (switches, handles, dots) included |
+| `--k-radius-frame` | radius + padding + border | A panel's own outer corners, concentric with the cards, preset strip and lens inside it |
 | `--k-thumb` | `#fff` | Switch thumbs and strip handles |
 | `--k-lift` | `1` | `0` drops the small shadows under pills, thumbs and handles |
 | `--k-shadow-strength` | `.48` (light: `.16`) | How dark the WebGPU renderer draws the panel's drop shadow. Set it beside `--k-shadow` when you change that, so both renderers match (a host blending a dark look into a light one moves both together) |
@@ -983,7 +1136,7 @@ A page with many sections reads better folded. `sectionFolded` starts sections f
 
 Folded things say what's in them. A folded group card trades its presets, reset and die for "Compact · 7 changed" (the matching group preset, or "Custom", then its changed rows; each part only when it applies). A folded section's heading reads "2 changed · 3 cards". `groupSummary(group, info)` and `sectionSummary(section, info)` on the mount replace either (`info` is a `FoldSummaryInfo`: `{ preset, changed, keys }`; return `null` for nothing). Group cards fold as in a panel, by a field's or descriptor's `folded`, or `groupFolded` on the mount, `defineControls` or `createRemoteControls` (both take `sectionFolded` too).
 
-Descriptions add one muted line under a title: `groupDescriptions` and `sectionDescriptions` by id (on the store, remote options or the mount), or `groupDescription` / `sectionDescription` on any field or descriptor (the first that gives one wins). `page.card({ description })` does the same for a custom card. The filter matches descriptions too.
+Descriptions add one muted line under a title: `groupDescriptions` and `sectionDescriptions` by id (on the store, remote options or the mount), or `groupDescription` / `sectionDescription` on any field or descriptor (the first that gives one wins). `page.card({ description })` does the same for a custom card. The filter matches descriptions too. Group descriptions show in panels as well, wrapping under the card's header.
 
 What the user folds and opens (sections and group cards) is remembered under `knobs:<id>:folds:v1` (`storageKey(id, "folds")`) as `{ sections: Record<string, boolean>, groups: Record<string, boolean> }`, and wins over `sectionFolded` and `groupFolded`. Only the user's folds and those made with `remember` are written; folds for context (`remember: false`, a highlight's `expand`) and the filter's never are. By default they go to the store's own storage, or nowhere with `persist: "none"`. `foldStorage` on the mount always wins and keeps folds only, never values, locks or variants, so a remote store on `storage: null` (the phone's values always win) can still remember them; `null` keeps none.
 
@@ -1104,7 +1257,7 @@ Scrolling pane bodies, trees and the command palette's list fade their content o
 | Key | Action |
 | --- | --- |
 | `↑` / `↓`, `Home` / `End` | Move; type letters to jump to a label (see `typeahead`) |
-| `←` / `→` | Close or go up / open or go down |
+| `←` / `→` | Close or go up / open or go down (swapped when the tree is `dir="rtl"`) |
 | `⇧` click or `⇧↑↓`, `⌘` click, `⌘A` | Extend, toggle, select all |
 | `Space` | Select the active row (`⌘Space` toggles it) |
 | `Enter` / `F2` | Rename in place (with `onRename`); otherwise `Enter` calls `onActivate` |
@@ -1157,7 +1310,7 @@ toast("Deleted Barrier", { action: { label: "Undo", run: undo } })
 
 - **`popover(anchor, content, options?)`** places `content` beside an element, a rect or a point. `placement` is `top`, `bottom`, `left` or `right`, each with `-start` or `-end`; it flips when its side is short and the other has more room, then shifts to stay 8px inside the view, and follows its anchor through scrolls and resizes. It grows from the anchor's edge. It takes focus (`focus: "first" | "layer" | "none"`) and gives it back when it closes; Esc, a click outside or focus leaving closes it (`closeOnOutside: false` keeps it), and `trap: true` keeps Tab inside. The handle has `element`, `open`, `reposition()` and `close()` (a promise that resolves once it's gone).
 - **`tooltip(el, content, options?)`** shows after a 500ms pause over the element, or on keyboard focus (not a click's). While one is up, or just after, moving to a neighbour shows its tip at once, with no entrance. A press hides it until the pointer leaves; Esc hides it. `shortcut` shows as key chips (`⌘K` on Apple platforms, `Ctrl+K` elsewhere) and sets `aria-keyshortcuts`; the target gets `aria-describedby` while it shows. Content can be a function, read each time it shows. Split panes use these for their buttons and rails.
-- **`commandPalette({ commands, onRun?, hotkey?, recents?, placeholder? })`** opens on `⌘K` (`hotkey`, `"Mod+K"` by default; `false` for none). With no query it shows recent commands (remembered in localStorage under `recents`; `false` for none), then each `section`. Typing ranks commands by a fuzzy match: letters in order, best at the start, at word starts and in runs. The matched letters light up in the accent while the rest of the label dims, and letters strewn thinly across words don't count. A command answers to its `keywords` and section too. `↑`/`↓` move a highlight that glides (`PgUp`/`PgDn`, `⌘↑`/`⌘↓`), disabled commands are passed over, `Enter` runs, `Esc` or a click outside closes. A `run` that returns a string (or a promise of one) shows it as a toast; a throw shows as an error toast. The handle has `open(query?)`, `close()`, `toggle()`, `isOpen` and `dispose()`.
+- **`commandPalette({ commands, onRun?, hotkey?, recents?, placeholder?, presence? })`** opens on `⌘K` (`hotkey`, `"Mod+K"` by default; `false` for none). A key summons it, so it fades in and out in about 80ms (`presence: "fade"`); `presence: "none"` (or `false`) shows and hides it at once, and `{ duration?, scale?, blur?, dy? }` gives it the full entrance (from .96, 8px blur and 8px above, over .34s), with any of those changed. With no query it shows recent commands (remembered in localStorage under `recents`; `false` for none), then each `section`. Typing ranks commands by a fuzzy match: letters in order, best at the start, at word starts and in runs. The matched letters light up in the accent while the rest of the label dims, and letters strewn thinly across words don't count. A command answers to its `keywords` and section too. `↑`/`↓` move a highlight that glides (`PgUp`/`PgDn`, `⌘↑`/`⌘↓`), disabled commands are passed over, `Enter` runs, `Esc` or a click outside closes. A `run` that returns a string (or a promise of one) shows it as a toast; a throw shows as an error toast. The handle has `open(query?)`, `close()`, `toggle()`, `isOpen` and `dispose()`.
 - **`commandsFrom(controls, { title?, fields?, reveal? })`** lists a store as commands: its actions and toolbar buttons (with their shortcuts), presets and group presets (the current one marked), toggles ("Turn on …"), one command per choice option, "Reset …" for modified fields, and, with `reveal(key)`, every other field (its current value as the hint) to go to.
 - **`confirm({ title, body?, confirm?, cancel?, destructive? })`** returns `Promise<boolean>`. It's modal over a scrim, keeps Tab inside, and Esc or a click outside cancels. `destructive` puts the button in `--k-critical` and focus on Cancel; otherwise focus starts on the confirming button.
 - **`toast(message, { tone?, linger?, action?, within? })`** shows a pill at the bottom centre for 3.2s (6s for `tone: "error"`). A new message replaces the one showing, and hovering keeps it. Pages show their status (Copied, errors) this way.
@@ -1213,7 +1366,7 @@ compare(viewer, { before, after, timeline: clock })
 compareStrip(strip, { before, after, timeline: clock })
 ```
 
-**`compare(container, options)`** is a before/after viewer for videos and images (by extension, or `kind`). It offers two modes, side by side (the default `mode`: a split screen down the middle, each side filling its half) and a wipe; `modes: ["side", "wipe", "difference"]` adds a difference (changes above `threshold` in one accent, `--k-compare-diff`), and one mode hides the bar. The modes sit in a segmented control above the stage, the selection pill sliding to the one picked. It draws in one WebGPU pass that copies a frame in only when one arrives, and draws only when something changed; where there's no WebGPU, two `<video>`s with a clip-path wipe stand in. Pinch, `⌘`/ctrl-wheel or double-click zooms into either side and both zoom to the same part (the wheel and a drag pan it, both 1:1); a small pill on a dark scrim in the corner shows how far, with a reset (`0`, a double-click, `Escape`), which glides back. Side ↔ Wipe is Kit Motion's Comparison fuse: the two sides glide together on one spring (.3 s) and fuse at one side's size in the middle, so the stage never changes size; Before is cut only where they overlap, with a feather that swells mid-transition and a blurred strip over the seam, the wipe's handle fades in with it, and the labels fold to their names and ride either side of the seam (Wipe → Side runs it back, and either way it can be turned around midway). Overlaid, the sides are letterboxed, never cropped. Both videos run from one clock: paused, scrubbed or stepped, each seeks to the frame's midpoint, coalesced while a seek is in flight; playing, After leads, Before's rate leans by up to 25% to stay on it (it seeks past 90 ms), and a bound timeline follows After's time, so only one clock ever moves it (`Space` resumes from the frame showing). Scrubbing answers at once even on raw screen recordings with a keyframe every 8–18 s: frames decoded in the background (WebCodecs where the file is a plain MP4, else a hidden `<video>`) sit in a small cache shared by every viewer and strip of the same source, and the nearest shows while the exact seek lands (mid-drag, far from any cached frame, `fastSeek` answers first; letting go seeks exactly). Encoding with a keyframe every 15 frames makes every seek exact and near instant: `COMPARE_FFMPEG` holds the command (`ffmpeg -i in.mov -vf fps=30 -fps_mode cfr -c:v libx264 -crf 18 -g 15 … out.mp4`). Sources load only near the view and are let go 3 s after leaving it (`lazy: false` keeps them), every viewer shares one GPU device, and in a container with no height of its own it takes the height its sides need, half its width in their shape, so the split has no margins (`aspect` before they load); with a height of its own (a card going full-window, say), the pair fits as a whole and refits as it resizes, keeping the zoom. On a card (`.knobs-surface`, a split's pane) or marked `data-nested`, its stage drops its fill, so one surface shows. Bind an existing `timeline()` (`timeline: clock`), or pass `timeline: true` for one of its own: a player's thin progress line under the stage (`variant: "line"`, the same as `player()`'s), its markers (a walkthrough's chapters) segments with a small gap between; there's no clock or frame readout anywhere, only the chapter and time under the pointer over the line. Its row starts with a minimal play/pause button; a click on the pictures (not a wipe, pan or pinch) and `Space` play and pause too, with no glyph flashing over them. Two stills get no button and no line. `seek(t, { glide: true })` is a chapter's jump: the videos land at once and the playhead catches up. Loop (`L`, the loop icon) sets a loop range around the playhead on the timeline, whose ends drag, and playback stays inside it. The wipe's line carries a 16×28 grip on the same scrim in its middle that follows the pointer's height only while dragged and settles back when let go; dragging is 1:1, the cursor hides and the line and the grip's marks brighten, and a press elsewhere on the stage brings the line there on a quick catch-up (.15 s). Before and After ride either side of the seam while wiping, each fading as its side runs out of room. The wipe is a slider too (`←`/`→`, `⇧` 10%); a mode change glides. Keys when focused: `Space` plays, `←`/`→` seek half a second (`⇧` two), the playhead gliding there while the videos land at once, `,`/`.` step a frame, `1`–`3` pick the offered modes in order and `S` `W` (`D`, when offered) by name, `Z` held shows the loupe (or `loupe: true`), `L` loops, `=`/`-`/`0` zoom. It reports `onMode`, `onWipe` and `onView({ zoom, loop })`; the handle has `mode`, `modes`, `wipe`, `zoom`, `loop`, `time`, `playing`, `duration`, `renderer`, `timeline`, `strip`, `update`, `seek`, `seekBy`, `play`, `pause`, `toggle`, `step`, `setZoom`, `setLoop`, `focus` and `dispose`. A frame strip is off by default (`strip: true` puts one over the timeline); **`compareStrip(container, { before, after, timeline })`** is the same piece on its own: it draws Before over After along the timeline's view from the same frame cache, decoded only while it's on screen, with a bar for how much each column differs; a press scrubs. `Compare` and `CompareStrip` are in `knobs/ui/react` and `knobs/ui/solid`. The Lab's View switch shows one on its scene timeline.
+**`compare(container, options)`** is a before/after viewer for videos and images (by extension, or `kind`). It offers two modes, side by side (the default `mode`: a split screen down the middle, each side filling its half) and a wipe; `modes: ["side", "wipe", "difference"]` adds a difference (changes above `threshold` in one accent, `--k-compare-diff`), and one mode hides the bar. The modes sit in a segmented control above the stage, the selection pill sliding to the one picked. It draws in one WebGPU pass that copies a frame in only when one arrives, and draws only when something changed; where there's no WebGPU, two `<video>`s with a clip-path wipe stand in. Pinch, `⌘`/ctrl-wheel or double-click zooms into either side and both zoom to the same part (the wheel and a drag pan it, both 1:1); a small pill on a dark scrim in the corner shows how far, with a reset (`0`, a double-click, `Escape`), which glides back. Side ↔ Wipe is Kit Motion's Comparison fuse: the two sides glide together on one spring (.3 s) and fuse at one side's size in the middle, so the stage never changes size; Before is cut only where they overlap, with a feather that swells mid-transition and a blurred strip over the seam, the wipe's handle fades in with it, and the labels fold to their names and ride either side of the seam (Wipe → Side runs it back, and either way it can be turned around midway). Overlaid, the sides are letterboxed, never cropped. Both videos run from one clock: paused, scrubbed or stepped, each seeks to the frame's midpoint, coalesced while a seek is in flight; playing, After leads, Before's rate leans by up to 25% to stay on it (it seeks past 90 ms), and a bound timeline follows After's time, so only one clock ever moves it (`Space` resumes from the frame showing). Scrubbing shows the frame under the hand even on raw screen recordings with a keyframe every 8–18 s: frames decoded in the background (WebCodecs where the file is a plain MP4, else a hidden `<video>`) sit in a cache shared by every viewer of the same source: a grid of small frames first, then every frame as a small JPEG proxy (960 px, at most 48 MB a source, every 2nd or 4th frame past that), and mid-drag the proxy of the frame under the pointer decodes in a few ms, with the one the hand is heading for; the videos wait and seek exactly when it lets go. `player()` does the same over its video once the pointer is over it. Encoding with a keyframe every 15 frames makes every seek exact and near instant: `COMPARE_FFMPEG` holds the command (`ffmpeg -i in.mov -vf fps=30 -fps_mode cfr -c:v libx264 -crf 18 -g 15 … out.mp4`). Sources load only near the view and are let go 3 s after leaving it (`lazy: false` keeps them), every viewer shares one GPU device, and in a container with no height of its own it takes the height its sides need, half its width in their shape, so the split has no margins (`aspect` before they load); with a height of its own (a card going full-window, say), the pair fits as a whole and refits as it resizes, keeping the zoom. On a card (`.knobs-surface`, a split's pane) or marked `data-nested`, its stage drops its fill, so one surface shows. Bind an existing `timeline()` (`timeline: clock`), or pass `timeline: true` for one of its own: a player's thin progress line under the stage (`variant: "line"`, the same as `player()`'s), its markers (a walkthrough's chapters) segments with a small gap between; there's no clock or frame readout anywhere, only the chapter and time under the pointer over the line. Its row starts with a minimal play/pause button; a click on the pictures (not a wipe, pan or pinch) and `Space` play and pause too, with no glyph flashing over them. Two stills get no button and no line. `seek(t, { glide: true })` is a chapter's jump: the videos land at once and the playhead catches up. Loop (`L`, the loop icon) sets a loop range around the playhead on the timeline, whose ends drag, and playback stays inside it. The wipe's line carries a 16×28 grip on the same scrim in its middle that follows the pointer's height only while dragged and settles back when let go; dragging is 1:1, the cursor hides and the line and the grip's marks brighten, and a press elsewhere on the stage brings the line there on a quick catch-up (.15 s). Before and After ride either side of the seam while wiping, each fading as its side runs out of room. The wipe is a slider too (`←`/`→`, `⇧` 10%); a mode change glides. Keys when focused: `Space` plays, `←`/`→` seek half a second (`⇧` two), the playhead gliding there while the videos land at once, `,`/`.` step a frame, `1`–`3` pick the offered modes in order and `S` `W` (`D`, when offered) by name, `Z` held shows the loupe (or `loupe: true`), `L` loops, `=`/`-`/`0` zoom. It reports `onMode`, `onWipe` and `onView({ zoom, loop })`; the handle has `mode`, `modes`, `wipe`, `zoom`, `loop`, `time`, `playing`, `duration`, `renderer`, `timeline`, `update`, `seek`, `seekBy`, `play`, `pause`, `toggle`, `step`, `setZoom`, `setLoop`, `focus` and `dispose`. **`compareStrip(container, { before, after, timeline })`** is a frame strip on its own: it draws Before over After along the timeline's view from the same frame cache, decoded only while it's on screen, with a bar for how much each column differs; a press scrubs. `Compare` and `CompareStrip` are in `knobs/ui/react` and `knobs/ui/solid`.
 
 **`player(container, { src, chapters? })`** is a plain video in the same look: the picture in the compare's frame, then a row under it: a minimal play/pause button (the filled pair, a 28px target, a quiet fill on hover) and one thin progress line (2px, the tertiary text colour filled in text colour, a segment per chapter `{ label, start }`, thicker under the pointer). The button, a click on the picture, or `Space` once it's focused (a click focuses it) plays and pauses, with nothing flashing over the picture; click or drag the line to seek, 1:1, and a click away from where it is glides there while the video lands at once. The chapter and time under the pointer float over the line; `←`/`→` seek 5 s (`⇧` 10 s), and a pinch, `⌘`/ctrl-wheel or `=`/`-` zoom the line as a lane's. The picture comes in with its first frame (a 4px blur and a fade). It takes `poster`, `captions` (WebVTT), `loop` (true), `muted` (true), `aspect` and `fps`, reports `onPlay(playing, time)` and `onSeek(time)` (a seek that landed, paused), and the handle has `video`, `timeline`, `time`, `playing`, `duration`, `play`, `pause`, `toggle`, `seek(t, { glide })`, `seekBy`, `focus` and `dispose`. Under it is `timeline(…, { variant: "line" })`, which you can bind to anything else with a clock.
 
@@ -1335,6 +1488,23 @@ Click or `Enter` zooms a tile to fill the view, aspect-fit and centred: one cont
 
 The handle has `update(items)`, `zoom(id | null)`, `zoomed`, `active`, `focus(id?)`, `picks`, `pick(ids)`, `plan`, `moving`, `stats()` (the frame loop's script time) and `dispose()`; `onZoom` and `onActive` report changes. It takes the pieces' tokens and `restyle`, in dark and light; tiles round at `--k-ui-bento-radius` (3px), square under `--k-frame: flat`; `--k-ui-bento-bg` and `--k-ui-scrim` set the page under the tiles and the zoom. `planBento(aspects, { width, height, … })` is the layout on its own, with `bentoNeighbour`, `bentoWindow` and `fitRect`. `Bento` in `knobs/ui/react` and `knobs/ui/solid` follows `items` and `picks`. The demo is `examples/ideas.html` (`?n=500` for a big set, `?groups`, `?hero=3`, `?perf` for a frame-time readout, `?bench` to scroll and zoom on its own and report).
 
+### Infinite canvas
+
+```ts
+import { canvas } from "knobs/ui"
+
+const board = canvas(container, {
+  items: stories.map((s) => ({ id: s.id, title: s.name, render: (el) => s.mount(el) })),
+})
+board.focus("button-primary")
+```
+
+**`canvas(container, options)`** puts items on a dotted page that pans and zooms freely, as a components lab's grid. Items take `id`, `render(el)` (return a cleanup), `title` (shown above the card), `w`/`h` (the card's size; without them it takes its content's) and `x`/`y` (a place; items without one pack into rows under the placed ones, in order, the rows as wide as makes the set about the canvas's shape, or `width`). Each item is one hairline card; the dots scale with the zoom and fade out at the extremes; the edges fade over 16px (`--k-ui-canvas-fade`).
+
+Dragging the page, two-finger scrolling, or holding Space or the middle button and dragging anywhere pans; a pinch or `⌘`/`Ctrl`-scroll zooms around the pointer. Both follow the hand 1:1 and a fling coasts. What the hand didn't do springs (no bounce): `0` fits, `1` is 100%, `=`/`-` step 1.5×, and a double-click on an item focuses it (again, or on the page, fits). A mouse wheel's notch under `⌘` zooms directly too, at most 1.25× an event. Each jump zooms around the one point both views share, so everything on screen travels in a straight line. Items stay live: clicks and keys reach them, and a dragged Space still presses a focused button if nothing moved. Nothing moves on load: the first fit is instant, and until someone touches the view a change in size or content fits again. The world is one transformed layer; at rest its translate snaps to device pixels and, after a zoom, it's drawn again at the new scale so text is crisp.
+
+The handle has `fit()`, `focus(id)` (at most 200%), `zoomTo(scale, at?)`, `update(items)` (items that stay keep their content and glide to new places; new ones come in, gone ones soften out), `view`, `rects`, `moving`, `stats()` and `dispose()`; `onView` reports the view, `minZoom`/`maxZoom` (.05–8) bound it, `gap` (48) parts packed items, `padding` (48) frames a fit and `readout: false` drops the zoom pill. `layoutCanvas`, `packRows`, `fitView`, `zoomAround`, `viewPath` and `dotGrid` are the math on its own. `Canvas` in `knobs/ui/react` and `knobs/ui/solid` follows `items`. The demo is `examples/canvas.html` (`?n=200`, `?perf`).
+
 ### Review pieces (`knobs/review`)
 
 The walkthrough and what it shows (compare, player, code diff, history, facts, decision, taste test, `mediaSlot`) are their own subsystem: `knobs/review` (and `knobs/review/react`, `knobs/review/solid`). They have their own quiet look, `themes.review` (true black, flat, hairlines held to an APCA target, the platform's own face), one type scale and a short set of rules: [docs/review-design.md](docs/review-design.md), with every piece alone in `examples/review.html`. `knobs/ui` still exports them. `reviewFont(document, { href, sans: "Inter" })` gives the review look in a webfont.
@@ -1367,7 +1537,7 @@ A section's meta line leads with its **kicker** in text colour: `"PR 2 of 5"` by
 
 By default the page only shows: no progress, notes or Copy feedback, no key hints, no statuses (a section's or an update's) and no counts, and a step's `options` sit side by side under their labels. `review: true` brings Kit's review tools back: the progress in the rail and its state dots, statuses, Copy feedback, picking between options (`1`–`9`) and the note bar. With review on, notes come from a launcher in the column's corner (`noteBar: "collapsed"`, the default) that opens into the bar on a click, `n`, a recording or ink, and folds back when it's empty; `"docked"` keeps the bar there, `"hidden"` drops it (`w.send()` still works). Typed, spoken or inked, each note carries what was on show (a video's time and chapter, a compare's loop and zoom, a diff's file) and a short log of what led up to it; `onFeedback`, `w.feedback` and `w.markdown()` hand it back. The page keeps the bar's height clear at its end and as its scroller's `scroll-padding-bottom`, so `j` / `k`, `go()` and the last step never land under it, and full window stops above it. `j` / `k` move between steps (`Home` / `End` to the first and last), `←` / `→` seek, `f` goes full window, `n` writes a note, `1`–`9` pick.
 
-Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`, `code`, `terminal`, `metric`, `callout`, `text`, `facts`, `decision`, `history`, `stack`, `table`, or `mount` (your own, `(el) => cleanup`; the one that isn't JSON). A step's media sit one under another (a group's room apart); `columns: 2` sets them side by side where there's room. Every picture, video and compare stage (and a slot still loading) takes the same frame: the panel radius and a quiet fill, no ring. A diff, code and a terminal sit in one plain well, drawn by its hairline alone (no fill), the panel radius and room inside: a box is a fill or a ring, never both. Nothing in a walkthrough is glass. A metric, a callout, facts, a decision, a table, a stack and a history sit on the page. A slot's `label` reads as written (sentence case), small and faint above it.
+Media is a bare URL (a video or picture), or `compare`, `video`, `image`, `diff`, `code`, `terminal`, `metric`, `callout`, `text`, `facts`, `decision`, `history`, `stack`, `table`, or `mount` (your own, `(el) => cleanup`; the one that isn't JSON). A step's media sit one under another (a group's room apart); `columns: 2` sets them side by side where there's room. Every picture, video, compare stage, code block and terminal (and a slot still loading) takes the same frame: the panel radius and a quiet fill, no ring. A diff sits in one plain well, drawn by its hairline alone (no fill), the panel radius and room inside: a box is a fill or a ring, never both. Nothing in a walkthrough is glass. A metric, a callout, facts, a decision, a table, a stack and a history sit on the page. Any slot's `label` (a metric's name, facts' `title`) is one line above it, the same for every kind: as written (sentence case), small and faint, with no rule between it and the media; a history's `label` is only its accessible name.
 
 **Keep it scannable.** A step's title is its claim, in about ten words; its caption is one sentence; everything else goes in `more` (Markdown, blank lines between paragraphs), folded under the caption behind a small **More** toggle whose height springs open on the state spring while the words come into focus (a fade with a small blur, from the top). Sections take `more` under their summary, and the page under its own. Media that mounts after the first paint (near the view, or a picture still loading) comes in the same way; nothing moves on load.
 
@@ -1499,6 +1669,8 @@ Changing a token glides: colours, lengths, weights, glass and glow move on the p
 
 A floating panel opens out of its chip like liquid glass. The press squeezes the cog (to 0.94, easing in over 60 ms); then each edge of the glass rides its own spring from the chip to the panel. The edges facing the way it travels lead on a stiff spring (as stiff as their axis carries the travel) and the others trail on a softer one, so the glass stretches toward the panel, overshoots a little and settles in under 300 ms, its corners going from the cog's circle to the panel's radius. The content follows a beat behind: blurred 8 px, faded and at 97%, revealed top first, landing exactly crisp. Closing runs it backwards and faster: the content blurs out first, then the glass pulls into the cog with its far edges trailing (about 200 ms). Esc, the close button or the chip itself folds it back; toggling mid-way reverses from wherever the shape is, keeping its velocity. The WebGPU overlay blurs, fades and scales the content in its shader, so both renderers match. A reload brings an open panel back in place, with no morph.
 
+**Moving it.** Drag a floating panel by its header (the title or the empty space beside the buttons): it follows the pointer 1:1, shows the closed hand only while it's carried, and stays where it's let go. The spot is kept with the store's values (`persist: "all"`), by the nearer side: a panel left on the right half keeps its distance from the right edge as the window changes width. It always shows inside the window, and on a phone (420px wide or less) it takes the width less an 8px gutter and scrolls inside the height. An inline panel (`mount`, `mountPanel`) belongs to its host's layout and doesn't move: lifting it out would leave its container's clipping, stacking and token overrides behind. For a panel you can move, open a floating one: `controls.attach(el)` puts a chip on `el`, and `createPanel(controls, anchor, close)` from `knobs/panel` opens one beside `anchor` from your own button (a debug bar's, say), with the same drag and kept spot.
+
 Reduced motion (`prefers-reduced-motion`) turns off token glides, the cascade, the pop, edge blur, haptics, the spring dot, the editors' height reveals and the chip's squeeze, and panels simply fade in and out, with no stretch or blur.
 
 ### Reacting to Random, Reset and presets
@@ -1549,6 +1721,7 @@ The page roles (**Space**: `--k-space-inside` 4 · `sibling` 8 · `title` 12 · 
 |---|---|---|---|---|
 | `--k-radius` | input | `8px` | `8px` | Control corner radius. 0 squares everything, including capsules. Scales with density. |
 | `--k-radius-panel` | semantic | `calc(var(--k-radius) + var(--k-unit))` | `calc(var(--k-radius) + var(--k-unit))` | Panel and card radius, concentric with controls. Derived: `calc(var(--k-radius) + var(--k-unit))`. |
+| `--k-radius-frame` | semantic | `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))` | `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))` | A tuning panel's outer corners: its cards' radius plus its padding and border, so the cards, the preset strip and the focus lens inside run concentric. Squares when --k-radius is 0. Derived: `calc(var(--k-radius) + min(var(--k-radius) * 999, var(--_k-pad) + 1px))`. |
 | `--k-round` | semantic | `calc(var(--k-radius) * 999)` | `calc(var(--k-radius) * 999)` | Capsule radius that squares when --k-radius is 0. Use instead of 999px. Derived: `calc(var(--k-radius) * 999)`. |
 
 ### Size
@@ -1882,7 +2055,7 @@ The package has two core exports selected through the standard `development` con
 | Function | Behavior |
 | --- | --- |
 | `knob(value, { min, max, step?, unit?, decimals?, detents?, shortcut?, label?, group?, groupLabel?, section?, sectionLabel? })` | Numeric slider control with rolling readout and inline editor. `detents: false` lets drags glide through the default, the base and the middle. |
-| `choice(value, ["a", "b"], { label?, group?, shortcut? }?)` | Nonempty string choices with literal union inference. |
+| `choice(value, ["a", "b"], { label?, group?, shortcut?, labels?, display?, variants? }?)` | Nonempty string choices with literal union inference. `variants: true` makes the options the preset strip's chips, with no row (see [Versions of a design](#versions-of-a-design-variants-in-the-strip)). |
 | `toggle(value, { label?, group?, shortcut?, random? }?)` | Boolean switch control. Out of Random and Mutate unless `random: true`. |
 | `spring({ duration?, bounce? }?, meta?)` | SwiftUI-style spring: two sliders beside its live curve. |
 | `color("#hex" \| "oklch(L C H)" \| { l, c, h }, meta?)` | OKLCH colour kept inside sRGB, as an `oklch()` string; swatch, hex and hue/chroma/lightness strips. |
@@ -1896,7 +2069,8 @@ The package has two core exports selected through the standard `development` con
 | `range([low, high], { min, max, step?, unit? })` | One slider with two thumbs. |
 | `angle(degrees, { min?, max?, step?, wrap? })` | A dial, 0° up and clockwise; 0–360 wrapping by default. |
 | `seed(value, { min?, max? })` / `keybind(combo?)` | A whole number with a die; a captured key combination. Both stay out of Random and Mutate by default. |
-| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }])` | A row of buttons with shortcut chips; presses call `onAction(id)`. `shortcut` is a key, or `{ key, scope: "page" \| "panel" \| "none" }`; `toolbarShortcut(item)` reads either. |
+| `text(value?, { multiline?, placeholder? })` | Words in a field, or lines in a box that grows with them. Out of Random and Mutate. |
+| `toolbar([{ id?, label, icon?, shortcut?, global?, disabled?, run? }], { labels? })` | A row of buttons with shortcut chips; presses call `onAction(id)`. `shortcut` is a key, or `{ key, scope: "page" \| "panel" \| "none" }`; `toolbarShortcut(item)` reads either. |
 | `watch` / `sparkline` / `graph` / `meter` / `table` / `log` (`{ label?, unit?, decimals?, format?, hz?, get?, … }`) | Readout rows that hold no value; push with `controls.watch(key, value)`. See [Readouts](#readouts-live-values-sparklines-graphs-meters-tables-and-logs). |
 | `springCss(spring)` / `springMotion(spring)` / `bezierCss(curve)` / `colorHex(color)` | Turn values into CSS, ω/ζ, or hex. |
 | `fromDescriptors(descriptors)` | Converts runtime `ControlDescriptor[]` into a `Schema`. |
@@ -1905,11 +2079,12 @@ The package has two core exports selected through the standard `development` con
 | `unlock({ panel, sequence?, query?, corner?, persist? })` / `KONAMI` | Lets a production deploy be unlocked by a typed secret, `?knobs` or three corner taps; returns `{ unlocked, unlock(), lock(), dispose() }`. See [Show, hide and unlock](#show-hide-and-unlock). |
 | `action(label, { run, shortcut?, global?, rebind? })` / `flatSpring({ duration, bounce }, meta)` | A button row, with a shortcut its key cap can rebind; two flat number fields drawn as one spring card. `actionShortcut(field)` reads an action's shortcut as `{ key, scope }`. |
 | Field meta `random?`, `disabled?`, `readOnly?`, `folded?`, `tab?`, `subsection?` | On any field or descriptor: `random: false` stays out of Random and Mutate (switches, seeds and key combinations start out; `random: true` brings them in); `disabled` / `readOnly` (boolean or `(values) => boolean`) gate the row; `folded` makes its group foldable, starting folded; `tab` puts the row on a tab; `subsection` puts it under a sub-heading in its group. |
-| Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor, for pages (the first field of a group or section that gives one wins): a muted line under the card's title or the section's heading; `sectionFolded` makes the section foldable, starting folded. |
-| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`false` drops the scope line), `session`, `groupFolded`, `subsectionFolded`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
+| Field meta `groupDescription?: string`, `sectionDescription?: string`, `sectionFolded?: boolean` | On any field or descriptor (the first field of a group or section that gives one wins): a muted line under the card's title (in a panel or a page) or a page section's heading; `sectionFolded` makes a page section foldable, starting folded. |
+| `mountPanel(controls, container, options?)` (`knobs/panel`) | An inline panel. Beside theme, density, renderer and keys: `preset`, `header` (`false` or `{ title?, buttons? }`), `crumbs` (`true` adds the scope line), `session`, `groupFolded`, `groupSummary`, `onActive`, `subsectionFolded`, `foldStorage`, `tabs`, `tab`, `onTab`, `search`, `groupRandom(group, mode)`, `rowAccessory(key)`, `marks`, `haptics`, `detents`, `sound`. The handle adds `panel.fold(group, folded?)`, `panel.unfold(key)`, `panel.tab(id?)`, `panel.search(query?, chips?)` (returns `{ query, chips }`) and `panel.updateAccessories()`. |
 | `sound` (`knobs/panel`) | The page's sound effects (see **Sound**): `enabled`, `enable(on?)`, `volume`, `setVolume(v)`, `theme`, `setTheme("glass" \| "mech")`, `play(cue \| layers, detail?)`, `output()`, `subscribe(listener)`. Panels play only with `sound` on their mount. |
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
-| `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null`, `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
+| `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null` (a panel's option too), `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
+| `MountPanelOptions.onActive?: (at: PanelActive \| null) => void` | The card (`{ group }`) or row (`{ group, key }`) under the pointer or focus, `null` for nothing; on `mountPanel`, `controls.mount` and `mountPage`. At most once a frame, never the same value twice, and a last `null` when the panel goes. `PanelActive` is `{ group: string, key?: string }`. |
 | `page.fold(group: string, folded?: boolean, options?: PageFoldOptions): void` / `page.foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void` / `page.sectionFolded(section: string): boolean` | Fold a group's card or a section or open it (toggles without `folded`), and ask which a section is. `PageFoldOptions` is `{ remember?: boolean, reveal?: boolean }`; `remember` defaults to `true`. |
 | `page.reveal(target: { section: string } \| { group: string }, options?: { remember?: boolean }): void` | Open a section (or a group's card and its section) and glide it into view; `remember` defaults to `false`. |
 | `page.sections(): readonly PageSectionInfo[]` / `page.onSections(listener: (sections: readonly PageSectionInfo[]) => void): () => void` | `PageSectionInfo` is `{ id, label, description?, folded, changed, groups: PageGroupInfo[] }`; `PageGroupInfo` is `{ id, label, folded, changed, preset: string \| null }`. |
@@ -1934,10 +2109,11 @@ The package has two core exports selected through the standard `development` con
 - `controls.randomize(keys?)` / `controls.mutate(keys?)`: skip locked fields; one undo step each
 - `controls.lock(keys, locked = true)` / `controls.isLocked(key)`: locks are saved with the values (remote controls keep them in memory)
 - `controls.compare(hold)` / `controls.comparing`: while held, `get()` returns the previous undo entry; no history, no storage
-- `controls.preset(id, { coalesce? })` / `controls.matchingPreset()`
-- `controls.activePreset()` / `controls.activeGroupPreset(group)` / `controls.baseValues()`: the base Reset returns to and Random explores around
+- `controls.preset(id, { coalesce?, scope? })` / `controls.matchingPreset(scope?)`
+- `controls.activePreset(scope?)` / `controls.activeGroupPreset(group)` / `controls.baseValues()`: the base Reset returns to and Random explores around
+- `controls.scopes` / `controls.scopeOf(key)`: the tabs and groups with presets of their own (`scopedPresets`), each `{ id, keys, presets, variants }`, and whose presets move a key
 - `controls.groupPresets` / `controls.groupPreset(group, index, { coalesce? })` / `controls.matchingGroupPreset(group)` / `controls.groupPresetDisplay`
-- `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
+- `controls.groupLabel(id)` / `controls.sectionLabel(id)` / `controls.presetLabel(id, scope?)`: display labels (`groupLabels`, `sectionLabels`, `presetLabels`, `defaultLabel`, or the fields' `groupLabel` / `sectionLabel`)
 - `controls.groupDescription(group): string | undefined` / `controls.sectionDescription(section): string | undefined`: `groupDescriptions` / `sectionDescriptions`, else the fields' `groupDescription` / `sectionDescription`
 - `controls.groupFolded` / `controls.sectionFolded`: how groups and a page's sections start, as given to `defineControls` or `createRemoteControls` (`groupFolded?: Record<string, boolean>`, `sectionFolded?: SectionFolded`); mounts read them under their own
 - `controls.code("ts" | "json" | "jsx", values?)`
@@ -1957,7 +2133,7 @@ The package has two core exports selected through the standard `development` con
 | `readout(field, { preset?, theme?, label? })` | A readout on its own: `{ element, push(value), value, dispose() }`. |
 | `popover(anchor, content, { placement?, offset?, role?, label?, focus?, trap?, closeOnOutside?, onClose? })` | A floating layer that flips and shifts; `{ element, open, reposition(), close() }`. |
 | `tooltip(el, text \| { text, shortcut?, placement?, delay? })` / `tooltips(doc)` | Delayed tooltips with instant hand-off and shortcut chips; `data-tip` attributes. |
-| `commandPalette({ commands, onRun?, hotkey?, recents?, placeholder? })` / `commandsFrom(controls, options?)` | `⌘K` fuzzy command search; a store's actions, presets and fields as commands. |
+| `commandPalette({ commands, onRun?, hotkey?, recents?, placeholder?, presence? })` / `commandsFrom(controls, options?)` | `⌘K` fuzzy command search; a store's actions, presets and fields as commands. |
 | `confirm({ title, body?, confirm?, cancel?, destructive? })` | `Promise<boolean>`, modal, focus kept inside. |
 | `toast(message, { tone?, linger?, action?, within? })` | A status pill at the bottom centre. |
 | `menu(anchor, items, { placement?, label?, onSelect?, onClose? })` / `contextMenu(target, items, options?)` | Menus with icons, shortcut chips, checks, radios and submenus; a right-click or menu-key menu. |
@@ -1969,6 +2145,7 @@ The package has two core exports selected through the standard `development` con
 | `optionPicker(container, { options, selected?, chosen?, onSelect?, onChoose?, body?, digits? })` | Options 1–n on a gliding card, the selected one's parameters (a panel) open under it. |
 | `bento(container, { items, gap?, tolerance?, rowHeight?, fit?, blur?, picks?, onPick?, onZoom?, onActive? })` | An ideas grid: a bento of images and live content that zooms an item to fill the view; picks with Space. |
 | `planBento(aspects, { width, height, gap?, tolerance?, rowHeight?, groups?, hero? })` | The bento's layout on its own: rects, mode, coverage and crop. |
+| `canvas(container, { items, gap?, padding?, width?, minZoom?, maxZoom?, readout?, onView? })` | An infinite canvas: items as cards on a dotted page that pans and zooms freely; `fit`, `focus(id)`, `zoomTo`. |
 | `walkthrough(container, { doc, onFeedback?, storage?, keys?, rail?, advance? })` / `mediaSlot(container, { media, steps? })` | The review page an agent writes (sections, steps, media from compares to histories, stacks and tables, notes and picks handed back); one step's media on its own. |
 | `overlayLook({ preset?, theme? })` | The look every overlay takes. |
 | `hints.register(root, () => targets, { listen?, rank? })` / `data-hint` | Joins the page's hint mode (`s`); `hints.start()`, `hints.stop()`. |
