@@ -123,6 +123,51 @@ export function seeked(s: SeekState, current: number, fps: number): SeekStep {
   return { state: SEEK_IDLE, apply: null, settled: true }
 }
 
+/**
+ * Where a video showing `current` seeks once a scrub lets go at `t`: the midpoint of `t`'s frame,
+ * or null when that frame already shows. Frames, not seconds: 1.030 and 1.040 are 1/100 s apart
+ * and two frames at 30 fps.
+ */
+export function releaseSeek(current: number, t: number, fps: number, duration?: number) {
+  const at = seekTime(t, fps, duration)
+  return sameFrame(current, at, fps) ? null : at
+}
+
+/** How long a seek may take to land before the preview over it gives way (ms). */
+export const SEEK_STALL_MS = 2500
+
+/** What `stallGuard` reads of a window. */
+export interface Timers {
+  setTimeout(f: () => void, ms: number): number
+  clearTimeout(id: number): void
+}
+
+/**
+ * A seek that never lands (a decoder that gave up, a network that went away) mustn't leave a
+ * preview over the video forever: `arm` when a seek goes out, `clear` when it lands, and
+ * `onStall` runs if it doesn't within `ms`.
+ */
+export function stallGuard(timers: Timers, onStall: () => void, ms = SEEK_STALL_MS) {
+  let id = 0
+  const clear = () => {
+    if (id) timers.clearTimeout(id)
+    id = 0
+  }
+  return {
+    arm() {
+      clear()
+      id = timers.setTimeout(() => {
+        id = 0
+        onStall()
+      }, ms)
+    },
+    clear,
+    get armed() {
+      return id !== 0
+    },
+  }
+}
+
 export interface Rect {
   readonly x: number
   readonly y: number

@@ -1,6 +1,18 @@
 import { readFileSync } from "node:fs"
-import { describe, expect, test } from "vitest"
-import { aheadOf, focusWindow, gridPoints, nearestKey, proxyStride } from "../src/ui/compare-frames"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import {
+  aheadOf,
+  dropEncoders,
+  type EncoderHost,
+  encodeOn,
+  encodersOf,
+  focusWindow,
+  gridPoints,
+  holdEncoders,
+  nearestKey,
+  proxyStride,
+  scrubCaching,
+} from "../src/ui/compare-frames"
 import { decodeRuns, demuxMp4 } from "../src/ui/compare-mp4"
 import {
   clampZoom,
@@ -20,6 +32,7 @@ import {
   mediaKind,
   modeForKey,
   panBy,
+  releaseSeek,
   requestSeek,
   sameFrame,
   seamLabels,
@@ -27,6 +40,7 @@ import {
   seeked,
   seekTime,
   splitHeight,
+  stallGuard,
   stripColumns,
   stripPeaks,
   syncAction,
@@ -396,5 +410,154 @@ describe("the wipe's seam", () => {
     expect(gripTop(0, rect, 28)).toBe(18)
     expect(gripTop(999, rect, 28)).toBe(174)
     expect(gripTop(50, { x: 0, y: 0, w: 10, h: 30 }, 28)).toBe(1)
+  })
+})
+
+describe("letting go of a scrub", () => {
+  test("compares frames, not seconds, and seeks to the frame's midpoint", () => {
+    // 1/100 s apart, under a frame's length, and still two frames at 30 fps.
+    expect(releaseSeek(1.03, 1.04, 30)).toBeCloseTo(31.5 / 30)
+    expect(releaseSeek(1.02, 1.0333, 30)).toBeNull()
+    expect(releaseSeek(frameMidpoint(30, 30), 1.0, 30)).toBeNull()
+    // Past the end: the last frame, which may already show.
+    expect(releaseSeek(9.9, 10, 30, 10)).toBeCloseTo(299.5 / 30)
+    expect(releaseSeek(299.5 / 30, 10, 30, 10)).toBeNull()
+  })
+
+  test("a seek that never lands gives way once, after the wait", () => {
+    vi.useFakeTimers()
+    try {
+      let stalls = 0
+      const g = stallGuard(globalThis as never, () => stalls++, 100)
+      g.arm()
+      vi.advanceTimersByTime(99)
+      expect(stalls).toBe(0)
+      g.arm() // A newer seek waits afresh.
+      vi.advanceTimersByTime(99)
+      expect(stalls).toBe(0)
+      vi.advanceTimersByTime(1)
+      expect(stalls).toBe(1)
+      expect(g.armed).toBe(false)
+      g.arm()
+      g.clear() // Landed.
+      vi.advanceTimersByTime(500)
+      expect(stalls).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("caching in the background", () => {
+  const win = (o: { reduced?: boolean; saveData?: boolean }) => ({
+    matchMedia: (q: string) => ({ matches: Boolean(o.reduced) && q.includes("reduced-data") }),
+    navigator: { connection: { saveData: Boolean(o.saveData) } },
+  })
+  test("on by default, off for a reader saving data, and the option decides", () => {
+    expect(scrubCaching(undefined, win({}))).toBe(true)
+    expect(scrubCaching(undefined, {})).toBe(true)
+    expect(scrubCaching(undefined, null)).toBe(true)
+    expect(scrubCaching(undefined, win({ reduced: true }))).toBe(false)
+    expect(scrubCaching(undefined, win({ saveData: true }))).toBe(false)
+    expect(scrubCaching(false, win({}))).toBe(false)
+    expect(scrubCaching(true, win({ saveData: true, reduced: true }))).toBe(true)
+  })
+})
+
+describe("the encoder pool", () => {
+  class FakeWorker {
+    static made: FakeWorker[] = []
+    static failAt = -1
+    terminated = false
+    posted: unknown[] = []
+    onmessage: ((e: { data: unknown }) => void) | null = null
+    onerror: (() => void) | null = null
+    constructor(readonly url: string) {
+      if (FakeWorker.made.length === FakeWorker.failAt) throw new Error("refused")
+      FakeWorker.made.push(this)
+    }
+    postMessage(m: unknown) {
+      this.posted.push(m)
+    }
+    terminate() {
+      this.terminated = true
+    }
+  }
+  const urls = { made: [] as string[], revoked: [] as string[] }
+  const host = {
+    Worker: FakeWorker,
+    OffscreenCanvas: class {},
+    Blob,
+    URL: {
+      createObjectURL: () => {
+        const u = `blob:test/${urls.made.length}`
+        urls.made.push(u)
+        return u
+      },
+      revokeObjectURL: (u: string) => void urls.revoked.push(u),
+    },
+  } as unknown as EncoderHost
+  const bitmap = () => ({ close() {} }) as unknown as ImageBitmap
+  afterEach(() => {
+    dropEncoders()
+    FakeWorker.made = []
+    FakeWorker.failAt = -1
+    urls.made = []
+    urls.revoked = []
+  })
+
+  test("its blob URL goes once the workers are made, and they end with the last cache", () => {
+    holdEncoders()
+    holdEncoders()
+    const pool = encodersOf(host)!
+    expect(pool.workers).toHaveLength(2)
+    expect(encodersOf(host)).toBe(pool)
+    expect(urls.revoked).toEqual(urls.made)
+    dropEncoders()
+    expect(FakeWorker.made.some((w) => w.terminated)).toBe(false)
+    const job = encodeOn(pool, bitmap(), 0.8)
+    dropEncoders()
+    expect(FakeWorker.made.every((w) => w.terminated)).toBe(true)
+    // A job in flight fails rather than waiting forever.
+    return expect(job).rejects.toThrow("released")
+  })
+
+  test("the next cache starts a fresh pool", () => {
+    holdEncoders()
+    const first = encodersOf(host)!
+    dropEncoders()
+    holdEncoders()
+    const second = encodersOf(host)!
+    expect(second).not.toBe(first)
+    expect(FakeWorker.made.filter((w) => !w.terminated)).toHaveLength(2)
+  })
+
+  test("a worker that can't be made ends the one that was, and the main thread encodes", () => {
+    FakeWorker.failAt = 1
+    holdEncoders()
+    expect(encodersOf(host)).toBeNull()
+    expect(FakeWorker.made).toHaveLength(1)
+    expect(FakeWorker.made[0]!.terminated).toBe(true)
+    expect(urls.revoked).toEqual(urls.made)
+  })
+
+  test("a worker's error ends the pool and fails what it was encoding", async () => {
+    holdEncoders()
+    const pool = encodersOf(host)!
+    const job = encodeOn(pool, bitmap(), 0.8)
+    FakeWorker.made[0]!.onerror?.()
+    await expect(job).rejects.toThrow("encoder")
+    expect(FakeWorker.made.every((w) => w.terminated)).toBe(true)
+    expect(encodersOf(host)).toBeNull()
+  })
+
+  test("an answer settles its job", async () => {
+    holdEncoders()
+    const pool = encodersOf(host)!
+    const job = encodeOn(pool, bitmap(), 0.8)
+    const blob = new Blob(["jpeg"])
+    FakeWorker.made[0]!.onmessage?.({ data: { id: 0, blob } })
+    await expect(job).resolves.toBe(blob)
+    expect(pool.waiting.size).toBe(0)
   })
 })

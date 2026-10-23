@@ -74,6 +74,25 @@ export const PROXY = {
   turn: 90,
 } as const
 
+/** What `scrubCaching` reads of a window. */
+export interface DataSaver {
+  readonly matchMedia?: (query: string) => { readonly matches: boolean }
+  readonly navigator?: object
+}
+
+/**
+ * Whether a viewer caches its frames in the background (it fetches the whole file and decodes
+ * it): unless its `scrubCache` option is false, the reader prefers reduced data, or the
+ * connection is saving data. Without it, scrubbing seeks the video as it goes.
+ */
+export function scrubCaching(option: boolean | undefined, win: DataSaver | null | undefined) {
+  if (option === false) return false
+  if (option === true) return true
+  const net = (win?.navigator as { connection?: { saveData?: boolean } } | undefined)?.connection
+  if (net?.saveData) return false
+  return !win?.matchMedia?.("(prefers-reduced-data: reduce)").matches
+}
+
 /** The stride a set of proxies needs to stay in `budget`: the smallest power of two that does. */
 export function proxyStride(bytes: number, count: number, total: number, budget: number): number {
   if (count <= 0 || total <= 0) return 1
@@ -240,57 +259,110 @@ async function toBitmap(
 
 // JPEGs are encoded off the main thread where it can (a page's canvas encodes in its idle time,
 // slowly, and never while something animates): two workers made from a blob URL, shared by every
-// cache; a page whose policy forbids them encodes on the main thread.
+// cache and ended when the last cache goes; a page whose policy forbids them encodes on the main
+// thread.
 const ENCODER = `onmessage=async(e)=>{const{id,bitmap,quality}=e.data;try{const c=new OffscreenCanvas(bitmap.width,bitmap.height);c.getContext("2d").drawImage(bitmap,0,0);bitmap.close();postMessage({id,blob:await c.convertToBlob({type:"image/jpeg",quality})})}catch(err){postMessage({id,error:String(err)})}}`
-interface Encoders {
+const ENCODERS = 2
+
+/** What the encoder pool needs of a window (a stand-in in tests). */
+export interface EncoderHost {
+  readonly Worker?: new (url: string) => Worker
+  readonly OffscreenCanvas?: unknown
+  readonly URL: Pick<typeof URL, "createObjectURL" | "revokeObjectURL">
+  readonly Blob: typeof Blob
+}
+export interface Encoders {
   readonly workers: Worker[]
   readonly waiting: Map<number, { done(b: Blob): void; fail(e: unknown): void }>
   next: number
 }
+/** The pool: not made yet (undefined), refused (null), or running. */
 let encoders: Encoders | null | undefined
+/** Caches alive: the pool ends with the last. */
+let encoderUsers = 0
 
-function encodersOf(win: Window): Encoders | null {
+const endEncoders = (why: string) => {
+  const pool = encoders
+  if (!pool) return
+  for (const w of pool.workers) {
+    w.onmessage = null
+    w.onerror = null
+    w.terminate()
+  }
+  for (const j of pool.waiting.values()) j.fail(new Error(why))
+  pool.waiting.clear()
+}
+
+/** A cache uses the pool: it's made the first time a proxy is encoded. */
+export function holdEncoders() {
+  encoderUsers++
+}
+/** A cache is done with the pool: the last one ends its workers, and the next starts afresh. */
+export function dropEncoders() {
+  encoderUsers = Math.max(0, encoderUsers - 1)
+  if (encoderUsers > 0) return
+  endEncoders("released")
+  encoders = undefined
+}
+
+/** The page's encoder pool, made on first use; null where workers can't run. */
+export function encodersOf(host: EncoderHost): Encoders | null {
   if (encoders !== undefined) return encoders
   encoders = null
-  const W = (win as { Worker?: typeof Worker }).Worker
-  if (!W || !("OffscreenCanvas" in win)) return null
+  const W = host.Worker
+  if (!W || !host.OffscreenCanvas) return null
+  const workers: Worker[] = []
+  let url: string | null = null
   try {
-    const url = URL.createObjectURL(new Blob([ENCODER], { type: "text/javascript" }))
-    const waiting: Encoders["waiting"] = new Map()
-    const workers = [new W(url), new W(url)]
-    for (const w of workers) {
-      w.onmessage = (e: MessageEvent<{ id: number; blob?: Blob; error?: string }>) => {
-        const job = waiting.get(e.data.id)
-        waiting.delete(e.data.id)
-        if (e.data.blob) job?.done(e.data.blob)
-        else job?.fail(new Error(e.data.error))
-      }
-      // Refused (a CSP without blob: workers): the main thread encodes from here on.
-      w.onerror = () => {
-        encoders = null
-        for (const j of waiting.values()) j.fail(new Error("encoder"))
-        waiting.clear()
-      }
-    }
-    encoders = { workers, waiting, next: 0 }
+    url = host.URL.createObjectURL(new host.Blob([ENCODER], { type: "text/javascript" }))
+    for (let i = 0; i < ENCODERS; i++) workers.push(new W(url))
   } catch {
-    encoders = null
+    for (const w of workers) w.terminate()
+    return null
+  } finally {
+    // A worker holds its script from the moment it's made.
+    if (url) host.URL.revokeObjectURL(url)
   }
-  return encoders
+  const pool: Encoders = { workers, waiting: new Map(), next: 0 }
+  for (const w of workers) {
+    w.onmessage = (e: MessageEvent<{ id: number; blob?: Blob; error?: string }>) => {
+      const job = pool.waiting.get(e.data.id)
+      pool.waiting.delete(e.data.id)
+      if (e.data.blob) job?.done(e.data.blob)
+      else job?.fail(new Error(e.data.error))
+    }
+    // Refused (a CSP without blob: workers) or broken: the main thread encodes from here on.
+    w.onerror = () => {
+      if (encoders !== pool) return
+      endEncoders("encoder")
+      encoders = null
+    }
+  }
+  encoders = pool
+  return pool
+}
+
+/** `bitmap` as a JPEG on one of the pool's workers (it takes the bitmap). */
+export function encodeOn(pool: Encoders, bitmap: ImageBitmap, quality: number) {
+  const id = pool.next++
+  const worker = pool.workers[id % pool.workers.length]!
+  return new Promise<Blob>((done, fail) => {
+    pool.waiting.set(id, { done, fail })
+    try {
+      worker.postMessage({ id, bitmap, quality }, [bitmap])
+    } catch (err) {
+      pool.waiting.delete(id)
+      bitmap.close()
+      fail(err)
+    }
+  })
 }
 
 /** A frame as a small JPEG: a scrub proxy. */
 async function toProxy(doc: Document, source: CanvasImageSource, w: number, h: number) {
   const bm = await toBitmap(doc, source, w, h, PROXY.size)
-  const pool = encodersOf(doc.defaultView!)
-  if (pool) {
-    const id = pool.next++
-    const worker = pool.workers[id % pool.workers.length]!
-    return new Promise<Blob>((done, fail) => {
-      pool.waiting.set(id, { done, fail })
-      worker.postMessage({ id, bitmap: bm, quality: PROXY.quality }, [bm])
-    })
-  }
+  const pool = encodersOf(doc.defaultView as unknown as EncoderHost)
+  if (pool) return encodeOn(pool, bm, PROXY.quality)
   try {
     const Off = (doc.defaultView as { OffscreenCanvas?: typeof OffscreenCanvas } | null)
       ?.OffscreenCanvas
@@ -318,6 +390,7 @@ export function acquireFrames(doc: Document, src: string, fps: number): FrameCac
   if (!core) {
     core = makeCore(doc, key, src, fps)
     cores.set(key, core)
+    holdEncoders()
   }
   core.refs++
   return core.cache
@@ -865,6 +938,7 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       dropDecoded()
     },
     dispose() {
+      if (disposed) return
       disposed = true
       generation++
       if (notifyRaf) win.cancelAnimationFrame(notifyRaf)
@@ -882,6 +956,7 @@ function makeCore(doc: Document, key: string, src: string, fps: number): Core {
       actives.delete(core)
       round?.delete(core)
       cores.delete(key)
+      dropEncoders()
     },
   }
   return core

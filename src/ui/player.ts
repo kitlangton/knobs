@@ -6,9 +6,10 @@
 // the two never drift. Scrubbing shows the frame under the hand at once: once the pointer is over
 // the player its frames decode in the background (compare-frames.ts, shared with any compare of
 // the same file), and while the line is dragged the nearest one draws over the video, which seeks
-// once the hand lets go (or when nothing near is cached yet).
-import { acquireFrames, type CachedFrame, type FrameCache } from "./compare-frames.js"
-import { frameOf } from "./compare-model.js"
+// once the hand lets go (or when nothing near is cached yet). A reader saving data (or
+// `scrubCache: false`) caches nothing: the video seeks as the line moves.
+import { acquireFrames, scrubCaching, type CachedFrame, type FrameCache } from "./compare-frames.js"
+import { frameOf, releaseSeek, sameFrame, stallGuard, type Timers } from "./compare-model.js"
 import { applyLook, type UiLook } from "./look.js"
 import { timeline as makeTimeline, type Timeline } from "./timeline.js"
 
@@ -37,6 +38,12 @@ export interface PlayerOptions extends UiLook {
   readonly label?: string
   /** The line's play key and playhead take codes in the page's hint mode (on by default). */
   readonly hints?: boolean
+  /**
+   * Decode its frames in the background once the pointer comes near, so a scrub shows the frame
+   * under the hand (it fetches the whole file). On unless the reader prefers reduced data or saves
+   * data; false never, true always.
+   */
+  readonly scrubCache?: boolean
   /** Played or paused, at `time` (seconds). */
   onPlay?(playing: boolean, time: number): void
   /** Sought by the hand (the line, a key, a chapter) or code, at rest. */
@@ -164,11 +171,23 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
     const shown = previewing ?? frameOf(v.currentTime, fps)
     if (Math.abs(c.frame - w) < Math.abs(shown - w)) drawPreview(c)
   }
+  const caching = scrubCaching(options.scrubCache, doc.defaultView)
   const startFrames = () => {
-    if (frames) return
+    if (frames || !caching) return
     frames = acquireFrames(doc, options.src, fps)
     frames.visible(true)
     unlistenFrames = frames.listen(showNearest)
+  }
+
+  // A seek that never lands (or a video that fails) lets the preview go, and what was pending.
+  const stall = stallGuard(doc.defaultView as unknown as Timers, () => {
+    pending = null
+    hidePreview()
+  })
+  const onError = () => {
+    stall.clear()
+    pending = null
+    hidePreview()
   }
 
   // A seek reports once it lands, paused, and only when it went somewhere (not a pause's settle).
@@ -180,6 +199,7 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
       v.currentTime = t
       return
     }
+    stall.clear()
     const at = frameOf(v.currentTime, fps)
     emitFrame(at, "video")
     // Landed: the video takes over from the preview (mid-scrub, only if it's as near).
@@ -200,6 +220,7 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
   v.addEventListener("loadedmetadata", onMeta)
   v.addEventListener("loadeddata", onFrame)
   v.addEventListener("seeked", onSeeked)
+  v.addEventListener("error", onError)
 
   const unlisten = tl.listen({
     onSeek(t, source) {
@@ -215,7 +236,7 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
         if (frames.covers(want())) return
       }
       // A pause settling on the frame that shows needs no seek.
-      if (Math.abs(v.currentTime - t) < 1 / fps) {
+      if (sameFrame(v.currentTime, t, fps)) {
         if (!scrubbing) hidePreview()
         return
       }
@@ -239,9 +260,15 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
         startFrames()
         return
       }
-      // Let go: the exact frame, from the video.
-      if (Math.abs(v.currentTime - tl.time) < 1 / fps && !v.seeking) hidePreview()
-      else seekVideo(tl.time)
+      // Let go: the exact frame, from the video (its midpoint, unless it already shows).
+      if (v.readyState < 1) return hidePreview()
+      const at = releaseSeek(v.currentTime, tl.time, fps, v.duration)
+      if (at === null) {
+        // The frame showing (or landing) is the one: nothing queued goes after it.
+        pending = null
+        if (!v.seeking) return hidePreview()
+      } else seekVideo(at)
+      stall.arm()
     },
   })
   // While it plays the line follows the video's own clock.
@@ -296,6 +323,8 @@ export function player(container: HTMLElement, options: PlayerOptions): Player {
       v.removeEventListener("loadedmetadata", onMeta)
       v.removeEventListener("loadeddata", onFrame)
       v.removeEventListener("seeked", onSeeked)
+      v.removeEventListener("error", onError)
+      stall.clear()
       v.removeAttribute("src")
       v.load()
       root.remove()

@@ -311,7 +311,7 @@ export type CompareProps = CompareOptions & {
 
 /**
  * `compare()` as a component. `before`, `after` (by `src`), `mode`, `wipe`, `loupe`, `threshold`
- * and `fps` follow their props; a new `timeline` handle or `renderer` makes it afresh;
+ * and `fps` follow their props; a new `timeline` handle, `renderer` or `scrubCache` makes it afresh;
  * callbacks always call the latest props.
  */
 export function Compare(props: CompareProps) {
@@ -332,7 +332,7 @@ export function Compare(props: CompareProps) {
       c.dispose()
       handle.current = null
     }
-  }, [props.timeline, props.renderer])
+  }, [props.timeline, props.renderer, props.scrubCache])
   useFollow(
     {
       before: props.before,

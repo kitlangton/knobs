@@ -11,7 +11,7 @@
 import { Spring, springMotion } from "../core/spring.js"
 import { FADE as FADE_SPRING, SPRINGS } from "../core/motion.js"
 import { claimsHintKey, hints } from "../panel/page-hints.js"
-import { acquireFrames, type CachedFrame, type FrameCache } from "./compare-frames.js"
+import { acquireFrames, scrubCaching, type CachedFrame, type FrameCache } from "./compare-frames.js"
 import { createCompareGpu, MODE_INDEX, type CompareGpu } from "./compare-gpu.js"
 import {
   clampZoom,
@@ -41,7 +41,9 @@ import {
   seeked,
   type Size,
   splitHeight,
+  stallGuard,
   syncAction,
+  type Timers,
   wipeAt,
   wipeGrab,
   wipeKey,
@@ -121,6 +123,12 @@ export interface CompareOptions extends UiLook {
   readonly lazy?: boolean
   /** `"gpu"` (the default, where WebGPU is there) or `"dom"`. */
   readonly renderer?: "gpu" | "dom"
+  /**
+   * Decode the videos' frames in the background, so a step or a scrub shows its frame at once (it
+   * fetches each whole file). On unless the reader prefers reduced data or saves data; false
+   * never, true always. Without it, the videos seek as the playhead moves.
+   */
+  readonly scrubCache?: boolean
   readonly label?: string
   /** The modes, the loupe and the wipe take codes in the page's hint mode (`s`); on by default. */
   readonly hints?: boolean
@@ -229,6 +237,8 @@ interface Side {
   /** Uploads that failed in a row. */
   misses: number
   failed: boolean
+  /** Its seek in flight, given up on if it never lands. */
+  readonly stall: ReturnType<typeof stallGuard>
   stop(): void
 }
 
@@ -241,6 +251,7 @@ type FrameVideo = HTMLVideoElement & {
 export function compare(container: HTMLElement, options: CompareOptions): Compare {
   const doc = container.ownerDocument
   const win = doc.defaultView!
+  const caching = scrubCaching(options.scrubCache, win)
   const look: UiLook = {
     ...(options.preset ? { preset: options.preset } : {}),
     ...(options.theme ? { theme: options.theme } : {}),
@@ -543,6 +554,16 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     if (Math.abs(c.frame - want) < was) showCached(s, c)
   }
 
+  /** A seek that never landed: the video shows what it has, and the next seek goes out. */
+  const giveUp = (s: Side) => {
+    s.seek = SEEK_IDLE
+    if (!s.loaded || disposed) return
+    if ((s.el as HTMLVideoElement).readyState >= 2) return showVideo(s)
+    s.shown = null
+    setCached(s, false)
+    requestDraw()
+  }
+
   // ——— sides: made at once, loaded near the screen ———
   const makeSide = (index: 0 | 1, source: CompareSource): Side => {
     const kind = mediaKind(source.src, source.kind)
@@ -575,7 +596,9 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       frameAt: 0,
       misses: 0,
       failed: false,
+      stall: stallGuard(win as unknown as Timers, () => giveUp(side)),
       stop: () => {
+        side.stall.clear()
         for (const f of offs) f()
       },
     }
@@ -583,6 +606,11 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
       if (!side.loaded) return
       side.failed = true
       note.textContent = `Couldn't load ${labelOf(index)}`
+      // Nothing it was seeking will land, and no cached frame stands in for it.
+      side.stall.clear()
+      side.seek = SEEK_IDLE
+      side.shown = null
+      setCached(side, false)
     }
     if (media instanceof HTMLVideoElement) {
       const v = media as FrameVideo
@@ -609,6 +637,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
         const step = seeked(side.seek, v.currentTime, fps())
         side.seek = step.state
         if (step.apply !== null) seekVideo(side, v, step.apply)
+        else side.stall.clear()
         pushFrame(side)
       })
       on("error", fail)
@@ -639,7 +668,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     s.loaded = true
     s.failed = false
     s.el.src = s.source.src
-    if (s.kind === "video") {
+    if (s.kind === "video" && caching) {
       s.frames = acquireFrames(doc, s.source.src, fps())
       s.unlisten = s.frames.listen(() => refreshCached(s))
       if (onScreen) {
@@ -654,6 +683,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     s.el.removeAttribute("src")
     if (s.el instanceof HTMLVideoElement) s.el.load()
     s.seek = SEEK_IDLE
+    s.stall.clear()
     s.shown = null
     setCached(s, false)
     s.unlisten?.()
@@ -780,6 +810,7 @@ export function compare(container: HTMLElement, options: CompareOptions): Compar
     const far = !c || Math.abs(c.frame - wantOf(s)) > FAST_SEEK_FRAMES
     if (scrubbing && far && v.fastSeek) v.fastSeek(t)
     else v.currentTime = t
+    s.stall.arm()
   }
   /** Paused: both seek to the frame's midpoint, coalesced; a cached frame shows meanwhile. */
   const showFrame = (t: number, used: boolean) => {
