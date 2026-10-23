@@ -93,6 +93,12 @@ describe("Rust copy-as-code", () => {
     )
   })
 
+  it("keeps the two-argument form when the step would round to zero", () => {
+    expect(
+      formatRust([{ key: "eps", kind: "number", default: 0, min: 0, max: 0.001 }], { eps: 0.001 }),
+    ).toBe('rune::tune!("eps", 0.001_f32)  // was 0.0_f32')
+  })
+
   it("hardens bounds like values: f32 clamps, and Ints outside i32 drop the bounds", () => {
     expect(
       formatRust([{ key: "x", kind: "number", default: 0, min: -1e300, max: 1e300, step: 1 }], {

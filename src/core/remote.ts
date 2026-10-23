@@ -659,7 +659,9 @@ const rustBounds = (d: ValueDescriptor): string => {
   if ((d.kind !== "knob" && d.kind !== "number") || d.min === undefined || d.max === undefined)
     return ""
   const bounds = [d.min, d.max, numberStep(d, d.min, d.max)].map((n) => rustLiteral(d, n))
-  return bounds.every((b) => b !== undefined) ? `, ${bounds.join(", ")}` : ""
+  // A step that rounds to zero would make Rune's slider stuck; keep the two-argument form.
+  if (bounds.some((b) => b === undefined) || Number.parseFloat(bounds[2]!) === 0) return ""
+  return `, ${bounds.join(", ")}`
 }
 
 /** Modified values as Rune `tune!` calls; kinds without a Rune literal become comments. */

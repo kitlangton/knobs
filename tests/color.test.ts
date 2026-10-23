@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { colorHex, colorHexAlpha, formatColor, parseColor, sameColor } from "../src/core/color.js"
 import { createRemoteControls, defineControls } from "../src/index.js"
+import { mutateStops } from "../src/core/ramp.js"
 import { color } from "../src/core/schema.js"
 
 describe("colour alpha", () => {
@@ -60,5 +61,17 @@ describe("colour alpha", () => {
     expect(sameColor("#3d8bff80", "#3d8bff")).toBe(false)
     expect(sameColor("#3d8bff", "#3d8bfe")).toBe(false)
     expect(sameColor("#3d8bff", "not a colour")).toBe(false)
+  })
+})
+
+describe("gradient stops", () => {
+  it("keep alpha through mutation", () => {
+    const stops = [
+      { at: 0, color: "oklch(0.5 0.1 200 / 0.5)" },
+      { at: 1, color: "oklch(0.7 0.1 40)" },
+    ]
+    const out = mutateStops(stops, () => 0.3, [10, 20], [0.02, 0.05])
+    expect(parseColor(out[0]!.color)?.alpha).toBe(0.5)
+    expect(parseColor(out[1]!.color)?.alpha).toBeUndefined()
   })
 })
