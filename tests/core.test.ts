@@ -362,6 +362,18 @@ describe("store", () => {
     c.undo()
     expect(c.get().count).toBe(30)
   })
+  it("notifies an undo or redo with its new history already in place", () => {
+    const c = make()
+    c.set({ count: 10 })
+    const seen: [boolean, boolean][] = []
+    c.subscribe(() => seen.push([c.canUndo, c.canRedo]))
+    c.undo()
+    c.redo()
+    expect(seen).toEqual([
+      [false, true],
+      [true, false],
+    ])
+  })
   it("has stable immutable snapshots, subscription cleanup and no-op suppression", () => {
     const c = make(),
       listener = vi.fn(),

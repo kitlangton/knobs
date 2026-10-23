@@ -873,8 +873,7 @@ export function defineControls<const S extends Schema>(
       if (presetFree().has(k)) {
         // A group that presets leave alone (pinned, `inPresets: false`) still answers to its own
         // scope; only a field that says `inPresets: false` itself stays out of every one.
-        if (f.inPresets !== false && f.group !== undefined && named.has(f.group))
-          of.set(k, f.group)
+        if (f.inPresets !== false && f.group !== undefined && named.has(f.group)) of.set(k, f.group)
         continue
       }
       const tab = tabOf(f)
@@ -1429,15 +1428,18 @@ export function defineControls<const S extends Schema>(
     })
   }
   /** Moves to a history entry (values and active presets); returns the entry it left. */
-  function step(to: Entry, source: "undo" | "redo"): Entry {
+  /**
+   * Moves to `to`, keeping where it left in `into` first, so the notify already sees the new
+   * canUndo and canRedo (a panel's Redo blooms with the undo that made it possible).
+   */
+  function step(to: Entry, source: "undo" | "redo", into: Entry[]) {
     const before = load()
-    const left = { values: before, base: activeBase() }
+    into.push({ values: before, base: activeBase() })
     const diff = changes(before, to.values)
     base = validBase(to.base)
     markChanged(diff as Record<string, unknown>)
     commit(to.values)
     if (Object.keys(diff).length) options.onChange?.(diff, to.values, { source })
-    return left
   }
   /** Applies incoming values as they are (no holds), flagging a landing for the notify. */
   function place(values: Record<string, unknown>, replace: boolean, land: boolean) {
@@ -1882,14 +1884,14 @@ export function defineControls<const S extends Schema>(
       if (hostHistory) return hostHistory.undo()
       const previous = past.pop()
       if (!previous) return
-      future.push(step(previous, "undo"))
+      step(previous, "undo", future)
     },
     redo() {
       release()
       if (hostHistory) return hostHistory.redo()
       const next = future.pop()
       if (!next) return
-      past.push(step(next, "redo"))
+      step(next, "redo", past)
     },
     getServerSnapshot: () => locked,
     subscribe(cb) {
