@@ -211,7 +211,8 @@ const css = `
    the panel's colour) and softens its foot with a short fade. That's scroll-driven, with no
    script: --k-head-s follows the panel's own scroll, --k-head-v (pinned to an ancestor) the
    panel's top passing its scroller's, over their first 24px. Until then the header is as it
-   always was: no background, no filter, no change in spacing. The GPU reads them too, to clip the
+   always was: no background, no filter (the range starts 1px in: at rest, even an identity filter
+   would tint it over the panel's glass), no change in spacing. The GPU reads them too, to clip the
    rows at the header's foot and fade them in below it. Without scroll-driven animations nothing
    pins. */
 @keyframes knobs-head-s{from{-webkit-backdrop-filter:none;backdrop-filter:none}to{--k-head-s:1;-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}}
@@ -222,7 +223,7 @@ const css = `
   .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-frame) - 1px)) max(0px,calc(var(--_k-radius-frame) - 1px)) 0 0;
     --k-head-on:max(var(--k-head-s),var(--k-head-v));--k-head-bg:color-mix(in srgb,var(--_k-bg) 88%,transparent);
     background:color-mix(in srgb,var(--k-head-bg) calc(var(--k-head-on) * 100%),transparent);
-    animation:knobs-head-s linear both;animation-timeline:--knobs-self;animation-range:0px 24px}
+    animation:knobs-head-s linear forwards;animation-timeline:--knobs-self;animation-range:1px 24px}
   .knobs-panel.knobs-pin-ancestor:not(.knobs-page)>header{animation:knobs-head-v linear both;animation-timeline:--knobs-view;animation-range:exit-crossing 0px exit-crossing 24px}
   .knobs-panel:not(.knobs-page)>header::after{content:"";position:absolute;left:0;right:0;top:100%;height:10px;pointer-events:none;
     background:linear-gradient(var(--k-head-bg),transparent);opacity:var(--k-head-on)}
