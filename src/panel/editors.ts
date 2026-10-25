@@ -667,7 +667,7 @@ export function colorStrips(
     const ch = rel * maxChroma(l, h)
     sending = true
     try {
-      o.commit({ l, c: ch, h })
+      o.commit({ l, c: ch, h, alpha: shown.alpha })
     } finally {
       sending = false
     }

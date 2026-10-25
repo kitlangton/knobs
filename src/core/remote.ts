@@ -1,4 +1,4 @@
-import { colorHex, oklchToRgb, parseColor } from "./color.js"
+import { colorHex, colorHexAlpha, oklchToRgb, parseColor, sameColor } from "./color.js"
 import type { Bezier } from "./easing.js"
 import type { CurveInterp, CurvePoint, GradientSpace, GradientStop } from "./ramp.js"
 import { RESET_KEYS, RESHAPE, type Reshape, type ResetKeys } from "./internal.js"
@@ -301,6 +301,7 @@ export interface RemoteControls extends Controls<Schema> {
     options?: { land?: boolean; mixed?: readonly string[] },
   ): void
   swift(group?: string): string
+  rust(group?: string): string
 }
 
 const readoutDescriptor = (d: ControlDescriptor): d is ReadoutDescriptor => isReadout(d)
@@ -338,7 +339,7 @@ export function descriptorToField(d: ControlDescriptor): Field {
     const def = typeof d.default === "number" && Number.isFinite(d.default) ? d.default : 0
     const min = d.min ?? Math.min(0, def * 2)
     const max = d.max ?? Math.max(1, def * 2)
-    const step = d.step ?? (d.swiftType === "Int" ? 1 : (max - min) / 100 || 1)
+    const step = numberStep(d, min, max)
     return knob(def, {
       min,
       max,
@@ -490,11 +491,20 @@ export function fromDescriptors(descriptors: readonly ControlDescriptor[]): Sche
   return Object.freeze(Object.fromEntries(entries))
 }
 
+/** A number descriptor's step: its own, else 1 for Ints and a hundredth of the range otherwise. */
+const numberStep = (d: ValueDescriptor, min: number, max: number): number =>
+  d.step ?? (d.swiftType === "Int" ? 1 : (max - min) / 100 || 1)
+
 const decimal = (n: number) => String(Math.round(n * 10000) / 10000)
+/** Whether a value equals its descriptor's default; colours compare as 8-bit sRGB and alpha. */
+const atDefault = (d: ValueDescriptor, value: Value): boolean =>
+  d.kind === "color" ? sameColor(value, d.default) : same(value, d.default)
 const swiftLiteral = (d: ValueDescriptor, v: Value): string => {
   if (d.kind === "color") {
-    const [r, g, b] = oklchToRgb(parseColor(v) ?? { l: 0, c: 0, h: 0 }).map(decimal)
-    return `Color(red: ${r}, green: ${g}, blue: ${b})`
+    const parsed = parseColor(v) ?? { l: 0, c: 0, h: 0 }
+    const [r, g, b] = oklchToRgb(parsed).map(decimal)
+    const opacity = parsed.alpha === undefined ? "" : `, opacity: ${decimal(parsed.alpha)}`
+    return `Color(red: ${r}, green: ${g}, blue: ${b}${opacity})`
   }
   if (d.kind === "point") {
     const p = v as Point
@@ -549,6 +559,7 @@ export function formatSwift(
   descriptors: readonly ControlDescriptor[],
   values: State,
   group?: string,
+  options: { readonly includeDefaults?: boolean } = {},
 ): string {
   const byKey = new Map(descriptors.map((d) => [d.key, d]))
   const done = new Set<string>()
@@ -556,8 +567,8 @@ export function formatSwift(
   for (const d of descriptors as readonly ValueDescriptor[]) {
     if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
     if (readoutDescriptor(d)) continue
-    const changed = d.key in values && !same(values[d.key], d.default)
-    if (!changed || done.has(d.key) || (group && d.group !== group)) continue
+    const included = d.key in values && (options.includeDefaults || !atDefault(d, values[d.key]))
+    if (!included || done.has(d.key) || (group && d.group !== group)) continue
     const base = d.key.replace(/\.(duration|bounce)$/, "")
     const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
     const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
@@ -597,6 +608,98 @@ export function formatSwift(
     }
     const note = d.kind === "color" ? `${colorHex(values[d.key] as string)} · ` : ""
     lines.push(`${call})  // ${note}was ${swiftLiteral(d, d.default)}`)
+  }
+  return lines.join("\n")
+}
+
+/** Quoted Rust strings, including escapes JSON spells differently (e.g. `\u0008`). */
+const rustString = (value: string): string =>
+  `"${value.replace(/["\\\x00-\x1f\x7f-\x9f\u2028\u2029\ud800-\udfff]/gu, (c) => {
+    if (c === '"' || c === "\\") return `\\${c}`
+    if (c === "\n") return "\\n"
+    if (c === "\r") return "\\r"
+    if (c === "\t") return "\\t"
+    const code = c.codePointAt(0)!
+    return `\\u{${(code >= 0xd800 && code <= 0xdfff ? 0xfffd : code).toString(16)}}`
+  })}"`
+
+const F32_MAX = 3.4028234663852886e38
+const rustFloat = (value: number): string => {
+  if (Number.isNaN(value)) return "f32::NAN"
+  if (value >= F32_MAX) return "f32::MAX"
+  if (value <= -F32_MAX) return "f32::MIN"
+  const [mantissa, exponent] = decimal(value).split("e")
+  return `${mantissa!.includes(".") ? mantissa : `${mantissa}.0`}${exponent === undefined ? "" : `e${exponent}`}_f32`
+}
+
+const rustLiteral = (d: ValueDescriptor, value: Value): string | undefined => {
+  if (d.kind === "spring") {
+    const v = value as SpringValue
+    return `rune::Spring::new(${rustFloat(v.duration)}, ${rustFloat(v.bounce)})`
+  }
+  if (d.kind === "color") {
+    const color = colorHexAlpha(value)
+    return color ? `rune::color::hex(${rustString(color)}).unwrap()` : undefined
+  }
+  if (typeof value === "number") {
+    if (d.kind !== "seed" && d.swiftType !== "Int") return rustFloat(value)
+    if (!Number.isFinite(value) || value < -2147483648 || value > 2147483647) return undefined
+    return String(Math.round(value))
+  }
+  if (typeof value === "boolean") return String(value)
+  if (typeof value === "string") return rustString(value)
+  return undefined
+}
+
+/**
+ * `, min, max, step` for a bounded number, so a pasted line keeps its slider's range: the same
+ * literal type as the value (Rune takes them as one array). Empty when unbounded or unrepresentable.
+ */
+const rustBounds = (d: ValueDescriptor): string => {
+  if ((d.kind !== "knob" && d.kind !== "number") || d.min === undefined || d.max === undefined)
+    return ""
+  const bounds = [d.min, d.max, numberStep(d, d.min, d.max)].map((n) => rustLiteral(d, n))
+  // A step that rounds to zero would make Rune's slider stuck; keep the two-argument form.
+  if (bounds.some((b) => b === undefined) || Number.parseFloat(bounds[2]!) === 0) return ""
+  return `, ${bounds.join(", ")}`
+}
+
+/** Modified values as Rune `tune!` calls; kinds without a Rune literal become comments. */
+export function formatRust(
+  descriptors: readonly ControlDescriptor[],
+  values: State,
+  group?: string,
+  options: { readonly includeDefaults?: boolean } = {},
+): string {
+  const byKey = new Map(descriptors.map((d) => [d.key, d]))
+  const done = new Set<string>()
+  const lines: string[] = []
+  for (const d of descriptors as readonly ValueDescriptor[]) {
+    if ((d.kind as string) === "action" || (d.kind as string) === "toolbar" || d.bind) continue
+    if (readoutDescriptor(d)) continue
+    const included = d.key in values && (options.includeDefaults || !atDefault(d, values[d.key]))
+    if (!included || done.has(d.key) || (group && d.group !== group)) continue
+    const base = d.key.replace(/\.(duration|bounce)$/, "")
+    const duration = byKey.get(`${base}.duration`) as ValueDescriptor | undefined
+    const bounce = byKey.get(`${base}.bounce`) as ValueDescriptor | undefined
+    if (base !== d.key && duration && bounce) {
+      done.add(duration.key).add(bounce.key)
+      const dv = (values[duration.key] ?? duration.default) as number
+      const bv = (values[bounce.key] ?? bounce.default) as number
+      lines.push(
+        `rune::tune!(${rustString(base)}, rune::Spring::new(${rustFloat(dv)}, ${rustFloat(bv)}))` +
+          `  // was duration: ${rustFloat(duration.default as number)}, bounce: ${rustFloat(bounce.default as number)}`,
+      )
+      continue
+    }
+    done.add(d.key)
+    const value = rustLiteral(d, values[d.key])
+    const was = rustLiteral(d, d.default)
+    lines.push(
+      value !== undefined && was !== undefined
+        ? `rune::tune!(${rustString(d.key)}, ${value}${rustBounds(d)})  // was ${was}`
+        : `// unsupported: ${rustString(d.key)} (${d.kind})`,
+    )
   }
   return lines.join("\n")
 }
@@ -724,6 +827,7 @@ export function createRemoteControls(
     },
     sync: (values: State, syncOptions?: SyncOptions) => controls.sync(values, syncOptions),
     swift: (group?: string) => formatSwift(frozenDescriptors, controls.modified() as State, group),
+    rust: (group?: string) => formatRust(frozenDescriptors, controls.modified() as State, group),
   })
 }
 

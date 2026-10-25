@@ -31,7 +31,9 @@ export function pick(field: ValueField, random: () => number) {
     case "color": {
       const l = between(0.5, 0.85, r())
       const h = between(0, 360, r())
-      return { l, c: between(0.25, 0.85, r()) * maxChroma(l, h), h }
+      // The panel doesn't edit alpha, so a roll keeps the field's own.
+      const alpha = parseColor(field.value)?.alpha
+      return { l, c: between(0.25, 0.85, r()) * maxChroma(l, h), h, alpha }
     }
     case "point":
       return {
@@ -133,7 +135,7 @@ export function around(field: ValueField, base: unknown, random: () => number): 
       const h = (c.h + unit(r()) * AROUND.hue + 360) % 360
       const l = Math.min(1, Math.max(0, c.l + unit(r()) * AROUND.lightness))
       const k = Math.min(1, Math.max(0, rel + unit(r()) * AROUND.chroma))
-      return { l, c: k * maxChroma(l, h), h }
+      return { l, c: k * maxChroma(l, h), h, alpha: c.alpha }
     }
     case "point": {
       const p = base as { x: number; y: number }

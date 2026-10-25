@@ -128,6 +128,7 @@ export {
   createRemoteControls,
   descriptorToField,
   formatSwift,
+  formatRust,
   fromDescriptors,
   fromSettings,
   type SettingsGroup,
