@@ -52,6 +52,7 @@ type Drag =
       from: ClipBox
       values: Readonly<Record<string, unknown>>
       min: number
+      max: number
       moved: boolean
       wrote: boolean
     }
@@ -248,8 +249,9 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
         x0: e.clientX,
         from: { start: span.start, end: span.end },
         values,
-        // The stagger stays as it is; each item may get as short as the track allows.
+        // The stagger stays as it is; each item may get as short or long as the track allows.
         min: span.end - span.start - timing.duration + c.track.minDuration,
+        max: span.end - span.start - timing.duration + c.track.maxDuration,
         moved: false,
         wrote: false,
       }
@@ -284,6 +286,8 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
       stops,
       snap: snapOn && !(e.metaKey || e.ctrlKey),
       min: d.min,
+      max: d.max,
+      quantum: d.clip.track.durationStep,
       bounds: [0, d.clip.track.max],
     })
     // The clip follows the hand; the store gets the fields that make it.

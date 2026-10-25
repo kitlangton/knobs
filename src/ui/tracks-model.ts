@@ -27,6 +27,13 @@ export interface ClipDrag {
   readonly radius?: number
   /** The shortest the clip may get (seconds). */
   readonly min: number
+  /** The longest an edge may stretch it (seconds; no limit by default). */
+  readonly max?: number
+  /**
+   * An edge changes the clip's length in steps of this many seconds (a spring's duration step),
+   * so it rests where the field lands; `min` and `max` sit on the same steps.
+   */
+  readonly quantum?: number
   /** Where the clip must stay: `[0, max]`. */
   readonly bounds: readonly [number, number]
 }
@@ -41,30 +48,43 @@ export function dragClip(o: ClipDrag): { box: ClipBox; stop: number | null } {
   const radius = o.radius ?? 8
   const stops = o.snap === false ? [] : (o.stops ?? [])
   const pull = (raw: number) => {
-    if (!stops.length) return { t: raw, stop: null as number | null, px: Infinity }
+    if (!stops.length) return { t: raw, px: Infinity }
     const m = magnet(raw, stops, o.pxPerSec, radius)
     const near = Math.min(...stops.map((s) => Math.abs(s - raw))) * o.pxPerSec
-    return { t: m.stop ?? m.t, stop: m.stop, px: near }
+    return { t: m.stop ?? m.t, px: near }
+  }
+  /** The stop an edge rests on, if any: what the guide line marks. */
+  const on = (...edges: number[]) =>
+    stops.find((s) => edges.some((e) => Math.abs(s - e) * o.pxPerSec < 0.01)) ?? null
+  const from = o.from.end - o.from.start
+  const longest = o.max ?? Infinity
+  /** An edge's length: on the quantum's steps, inside `room` (what the bounds leave). */
+  const fit = (raw: number, room: number) => {
+    let length = Math.min(raw, room)
+    const q = o.quantum
+    if (q) {
+      length = from + Math.round((length - from) / q) * q
+      if (length > room + 1e-9) length -= q
+    }
+    return Math.min(longest, Math.max(o.min, length))
   }
   if (o.grip === "start") {
-    const p = pull(o.from.start + o.delta)
-    const start = Math.min(o.from.end - o.min, Math.max(lo, p.t))
-    return { box: { start, end: o.from.end }, stop: start === p.t ? p.stop : null }
+    const length = fit(o.from.end - pull(o.from.start + o.delta).t, o.from.end - lo)
+    const start = o.from.end - length
+    return { box: { start, end: o.from.end }, stop: on(start) }
   }
   if (o.grip === "end") {
-    const p = pull(o.from.end + o.delta)
-    const end = Math.max(o.from.start + o.min, Math.min(hi, p.t))
-    return { box: { start: o.from.start, end }, stop: end === p.t ? p.stop : null }
+    const length = fit(pull(o.from.end + o.delta).t - o.from.start, hi - o.from.start)
+    const end = o.from.start + length
+    return { box: { start: o.from.start, end }, stop: on(end) }
   }
-  // A move: whichever edge is nearer a stop leads.
+  // A move: whichever edge is nearer a stop leads. Too long for the bounds, it keeps its start
+  // inside them.
   const a = pull(o.from.start + o.delta)
   const b = pull(o.from.end + o.delta)
-  const lead = a.px <= b.px ? a : b
-  const shift = lead.t - (lead === a ? o.from.start : o.from.end)
-  const length = o.from.end - o.from.start
-  const start = Math.min(hi - length, Math.max(lo, o.from.start + shift))
-  const clamped = start !== o.from.start + shift
-  return { box: { start, end: start + length }, stop: clamped ? null : lead.stop }
+  const shift = a.px <= b.px ? a.t - o.from.start : b.t - o.from.end
+  const start = Math.max(lo, Math.min(hi - from, o.from.start + shift))
+  return { box: { start, end: start + from }, stop: on(start, start + from) }
 }
 
 /** The fields a dragged clip sets: a move sets the start, an edge the start and per-item duration. */

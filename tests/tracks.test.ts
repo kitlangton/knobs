@@ -231,6 +231,31 @@ describe("dragging a clip", () => {
     const late = dragClip({ ...base, grip: "move", delta: 5 }).box
     expect(late.end).toBeCloseTo(2, 9)
   })
+  test("a clip longer than its bounds keeps its start inside them", () => {
+    const r = dragClip({ ...base, from: { start: 0.2, end: 2.6 }, grip: "move", delta: -0.1 })
+    expect(r.box.start).toBe(0)
+    expect(r.box.end).toBeCloseTo(2.4, 9)
+    const late = dragClip({ ...base, from: { start: 0.2, end: 2.6 }, grip: "move", delta: 0.3 })
+    expect(late.box.start).toBe(0)
+  })
+  test("an edge stretches no further than `max`, in steps of `quantum`", () => {
+    const end = dragClip({ ...base, grip: "end", delta: 1, max: 0.5, quantum: 0.01 })
+    expect(end.box.end).toBeCloseTo(0.7, 9)
+    const start = dragClip({ ...base, grip: "start", delta: -0.1234, quantum: 0.01 })
+    // 0.4 long, 0.1234 more rounds to 0.12 more: the end stays and the start lands on the step.
+    expect(start.box.end).toBe(0.6)
+    expect(start.box.end - start.box.start).toBeCloseTo(0.52, 9)
+    const early = dragClip({ ...base, grip: "start", delta: -0.1999, quantum: 0.03 })
+    expect(early.box.start).toBeGreaterThanOrEqual(0)
+  })
+  test("the guide shows wherever an edge rests on a stop, clamped there or not", () => {
+    const r = dragClip({ ...base, grip: "move", delta: -1, stops: [0] })
+    expect(r.box.start).toBe(0)
+    expect(r.stop).toBe(0)
+    const q = dragClip({ ...base, grip: "end", delta: 0.2 + 1 / 400, stops: [0.8], quantum: 0.01 })
+    expect(q.box.end).toBeCloseTo(0.8, 9)
+    expect(q.stop).toBe(0.8)
+  })
   test("clips map back to fields: a start edge keeps the end, an end edge sets the duration", () => {
     expect(clipPatch(header, {}, "move", { start: 0.3, end: 0.6 })).toEqual({ "header.start": 0.3 })
     const start = clipPatch(header, {}, "start", { start: 0.05, end: 0.4 })
