@@ -709,6 +709,11 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel:is([data-surface="flat"],[data-surface="indent"]) .knobs-card{background:transparent;border-radius:0}
 .knobs-panel:is([data-surface="flat"],[data-surface="indent"]):not([data-rows]) .knobs-card>*{--k-rt:0;--k-rb:0}
 .knobs-panel[data-surface="indent"] .knobs-card{padding-left:var(--_k-inset);background:linear-gradient(var(--_k-border),var(--_k-border)) calc(var(--_k-inset) / 2) 0/var(--k-rim-width) 100% no-repeat}
+/* A group's own actions (groupActions): icons alone in a panel's group header, their labels in
+   tooltips; icon and label in an embedded group's action row. */
+.knobs-group-head .knobs-group-action{display:inline-flex;align-items:center;gap:var(--_k-unit)}
+.knobs-panel:not([data-embed]) .knobs-group-action:has(>svg){width:20px;padding:0;justify-content:center;border-radius:var(--_k-round)}
+.knobs-panel:not([data-embed]) .knobs-group-action:has(>svg)>span{display:none}
 /* Embedded: part of the host's page, with no frame or padding of its own. Each group leads with
    its action row (its actions, the first icon lined up with the rows' labels, then Reset and the
    die at the far end), its presets under it; one group alone needs no title, since the host's page

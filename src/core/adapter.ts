@@ -63,6 +63,7 @@ export function mountPanelAdapter<S extends Schema>(
     ...p,
     copy: p.copy ? () => getProps().copy?.() ?? controls.code() : undefined,
     onClose: p.onClose ? () => getProps().onClose?.() : undefined,
+    groupActions: p.groupActions ? (group) => getProps().groupActions?.(group) ?? [] : undefined,
     onReady(panel) {
       const cur = getProps()
       syncPanelLook(host, controls, cur, cur.density)

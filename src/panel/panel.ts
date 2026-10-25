@@ -1089,6 +1089,20 @@ function buildPanel<S extends Schema>(
       gBtns.push(b)
       gRight.append(b)
     }
+    for (const act of options.groupActions?.(groupName) ?? []) {
+      const b = button("", () => {
+        cue(root, "press")
+        return act.run()
+      })
+      b.className = "knobs-group-action"
+      b.setAttribute("aria-label", act.label)
+      if (act.icon) b.append(iconSvg(doc, act.icon))
+      b.append(el("span", act.label))
+      // Its label shows beside the icon when embedded; in a panel's header the icon stands alone.
+      if (act.title || (act.icon && !embed)) tooltip(b, act.title ?? act.label)
+      gBtns.push(b)
+      gRight.append(b)
+    }
     // Shown only while something in the group differs from its defaults.
     const gReset = iconButton("reset", `Reset ${title}`, "", () => {
       turn(gReset)

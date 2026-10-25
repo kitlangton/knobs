@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ControlDescriptor } from "../src/core/remote.js"
 import { createRemoteControls, defineControls, knob, spring } from "../src/index.js"
 import { mountPanel } from "../src/panel/panel.js"
@@ -136,5 +136,97 @@ describe("embed", () => {
     reset.click()
     expect(remote.get()).toMatchObject({ "peek.width": 240, "peek.delay": 0.2 })
     panel.dispose()
+  })
+})
+
+describe("groupActions", () => {
+  it("draw in each group's action row and run", async () => {
+    const replay = vi.fn()
+    const focus = vi.fn(() => "Focused")
+    const seen: string[] = []
+    const remote = createRemoteControls("stack", descriptors(), { scopedPresets })
+    const panel = mountPanel(remote, host(), {
+      embed: true,
+      groups: ["Sidebars · Peek", "Composer · Dock"],
+      groupActions: (group) => {
+        seen.push(group)
+        return group === "Sidebars · Peek"
+          ? [
+              { label: "Replay", icon: "retrigger", run: replay },
+              { label: "Focus", icon: "target", title: "Outline it", run: focus },
+            ]
+          : []
+      },
+    })
+    expect(seen).toEqual(["Sidebars · Peek", "Composer · Dock"])
+    const heads = panel.element.querySelectorAll<HTMLElement>(".knobs-group-head")
+    const buttons = [...heads[0]!.querySelectorAll<HTMLButtonElement>(".knobs-group-action")]
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(["Replay", "Focus"])
+    expect(buttons.map((b) => b.textContent)).toEqual(["Replay", "Focus"])
+    expect(buttons[0]!.querySelector("svg.knobs-icon")).not.toBeNull()
+    // Before the group's Reset and die.
+    const order = [...heads[0]!.querySelectorAll("button")].map((b) => b.className)
+    expect(order).toEqual([
+      "knobs-group-action",
+      "knobs-group-action",
+      "knobs-group-reset",
+      "knobs-group-die",
+    ])
+    expect(heads[1]!.querySelector(".knobs-group-action")).toBeNull()
+    buttons[0]!.click()
+    buttons[1]!.click()
+    expect(replay).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
+    // What an action returns is said in the panel's status line.
+    expect(panel.element.querySelector(".knobs-status")?.textContent).toBe("Focused")
+    panel.dispose()
+  })
+
+  it("show in a panel's group headers too", () => {
+    const run = vi.fn()
+    const c = defineControls(
+      "plain",
+      { a: knob(1, { min: 0, max: 2, step: 1, group: "A" }) },
+      { enabled: true, storage: null },
+    )
+    const panel = mountPanel(c, host(), {
+      groupActions: () => [{ label: "Replay", icon: "retrigger", run }],
+    })
+    const b = panel.element.querySelector<HTMLButtonElement>(
+      ".knobs-group-head .knobs-group-action",
+    )!
+    expect(b.getAttribute("aria-label")).toBe("Replay")
+    b.click()
+    expect(run).toHaveBeenCalledTimes(1)
+    panel.dispose()
+  })
+
+  it("pass through the Solid and React adapters with embed and groups", async () => {
+    const { mountPanelAdapter } = await import("../src/core/adapter.js")
+    const remote = createRemoteControls("stack", descriptors(), {
+      scopedPresets,
+      ship: () => import("../src/panel/index.js"),
+    })
+    const node = host()
+    let current = vi.fn()
+    let ready = false
+    const dispose = mountPanelAdapter(node, remote, () => ({
+      controls: remote,
+      embed: true,
+      groups: ["Sidebars · Peek"],
+      surface: "flat",
+      groupActions: () => [{ label: "Replay", icon: "retrigger", run: () => current() }],
+      onReady: () => (ready = true),
+    }))
+    await vi.waitFor(() => expect(ready).toBe(true))
+    const root = node.firstElementChild as HTMLElement
+    expect(root.dataset.surface).toBe("flat")
+    expect(root.dataset.density).toBe("compact")
+    expect(rowLabels(root)).toEqual(["Width", "Delay"])
+    // The latest props' action runs.
+    current = vi.fn()
+    root.querySelector<HTMLButtonElement>(".knobs-group-action")!.click()
+    expect(current).toHaveBeenCalledTimes(1)
+    dispose()
   })
 })

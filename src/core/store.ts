@@ -389,6 +389,12 @@ export interface MountPanelOptions extends LabelOptions {
   readonly footer?: boolean
   readonly actions?: readonly ControlAction<any>[]
   /**
+   * Buttons for each group's own action row: its header in a panel (icons alone, their labels as
+   * tooltips), the row above its presets when embedded (icon and label). Called once per group
+   * as its header is built; return `[]` for none.
+   */
+  readonly groupActions?: (group: string) => readonly GroupAction[]
+  /**
    * `true` renders the panel into its host as part of the host's page: no frame, header, title,
    * footer or toggle key, and compact rows unless `density` says otherwise. Each group leads with
    * its action row (`groupActions`, its Reset and die) and its own presets (`scopedPresets`).
@@ -401,6 +407,15 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly groups?: readonly string[]
   readonly onClose?: () => void
+}
+/** A button in a group's action row (`MountPanelOptions.groupActions`). */
+export interface GroupAction {
+  readonly label: string
+  /** A built-in icon (`retrigger`, `target`, `reset`, `play`, …) or SVG path data on a 256 grid. */
+  readonly icon?: string
+  /** Its tooltip; the label by default. */
+  readonly title?: string
+  run(): void | string | Promise<void | string>
 }
 /** A search field's filter chip: it narrows the rows to those `test` accepts. */
 export interface SearchChip {
