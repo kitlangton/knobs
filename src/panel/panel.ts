@@ -5224,8 +5224,10 @@ function buildPanel<S extends Schema>(
   let trapped: HTMLElement | null | undefined
   const syncRendererMode = () => {
     let mode = resolveRendererMode(requestedMode, doc)
-    // The GPU overlay doesn't draw flat or indented surfaces or embedded action rows yet.
-    if (mode === "gpu" && (embed || (surface && surface !== "cards"))) mode = "dom"
+    // The GPU overlay doesn't draw flat or indented surfaces, embedded action rows or group
+    // actions' icons yet.
+    const domOnly = embed || options.groupActions || (surface && surface !== "cards")
+    if (mode === "gpu" && domOnly) mode = "dom"
     if (mode === "gpu" && inline) {
       trapped ??= stackingAncestor(root)
       if (trapped) {

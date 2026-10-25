@@ -4,6 +4,19 @@ import type { ControlDescriptor } from "../src/core/remote.js"
 import { createRemoteControls, defineControls, knob, spring } from "../src/index.js"
 import { mountPanel } from "../src/panel/panel.js"
 
+// Which panels ask for the WebGPU overlay; none is drawn here.
+const gpuPanels = vi.hoisted(() => [] as unknown[])
+vi.mock("../src/panel/gpu/renderer.js", async (actual) => ({
+  ...(await actual<object>()),
+  getGpuOverlayManager: () => ({
+    wake() {},
+    register: (binding: unknown) => {
+      gpuPanels.push(binding)
+      return () => {}
+    },
+  }),
+}))
+
 // OpenCode Desktop's Stack: features keyed `Area · Feature`, each with its own presets.
 const descriptors = (): ControlDescriptor[] => [
   {
@@ -308,6 +321,25 @@ describe("groupActions", () => {
     expect(b.getAttribute("aria-label")).toBe("Replay")
     b.click()
     expect(run).toHaveBeenCalledTimes(1)
+    panel.dispose()
+  })
+
+  it("keep a panel on the DOM renderer, which draws their icons", () => {
+    const c = defineControls(
+      "plain-gpu",
+      { a: knob(1, { min: 0, max: 2, step: 1, group: "A" }) },
+      { enabled: true, storage: null },
+    )
+    gpuPanels.length = 0
+    const plain = mountPanel(c, document.body, { renderer: "gpu" })
+    expect(gpuPanels).toHaveLength(1)
+    plain.dispose()
+    const panel = mountPanel(c, document.body, {
+      renderer: "gpu",
+      groupActions: () => [{ label: "Replay", icon: "retrigger", run() {} }],
+    })
+    expect(gpuPanels).toHaveLength(1)
+    expect(panel.element.dataset.renderer).toBe("dom")
     panel.dispose()
   })
 

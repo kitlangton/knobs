@@ -885,7 +885,8 @@ mountPanel(motion, page, {
   die: `{ label, icon?, title?, run }`, `icon` a built-in icon's name (`retrigger`, `target`,
   `play`, …) or SVG path data on a 256 grid. Embedded, each shows its icon
   and label; in a panel's group header, its icon alone with the label as its tooltip. A string
-  `run` returns (or resolves to) shows in the panel's status line.
+  `run` returns (or resolves to) shows in the panel's status line. Embedded panels, other
+  surfaces and panels with group actions draw with the DOM renderer.
 - **Random and undo.** A group's die, `g` and `⌥G` roll the group, and `⌘Z` / `⇧⌘Z` (with `z`,
   `u` and their shifted keys) undo and redo while focus is in the panel. On a remote store every
   one of them reaches the host through `onSet`, an undo back to the defaults as `null`.
