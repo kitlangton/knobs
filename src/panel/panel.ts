@@ -577,14 +577,18 @@ function buildPanel<S extends Schema>(
   // Random re-rolls, Mutate (⌥) nudges; both skip locked fields and roll `roller` only when
   // something can change. A selection narrows `r` and ⌥R to its rows.
   const reroll = (keys: readonly string[] | undefined, nudge: boolean, roller: HeaderDie = die) => {
-    const pool = (keys ?? rows.flatMap((r) => r.keys)).filter((k) =>
+    const scoped = keys ?? shownKeys()
+    const pool = (scoped ?? rows.flatMap((r) => r.keys)).filter((k) =>
       controls.canRoll(k as keyof S & string),
     ) as (keyof S & string)[]
     if (pool.length === 0) return
     tumble(roller, nudge)
-    if (nudge) controls.mutate(keys ? pool : undefined)
-    else controls.randomize(keys ? pool : undefined)
+    if (nudge) controls.mutate(scoped ? pool : undefined)
+    else controls.randomize(scoped ? pool : undefined)
   }
+  /** With `groups`, the keys of the rows shown: everything the panel's own commands may touch. */
+  const shownKeys = () =>
+    shownGroups ? (rows.flatMap((r) => r.keys) as (keyof S & string)[]) : undefined
   /** Rolls `roller` and flashes its button, whichever way the roll came (see flash.ts). */
   const tumble = (roller: HeaderDie, nudge: boolean) => {
     roller.roll(nudge)
@@ -607,7 +611,7 @@ function buildPanel<S extends Schema>(
   const resetAll = () => {
     if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && headerShown()) turn(resetBtn)
     cue(root, "reset")
-    controls.reset()
+    controls.reset(shownKeys())
   }
   /** A reset's ↺ turns once and its button flashes, from a click or a key alike. */
   const turn = (button: HTMLButtonElement) => {
@@ -3034,7 +3038,7 @@ function buildPanel<S extends Schema>(
         changed = true
       }
     }
-    if (bloom(resetBtn, controls.canReset() || spinning(resetBtn))) changed = true
+    if (bloom(resetBtn, controls.canReset(shownKeys()) || spinning(resetBtn))) changed = true
     if (changed) wakeGpu()
   }
   /** The active presets as last shown, so a change of base alone still updates the resets. */

@@ -1755,6 +1755,30 @@ export function defineControls<const S extends Schema>(
     const patch = Object.fromEntries(keys.map((k) => [k, b[k]])) as Partial<Values<S>>
     write(patch, { source: "reset", base: true, ...meta })
   }
+  /**
+   * The active presets without those whose every key is in `keys` (a group's, a scope's, the
+   * panel's), as a reset of `keys` to the defaults leaves them; undefined when none is.
+   */
+  function baseWithout(keys: readonly string[]): Base | undefined {
+    const b = activeBase()
+    if (b === NO_BASE) return undefined
+    const hit = new Set(keys)
+    const of = scoping().of
+    const covered = (inside: (k: string) => boolean) => {
+      const own = valueKeys(schema).filter(inside)
+      return own.length > 0 && own.every((k) => hit.has(k))
+    }
+    const fields = schema as Record<string, Field>
+    const groups = Object.fromEntries(
+      Object.entries(b.groups).filter(([g]) => !covered((k) => fields[k]!.group === g)),
+    )
+    const kept = Object.fromEntries(
+      Object.entries(b.scopes).filter(([s]) => !covered((k) => of.get(k) === s)),
+    )
+    const preset = b.preset && covered((k) => of.get(k) === "") ? null : b.preset
+    const next = makeBase(preset, groups, kept)
+    return sameBase(next, b) ? undefined : next
+  }
   /** `keys` back to their defaults, reported key by key. */
   function toDefaults(keys: readonly string[], nextBase: Base | undefined) {
     const patch: Record<string, unknown> = {}
@@ -1968,7 +1992,7 @@ export function defineControls<const S extends Schema>(
         options.onReset?.({})
         return
       }
-      toDefaults(open, keys ? undefined : NO_BASE)
+      toDefaults(open, keys ? baseWithout(keys) : NO_BASE)
     },
     resetKey(key) {
       if (!enabled()) return

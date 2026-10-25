@@ -139,6 +139,51 @@ describe("embed", () => {
   })
 })
 
+describe("groups scope the panel's own commands", () => {
+  const head = (root: Element, label: string) =>
+    root.querySelector<HTMLButtonElement>(`header button[aria-label="${label}"]`)!
+
+  it("Random, Mutate and Reset touch only the shown groups' keys", () => {
+    const sent: { key: string; source: string }[] = []
+    const remote = createRemoteControls("stack", descriptors(), {
+      scopedPresets,
+      onSet: (key, _value, meta) => sent.push({ key, source: meta.source }),
+    })
+    const panel = mountPanel(remote, host(), { groups: ["Sidebars · Peek"] })
+    const root = panel.element
+    remote.set({ "dock.lift": 12, "global.speed": 2 })
+    sent.length = 0
+    // Hidden groups' changes don't light the panel's Reset.
+    expect(head(root, "Reset").dataset.shown).toBe("false")
+    const hidden = () => ({ lift: remote.get()["dock.lift"], speed: remote.get()["global.speed"] })
+    for (let i = 0; i < 4; i++) head(root, "Random").click()
+    head(root, "Random").dispatchEvent(new MouseEvent("click", { altKey: true }))
+    expect(hidden()).toEqual({ lift: 12, speed: 2 })
+    const rolled = new Set(sent.filter((s) => s.source !== "reset").map((s) => s.key))
+    expect([...rolled].sort()).toEqual(["peek.delay", "peek.width"])
+    remote.set({ "peek.width": 320 })
+    expect(head(root, "Reset").dataset.shown).toBe("true")
+    head(root, "Reset").click()
+    expect(remote.get()).toMatchObject({ "peek.width": 240, "peek.delay": 0.2 })
+    expect(hidden()).toEqual({ lift: 12, speed: 2 })
+    expect(remote.canReset(["peek.width", "peek.delay"])).toBe(false)
+    panel.dispose()
+  })
+
+  it("Reset forgets a shown group's scoped preset, and ⇧R does the same embedded", () => {
+    const remote = createRemoteControls("stack", descriptors(), { scopedPresets })
+    const panel = mountPanel(remote, host(), { embed: true, groups: ["Sidebars · Peek"] })
+    remote.preset("calm", { scope: "Sidebars · Peek" })
+    remote.set({ "dock.lift": 12 })
+    // From the panel itself (not a row or card), ⇧R resets everything it shows.
+    key(panel.element, { key: "R", code: "KeyR", shiftKey: true })
+    expect(remote.get()).toMatchObject({ "peek.width": 240, "peek.delay": 0.2, "dock.lift": 12 })
+    expect(remote.activePreset("Sidebars · Peek")).toBeNull()
+    expect(remote.canReset(["peek.width", "peek.delay"])).toBe(false)
+    panel.dispose()
+  })
+})
+
 describe("groupActions", () => {
   it("draw in each group's action row and run", async () => {
     const replay = vi.fn()
