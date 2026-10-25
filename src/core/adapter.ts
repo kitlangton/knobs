@@ -35,7 +35,8 @@ export function syncPanelLook<S extends Schema>(
   const panel = host?.firstElementChild as HTMLElement | null | undefined
   if (!panel) return
   applyLook(panel, panelLook(controls, look))
-  panel.dataset.density = density ?? controls.density
+  panel.dataset.density =
+    density ?? (panel.hasAttribute("data-embed") ? "compact" : controls.density)
 }
 
 export function syncPanelValues<S extends Schema>(
@@ -55,24 +56,14 @@ export function mountPanelAdapter<S extends Schema>(
   controls: Controls<S>,
   getProps: () => KnobsPanelProps<S>,
 ): () => void {
-  const p = getProps()
+  // Every mount option passes through as given; theme, appearance and density restyle the mounted
+  // panel in place (`syncPanelLook`), so its tokens glide.
+  const { controls: _, descriptors: __, values: ___, land: ____, ...p } = getProps()
   return controls.mount(host, {
-    title: p.title,
-    // Theme, appearance and density restyle the mounted panel in place, so its tokens glide.
-    theme: p.theme,
-    appearance: p.appearance,
-    density: p.density,
-    renderer: p.renderer,
-    variants: p.variants,
-    history: p.history,
-    footer: p.footer,
-    header: p.header,
-    keys: p.keys,
-    marks: p.marks,
-    preset: p.preset,
+    ...p,
     copy: p.copy ? () => getProps().copy?.() ?? controls.code() : undefined,
-    actions: p.actions,
     onClose: p.onClose ? () => getProps().onClose?.() : undefined,
+    groupActions: p.groupActions ? (group) => getProps().groupActions?.(group) ?? [] : undefined,
     onReady(panel) {
       const cur = getProps()
       syncPanelLook(host, controls, cur, cur.density)

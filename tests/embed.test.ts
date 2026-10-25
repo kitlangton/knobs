@@ -316,6 +316,40 @@ describe("intents: onSet and onReset", () => {
     ])
   })
 
+  it("without onReset, a group's or everything's reset sends the keys it changed through onSet", () => {
+    const events: unknown[] = []
+    const r = createRemoteControls("intents-set", params(), {
+      onSet: (k, v, meta) => events.push([meta.source, k, v]),
+    })
+    r.set({ duration: 0.5, bounce: 0.1, size: 6 })
+    events.length = 0
+    r.resetGroup("Spring")
+    expect(events).toEqual([
+      ["reset", "duration", null],
+      ["reset", "bounce", null],
+    ])
+    events.length = 0
+    r.resetKey("size")
+    expect(events).toEqual([["reset", "size", null]])
+    r.set({ size: 2, duration: 0.2 })
+    events.length = 0
+    r.reset()
+    expect(events).toEqual([
+      ["reset", "size", null],
+      ["reset", "duration", null],
+    ])
+    // nullDefaults: false sends the defaults themselves.
+    const values: unknown[] = []
+    const plain = createRemoteControls("intents-plain", params(), {
+      nullDefaults: false,
+      onSet: (k, v) => values.push([k, v]),
+    })
+    plain.set({ duration: 0.5 })
+    values.length = 0
+    plain.resetGroup("Spring")
+    expect(values).toEqual([["duration", 0.45]])
+  })
+
   it("isModified answers for a key or the whole set, and changes notify subscribers", () => {
     const r = createRemoteControls("mod", params())
     const seen: boolean[] = []

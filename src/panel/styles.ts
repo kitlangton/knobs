@@ -211,7 +211,8 @@ const css = `
    the panel's colour) and softens its foot with a short fade. That's scroll-driven, with no
    script: --k-head-s follows the panel's own scroll, --k-head-v (pinned to an ancestor) the
    panel's top passing its scroller's, over their first 24px. Until then the header is as it
-   always was: no background, no filter, no change in spacing. The GPU reads them too, to clip the
+   always was: no background, no filter (the range starts 1px in: at rest, even an identity filter
+   would tint it over the panel's glass), no change in spacing. The GPU reads them too, to clip the
    rows at the header's foot and fade them in below it. Without scroll-driven animations nothing
    pins. */
 @keyframes knobs-head-s{from{-webkit-backdrop-filter:none;backdrop-filter:none}to{--k-head-s:1;-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}}
@@ -222,7 +223,7 @@ const css = `
   .knobs-panel:not(.knobs-page)>header{position:sticky;top:0;z-index:4;border-radius:max(0px,calc(var(--_k-radius-frame) - 1px)) max(0px,calc(var(--_k-radius-frame) - 1px)) 0 0;
     --k-head-on:max(var(--k-head-s),var(--k-head-v));--k-head-bg:color-mix(in srgb,var(--_k-bg) 88%,transparent);
     background:color-mix(in srgb,var(--k-head-bg) calc(var(--k-head-on) * 100%),transparent);
-    animation:knobs-head-s linear both;animation-timeline:--knobs-self;animation-range:0px 24px}
+    animation:knobs-head-s linear forwards;animation-timeline:--knobs-self;animation-range:1px 24px}
   .knobs-panel.knobs-pin-ancestor:not(.knobs-page)>header{animation:knobs-head-v linear both;animation-timeline:--knobs-view;animation-range:exit-crossing 0px exit-crossing 24px}
   .knobs-panel:not(.knobs-page)>header::after{content:"";position:absolute;left:0;right:0;top:100%;height:10px;pointer-events:none;
     background:linear-gradient(var(--k-head-bg),transparent);opacity:var(--k-head-on)}
@@ -702,6 +703,28 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page){padding:0}
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-card{background:transparent;border-radius:0}
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-presets:not([data-display="list"]){margin-inline:var(--_k-inset)}
+/* Surfaces: "flat" draws no card per group, its rows on hairlines, a hairline over each group's
+   title; "indent" sets each group's rows in from its title, along a guide. */
+:where(.knobs-panel)[data-surface="flat"]{--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
+.knobs-panel:is([data-surface="flat"],[data-surface="indent"]) .knobs-card{background:transparent;border-radius:0}
+.knobs-panel:is([data-surface="flat"],[data-surface="indent"]):not([data-rows]) .knobs-card>*{--k-rt:0;--k-rb:0}
+.knobs-panel[data-surface="indent"] .knobs-card{padding-left:var(--_k-inset);background:linear-gradient(var(--_k-border),var(--_k-border)) calc(var(--_k-inset) / 2) 0/var(--k-rim-width) 100% no-repeat}
+/* A group's own actions (groupActions): icons alone in a panel's group header, their labels in
+   tooltips; icon and label in an embedded group's action row. */
+.knobs-group-head .knobs-group-action{display:inline-flex;align-items:center;gap:var(--_k-unit)}
+.knobs-panel:not([data-embed]) .knobs-group-action:has(>svg){width:20px;padding:0;justify-content:center;border-radius:var(--_k-round)}
+.knobs-panel:not([data-embed]) .knobs-group-action:has(>svg)>span{display:none}
+/* Embedded: part of the host's page, with no frame or padding of its own. Each group leads with
+   its action row (its actions, the first icon lined up with the rows' labels, then Reset and the
+   die at the far end), its presets under it; one group alone needs no title, since the host's page
+   names it. */
+:where(.knobs-panel.knobs-inline)[data-embed]{--k-chrome:0}
+.knobs-panel.knobs-inline[data-embed]{width:auto;padding:0;border-radius:0}
+.knobs-panel[data-embed] .knobs-group-head>.knobs-group-label{flex:0 0 100%;max-width:none}
+.knobs-panel[data-solo] .knobs-group-head>.knobs-group-label{display:none}
+.knobs-panel[data-embed] .knobs-group-head>span:last-child{flex:1 1 auto;margin:0 0 0 -6px}
+.knobs-panel[data-embed] .knobs-group-head .knobs-group-reset{margin-left:auto}
+.knobs-panel[data-embed] .knobs-group-head button{cursor:default}
 .knobs-panel[data-frame="flat"][data-rows] .knobs-card>*,.knobs-panel[data-frame="flat"][data-rows] .knobs-sub{background:transparent;border-radius:0}
 
 /* Disabled rows dim and take no edits (focus still reaches them, to read); read-only rows keep

@@ -272,6 +272,12 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly header?: boolean | HeaderOptions
   /**
+   * How groups draw. `"cards"` (the default): a card per group. `"flat"`: one surface; a group's
+   * title is a small heading over a hairline, its rows on hairlines. `"indent"`: one surface; a
+   * titled group is a fold, its rows indented under its title.
+   */
+  readonly surface?: "cards" | "flat" | "indent"
+  /**
    * `true` shows a scope line beside the title (`Shape › Cohesion`, where keys go, and a faint
    * `esc ↑ Shape` for where Esc goes). Off by default; the focus lens and the armed frame show
    * either way.
@@ -382,7 +388,34 @@ export interface MountPanelOptions extends LabelOptions {
   readonly history?: boolean
   readonly footer?: boolean
   readonly actions?: readonly ControlAction<any>[]
+  /**
+   * Buttons for each group's own action row: its header in a panel (icons alone, their labels as
+   * tooltips), the row above its presets when embedded (icon and label). Called once per group
+   * as its header is built; return `[]` for none.
+   */
+  readonly groupActions?: (group: string) => readonly GroupAction[]
+  /**
+   * `true` renders the panel into its host as part of the host's page: no frame, header, title,
+   * footer or toggle key, and compact rows unless `density` says otherwise. Each group leads with
+   * its action row (`groupActions`, its Reset and die) and its own presets (`scopedPresets`).
+   * Inline only (`mountPanel`, `KnobsPanel`); keys still work while focus is inside.
+   */
+  readonly embed?: boolean
+  /**
+   * Show only these groups' rows, in this order (`["Sidebars · Peek"]`), e.g. one feature's
+   * page of a host's settings. Rows outside every group never show while it's set.
+   */
+  readonly groups?: readonly string[]
   readonly onClose?: () => void
+}
+/** A button in a group's action row (`MountPanelOptions.groupActions`). */
+export interface GroupAction {
+  readonly label: string
+  /** A built-in icon (`retrigger`, `target`, `reset`, `play`, …) or SVG path data on a 256 grid. */
+  readonly icon?: string
+  /** Its tooltip; the label by default. */
+  readonly title?: string
+  run(): void | string | Promise<void | string>
 }
 /** A search field's filter chip: it narrows the rows to those `test` accepts. */
 export interface SearchChip {
@@ -1722,6 +1755,30 @@ export function defineControls<const S extends Schema>(
     const patch = Object.fromEntries(keys.map((k) => [k, b[k]])) as Partial<Values<S>>
     write(patch, { source: "reset", base: true, ...meta })
   }
+  /**
+   * The active presets without those whose every key is in `keys` (a group's, a scope's, the
+   * panel's), as a reset of `keys` to the defaults leaves them; undefined when none is.
+   */
+  function baseWithout(keys: readonly string[]): Base | undefined {
+    const b = activeBase()
+    if (b === NO_BASE) return undefined
+    const hit = new Set(keys)
+    const of = scoping().of
+    const covered = (inside: (k: string) => boolean) => {
+      const own = valueKeys(schema).filter(inside)
+      return own.length > 0 && own.every((k) => hit.has(k))
+    }
+    const fields = schema as Record<string, Field>
+    const groups = Object.fromEntries(
+      Object.entries(b.groups).filter(([g]) => !covered((k) => fields[k]!.group === g)),
+    )
+    const kept = Object.fromEntries(
+      Object.entries(b.scopes).filter(([s]) => !covered((k) => of.get(k) === s)),
+    )
+    const preset = b.preset && covered((k) => of.get(k) === "") ? null : b.preset
+    const next = makeBase(preset, groups, kept)
+    return sameBase(next, b) ? undefined : next
+  }
   /** `keys` back to their defaults, reported key by key. */
   function toDefaults(keys: readonly string[], nextBase: Base | undefined) {
     const patch: Record<string, unknown> = {}
@@ -1935,7 +1992,7 @@ export function defineControls<const S extends Schema>(
         options.onReset?.({})
         return
       }
-      toDefaults(open, keys ? undefined : NO_BASE)
+      toDefaults(open, keys ? baseWithout(keys) : NO_BASE)
     },
     resetKey(key) {
       if (!enabled()) return
@@ -1960,8 +2017,12 @@ export function defineControls<const S extends Schema>(
         if (preset && index !== undefined) options.onPreset?.({ group, index, name: preset.name })
         return
       }
+      // Back to the defaults lets go of the group's preset and of a scoped one named for it.
       const { [group]: _, ...others } = b.groups
-      const forget = index === undefined ? undefined : makeBase(b.preset, others, b.scopes)
+      const forget =
+        index === undefined && b.scopes[group] === undefined
+          ? undefined
+          : makeBase(b.preset, others, withScope(b.scopes, group, undefined))
       if (open.length < keys.length) return toDefaults(open, forget)
       const patch: Record<string, unknown> = {}
       for (const k of keys) patch[k] = locked[k]

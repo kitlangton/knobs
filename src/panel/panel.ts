@@ -235,11 +235,23 @@ function buildPanel<S extends Schema>(
   root.dataset.controls = controls.id
   const untrackHas = trackHas(root)
   applyLook(root, panelLook(controls, options))
-  root.dataset.density = options.density ?? controls.density
-  const titleText = options.title === undefined ? controls.id : options.title
+  // An embedded panel is part of its host's page: no frame, header or footer, compact rows.
+  const embed = !page && inline && options.embed === true
+  if (embed) root.dataset.embed = ""
+  root.dataset.density = options.density ?? (embed ? "compact" : controls.density)
+  // `surface` draws a panel's groups flat or as indented folds (set before any row is built).
+  const surface = page ? undefined : options.surface
+  if (surface && surface !== "cards") root.dataset.surface = surface
+  const shownGroups = page ? undefined : options.groups
+  const titleText =
+    options.title === undefined
+      ? embed && shownGroups?.length
+        ? shownGroups.join(", ")
+        : controls.id
+      : options.title
   // The page's show/hide key (toggle.ts). A full page is the whole tool, so it stays unless asked.
   const toggleKey =
-    options.toggleKey !== undefined ? options.toggleKey : page ? false : controls.toggleKey
+    options.toggleKey !== undefined ? options.toggleKey : page || embed ? false : controls.toggleKey
   if (options.restored) root.dataset.restored = ""
   if (options.haptics === false) root.dataset.haptics = "off"
   if (options.detents === false) root.dataset.detents = "off"
@@ -309,9 +321,9 @@ function buildPanel<S extends Schema>(
     return node
   }
 
-  const showVariants = options.variants !== false
+  const showVariants = (options.variants ?? !embed) !== false
   const showHistory = options.history !== false
-  const showFooter = options.footer !== false
+  const showFooter = (options.footer ?? !embed) !== false
   const given = options.keys ?? controls.keys
   const marks = (options.marks ?? controls.marks) !== false
   const keys = resolveKeys(given, Boolean(page))
@@ -565,14 +577,18 @@ function buildPanel<S extends Schema>(
   // Random re-rolls, Mutate (⌥) nudges; both skip locked fields and roll `roller` only when
   // something can change. A selection narrows `r` and ⌥R to its rows.
   const reroll = (keys: readonly string[] | undefined, nudge: boolean, roller: HeaderDie = die) => {
-    const pool = (keys ?? rows.flatMap((r) => r.keys)).filter((k) =>
+    const scoped = keys ?? shownKeys()
+    const pool = (scoped ?? rows.flatMap((r) => r.keys)).filter((k) =>
       controls.canRoll(k as keyof S & string),
     ) as (keyof S & string)[]
     if (pool.length === 0) return
     tumble(roller, nudge)
-    if (nudge) controls.mutate(keys ? pool : undefined)
-    else controls.randomize(keys ? pool : undefined)
+    if (nudge) controls.mutate(scoped ? pool : undefined)
+    else controls.randomize(scoped ? pool : undefined)
   }
+  /** With `groups`, the keys of the rows shown: everything the panel's own commands may touch. */
+  const shownKeys = () =>
+    shownGroups ? (rows.flatMap((r) => r.keys) as (keyof S & string)[]) : undefined
   /** Rolls `roller` and flashes its button, whichever way the roll came (see flash.ts). */
   const tumble = (roller: HeaderDie, nudge: boolean) => {
     roller.roll(nudge)
@@ -595,7 +611,7 @@ function buildPanel<S extends Schema>(
   const resetAll = () => {
     if (!resetBtn.hidden && resetBtn.dataset.shown === "true" && headerShown()) turn(resetBtn)
     cue(root, "reset")
-    controls.reset()
+    controls.reset(shownKeys())
   }
   /** A reset's ↺ turns once and its button flashes, from a click or a key alike. */
   const turn = (button: HTMLButtonElement) => {
@@ -744,7 +760,7 @@ function buildPanel<S extends Schema>(
     tools.append(headActions)
     header.append(titleEl, presetStrip.element, tools)
   } else header.append(titleEl, headActions)
-  if (options.header === false && !page) header.hidden = true
+  if ((options.header === false || embed) && !page) header.hidden = true
   // Without a title the header row holds only buttons: in a split's pane they join the pane's
   // header (see dock.ts); elsewhere the row is there only while a button shows (`syncBand`).
   const untitled = !page && !header.hidden && !titleEl.textContent
@@ -768,8 +784,9 @@ function buildPanel<S extends Schema>(
    */
   const groupStrips = new Map<string, PresetStrip>()
   const tabNamed = (id: string) =>
-    (options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
-    Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id)
+    !embed &&
+    ((options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
+      Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id))
   const groupStripFor = (group: string): PresetStrip | undefined => {
     if (page || !Object.hasOwn(controls.scopes, group) || tabNamed(group)) return undefined
     let strip = groupStrips.get(group)
@@ -983,7 +1000,8 @@ function buildPanel<S extends Schema>(
     if (given !== undefined) return given
     for (const f of Object.values(controls.schema as Record<string, Field>))
       if (f.group === group && f.folded !== undefined) return f.folded
-    return undefined
+    // Indented groups are folds: open unless they say otherwise.
+    return surface === "indent" ? false : undefined
   }
   /**
    * How a page's section starts: what the user last chose, else `sectionFolded` (the mount's,
@@ -1072,6 +1090,20 @@ function buildPanel<S extends Schema>(
         cue(root, "press")
         return act.run(controls.get(), controls)
       })
+      gBtns.push(b)
+      gRight.append(b)
+    }
+    for (const act of options.groupActions?.(groupName) ?? []) {
+      const b = button("", () => {
+        cue(root, "press")
+        return act.run()
+      })
+      b.className = "knobs-group-action"
+      b.setAttribute("aria-label", act.label)
+      if (act.icon) b.append(iconSvg(doc, act.icon))
+      b.append(el("span", act.label))
+      // Its label shows beside the icon when embedded; in a panel's header the icon stands alone.
+      if (act.title || (act.icon && !embed)) tooltip(b, act.title ?? act.label)
       gBtns.push(b)
       gRight.append(b)
     }
@@ -1195,8 +1227,9 @@ function buildPanel<S extends Schema>(
     }
     if (ui) groupChips.set(groupName, ui)
     gRight.append(gReset, gRandom)
-    // A panel's group folds when it says how it starts (`folded`, `groupFolded`).
-    const foldAt = foldDefault(groupName)
+    // A panel's group folds when it says how it starts (`folded`, `groupFolded`); an embedded one
+    // is its host's to show or hide.
+    const foldAt = embed ? undefined : foldDefault(groupName)
     let caret: SVGSVGElement | undefined
     // A folded card's header shows a summary of the card.
     let ctl: HTMLElement | undefined
@@ -1458,13 +1491,21 @@ function buildPanel<S extends Schema>(
         section: field.section,
       })
     }
-    const planned = gatherSubsections(specs)
-    if (page || !planned.some(pinnedRow)) return planned
-    return [...planned.filter(pinnedRow), ...planned.filter((spec) => !pinnedRow(spec))]
+    const order = new Map(shownGroups?.map((g, i) => [g, i]))
+    const planned = shownGroups
+      ? gatherSubsections(specs)
+          .filter((s) => s.group !== undefined && order.has(s.group))
+          .sort((a, b) => order.get(a.group!)! - order.get(b.group!)!)
+      : gatherSubsections(specs)
+    if (!planned.some(hoisted)) return planned
+    return [...planned.filter(hoisted), ...planned.filter((spec) => !hoisted(spec))]
   }
   /** A row of a pinned group (see `ControlsOptions.pinned`); a page pins nothing. */
   const pinnedRow = (r: { readonly id: string; readonly keys: readonly string[] }) =>
     !page && controls.isPinned(r.keys[0] ?? r.id)
+  /** A pinned row that moves to the top; groups the host picks or embeds keep its order. */
+  const hoisted = (r: { readonly id: string; readonly keys: readonly string[] }) =>
+    !embed && !shownGroups && pinnedRow(r)
   /**
    * Within each run of a group's rows, rows without a sub-heading come first, then each
    * sub-heading's rows together (in the order the sub-headings first appear), so a heading never
@@ -2192,7 +2233,7 @@ function buildPanel<S extends Schema>(
       const runs: { group: string | undefined; pinned: boolean; rows: Row[] }[] = []
       for (const r of next) {
         const last = runs.at(-1)
-        const pinned = pinnedRow(r)
+        const pinned = hoisted(r)
         if (last && last.group === r.group && last.pinned === pinned) last.rows.push(r)
         else runs.push({ group: r.group, pinned, rows: [r] })
       }
@@ -2247,6 +2288,8 @@ function buildPanel<S extends Schema>(
           if (gi >= 0) gpuRows.splice(gi, 1)
           subheads.delete(id)
         }
+      // One embedded group needs no title: its host's page names it.
+      if (embed) root.toggleAttribute("data-solo", new Set(chosen.map((b) => b.group)).size === 1)
       const nodesOf = (list: Block[]) => list.flatMap((b) => (b.head ? [b.head, b.card] : [b.card]))
       arrange(pinnedBody, nodesOf(chosen.filter((b) => pinnedBlocks.has(b))))
       arrange(body, [presetStrip.element, ...nodesOf(chosen.filter((b) => !pinnedBlocks.has(b)))])
@@ -2408,14 +2451,17 @@ function buildPanel<S extends Schema>(
       if (f.group === group && f.tab !== undefined) return f.tab
     return undefined
   }
-  /** A row's tab: its field's, else its group's; none (or pinned) shows on every tab. */
+  /**
+   * A row's tab: its field's, else its group's; none (or pinned) shows on every tab. An embedded
+   * panel shows its groups in one column, whatever tabs they'd sit on.
+   */
   const tabOf = (r: Row) =>
-    pinnedRow(r)
+    embed || pinnedRow(r)
       ? undefined
       : (r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined))
   /** `tabs` in order, then the tabs fields name that it doesn't list. */
   const tabList = (): TabSpec[] => {
-    if (page) return []
+    if (page || embed) return []
     const list: TabSpec[] = (options.tabs ?? []).map((t) =>
       typeof t === "string"
         ? { id: t, label: readableTitle(t) }
@@ -2435,16 +2481,20 @@ function buildPanel<S extends Schema>(
    */
   function presetsTouchTab(entries: readonly PresetEntry<any>[]) {
     // A tab or group's own strip shows wherever it's chosen to (see `stripScope`).
-    if (page || activeTab === undefined || stripScope() !== "") return true
+    // With `groups`, only the shown rows count, tabs or none.
+    if (page || (activeTab === undefined && !shownGroups) || stripScope() !== "") return true
     const keys = rows.flatMap((r) => {
       const tab = tabOf(r)
-      return !pinnedRow(r) && (tab === undefined || tab === activeTab)
+      return !pinnedRow(r) && (activeTab === undefined || tab === undefined || tab === activeTab)
         ? r.keys.filter((k) => controls.scopeOf(k) === "")
         : []
     })
     // The variants choice has no row; a variant moves the tab it sits on (every tab without one).
     const v = variantsOf(controls.schema, (key) => !controls.inPresets(key))
-    if (v) {
+    if (
+      v &&
+      (!shownGroups || (v.field.group !== undefined && shownGroups.includes(v.field.group)))
+    ) {
       const tab = v.field.tab ?? (v.field.group !== undefined ? groupTab(v.field.group) : undefined)
       if (tab === undefined || tab === activeTab) keys.push(v.key)
     }
@@ -2458,7 +2508,13 @@ function buildPanel<S extends Schema>(
     const named = Object.keys(controls.scopes)
     const panelWide = named.length === 0 || Object.keys(controls.presets).length > 1
     if (page) return panelWide ? "" : null
-    if (activeTab === undefined) return panelWide ? "" : (named[0] ?? null)
+    // Embedded, each group leads with its own presets; the panel's show above only if it has some.
+    if (embed) return Object.keys(controls.presets).length > 1 ? "" : null
+    // With `groups`, a scope shows only if one of the shown rows is in it.
+    const first = shownGroups
+      ? named.find((id) => rows.some((r) => r.group === id || tabOf(r) === id))
+      : named[0]
+    if (activeTab === undefined) return panelWide ? "" : (first ?? null)
     if (named.includes(activeTab)) return activeTab
     const group = named.find((id) => rows.some((r) => r.group === id && tabOf(r) === activeTab))
     return group ?? (panelWide ? "" : null)
@@ -2993,7 +3049,7 @@ function buildPanel<S extends Schema>(
         changed = true
       }
     }
-    if (bloom(resetBtn, controls.canReset() || spinning(resetBtn))) changed = true
+    if (bloom(resetBtn, controls.canReset(shownKeys()) || spinning(resetBtn))) changed = true
     if (changed) wakeGpu()
   }
   /** The active presets as last shown, so a change of base alone still updates the resets. */
@@ -4269,6 +4325,16 @@ function buildPanel<S extends Schema>(
     if (!typing && !hintCtrl.isActive && !event.metaKey && !event.ctrlKey && pickOption(event))
       return
     if (!typing && !hintCtrl.isActive && pressTool(event, true)) return
+    // ⌘Z and ⇧⌘Z (Ctrl on other systems) undo and redo too, outside a text field.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.code === "KeyZ") {
+      if (typing || hintCtrl.isActive) return
+      const back = !event.shiftKey
+      if (!bound(back ? "undo" : "redo")) return
+      event.preventDefault()
+      if (back) undo()
+      else redo()
+      return
+    }
     if (event.metaKey || event.ctrlKey) return
     if (event.altKey) {
       // ⌥R and ⌥G mutate (by code: ⌥ changes the character on macOS).
@@ -5158,6 +5224,10 @@ function buildPanel<S extends Schema>(
   let trapped: HTMLElement | null | undefined
   const syncRendererMode = () => {
     let mode = resolveRendererMode(requestedMode, doc)
+    // The GPU overlay doesn't draw flat or indented surfaces, embedded action rows or group
+    // actions' icons yet.
+    const domOnly = embed || options.groupActions || (surface && surface !== "cards")
+    if (mode === "gpu" && domOnly) mode = "dom"
     if (mode === "gpu" && inline) {
       trapped ??= stackingAncestor(root)
       if (trapped) {

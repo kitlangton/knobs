@@ -114,8 +114,11 @@ export function Knobs<S extends Schema>(props: {
 export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Element {
   if (typeof document === "undefined") return null as unknown as JSX.Element
   const host = document.createElement("div")
+  // Embedding or showing other groups builds the panel afresh; a new array of the same ids doesn't.
+  const shape = createMemo(() => JSON.stringify([Boolean(props.embed), props.groups ?? null]))
   createEffect(() => {
     const c = props.controls
+    shape()
     host.dataset.knobsMount = c.id
     if (!c.enabled) {
       host.replaceChildren()

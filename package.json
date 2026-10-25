@@ -1,6 +1,6 @@
 {
   "name": "@kitlangton/knobs",
-  "version": "0.4.0-next.20",
+  "version": "0.4.0-next.22",
   "description": "Per-component tuning controls. Explore in development, ship constants.",
   "type": "module",
   "license": "MIT",
@@ -105,6 +105,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@webgpu/types": "^0.1.74",
+    "happy-dom": "^21.0.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "solid-js": "^1.9.0",
