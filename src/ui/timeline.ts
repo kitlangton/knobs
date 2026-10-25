@@ -127,7 +127,17 @@ export interface Timeline {
    * `glide`: a jump the hand didn't make (a chapter's click, say): the playhead catches up from
    * where it is on a quick spring; the time, and what it drives, land at once.
    */
-  seek(time: number, options?: { readonly glide?: boolean }): void
+  seek(
+    time: number,
+    options?: {
+      readonly glide?: boolean
+      /**
+       * Who moved it (`"code"`): a piece scrubbing on the timeline's behalf passes `"scrub"`,
+       * so the view stays under the hand instead of panning to keep the playhead in it.
+       */
+      readonly source?: SeekSource
+    },
+  ): void
   play(): void
   pause(): void
   toggle(): void
@@ -1224,7 +1234,7 @@ export function timeline(container: HTMLElement, options: TimelineOptions): Time
     get fps() {
       return fps
     },
-    seek: (t, o) => setTime(t, "code", t, o?.glide === true),
+    seek: (t, o) => setTime(t, o?.source ?? "code", t, o?.glide === true),
     play,
     pause,
     toggle,

@@ -565,6 +565,16 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   groupFolded?: Readonly<Record<string, boolean>>
   /** How a page's sections start, under the mount's `sectionFolded` (see `SectionFolded`). */
   sectionFolded?: SectionFolded
+  /**
+   * Keeps a roll valid: after Random or Mutate, it gets the values they'd land on and the keys
+   * they rolled, and returns fixes to apply in the same step; fixes to locked, disabled or
+   * read-only keys are dropped (`fitTracks(tracks)` keeps a timeline's clips in order and inside
+   * it).
+   */
+  constrain?: (
+    values: Values<S>,
+    rolled: readonly string[],
+  ) => Readonly<Record<string, unknown>> | void
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   /** A key went into the hand or out of it (see `GestureEvent`). */
   onGesture?: (event: GestureEvent) => void
@@ -1429,6 +1439,15 @@ export function defineControls<const S extends Schema>(
     base?: boolean
   }
   function set(patch: Partial<Values<S>>, setOpts?: WriteOptions) {
+    const source = setOpts?.source
+    if (options.constrain && (source === "randomize" || source === "mutate")) {
+      const previous = load()
+      const rolled = applyPatch(previous, previous, patch)
+      const fix = rolled && options.constrain(rolled.next, Object.keys(patch))
+      // A fix can't reach what the roll couldn't: locked, disabled or read-only keys stay.
+      const kept = fix ? Object.entries(fix).filter(([k]) => rollable(k)) : []
+      if (kept.length) patch = { ...patch, ...Object.fromEntries(kept) } as Partial<Values<S>>
+    }
     write(patch, setOpts)
   }
   /** `set`, moving the active presets to `nextBase` in the same undo step. */
