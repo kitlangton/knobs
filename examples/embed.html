@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>knobs — embedded groups</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: #101010; color: #e6e6e6; font: 13px/1.4 system-ui, sans-serif; cursor: default; }
+      /* A host's settings: its own navigation and page titles, knobs only for the controls. */
+      #stage { display: flex; gap: 40px; align-items: flex-start; padding: 32px; overflow-x: auto; }
+      .page { flex: none; width: 360px; display: flex; flex-direction: column; }
+      .page > .eyebrow { color: #777; font-size: 12px; }
+      .page > h2 { margin: 2px 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+      .page > p { margin: 0 0 16px; color: #999; text-wrap: pretty; }
+      .preview { position: relative; height: 72px; margin-bottom: 16px; border-radius: 10px; background: #181818; overflow: hidden; }
+      .preview > i { position: absolute; top: 12px; bottom: 12px; left: 12px; width: 48px; border-radius: 6px; background: #3a3a3a; }
+      .preview[data-focus] { box-shadow: inset 0 0 0 1.5px #e0a050; }
+    </style>
+  </head>
+  <body>
+    <main id="stage"></main>
+    <script type="module" src="./embed.ts"></script>
+  </body>
+</html>
