@@ -8,7 +8,7 @@ export const tracksCss = `
   font:var(--_k-weight) var(--_k-font-size)/1.35 var(--_k-font);color:var(--_k-fg);letter-spacing:normal;text-align:left;-webkit-font-smoothing:antialiased;
   --ktk-row:var(--_k-control-h);--ktk-clip:color-mix(in srgb,var(--_k-fg) 9%,transparent);
   --ktk-ring:color-mix(in srgb,var(--_k-fg) 16%,transparent);--ktk-radius:max(0px,calc(var(--_k-radius) - 2px))}
-.knobs-tk-lanes{position:relative;display:flex;flex-direction:column;gap:2px;touch-action:none;cursor:col-resize}
+.knobs-tk-lanes{position:relative;display:flex;flex-direction:column;gap:2px;overflow-x:clip;touch-action:none;cursor:col-resize}
 .knobs-tk-row{position:relative;height:var(--ktk-row);box-shadow:inset 0 -1px 0 var(--_k-border-subtle)}
 .knobs-tk-row:last-of-type{box-shadow:none}
 .knobs-tk-clip{position:absolute;left:0;top:3px;bottom:3px;min-width:2px;border-radius:var(--ktk-radius);background:var(--ktk-clip);box-shadow:inset 0 0 0 1px var(--ktk-ring);cursor:default;will-change:transform}
