@@ -703,6 +703,12 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page){padding:0}
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-card{background:transparent;border-radius:0}
 :where(.knobs-surface,.knobs-pane:not([data-nested])>.knobs-pane-clip,[data-nested]) .knobs-panel.knobs-inline:not(.knobs-page) .knobs-presets:not([data-display="list"]){margin-inline:var(--_k-inset)}
+/* Surfaces: "flat" draws no card per group, its rows on hairlines, a hairline over each group's
+   title; "indent" sets each group's rows in from its title, along a guide. */
+:where(.knobs-panel)[data-surface="flat"]{--k-group-divider:var(--_k-border);--k-group-divider-gap:var(--_k-gap)}
+.knobs-panel:is([data-surface="flat"],[data-surface="indent"]) .knobs-card{background:transparent;border-radius:0}
+.knobs-panel:is([data-surface="flat"],[data-surface="indent"]):not([data-rows]) .knobs-card>*{--k-rt:0;--k-rb:0}
+.knobs-panel[data-surface="indent"] .knobs-card{padding-left:var(--_k-inset);background:linear-gradient(var(--_k-border),var(--_k-border)) calc(var(--_k-inset) / 2) 0/var(--k-rim-width) 100% no-repeat}
 .knobs-panel[data-frame="flat"][data-rows] .knobs-card>*,.knobs-panel[data-frame="flat"][data-rows] .knobs-sub{background:transparent;border-radius:0}
 
 /* Disabled rows dim and take no edits (focus still reaches them, to read); read-only rows keep

@@ -236,6 +236,9 @@ function buildPanel<S extends Schema>(
   const untrackHas = trackHas(root)
   applyLook(root, panelLook(controls, options))
   root.dataset.density = options.density ?? controls.density
+  // `surface` draws a panel's groups flat or as indented folds (set before any row is built).
+  const surface = page ? undefined : options.surface
+  if (surface && surface !== "cards") root.dataset.surface = surface
   const titleText = options.title === undefined ? controls.id : options.title
   // The page's show/hide key (toggle.ts). A full page is the whole tool, so it stays unless asked.
   const toggleKey =
@@ -983,7 +986,8 @@ function buildPanel<S extends Schema>(
     if (given !== undefined) return given
     for (const f of Object.values(controls.schema as Record<string, Field>))
       if (f.group === group && f.folded !== undefined) return f.folded
-    return undefined
+    // Indented groups are folds: open unless they say otherwise.
+    return surface === "indent" ? false : undefined
   }
   /**
    * How a page's section starts: what the user last chose, else `sectionFolded` (the mount's,
@@ -5158,6 +5162,8 @@ function buildPanel<S extends Schema>(
   let trapped: HTMLElement | null | undefined
   const syncRendererMode = () => {
     let mode = resolveRendererMode(requestedMode, doc)
+    // The GPU overlay doesn't draw flat or indented surfaces yet.
+    if (mode === "gpu" && surface && surface !== "cards") mode = "dom"
     if (mode === "gpu" && inline) {
       trapped ??= stackingAncestor(root)
       if (trapped) {

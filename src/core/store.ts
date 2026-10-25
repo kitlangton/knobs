@@ -272,6 +272,12 @@ export interface MountPanelOptions extends LabelOptions {
    */
   readonly header?: boolean | HeaderOptions
   /**
+   * How groups draw. `"cards"` (the default): a card per group. `"flat"`: one surface; a group's
+   * title is a small heading over a hairline, its rows on hairlines. `"indent"`: one surface; a
+   * titled group is a fold, its rows indented under its title.
+   */
+  readonly surface?: "cards" | "flat" | "indent"
+  /**
    * `true` shows a scope line beside the title (`Shape › Cohesion`, where keys go, and a faint
    * `esc ↑ Shape` for where Esc goes). Off by default; the focus lens and the armed frame show
    * either way.
