@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { defineControls, easing, spring } from "../src"
+import { defineControls, easing, knob, spring } from "../src"
 import {
   bezierAt,
   fitTracks,
@@ -297,6 +297,54 @@ describe("in a store", () => {
       expect(header.read(v).start).toBeGreaterThanOrEqual(0)
       expect(header.read(v).start).toBeLessThanOrEqual(0.2)
     }
+  })
+  test("a locked start stays put however the rest rolls", () => {
+    let seed = 11
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return (seed - 1) / 2147483646
+    }
+    const s = make(random)
+    s.set({ "button.start": 1.5 })
+    s.lock("button.start")
+    for (let roll = 0; roll < 50; roll++) {
+      s.randomize()
+      expect(s.get()["button.start"]).toBe(1.5)
+    }
+  })
+  test("a constrain's fixes to keys a roll can't reach are dropped", () => {
+    const s = defineControls(
+      `constrain-${Math.random()}`,
+      { a: knob(0.5, { min: 0, max: 1 }), b: knob(0.5, { min: 0, max: 1 }) },
+      { enabled: true, storage: null, constrain: () => ({ a: 0.9, b: 0.1 }) },
+    )
+    s.lock("a")
+    s.randomize()
+    expect(s.get().a).toBe(0.5)
+    expect(s.get().b).toBe(0.1)
+  })
+  test("fitTracks moves only what was rolled", () => {
+    const fit = fitTracks(all, { length: 1.6 })
+    // The header's duration rolled long: it shortens; its start, not rolled, stays.
+    const v = {
+      "header.start": 1.2,
+      "header.duration": 0.6,
+      "rows.start": 1.3,
+      "button.start": 1.4,
+    }
+    const patch = fit(v, ["header.duration"])
+    expect(patch["header.start"]).toBeUndefined()
+    expect(patch["header.duration"]).toBeCloseTo(0.4, 9)
+    // A roll of only its start can't shorten it: it moves earlier, as far as the card allows.
+    const moved = fit({ ...v, "header.start": 1.5 }, ["header.start"])
+    expect(moved["header.duration"]).toBeUndefined()
+    expect(moved["header.start"]).toBeCloseTo(1.0, 9)
+  })
+  test("fitTracks never starts a track before the one ahead, even off the step", () => {
+    const patch = fitTracks(all, { length: 1.6 })({ "card.start": 0.1234, "header.start": 0.05 }, [
+      "header.start",
+    ])
+    expect(patch["header.start"]).toBeGreaterThanOrEqual(0.1234)
   })
   test("a drag is one undo step", () => {
     const s = make()

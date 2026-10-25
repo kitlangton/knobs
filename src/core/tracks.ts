@@ -99,6 +99,10 @@ export interface Track<Id extends string = string, F = Record<string, unknown>> 
   }
   /** The shortest an item may take (seconds). */
   readonly minDuration: number
+  /** The longest an item may take (seconds): a spring's own limit on a spring track. */
+  readonly maxDuration: number
+  /** The step an item's duration moves in (a spring's is coarser than a start's). */
+  readonly durationStep: number
   /** Spread these into `defineControls`' schema. */
   readonly fields: F
   /** Its timing in `values` (a store's `get()`), its defaults where a key is missing. */
@@ -199,6 +203,8 @@ export function track<const Id extends string, const O extends TrackOptions>(
     spring: isSpring,
     keys: Object.freeze(keys),
     minDuration: MIN_DURATION,
+    maxDuration: isSpring ? Math.min(max, SPRING.duration.max) : max,
+    durationStep: isSpring ? SPRING_STEP : STEP,
     fields: Object.freeze(fields) as TrackFields<Id, O>,
     read,
     sample: (values, t, item = 0) => sampleTrack(read(values), t, item),
@@ -375,9 +381,11 @@ export function springSettle(s: SpringValue, eps = 0.001): number {
 // ——— keeping a roll valid ———
 
 /**
- * A store's `constrain` for its tracks: after Random or Mutate, the tracks they rolled keep the
- * order they're listed in (one starts no earlier than the one before it), and each ends by
- * `length` (the tracks' own `max` by default): moved earlier first, then shortened.
+ * A store's `constrain` for its tracks: after Random or Mutate, the tracks whose starts they
+ * rolled keep the order they're listed in (one starts no earlier than the one before it), and
+ * each track ends by `length` (the tracks' own `max` by default): moved earlier first, then
+ * shortened. Only keys the roll touched move: a locked start stays, an unrolled duration keeps
+ * its length.
  */
 export function fitTracks(
   tracks: readonly Track[],
@@ -388,45 +396,54 @@ export function fitTracks(
 ) => Record<string, unknown> {
   return (values, rolled) => {
     const touched = new Set(rolled)
-    const hit = tracks.map((t) => Object.values(t.keys).some((k) => k && touched.has(k)))
+    const has = (k: string | undefined) => k !== undefined && touched.has(k)
+    // Only what the roll touched may give: a start that wasn't rolled stays put, a duration or a
+    // stagger that wasn't keeps its length.
+    const moves = tracks.map((t) => has(t.keys.start))
+    const sizes = tracks.map((t) => has(t.spring ? t.keys.ease : t.keys.duration))
+    const spreads = tracks.map((t) => has(t.keys.stagger))
     const timings = tracks.map((t) => t.read(values))
-    // Rolled starts, sorted, go back to the rolled tracks in their listed order.
+    // Rolled starts, sorted, go back to the tracks whose start rolled, in their listed order.
     const starts = tracks
       .map((_, i) => i)
-      .filter((i) => hit[i])
+      .filter((i) => moves[i])
       .map((i) => timings[i]!.start)
       .sort((a, b) => a - b)
     let next = 0
-    const fixed = timings.map((t, i) => (hit[i] ? { ...t, start: starts[next++]! } : t))
+    const fixed = timings.map((t, i) => (moves[i] ? { ...t, start: starts[next++]! } : t))
     const patch: Record<string, unknown> = {}
+    const floor = (v: number, step: number) =>
+      Number((Math.floor(v / step + 1e-6) * step).toFixed(6))
+    const ceil = (v: number, step: number) => Number((Math.ceil(v / step - 1e-6) * step).toFixed(6))
     for (let i = 0; i < tracks.length; i++) {
-      if (!hit[i]) continue
+      if (!moves[i] && !sizes[i] && !spreads[i]) continue
       const tr = tracks[i]!
       const t = fixed[i]!
       const length = options.length ?? tr.max
-      const prev = i > 0 ? fixed[i - 1]!.start : 0
-      const after = fixed.slice(i + 1).find((_, j) => !hit[i + 1 + j])?.start ?? length
-      let start = Math.min(Math.max(t.start, prev), after)
       const tail = trackSpan(t).end - t.start
-      if (start + tail > length) start = Math.max(prev, length - tail)
+      let start = t.start
+      if (moves[i]) {
+        const prev = i > 0 ? fixed[i - 1]!.start : 0
+        const after = fixed.slice(i + 1).find((_, j) => !moves[i + 1 + j])?.start ?? length
+        start = Math.min(Math.max(start, prev), after)
+        if (start + tail > length) start = Math.max(prev, length - tail)
+        // Down to the step, so rounding never pushes the end past `length`, but never before
+        // the track ahead of it.
+        start = floor(start, STEP)
+        if (start < prev - 1e-9) start = ceil(prev, STEP)
+      }
       let duration = t.duration
       let stagger = t.stagger
       let over = start + tail - length
-      if (over > 1e-9) {
+      if (over > 1e-9 && sizes[i]) {
         const give = Math.min(over, duration - tr.minDuration)
-        duration -= give
-        over -= give
+        duration = floor(duration - give, tr.durationStep)
+        over -= t.duration - duration
       }
-      if (over > 1e-9 && stagger > 0) {
+      if (over > 1e-9 && spreads[i] && stagger > 0) {
         const steps = staggerSteps(t.items, t.from)
-        stagger = Math.max(0, stagger - over / Math.max(1, steps))
+        stagger = floor(Math.max(0, stagger - over / Math.max(1, steps)), STEP)
       }
-      // Down to each field's step, so rounding never pushes an end back past `length`.
-      const floor = (v: number, step = STEP) =>
-        Number((Math.floor(v / step + 1e-6) * step).toFixed(6))
-      start = floor(start)
-      if (duration !== t.duration) duration = floor(duration, tr.spring ? SPRING_STEP : STEP)
-      if (stagger !== t.stagger) stagger = floor(stagger)
       fixed[i] = { ...t, start, duration, stagger }
       Object.assign(
         patch,

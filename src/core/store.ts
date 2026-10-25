@@ -567,8 +567,9 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
   sectionFolded?: SectionFolded
   /**
    * Keeps a roll valid: after Random or Mutate, it gets the values they'd land on and the keys
-   * they rolled, and returns fixes to apply in the same step (`fitTracks(tracks)` keeps a
-   * timeline's clips in order and inside it).
+   * they rolled, and returns fixes to apply in the same step; fixes to locked, disabled or
+   * read-only keys are dropped (`fitTracks(tracks)` keeps a timeline's clips in order and inside
+   * it).
    */
   constrain?: (
     values: Values<S>,
@@ -1443,7 +1444,9 @@ export function defineControls<const S extends Schema>(
       const previous = load()
       const rolled = applyPatch(previous, previous, patch)
       const fix = rolled && options.constrain(rolled.next, Object.keys(patch))
-      if (fix && Object.keys(fix).length) patch = { ...patch, ...fix } as Partial<Values<S>>
+      // A fix can't reach what the roll couldn't: locked, disabled or read-only keys stay.
+      const kept = fix ? Object.entries(fix).filter(([k]) => rollable(k)) : []
+      if (kept.length) patch = { ...patch, ...Object.fromEntries(kept) } as Partial<Values<S>>
     }
     write(patch, setOpts)
   }
