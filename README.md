@@ -406,7 +406,7 @@ Panels and switchers are keyboard-first:
 | `⇧C` | Copy the current values (or the selected fields) as code |
 | `⇧S` | Save the current values as a new preset chip and type its name (`Enter` keeps it, `Esc` keeps "Variant N") |
 | `F2` / `Enter` on the strip, double-click a chip | Rename a saved preset |
-| `u` / `z` | Undo (`⇧u` / `⇧z` redo); slider drags coalesce into a single history entry |
+| `u` / `z`, `⌘Z` | Undo (`⇧u` / `⇧z` / `⇧⌘Z` redo; ctrl for `⌘` off a Mac, never while typing); slider drags coalesce into a single history entry |
 | `?` | Toggle keyboard shortcuts popover (the title's tooltip mentions it) |
 | `` ` `` | Show or hide every panel and chip on the page, from anywhere outside a text field (see [Show, hide and unlock](#show-hide-and-unlock)) |
 | `Esc` | Close the shortcuts popover; on a focused floating panel (nothing deeper focused), close it and restore focus to its chip |
@@ -851,6 +851,45 @@ mountPanel(station, column, {
 - **Long menus.** A menu of more than eight options (not numbered presets) opens with a search
   field: typing filters, ↑↓ and Enter choose, Esc closes. The row's value truncates with its whole
   text as a tooltip, and the label keeps its words.
+
+### Groups on a host's pages
+
+A host with settings pages of its own (OpenCode's Stack: a page per feature, with its own
+navigation, title and description) puts a group of knobs on each page with `embed`, and the host
+stays in charge of everything around it:
+
+```ts
+mountPanel(motion, page, {
+  embed: true,
+  groups: ["Sidebars · Peek"], // this page's group (or several, in this order)
+  surface: "flat",
+  groupActions: (group) => [
+    { label: "Replay", icon: "retrigger", run: () => replay(group) },
+    { label: "Focus", icon: "target", title: "Outline it in the app", run: () => outline(group) },
+  ],
+})
+```
+
+- **Embedded.** `embed: true` makes an inline panel part of the page: no card, padding, header,
+  footer, tabs or toggle key, compact rows unless `density` says otherwise, and groups that never
+  fold. Each group leads with its action row (its `groupActions`, then its Reset and die at the far
+  end) and its own `scopedPresets` strip under it; a lone group drops its title, since the page
+  names it. A `footer` or `variants: true` you pass still shows. The React and Solid
+  `KnobsPanel`s take the same props and rebuild when `embed` or `groups` change.
+- **Which groups.** `groups` shows only the named groups, in that order; the rest of the store
+  stays off this panel.
+- **Surfaces.** `surface: "flat"` draws no card per group: rows on hairlines, and a hairline over
+  each group's title. `"indent"` sets each group's rows in from its title along a guide. `"cards"`
+  is the default. Each works floating or inline, embedded or not.
+- **Group actions.** `groupActions(group)` returns buttons for a group's head, before its Reset and
+  die: `{ label, icon?, title?, run }`, `icon` a built-in icon's name (`retrigger`, `target`,
+  `play`, …) or SVG path data on a 256 grid. Embedded, each shows its icon
+  and label; in a panel's group header, its icon alone with the label as its tooltip. A string
+  `run` returns (or resolves to) shows in the panel's status line.
+- **Random and undo.** A group's die, `g` and `⌥G` roll the group, and `⌘Z` / `⇧⌘Z` (with `z`,
+  `u` and their shifted keys) undo and redo while focus is in the panel. On a remote store every
+  one of them reaches the host through `onSet`, an undo back to the defaults as `null`.
+  `examples/embed.html` shows two of the Stack's features side by side.
 
 ### Tabs, sub-headings and search
 
@@ -2111,6 +2150,7 @@ The package has two core exports selected through the standard `development` con
 | `mountPage(controls, container, options?)` (`knobs/panel`) | A full page of group cards in sections under a sticky header; `page.card({ title?, section?, element?, collapsed?, summary?, description? })` adds custom cards (`card.collapse(collapsed?)`, `card.collapsed`, `card.summary(content \| null)`), and `page.highlight({ groups?, sections? } \| null, { reveal?, expand? })` marks what's on screen. Options take `groupLabels`, `sectionLabels`, `groupDescriptions`, `sectionDescriptions`, `presetLabels`, `defaultLabel`, `groupPresetDisplay` and `groupFolded` over the store's. |
 | `MountPageOptions` folds | `sectionFolded?: SectionFolded` (`boolean \| Record<string, boolean>`), `foldStorage?: StoragePort \| null`, `nav?: boolean`, `groupSummary?(group, info: FoldSummaryInfo): string \| Node \| null` (a panel's option too), `sectionSummary?(section, info: FoldSummaryInfo): string \| Node \| null`; `FoldSummaryInfo` is `{ preset: string \| null, changed: number, keys: readonly string[] }`. |
 | `MountPanelOptions.onActive?: (at: PanelActive \| null) => void` | The card (`{ group }`) or row (`{ group, key }`) under the pointer or focus, `null` for nothing; on `mountPanel`, `controls.mount` and `mountPage`. At most once a frame, never the same value twice, and a last `null` when the panel goes. `PanelActive` is `{ group: string, key?: string }`. |
+| `MountPanelOptions` embedding | `embed?: boolean`, `groups?: readonly string[]`, `surface?: "cards" \| "flat" \| "indent"`, `groupActions?(group): readonly GroupAction[]` (`GroupAction` is `{ label, icon?, title?, run(): void \| string \| Promise<void \| string> }`); see [Groups on a host's pages](#groups-on-a-hosts-pages). |
 | `page.fold(group: string, folded?: boolean, options?: PageFoldOptions): void` / `page.foldSection(section: string, folded?: boolean, options?: PageFoldOptions): void` / `page.sectionFolded(section: string): boolean` | Fold a group's card or a section or open it (toggles without `folded`), and ask which a section is. `PageFoldOptions` is `{ remember?: boolean, reveal?: boolean }`; `remember` defaults to `true`. |
 | `page.reveal(target: { section: string } \| { group: string }, options?: { remember?: boolean }): void` | Open a section (or a group's card and its section) and glide it into view; `remember` defaults to `false`. |
 | `page.sections(): readonly PageSectionInfo[]` / `page.onSections(listener: (sections: readonly PageSectionInfo[]) => void): () => void` | `PageSectionInfo` is `{ id, label, description?, folded, changed, groups: PageGroupInfo[] }`; `PageGroupInfo` is `{ id, label, folded, changed, preset: string \| null }`. |
