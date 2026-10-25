@@ -122,8 +122,13 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
   const drawInside = (c: Clip) => {
     const timing = c.track.read(controls.get())
     const span = trackSpan(timing)
+    c.el.setAttribute(
+      "aria-label",
+      `${c.track.label}: ${span.start.toFixed(2)} s to ${span.end.toFixed(2)} s`,
+    )
     const length = Math.max(1e-9, span.end - span.start)
-    const key = `${timing.items}:${timing.from}:${timing.stagger}:${timing.duration}:${span.settle}`
+    // Relative to the clip, so moving it redraws nothing inside.
+    const key = `${timing.items}:${timing.from}:${timing.stagger}:${timing.duration}:${span.settle - span.end}`
     if (key === c.drawn) return
     c.drawn = key
     const n = timing.items > 1 && timing.stagger > 0 ? timing.items : 0
@@ -140,10 +145,6 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
     const settle = (span.settle - span.end) / length
     c.tail.hidden = settle < 1e-3
     c.tail.style.width = `${(settle * 100).toFixed(3)}%`
-    c.el.setAttribute(
-      "aria-label",
-      `${c.track.label}: ${span.start.toFixed(2)} s to ${span.end.toFixed(2)} s`,
-    )
   }
 
   const render = () => {
