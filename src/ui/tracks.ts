@@ -227,7 +227,7 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
   }
   const scrub = (x: number) => {
     const t = Math.min(tl.duration, Math.max(0, tOf(x)))
-    tl.seek(frameTime(t, tl.fps))
+    tl.seek(frameTime(t, tl.fps), { source: "scrub" })
   }
   lanes.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return
@@ -294,11 +294,14 @@ export function tracks(container: HTMLElement, options: TracksOptions): TracksVi
     d.clip.start.snap(r.box.start)
     d.clip.end.snap(r.box.end)
     render()
+    // Folded into one undo step from the first write that changed something, never into the
+    // step before the drag.
+    const before = controls.get()
     controls.set(clipPatch(d.clip.track, d.values, d.grip, r.box) as never, {
       coalesce: d.wrote,
       key: d.clip.track.keys.start,
     })
-    d.wrote = true
+    if (controls.get() !== before) d.wrote = true
     if (r.stop !== null) {
       guide.style.transform = `translateX(${xOf(r.stop).toFixed(2)}px)`
       guide.dataset.on = ""
