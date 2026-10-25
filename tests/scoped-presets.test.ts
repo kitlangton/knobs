@@ -121,6 +121,33 @@ describe("scoped presets", () => {
     expect(() => c.preset("big", { scope: "Color" })).toThrow(/Unknown preset scope/)
   })
 
+  it("a group's Reset forgets the group's own scoped preset", () => {
+    const c = defineControls(
+      "scoped-group-reset",
+      {
+        a: knob(1, { min: 0, max: 10, group: "Shape" }),
+        b: knob(1, { min: 0, max: 10, group: "Shape" }),
+        c: knob(1, { min: 0, max: 10, group: "Color" }),
+      },
+      { enabled: true, storage: null, scopedPresets: { Shape: { big: { a: 9, b: 8 } } } },
+    )
+    c.preset("big", { scope: "Shape" })
+    c.set({ a: 5 })
+    // Off the preset, Reset goes back to it first…
+    c.resetGroup("Shape")
+    expect(c.get()).toEqual({ a: 9, b: 8, c: 1 })
+    expect(c.activePreset("Shape")?.id).toBe("big")
+    // …then to the defaults, with nothing left to reset.
+    c.resetGroup("Shape")
+    expect(c.get()).toEqual({ a: 1, b: 1, c: 1 })
+    expect(c.activePreset("Shape")).toBeNull()
+    expect(c.isModified("a")).toBe(false)
+    expect(c.canReset(["a", "b"])).toBe(false)
+    // A further Reset stays at the defaults.
+    c.resetGroup("Shape")
+    expect(c.get()).toEqual({ a: 1, b: 1, c: 1 })
+  })
+
   it("a variants choice on a tab makes that tab's presets", () => {
     const c = defineControls(
       "scoped-variants",

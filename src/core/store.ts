@@ -1993,8 +1993,12 @@ export function defineControls<const S extends Schema>(
         if (preset && index !== undefined) options.onPreset?.({ group, index, name: preset.name })
         return
       }
+      // Back to the defaults lets go of the group's preset and of a scoped one named for it.
       const { [group]: _, ...others } = b.groups
-      const forget = index === undefined ? undefined : makeBase(b.preset, others, b.scopes)
+      const forget =
+        index === undefined && b.scopes[group] === undefined
+          ? undefined
+          : makeBase(b.preset, others, withScope(b.scopes, group, undefined))
       if (open.length < keys.length) return toDefaults(open, forget)
       const patch: Record<string, unknown> = {}
       for (const k of keys) patch[k] = locked[k]
