@@ -17,6 +17,7 @@ import { overlayCss } from "./overlay-css.js"
 import { pickerCss } from "./picker-css.js"
 import { readoutCss } from "./readout-css.js"
 import { selectionPillCss } from "./selection-pill-css.js"
+import { tracksCss } from "./tracks-css.js"
 import { injectTokens } from "../core/root.js"
 import { aliased } from "../core/glide.js"
 
@@ -354,7 +355,8 @@ export const uiCss = () =>
       pickerCss +
       compareCss +
       playerCss +
-      selectionPillCss,
+      selectionPillCss +
+      tracksCss,
   ) + rollingCss
 
 /** Adds the pieces' stylesheet once per document. */

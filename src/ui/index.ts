@@ -119,6 +119,8 @@ export {
   type TimeUnits,
   type TimeView,
 } from "./timeline-model.js"
+export { tracks, type TracksOptions, type TracksView } from "./tracks.js"
+export { clipPatch, dragClip, type ClipBox, type ClipDrag, type ClipGrip } from "./tracks-model.js"
 export {
   compare,
   COMPARE_FFMPEG,
