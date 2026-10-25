@@ -1402,6 +1402,40 @@ const clock = timeline(dock, {
 
 **`timeline(container, options)`** is a scrubber for time-based work. The ruler counts in seconds or frames (`units`) with ticks that thin out as it zooms (`⌘` wheel, a pinch, `+`/`-`, `0` fits) and pans with the wheel or a trackpad. The playhead follows the hand 1:1, pulls softly toward markers and lands on frames (`snap`). Markers can be added (`M`), dragged, renamed (`Enter`) and removed, and `[`/`]` jump between them; `I` and `O` set a loop range. `Space` plays on one rAF clock that sleeps when nothing moves, and `←`/`→` step a frame (`⇧` ten; `arrows: { step: 0.5, shift: 2 }` makes them seconds, the playhead gliding there) and `,`/`.` always do. A jump the hand didn't make catches up: a marker's click, a loop's wrap, a press on the track away from the playhead, play from elsewhere and `seek(t, { glide: true })` all carry the playhead from where it is on a quick spring (.15 s, no bounce) while the time lands at once; a drag stays 1:1, and moves during a catch-up follow the hand while the rest settles. There's no clock beside play: the time shows under the pointer on the track, in seconds, while hovering or scrubbing. `variant: "lane"` makes it one slim lane (a compare's own): ticks without labels, markers as faint chapter ticks with the current one (the last at or before the playhead) in text colour, nothing to edit; a pinch, `⌘`/ctrl-wheel or `=`/`-` zoom it around the pointer and a sideways scroll pans it, both 1:1, a double-click or `0` fits it again, and an up-and-down wheel is left to the page. A right-click on the ruler, a marker or a range opens a context menu. It reports `onSeek(time, source)` (`"scrub" | "key" | "marker" | "play" | "code"`), `onPlay`, `onMarkers`, `onRanges` and `onCross(marker)`. The handle has `time`, `playing`, `duration`, `fps`, `markers`, `ranges`, `view`, `seek`, `play`, `pause`, `toggle`, `update`, `fit`, `zoom`, `focus` and `dispose`. Pieces bound to a timeline hear it with `listen({ onSeek, onPlay, onView, onScrub, onRanges })` (it returns a stop), and `drive(clock)` makes playback follow another clock, such as a video's `currentTime`, so the two never drift. `Timeline` in `knobs/ui/react` and `knobs/ui/solid` follows its props. The Lab's scene clock and Boom retrigger run from one under the viewport.
 
+### Tracks
+
+```ts
+import { defineControls, easing, fitTracks, sampleTracks, spring, track } from "knobs"
+import { timeline, tracks } from "knobs/ui"
+
+const parts = [
+  track("card", { ease: spring({ duration: 0.4, bounce: 0 }), max: 1.6 }),
+  track("header", { start: 0.12, duration: 0.3, ease: easing("out"), max: 1.6 }),
+  track("rows", { start: 0.2, ease: { duration: 0.35 }, stagger: 0.04, items: 7, max: 1.6 }),
+] as const
+const motion = defineControls(
+  "entrance",
+  Object.assign({}, ...parts.map((t) => t.fields)),
+  { constrain: fitTracks(parts) },
+)
+const paint = (t: number) => {
+  const at = sampleTracks(parts, motion.get(), t) // { card: [p], header: [p], rows: [p0 … p6] }
+  card.style.opacity = String(Math.min(1, at.card[0]))
+  at.rows.forEach((p, i) => (rows[i].style.translate = `0 ${(1 - p) * 12}px`))
+}
+const clock = timeline(dock, { duration: 1.6, fps: 60, onSeek: paint })
+tracks(dock, { controls: motion, tracks: parts, timeline: clock })
+motion.subscribe(() => paint(clock.time))
+```
+
+**`track(id, options)`** (from `knobs`) times one part of an animation: a card, its header, a list's rows. Its fields are ordinary knobs in a group of their own, keyed `${id}.start`, `${id}.duration` and `${id}.ease` (`easing(…)`, a curve or a name), so presets, Random, undo and the panel all reach them. A spring track (`ease: spring({ duration, bounce })` or `{ duration, bounce }`) has no Duration row: the spring's duration is the clip's length, and it runs on past it until it settles. `stagger` (seconds) adds Stagger and From rows for `items` repeated items, started from the first, the last or the centre outward. `max` (2 s) is the latest a track may end.
+
+**`sampleTrack(timing, t, item)`** gives one item's progress at time `t`: 0 before it starts, its easing over its duration, then 1 (past 1 on the way for a bouncy spring or a back curve). Springs are in closed form, so any frame a scrub lands on is exact. **`sampleTracks(tracks, values, t)`** does every track at once, one value per item; `track.sample(values, t, item)` does one. `trackSpan(timing)` gives a clip's `start`, `end` and `settle`; `itemStart`, `staggerRank`, `bezierAt`, `springAt` and `springSettle` are the parts. All pure.
+
+**`fitTracks(tracks, { length })`** is a store's `constrain`: after Random or Mutate, the tracks keep the order they're listed in and end by `length` (each track's `max` by default), moved earlier first, then shortened. A die on one track keeps it between its neighbours.
+
+**`tracks(container, { controls, tracks, timeline })`** (from `knobs/ui`) draws a lane per track under a timeline, sharing its zoom, pan and playhead. Each clip spans its items, with a faint staircase inside for a stagger and a hairline trailing off where a spring settles. Drag a clip to move its start and an edge to trim it (an item's duration; the stagger stays), 1:1 with the hand and one undo step; edges pull onto other clips' edges, the timeline's start and the playhead, and `⌘`/ctrl turns that off. A press on an empty lane scrubs. Changes the hand didn't make (presets, Random, undo) glide the clips there. `highlight(idOrGroup)` lights a clip; a panel's `onActive` can drive it. `dragClip` and `clipPatch` are the drag's pure parts.
+
 ### Compare
 
 ```ts
