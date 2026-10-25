@@ -739,13 +739,16 @@ export function createRemoteControls(
       return options.onSetBatch(changes, meta)
     for (const { key, value } of changes) options.onSet?.(key, value, meta)
   }
+  // A host with no `onReset` hears every reset to the defaults as the values it changed (onChange).
+  const hostResets = options.onReset !== undefined
   const onReset = (target: { key?: string; group?: string }) => {
-    if (target.key && nullDefaults)
+    if (hostResets && target.key && nullDefaults)
       send([{ key: target.key, value: null }], { source: "reset", key: target.key })
     options.onReset?.(target)
   }
   // Resetting several keys: with `onSetBatch`, their nulls go in one batch after an `onReset` each.
   const resetKeys: ResetKeys = (keys) => {
+    if (!hostResets) return
     if (!options.onSetBatch || !nullDefaults) return keys.forEach((key) => onReset({ key }))
     for (const key of keys) options.onReset?.({ key })
     send(
@@ -786,9 +789,9 @@ export function createRemoteControls(
     sectionFolded: options.sectionFolded,
     onChange(patch, _values, meta) {
       if (meta.source === "remote") return
-      // A reset to the defaults reaches the peer through onReset; one back to an active preset
-      // sends its values, unless the peer applies its own group presets (onPreset).
-      if (meta.source === "reset" && !meta.base) return
+      // A reset to the defaults reaches the peer through onReset, when it has one; one back to an
+      // active preset sends its values, unless the peer applies its own group presets (onPreset).
+      if (meta.source === "reset" && !meta.base && hostResets) return
       const peerPreset =
         meta.source === "preset" ||
         (meta.base && meta.group !== undefined && controls.activeGroupPreset(meta.group) >= 0)
