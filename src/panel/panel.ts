@@ -1497,12 +1497,15 @@ function buildPanel<S extends Schema>(
           .filter((s) => s.group !== undefined && order.has(s.group))
           .sort((a, b) => order.get(a.group!)! - order.get(b.group!)!)
       : gatherSubsections(specs)
-    if (page || !planned.some(pinnedRow)) return planned
-    return [...planned.filter(pinnedRow), ...planned.filter((spec) => !pinnedRow(spec))]
+    if (!planned.some(hoisted)) return planned
+    return [...planned.filter(hoisted), ...planned.filter((spec) => !hoisted(spec))]
   }
   /** A row of a pinned group (see `ControlsOptions.pinned`); a page pins nothing. */
   const pinnedRow = (r: { readonly id: string; readonly keys: readonly string[] }) =>
     !page && controls.isPinned(r.keys[0] ?? r.id)
+  /** A pinned row that moves to the top; groups the host picks or embeds keep its order. */
+  const hoisted = (r: { readonly id: string; readonly keys: readonly string[] }) =>
+    !embed && !shownGroups && pinnedRow(r)
   /**
    * Within each run of a group's rows, rows without a sub-heading come first, then each
    * sub-heading's rows together (in the order the sub-headings first appear), so a heading never
@@ -2230,7 +2233,7 @@ function buildPanel<S extends Schema>(
       const runs: { group: string | undefined; pinned: boolean; rows: Row[] }[] = []
       for (const r of next) {
         const last = runs.at(-1)
-        const pinned = pinnedRow(r)
+        const pinned = hoisted(r)
         if (last && last.group === r.group && last.pinned === pinned) last.rows.push(r)
         else runs.push({ group: r.group, pinned, rows: [r] })
       }
@@ -2478,16 +2481,20 @@ function buildPanel<S extends Schema>(
    */
   function presetsTouchTab(entries: readonly PresetEntry<any>[]) {
     // A tab or group's own strip shows wherever it's chosen to (see `stripScope`).
-    if (page || activeTab === undefined || stripScope() !== "") return true
+    // With `groups`, only the shown rows count, tabs or none.
+    if (page || (activeTab === undefined && !shownGroups) || stripScope() !== "") return true
     const keys = rows.flatMap((r) => {
       const tab = tabOf(r)
-      return !pinnedRow(r) && (tab === undefined || tab === activeTab)
+      return !pinnedRow(r) && (activeTab === undefined || tab === undefined || tab === activeTab)
         ? r.keys.filter((k) => controls.scopeOf(k) === "")
         : []
     })
     // The variants choice has no row; a variant moves the tab it sits on (every tab without one).
     const v = variantsOf(controls.schema, (key) => !controls.inPresets(key))
-    if (v) {
+    if (
+      v &&
+      (!shownGroups || (v.field.group !== undefined && shownGroups.includes(v.field.group)))
+    ) {
       const tab = v.field.tab ?? (v.field.group !== undefined ? groupTab(v.field.group) : undefined)
       if (tab === undefined || tab === activeTab) keys.push(v.key)
     }
@@ -2503,7 +2510,11 @@ function buildPanel<S extends Schema>(
     if (page) return panelWide ? "" : null
     // Embedded, each group leads with its own presets; the panel's show above only if it has some.
     if (embed) return Object.keys(controls.presets).length > 1 ? "" : null
-    if (activeTab === undefined) return panelWide ? "" : (named[0] ?? null)
+    // With `groups`, a scope shows only if one of the shown rows is in it.
+    const first = shownGroups
+      ? named.find((id) => rows.some((r) => r.group === id || tabOf(r) === id))
+      : named[0]
+    if (activeTab === undefined) return panelWide ? "" : (first ?? null)
     if (named.includes(activeTab)) return activeTab
     const group = named.find((id) => rows.some((r) => r.group === id && tabOf(r) === activeTab))
     return group ?? (panelWide ? "" : null)

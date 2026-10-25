@@ -184,6 +184,71 @@ describe("groups scope the panel's own commands", () => {
   })
 })
 
+describe("groups and what's around them", () => {
+  const topStrip = (root: Element) =>
+    root.querySelector<HTMLElement>(".knobs-presets:not(.knobs-card *)")!
+  const shownStrips = (root: Element) =>
+    [...root.querySelectorAll<HTMLElement>(".knobs-presets")]
+      .filter((s) => !s.hidden && s.querySelector("button"))
+      .map((s) => s.getAttribute("aria-label") ?? "top")
+
+  it("keep the host's order: pinned groups stay where they're named", () => {
+    const remote = createRemoteControls("stack", descriptors(), { pinned: ["Global"] })
+    for (const options of [
+      { groups: ["Sidebars · Peek", "Global"] },
+      { embed: true, groups: ["Sidebars · Peek", "Global"] },
+    ]) {
+      const panel = mountPanel(remote, host(), options)
+      expect(rowLabels(panel.element)).toEqual(["Width", "Delay", "Speed"])
+      expect(panel.element.querySelector(".knobs-pinned")?.childElementCount ?? 0).toBe(0)
+      panel.dispose()
+    }
+    const embedded = mountPanel(remote, host(), { embed: true })
+    expect(rowLabels(embedded.element)).toEqual(["Width", "Delay", "Lift", "Fade", "Speed"])
+    embedded.dispose()
+  })
+
+  it("show no strip for a hidden group's presets", () => {
+    const remote = createRemoteControls("stack", descriptors(), {
+      scopedPresets: { "Composer · Dock": { high: { "dock.lift": 14 } } },
+    })
+    for (const embed of [false, true]) {
+      const panel = mountPanel(remote, host(), { embed, groups: ["Sidebars · Peek"] })
+      expect(shownStrips(panel.element)).toEqual([])
+      panel.dispose()
+    }
+  })
+
+  it("show no panel-wide strip when its presets touch none of the shown rows", () => {
+    const remote = createRemoteControls("stack", descriptors(), {
+      presets: { lifted: { "dock.lift": 12 } },
+    })
+    for (const embed of [false, true]) {
+      const peek = mountPanel(remote, host(), { embed, groups: ["Sidebars · Peek"] })
+      expect(topStrip(peek.element).hidden).toBe(true)
+      peek.dispose()
+      const dock = mountPanel(remote, host(), { embed, groups: ["Composer · Dock"] })
+      expect(topStrip(dock.element).hidden).toBe(false)
+      dock.dispose()
+    }
+  })
+
+  it("render nothing for unknown group ids, without throwing", () => {
+    const remote = createRemoteControls("stack", descriptors(), { scopedPresets })
+    for (const embed of [false, true]) {
+      const panel = mountPanel(remote, host(), { embed, groups: ["Nope"] })
+      expect(rowLabels(panel.element)).toEqual([])
+      expect(shownStrips(panel.element)).toEqual([])
+      remote.set({ "peek.width": 320 })
+      key(panel.element, { key: "r", code: "KeyR" })
+      key(panel.element, { key: "R", code: "KeyR", shiftKey: true })
+      expect(remote.get()["peek.width"]).toBe(320)
+      remote.reset()
+      panel.dispose()
+    }
+  })
+})
+
 describe("groupActions", () => {
   it("draw in each group's action row and run", async () => {
     const replay = vi.fn()
