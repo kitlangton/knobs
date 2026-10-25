@@ -4310,6 +4310,16 @@ function buildPanel<S extends Schema>(
     if (!typing && !hintCtrl.isActive && !event.metaKey && !event.ctrlKey && pickOption(event))
       return
     if (!typing && !hintCtrl.isActive && pressTool(event, true)) return
+    // ⌘Z and ⇧⌘Z (Ctrl on other systems) undo and redo too, outside a text field.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.code === "KeyZ") {
+      if (typing || hintCtrl.isActive) return
+      const back = !event.shiftKey
+      if (!bound(back ? "undo" : "redo")) return
+      event.preventDefault()
+      if (back) undo()
+      else redo()
+      return
+    }
     if (event.metaKey || event.ctrlKey) return
     if (event.altKey) {
       // ⌥R and ⌥G mutate (by code: ⌥ changes the character on macOS).

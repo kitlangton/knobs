@@ -230,3 +230,65 @@ describe("groupActions", () => {
     dispose()
   })
 })
+
+describe("remote randomize and undo", () => {
+  const setup = () => {
+    const sent: { key: string; value: unknown; source: string }[] = []
+    const remote = createRemoteControls("stack", descriptors(), {
+      scopedPresets,
+      onSet: (key, value, meta) => sent.push({ key, value, source: meta.source }),
+    })
+    const panel = mountPanel(remote, host(), { embed: true, groups: ["Sidebars · Peek"] })
+    return { remote, panel, sent }
+  }
+  const peek = (state: Record<string, unknown>) => ({
+    width: state["peek.width"],
+    delay: state["peek.delay"],
+  })
+
+  it("rolls a group with its die and undoes with ⌘Z, each through onSet", () => {
+    const { remote, panel, sent } = setup()
+    const before = peek(remote.get())
+    panel.element.querySelector<HTMLButtonElement>(".knobs-group-die")!.click()
+    const rolled = sent.filter((s) => s.source === "randomize")
+    expect(rolled.map((s) => s.key).sort()).toEqual(["peek.delay", "peek.width"])
+    // Only the group's keys roll.
+    expect(sent.some((s) => !s.key.startsWith("peek."))).toBe(false)
+    expect(peek(remote.get())).not.toEqual(before)
+    sent.length = 0
+    const row = panel.element.querySelector<HTMLElement>(".knobs-row [tabindex], .knobs-row input")!
+    key(row, { key: "z", code: "KeyZ", metaKey: true })
+    expect(peek(remote.get())).toEqual(before)
+    const undone = sent.filter((s) => s.source === "undo")
+    expect(undone.map((s) => s.key).sort()).toEqual(["peek.delay", "peek.width"])
+    // Defaults go back as nulls, as a reset would send them.
+    expect(undone.every((s) => s.value === null)).toBe(true)
+    sent.length = 0
+    key(row, { key: "z", code: "KeyZ", metaKey: true, shiftKey: true })
+    expect(peek(remote.get())).not.toEqual(before)
+    expect(sent.filter((s) => s.source === "redo")).toHaveLength(2)
+    panel.dispose()
+  })
+
+  it("rolls the focused row's group with g", () => {
+    const { remote, panel, sent } = setup()
+    const before = peek(remote.get())
+    const row = panel.element.querySelector<HTMLElement>(".knobs-row [tabindex], .knobs-row input")!
+    key(row, { key: "g", code: "KeyG" })
+    expect(sent.filter((s) => s.source === "randomize").length).toBeGreaterThan(0)
+    expect(peek(remote.get())).not.toEqual(before)
+    key(row, { key: "z", code: "KeyZ", ctrlKey: true })
+    expect(peek(remote.get())).toEqual(before)
+    panel.dispose()
+  })
+
+  it("leaves ⌘Z to a text field", () => {
+    const { remote, panel } = setup()
+    remote.set({ "peek.width": 320 })
+    const input = document.createElement("input")
+    panel.element.append(input)
+    expect(key(input, { key: "z", code: "KeyZ", metaKey: true })).toBe(true)
+    expect(remote.get()["peek.width"]).toBe(320)
+    panel.dispose()
+  })
+})
