@@ -87,6 +87,24 @@ export {
   type SampleCurveOptions,
 } from "./core/ramp.js"
 export { bezierCss, bezierPoint, EASINGS, type Bezier, type EasingName } from "./core/easing.js"
+export {
+  bezierAt,
+  fitTracks,
+  itemStart,
+  sampleTrack,
+  sampleTracks,
+  springAt,
+  springSettle,
+  staggerRank,
+  staggerSteps,
+  track,
+  trackSpan,
+  type StaggerFrom,
+  type Track,
+  type TrackFields,
+  type TrackOptions,
+  type TrackTiming,
+} from "./core/tracks.js"
 export { AROUND } from "./core/random.js"
 export {
   defineControls,
