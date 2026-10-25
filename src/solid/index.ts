@@ -116,6 +116,9 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>): JSX.Ele
   const host = document.createElement("div")
   createEffect(() => {
     const c = props.controls
+    // Embedding or showing other groups builds the panel afresh.
+    void props.embed
+    void props.groups?.join("\n")
     host.dataset.knobsMount = c.id
     if (!c.enabled) {
       host.replaceChildren()

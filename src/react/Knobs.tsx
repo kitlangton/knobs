@@ -59,10 +59,12 @@ export function KnobsPanel<S extends Schema>(props: KnobsPanelProps<S>) {
   const ref = useRef<HTMLDivElement>(null)
   const latest = useRef(props)
   latest.current = props
+  // Embedding or showing other groups builds the panel afresh.
+  const shape = `${Boolean(props.embed)}\n${props.groups?.join("\n") ?? ""}`
   useEffect(() => {
     if (!enabled || !ref.current) return
     return mountPanelAdapter(ref.current, controls, () => latest.current)
-  }, [enabled, controls])
+  }, [enabled, controls, shape])
   useEffect(() => {
     if (!enabled) return
     syncPanelValues(controls, descriptors, values, Boolean(land))

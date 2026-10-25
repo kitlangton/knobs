@@ -35,7 +35,8 @@ export function syncPanelLook<S extends Schema>(
   const panel = host?.firstElementChild as HTMLElement | null | undefined
   if (!panel) return
   applyLook(panel, panelLook(controls, look))
-  panel.dataset.density = density ?? controls.density
+  panel.dataset.density =
+    density ?? (panel.hasAttribute("data-embed") ? "compact" : controls.density)
 }
 
 export function syncPanelValues<S extends Schema>(

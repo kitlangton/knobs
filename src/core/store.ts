@@ -388,6 +388,18 @@ export interface MountPanelOptions extends LabelOptions {
   readonly history?: boolean
   readonly footer?: boolean
   readonly actions?: readonly ControlAction<any>[]
+  /**
+   * `true` renders the panel into its host as part of the host's page: no frame, header, title,
+   * footer or toggle key, and compact rows unless `density` says otherwise. Each group leads with
+   * its action row (`groupActions`, its Reset and die) and its own presets (`scopedPresets`).
+   * Inline only (`mountPanel`, `KnobsPanel`); keys still work while focus is inside.
+   */
+  readonly embed?: boolean
+  /**
+   * Show only these groups' rows, in this order (`["Sidebars · Peek"]`), e.g. one feature's
+   * page of a host's settings. Rows outside every group never show while it's set.
+   */
+  readonly groups?: readonly string[]
   readonly onClose?: () => void
 }
 /** A search field's filter chip: it narrows the rows to those `test` accepts. */

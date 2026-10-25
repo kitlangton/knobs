@@ -709,6 +709,17 @@ ${POINTER_ROW} .knobs-slider.knobs-modified:not(:hover,.knobs-active) .knobs-val
 .knobs-panel:is([data-surface="flat"],[data-surface="indent"]) .knobs-card{background:transparent;border-radius:0}
 .knobs-panel:is([data-surface="flat"],[data-surface="indent"]):not([data-rows]) .knobs-card>*{--k-rt:0;--k-rb:0}
 .knobs-panel[data-surface="indent"] .knobs-card{padding-left:var(--_k-inset);background:linear-gradient(var(--_k-border),var(--_k-border)) calc(var(--_k-inset) / 2) 0/var(--k-rim-width) 100% no-repeat}
+/* Embedded: part of the host's page, with no frame or padding of its own. Each group leads with
+   its action row (its actions, the first icon lined up with the rows' labels, then Reset and the
+   die at the far end), its presets under it; one group alone needs no title, since the host's page
+   names it. */
+:where(.knobs-panel.knobs-inline)[data-embed]{--k-chrome:0}
+.knobs-panel.knobs-inline[data-embed]{width:auto;padding:0;border-radius:0}
+.knobs-panel[data-embed] .knobs-group-head>.knobs-group-label{flex:0 0 100%;max-width:none}
+.knobs-panel[data-solo] .knobs-group-head>.knobs-group-label{display:none}
+.knobs-panel[data-embed] .knobs-group-head>span:last-child{flex:1 1 auto;margin:0 0 0 -6px}
+.knobs-panel[data-embed] .knobs-group-head .knobs-group-reset{margin-left:auto}
+.knobs-panel[data-embed] .knobs-group-head button{cursor:default}
 .knobs-panel[data-frame="flat"][data-rows] .knobs-card>*,.knobs-panel[data-frame="flat"][data-rows] .knobs-sub{background:transparent;border-radius:0}
 
 /* Disabled rows dim and take no edits (focus still reaches them, to read); read-only rows keep

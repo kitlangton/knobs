@@ -235,14 +235,23 @@ function buildPanel<S extends Schema>(
   root.dataset.controls = controls.id
   const untrackHas = trackHas(root)
   applyLook(root, panelLook(controls, options))
-  root.dataset.density = options.density ?? controls.density
+  // An embedded panel is part of its host's page: no frame, header or footer, compact rows.
+  const embed = !page && inline && options.embed === true
+  if (embed) root.dataset.embed = ""
+  root.dataset.density = options.density ?? (embed ? "compact" : controls.density)
   // `surface` draws a panel's groups flat or as indented folds (set before any row is built).
   const surface = page ? undefined : options.surface
   if (surface && surface !== "cards") root.dataset.surface = surface
-  const titleText = options.title === undefined ? controls.id : options.title
+  const shownGroups = page ? undefined : options.groups
+  const titleText =
+    options.title === undefined
+      ? embed && shownGroups?.length
+        ? shownGroups.join(", ")
+        : controls.id
+      : options.title
   // The page's show/hide key (toggle.ts). A full page is the whole tool, so it stays unless asked.
   const toggleKey =
-    options.toggleKey !== undefined ? options.toggleKey : page ? false : controls.toggleKey
+    options.toggleKey !== undefined ? options.toggleKey : page || embed ? false : controls.toggleKey
   if (options.restored) root.dataset.restored = ""
   if (options.haptics === false) root.dataset.haptics = "off"
   if (options.detents === false) root.dataset.detents = "off"
@@ -312,9 +321,9 @@ function buildPanel<S extends Schema>(
     return node
   }
 
-  const showVariants = options.variants !== false
+  const showVariants = (options.variants ?? !embed) !== false
   const showHistory = options.history !== false
-  const showFooter = options.footer !== false
+  const showFooter = (options.footer ?? !embed) !== false
   const given = options.keys ?? controls.keys
   const marks = (options.marks ?? controls.marks) !== false
   const keys = resolveKeys(given, Boolean(page))
@@ -747,7 +756,7 @@ function buildPanel<S extends Schema>(
     tools.append(headActions)
     header.append(titleEl, presetStrip.element, tools)
   } else header.append(titleEl, headActions)
-  if (options.header === false && !page) header.hidden = true
+  if ((options.header === false || embed) && !page) header.hidden = true
   // Without a title the header row holds only buttons: in a split's pane they join the pane's
   // header (see dock.ts); elsewhere the row is there only while a button shows (`syncBand`).
   const untitled = !page && !header.hidden && !titleEl.textContent
@@ -771,8 +780,9 @@ function buildPanel<S extends Schema>(
    */
   const groupStrips = new Map<string, PresetStrip>()
   const tabNamed = (id: string) =>
-    (options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
-    Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id)
+    !embed &&
+    ((options.tabs ?? []).some((t) => (typeof t === "string" ? t : t.id) === id) ||
+      Object.values(controls.schema as Record<string, Field>).some((f) => f.tab === id))
   const groupStripFor = (group: string): PresetStrip | undefined => {
     if (page || !Object.hasOwn(controls.scopes, group) || tabNamed(group)) return undefined
     let strip = groupStrips.get(group)
@@ -1199,8 +1209,9 @@ function buildPanel<S extends Schema>(
     }
     if (ui) groupChips.set(groupName, ui)
     gRight.append(gReset, gRandom)
-    // A panel's group folds when it says how it starts (`folded`, `groupFolded`).
-    const foldAt = foldDefault(groupName)
+    // A panel's group folds when it says how it starts (`folded`, `groupFolded`); an embedded one
+    // is its host's to show or hide.
+    const foldAt = embed ? undefined : foldDefault(groupName)
     let caret: SVGSVGElement | undefined
     // A folded card's header shows a summary of the card.
     let ctl: HTMLElement | undefined
@@ -1462,7 +1473,12 @@ function buildPanel<S extends Schema>(
         section: field.section,
       })
     }
-    const planned = gatherSubsections(specs)
+    const order = new Map(shownGroups?.map((g, i) => [g, i]))
+    const planned = shownGroups
+      ? gatherSubsections(specs)
+          .filter((s) => s.group !== undefined && order.has(s.group))
+          .sort((a, b) => order.get(a.group!)! - order.get(b.group!)!)
+      : gatherSubsections(specs)
     if (page || !planned.some(pinnedRow)) return planned
     return [...planned.filter(pinnedRow), ...planned.filter((spec) => !pinnedRow(spec))]
   }
@@ -2251,6 +2267,8 @@ function buildPanel<S extends Schema>(
           if (gi >= 0) gpuRows.splice(gi, 1)
           subheads.delete(id)
         }
+      // One embedded group needs no title: its host's page names it.
+      if (embed) root.toggleAttribute("data-solo", new Set(chosen.map((b) => b.group)).size === 1)
       const nodesOf = (list: Block[]) => list.flatMap((b) => (b.head ? [b.head, b.card] : [b.card]))
       arrange(pinnedBody, nodesOf(chosen.filter((b) => pinnedBlocks.has(b))))
       arrange(body, [presetStrip.element, ...nodesOf(chosen.filter((b) => !pinnedBlocks.has(b)))])
@@ -2412,14 +2430,17 @@ function buildPanel<S extends Schema>(
       if (f.group === group && f.tab !== undefined) return f.tab
     return undefined
   }
-  /** A row's tab: its field's, else its group's; none (or pinned) shows on every tab. */
+  /**
+   * A row's tab: its field's, else its group's; none (or pinned) shows on every tab. An embedded
+   * panel shows its groups in one column, whatever tabs they'd sit on.
+   */
   const tabOf = (r: Row) =>
-    pinnedRow(r)
+    embed || pinnedRow(r)
       ? undefined
       : (r.field.tab ?? (r.group !== undefined ? groupTab(r.group) : undefined))
   /** `tabs` in order, then the tabs fields name that it doesn't list. */
   const tabList = (): TabSpec[] => {
-    if (page) return []
+    if (page || embed) return []
     const list: TabSpec[] = (options.tabs ?? []).map((t) =>
       typeof t === "string"
         ? { id: t, label: readableTitle(t) }
@@ -2462,6 +2483,8 @@ function buildPanel<S extends Schema>(
     const named = Object.keys(controls.scopes)
     const panelWide = named.length === 0 || Object.keys(controls.presets).length > 1
     if (page) return panelWide ? "" : null
+    // Embedded, each group leads with its own presets; the panel's show above only if it has some.
+    if (embed) return Object.keys(controls.presets).length > 1 ? "" : null
     if (activeTab === undefined) return panelWide ? "" : (named[0] ?? null)
     if (named.includes(activeTab)) return activeTab
     const group = named.find((id) => rows.some((r) => r.group === id && tabOf(r) === activeTab))
@@ -5162,8 +5185,8 @@ function buildPanel<S extends Schema>(
   let trapped: HTMLElement | null | undefined
   const syncRendererMode = () => {
     let mode = resolveRendererMode(requestedMode, doc)
-    // The GPU overlay doesn't draw flat or indented surfaces yet.
-    if (mode === "gpu" && surface && surface !== "cards") mode = "dom"
+    // The GPU overlay doesn't draw flat or indented surfaces or embedded action rows yet.
+    if (mode === "gpu" && (embed || (surface && surface !== "cards"))) mode = "dom"
     if (mode === "gpu" && inline) {
       trapped ??= stackingAncestor(root)
       if (trapped) {
