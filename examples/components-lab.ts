@@ -2,9 +2,24 @@
 // a three-pane split with a tree of stories (two share a title, told apart by their `detail`), the
 // story in the middle, and its controls in the right pane: one preset per state, a toolbar that
 // steps and plays through them, and the story's args as knobs. A story's motion knobs have presets
-// of their own at the top of their card. A story without args says so.
-import { defineControls, knob, spring, text, toolbar, type Field, type Value } from "knobs"
-import { split, tree } from "knobs/ui"
+// of their own at the top of their card. A story without args says so. The card entrance is
+// timed on tracks: a clip per part over a timeline, the panel's rows and the clips the same fields.
+import {
+  defineControls,
+  easing,
+  fitTracks,
+  knob,
+  sampleTracks,
+  spring,
+  text,
+  toolbar,
+  track,
+  type Controls,
+  type Field,
+  type HeaderButton,
+  type Value,
+} from "knobs"
+import { split, timeline, tracks, tree } from "knobs/ui"
 
 interface Row {
   id: string
@@ -19,7 +34,19 @@ interface Story {
   fields: Record<string, Field>
   /** Presets for the story's Motion group, beside the shipped values. */
   motion?: Record<string, Record<string, Value>>
+  /** Presets over all its fields, beside the shipped values. */
+  presets?: Record<string, Record<string, Value>>
+  constrain?: (
+    values: Readonly<Record<string, unknown>>,
+    rolled: readonly string[],
+  ) => Record<string, unknown>
+  buttons?: HeaderButton[]
   render(stage: HTMLElement, args: Record<string, unknown>): void
+  /** A story that keeps its stage and follows the store itself; returns its teardown. */
+  mount?(
+    stage: HTMLElement,
+    store: Controls<Record<string, Field>>,
+  ): { dispose(): void; highlight?(group: string | null): void }
 }
 
 const activity: Story = {
@@ -94,12 +121,137 @@ const spinner: Story = {
 
 const welcome: Story = { ...spinner, title: "App / Dialogs / Connect Provider" }
 
+// The entrance: the card fades and scales in, then its header, then the rows rise one after
+// another, then the button. Each is a track; the stage reads them all at the playhead's time.
+const LENGTH = 1.6
+const entranceTracks = [
+  track("card", { ease: spring({ duration: 0.4, bounce: 0 }), max: LENGTH }),
+  track("header", { start: 0.12, duration: 0.3, ease: easing("out"), max: LENGTH }),
+  track("rows", {
+    start: 0.2,
+    ease: spring({ duration: 0.35, bounce: 0 }),
+    stagger: 0.04,
+    items: 7,
+    max: LENGTH,
+  }),
+  track("button", { start: 0.62, duration: 0.25, ease: easing("snappy"), max: LENGTH }),
+] as const
+const ROWS = ["Overview", "Sessions", "Agents", "Models", "Providers", "Keybinds", "Themes"]
+
+const entrance: Story = {
+  title: "UI / Motion / Card entrance",
+  states: [{ name: "Shipped", args: {} }],
+  fields: Object.assign({}, ...entranceTracks.map((t) => t.fields)),
+  presets: {
+    Snappy: {
+      "card.ease": { duration: 0.25, bounce: 0 },
+      "header.start": 0.06,
+      "header.duration": 0.2,
+      "rows.start": 0.1,
+      "rows.ease": { duration: 0.25, bounce: 0 },
+      "rows.stagger": 0.025,
+      "button.start": 0.36,
+      "button.duration": 0.18,
+    },
+    Smooth: {
+      "card.ease": { duration: 0.55, bounce: 0 },
+      "header.start": 0.18,
+      "header.duration": 0.45,
+      "header.ease": [0.65, 0, 0.35, 1],
+      "rows.start": 0.3,
+      "rows.ease": { duration: 0.5, bounce: 0 },
+      "rows.stagger": 0.06,
+      "button.start": 0.9,
+      "button.duration": 0.4,
+      "button.ease": [0.65, 0, 0.35, 1],
+    },
+    Playful: {
+      "card.ease": { duration: 0.5, bounce: 0.3 },
+      "header.start": 0.15,
+      "header.duration": 0.35,
+      "header.ease": [0.34, 1.56, 0.64, 1],
+      "rows.start": 0.25,
+      "rows.ease": { duration: 0.45, bounce: 0.35 },
+      "rows.stagger": 0.05,
+      "rows.from": "center",
+      "button.start": 0.8,
+      "button.duration": 0.35,
+      "button.ease": [0.34, 1.56, 0.64, 1],
+    },
+  },
+  constrain: fitTracks(entranceTracks, { length: LENGTH }),
+  buttons: ["random", "undo", "redo", "reset"],
+  render() {},
+  mount(stage, store) {
+    const scene = document.createElement("div")
+    scene.className = "entrance"
+    const card = document.createElement("div")
+    card.className = "entrance-card"
+    const header = document.createElement("div")
+    header.className = "entrance-header"
+    header.textContent = "Settings"
+    const list = ROWS.map((label) => {
+      const row = document.createElement("div")
+      row.className = "entrance-row"
+      row.textContent = label
+      return row
+    })
+    const button = document.createElement("div")
+    button.className = "entrance-button"
+    button.textContent = "Done"
+    card.append(header, ...list, button)
+    scene.append(card)
+    const dock = document.createElement("div")
+    dock.className = "entrance-dock"
+    stage.replaceChildren(scene, dock)
+
+    const fade = (n: HTMLElement, p: number, transform: string) => {
+      n.style.opacity = String(Math.min(1, Math.max(0, p)))
+      n.style.transform = transform
+    }
+    const paint = (t: number) => {
+      const at = sampleTracks(entranceTracks, store.get(), t)
+      const c = at.card[0]!
+      fade(card, c, `scale(${0.94 + 0.06 * c})`)
+      fade(header, at.header[0]!, `translateY(${(1 - at.header[0]!) * 6}px)`)
+      list.forEach((row, i) => fade(row, at.rows[i]!, `translateY(${(1 - at.rows[i]!) * 12}px)`))
+      fade(button, at.button[0]!, `scale(${0.92 + 0.08 * at.button[0]!})`)
+    }
+    const tl = timeline(dock, {
+      theme: "dark",
+      duration: LENGTH,
+      fps: 60,
+      time: LENGTH,
+      label: "Entrance time",
+      onSeek: paint,
+    })
+    const view = tracks(dock, {
+      theme: "dark",
+      controls: store,
+      tracks: entranceTracks,
+      timeline: tl,
+      label: "Entrance tracks",
+    })
+    const stop = store.subscribe(() => paint(tl.time))
+    paint(tl.time)
+    return {
+      highlight: view.highlight,
+      dispose() {
+        stop()
+        view.dispose()
+        tl.dispose()
+      },
+    }
+  },
+}
+
 const stories: Record<string, Story> = {
   "activity-chips.stories.tsx": activity,
   "composer.stories.tsx": composer,
   "spinner.stories.tsx": spinner,
   "chatgpt-usage-limit.stories.tsx": welcome,
   "chatgpt-welcome.stories.tsx": welcome,
+  "card-entrance.stories.tsx": entrance,
 }
 
 const rows: Row[] = [
@@ -148,6 +300,11 @@ const rows: Row[] = [
         label: "Status",
         children: [{ id: "spinner.stories.tsx", label: "Spinner" }],
       },
+      {
+        id: "folder:UI/Motion",
+        label: "Motion",
+        children: [{ id: "card-entrance.stories.tsx", label: "Card entrance" }],
+      },
     ],
   },
 ]
@@ -194,12 +351,15 @@ const layout = split(document.getElementById("lab")!, {
 })
 
 let unmount: (() => void) | undefined
+let unmountStory: (() => void) | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 
 function open(file: string) {
   const story = stories[file]
   if (!story) return
   unmount?.()
+  unmountStory?.()
+  unmountStory = undefined
   clearTimeout(timer)
   layout.pane("inspector").title(story.title.split("/").join(" / ").replace(/\s+/g, " "))
   const names = story.states.map((s) => s.name)
@@ -245,21 +405,33 @@ function open(file: string) {
       storage: null,
       persist: "none",
       defaultLabel: { "": first ?? "default", Motion: "Shipped" },
-      presets: Object.fromEntries(story.states.slice(1).map((s) => [s.name, s.args])),
+      presets: {
+        ...Object.fromEntries(story.states.slice(1).map((s) => [s.name, s.args])),
+        ...story.presets,
+      },
       ...(story.motion ? { scopedPresets: { Motion: story.motion } } : {}),
+      ...(story.constrain ? { constrain: story.constrain } : {}),
       onChange: (_patch, values) => story.render(stage, values),
     },
   )
-  story.render(stage, { ...story.states[0]?.args, ...store.get() })
+  const mounted = story.mount?.(stage, store)
+  unmountStory = mounted?.dispose
+  if (!mounted) story.render(stage, { ...story.states[0]?.args, ...store.get() })
   unmount = store.mount(controls, {
     theme: "dark",
-    header: { title: false, buttons: ["undo", "redo", "reset"] },
+    header: { title: false, buttons: story.buttons ?? ["undo", "redo", "reset"] },
+    ...(mounted?.highlight
+      ? { onActive: (at: { group: string } | null) => mounted.highlight!(at?.group ?? null) }
+      : {}),
     variants: false,
     session: false,
     hints: { digits: "always" },
     empty: "This story has no controls",
   })
 }
+
+const asked = new URLSearchParams(location.search).get("story")
+const initial = asked && asked in stories ? asked : "activity-chips.stories.tsx"
 
 tree(outline, {
   theme: "dark",
@@ -273,9 +445,10 @@ tree(outline, {
     "folder:OpenCode/Session",
     "folder:UI",
     "folder:UI/Status",
+    "folder:UI/Motion",
   ],
-  selection: ["activity-chips.stories.tsx"],
+  selection: [initial],
   onSelect: (_, primary) => primary && !primary.startsWith("folder:") && open(primary),
 })
 
-open(new URLSearchParams(location.search).get("story") ?? "activity-chips.stories.tsx")
+open(initial)
