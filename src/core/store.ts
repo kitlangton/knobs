@@ -570,7 +570,10 @@ export interface ControlsOptions<S extends Schema> extends LabelOptions {
    * they rolled, and returns fixes to apply in the same step (`fitTracks(tracks)` keeps a
    * timeline's clips in order and inside it).
    */
-  constrain?: (values: Values<S>, rolled: readonly string[]) => Partial<Values<S>> | void
+  constrain?: (
+    values: Values<S>,
+    rolled: readonly string[],
+  ) => Readonly<Record<string, unknown>> | void
   onChange?: (patch: Partial<Values<S>>, values: Values<S>, meta: ChangeMeta) => void
   /** A key went into the hand or out of it (see `GestureEvent`). */
   onGesture?: (event: GestureEvent) => void
@@ -1440,7 +1443,7 @@ export function defineControls<const S extends Schema>(
       const previous = load()
       const rolled = applyPatch(previous, previous, patch)
       const fix = rolled && options.constrain(rolled.next, Object.keys(patch))
-      if (fix && Object.keys(fix).length) patch = { ...patch, ...fix }
+      if (fix && Object.keys(fix).length) patch = { ...patch, ...fix } as Partial<Values<S>>
     }
     write(patch, setOpts)
   }
