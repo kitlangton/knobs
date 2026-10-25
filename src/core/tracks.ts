@@ -336,15 +336,14 @@ function response(s: SpringValue, t: number): number {
   return 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1)
 }
 
-/** The bound on |1 − response| from `t` on: the envelope the spring decays inside. */
+/**
+ * The bound on |1 − response| from `t` on: the envelope an underdamped spring decays inside. One
+ * at or past critical damping never overshoots, so its distance to go is the bound itself.
+ */
 function envelope(s: SpringValue, t: number): number {
   const { omega: w, zeta: z } = springMotion(s)
-  if (Math.abs(z - 1) < 1e-6) return (1 + w * t) * Math.exp(-w * t)
-  if (z < 1) return Math.exp(-z * w * t) / Math.sqrt(1 - z * z)
-  const r = w * Math.sqrt(z * z - 1)
-  const r1 = -z * w + r
-  const r2 = -z * w - r
-  return (Math.abs(r2) * Math.exp(r1 * t) + Math.abs(r1) * Math.exp(r2 * t)) / Math.abs(r2 - r1)
+  if (z < 1 - 1e-6) return Math.exp(-z * w * t) / Math.sqrt(1 - z * z)
+  return Math.max(0, 1 - response(s, t))
 }
 
 const settled = new Map<string, number>()

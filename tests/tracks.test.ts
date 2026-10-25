@@ -81,6 +81,15 @@ describe("the sampler", () => {
     expect(springAt(s, 0.15)).toBeLessThan(1)
     expect(springAt(s, 5)).toBe(1)
   })
+  test("a spring just past critical damping settles when a critical one does", () => {
+    const critical = springSettle({ duration: 0.4, bounce: 0 })
+    expect(springSettle({ duration: 0.4, bounce: -0.001 })).toBeCloseTo(critical, 2)
+    // And an overdamped one settles exactly where it comes within 0.001.
+    const s = { duration: 0.3, bounce: -0.4 }
+    const t = springSettle(s)
+    expect(1 - springAt(s, t - 1e-4)).toBeGreaterThan(0.001 - 1e-6)
+    expect(1 - springAt(s, t - 0.01)).toBeGreaterThan(0.001)
+  })
   test("matches the integrated spring the panels use", () => {
     // knobs' own Spring, stepped at 480 Hz, against the closed form.
     const s = { duration: 0.5, bounce: 0.2 }
